@@ -1,6 +1,10 @@
 # Independent RiscRTE product releases
 
 **Status:** release publication is driven by the `Cut RiscRTE release` workflow.
+The U1 working tree is migrating distribution to ordinary `.rte.zip` bundles;
+the [bundled-package contract](BUNDLED_PACKAGE_ARCHIVE_AND_INSTALL_LAYOUT.md)
+overrides historical loose-asset descriptions. A local successful build or
+record update does not publish a release or establish device compatibility.
 
 ## Goal
 
@@ -13,12 +17,12 @@ The existing combined release is a migration source only. New releases use immut
 | Product | Version authority | Tag format | Release contents |
 | --- | --- | --- | --- |
 | Firmware | `[riscrte] version` in `platformio.ini` | `firmware-v<version>` | Firmware flash/OTA images and matching ELF; the index records size and SHA-256 |
-| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | One app's `.elf` and matching `.json` manifest; the index records size and SHA-256 |
-| Driver | That driver's package manifest stable ID and `version` | `driver-<id>-v<version>` | One canonical package's driver ELF, package descriptor, provider ABI, and privileged import inventory; the index records size and SHA-256 |
+| App | That app's `Apps/<name>.json` stable ID and `version` | `app-<id>-v<version>` | Current independent app path still uses `.elf`/`.json`; ordinary bundle conversion remains U1 work |
+| Driver | That driver's package manifest stable ID and `version` | `driver-<id>-v<version>` | One `driver-<id>-<version>-<architecture>.rte.zip` containing its ordinary manifest, executable, provider ABI, import inventory and any declared resources; the index records archive size and SHA-256 |
 
 App and driver versions continue to use numeric MAJOR.MINOR.PATCH and must increase for every changed distributable package, under the existing version policies. Firmware version changes do not change app or driver versions. Package compatibility requirements such as minimum firmware, driver ABI, architecture, and capability API remain separate fields and are still enforced.
 
-A release tag is immutable. A package ID/version pair cannot be reused with different bytes or metadata. An app release contains its manifest and ELF. A canonical driver release contains the complete four-file package inventory. Any declared app resources must also be included in that app's release. Firmware releases contain no app or driver payloads.
+A release tag is immutable. A package ID/version pair cannot be reused with different bytes or metadata, including when converting a historical loose driver release to ZIP. That conversion needs a strictly newer manifest version. Historical app releases contain their manifest and ELF; historical driver releases contain the complete four-file package inventory. Keep those assets intact. Any declared resources must be included in their package's release. Firmware releases contain no app or driver payloads.
 
 ## Release index
 
@@ -32,7 +36,41 @@ The index contains:
 
 The index is a locator. It does not authorize code or hardware access. Installers must pin downloads to the indexed immutable release tag, validate package identity and compatibility, check the declared size and SHA-256, and retain their existing transactional install and rollback behavior.
 
-The App Store reads only app entries. Driver Manager reads only driver entries. Firmware update code reads only the firmware entry. The unified package manager consumes app and driver entries through the same generic index/parser and filters by package kind. Offline SD installation remains independent of index access.
+### Current driver records and historical compatibility
+
+The outer index remains `schema: 1`. New driver records explicitly carry
+`format: "rte.zip"` and `architecture`, alongside the existing `id`, `version`,
+`tag`, `asset`, `url`, `size`, `sha256` and `kind: "driver"`. Their `manifest`
+is the exact ordinary root `.package.json` object, with `schema`, `kind`, `id`,
+`version`, `architecture`, `artifact`, `min_runtime_api`, `entries` and `requires`.
+The outer size/hash describe the whole archive, never just its executable.
+Architecture, version, identity, filename and immutable URL must agree.
+
+Historical records have no `format` discriminator, point to `<id>--driver.elf`
+and retain their original `capability`, `api` and four-file `files` manifest.
+The updater accepts and preserves those records; it does not reinterpret them
+as archives or rewrite untouched entries. Current/legacy metadata mixtures,
+unknown formats, mismatched kinds/architectures and loose/archive filename
+conflicts are rejected. A replay of identical indexed content is idempotent;
+same-version changed content and downgrades remain blocked across both formats.
+
+The current driver bundle validator mirrors ordinary schema-1 structural
+rules: exact known fields, canonical bounded identity/version, supported CPU,
+flat lowercase file names, one declared executable, provider ABI/import
+metadata, lowercase SHA-256, exact boolean/integer types, and bounded unique
+capability requirements. Current ZIP limits are 16 payload entries, 1 MiB per
+entry, 4 MiB total including the manifest, a 4096-byte manifest, and 16
+requirements. Nested schema-2 resources remain separate U1 implementation work.
+The builder additionally verifies actual archive and payload bytes; a metadata
+validator alone cannot establish their integrity or grant execution privileges.
+
+App Store and firmware readers filter their own product entries. Historical
+driver readers cannot consume a ZIP merely because the outer index schema is
+unchanged: bundle-capable readers must explicitly route archive downloads to
+the ordinary package installer. The generic `package-catalog.json` remains
+the four-kind archive source contract. Complete reader/publication integration
+before treating this compatibility layer as end-to-end release readiness.
+Offline SD installation remains independent of index access.
 
 ## Release request and build behavior
 
@@ -52,7 +90,9 @@ The device continues to fetch one bounded release index during App Store refresh
 
 Keep existing combined releases intact as historical assets. During cutover, the readers may support the existing aggregate catalog as a bounded fallback while preferring the new index. Remove that fallback only after the new index and all three readers ship together. Do not rename or duplicate package IDs to create release channels.
 
-The release-index updater enforces at most 128 apps, 64 drivers, and 64 KiB total, matching the on-device readers. Acceptance requires:
+The release-index updater enforces at most 128 apps and 64 drivers and writes
+compact JSON. It has no fixed 64 KiB serialization ceiling; individual readers
+must retain their own bounded allocation/filtering behavior. Acceptance requires:
 
 - publishing a driver updates only its stable ID and index entry; the firmware version and firmware assets do not change;
 - publishing an app updates only its stable ID and index entry; other app/driver versions and firmware do not change;

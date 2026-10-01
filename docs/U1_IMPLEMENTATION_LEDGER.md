@@ -1,13 +1,71 @@
 # U1 implementation ledger
 
-## Active continuation — October 1, 2026, 00:30 UTC
+## October 1: bundled driver release records and historical index compatibility
 
-Claim: release-record/index compatibility on sole PR #96. Prior checkpoint
-`3ff5691a` passed both exact-head GitHub workflows. This run is migrating
-current driver ZIP records while preserving historical index compatibility,
-integrity checks and immutable versions. No live index or release publication.
-Other continuations must not write concurrently until this claim is replaced
-by the tested checkpoint.
+Checkpoint on sole `impl/u1-riscrte` / PR #96, integrating master
+**`524e2cb3`** (Hollow Trail half-resolution background/native foreground)
+without changing its package versions. Claim released at this checkpoint;
+check the PR head/checks and active writer before the next continuation.
+No live release index, tag, release, merge to master or hardware was changed.
+
+- `build_release_record.py` now builds current driver records from the actual
+  exported `.rte.zip` plus generic `package-catalog.json`, never the retired
+  USB-only catalog or loose ELF. It verifies source identity/version/CPU,
+  dependencies and provider ABI against the exact bundled ordinary manifest.
+- ZIP intake is bounded before reading members: stored-only, 17 total entries,
+  1 MiB per payload, 4 MiB content, canonical flat names and no symlink/output
+  indirection. Every payload size/SHA and CRC is checked. A private validated
+  snapshot is repacked with the normal packer and must match the original bytes,
+  rejecting malformed topology, extra bytes and unsupported ZIP features.
+  Duplicate/escaped JSON aliases and undeclared entries fail closed.
+- Records carry explicit `format: rte.zip`, architecture and ordinary manifest;
+  the outer digest/size identify the whole archive. Generic catalog identity,
+  archive name, hash and size must match exactly. Missing intermediate stage
+  files do not matter: GitHub's artifact upload omitted hidden `.package.json`
+  in the observed previous artifact, but the ZIP correctly contains it.
+- `update_release_index.py` validates explicit current ZIP records separately
+  from historical unmarked four-file/loose-ELF records. The index remains schema
+  1. Same-version byte/metadata/format changes and downgrades remain rejected;
+  a historical-to-ZIP conversion requires a newer package version. Existing
+  app, firmware and the allowlisted external GameBoy contracts remain intact.
+- The ordinary manifest validator shares runtime identity, executable, path,
+  type, capability, dependency and bounds rules with record construction.
+  These integrity/locator checks grant no import or hardware authorization.
+  The product-record round-trip/fault suite is now in normal host CI.
+
+### Observed checks and compatibility evidence
+
+Passed: **16 product-record tests**, **19 index tests**, **16 bulk-release
+checks**, **9 provider-discovery checks**, **8 GameBoy sync checks**, the mocked
+publication retry test, workflow-trigger check, metadata-only Python smoke,
+syntax and whitespace checks. The CLI round-trip writes only a temporary local
+index; publication tests mock every external write.
+
+Read-only validation of the fetched actual release index: all **40 app and
+21 driver records** validate and replay unchanged, and its firmware validates.
+All **22 real target-built driver ZIPs** from prior green head `3ff5691a`,
+GitHub run `36795841668`, artifact `11132629703`, produced valid new records
+and a local round-tripped index. Downloaded artifact SHA-256:
+`bac63ed82cc1b2dd374dd6d57d4bfe098786c02c6515498a5a30579fb209cefb`.
+Those are real prior target artifacts tested with the new host scripts, not a
+claim of a new local Xtensa build. Exact new-head GitHub checks are pending
+at publication and will be reported on the PR without rewriting this history.
+
+### Still unfinished
+
+This repairs driver record/index contracts, not all release/UI integration.
+The independent app path still uses its historical ELF/JSON contract, and
+`NativeOnlineOrdinaryCatalog` still loads generic `package-catalog.json` from
+an aggregate release rather than consuming independent ZIP index entries.
+The release workflow also retains historical/combined paths that need a
+separate coherent source audit before any actual release. No end-to-end live
+publication or on-device online discovery result is claimed.
+
+Nested ordinary-package resources/scoped access, generation-bound ELF
+verification receipts, remaining USB/core compatibility extraction, CDC
+identity migration and signing-only purge remain U1 implementation work.
+
+**Implementation In Progress**
 
 ## October 1: master integration, sole power owner and selective package builds
 

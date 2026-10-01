@@ -21,6 +21,23 @@ ASSET_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,159}\Z")
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 MAX_ENTRIES = {"apps": 128, "drivers": 64}
 DRIVER_FILES = {".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1"}
+BUNDLE_FORMAT = "rte.zip"
+BUNDLE_MANIFEST_KEYS = {"schema", "kind", "id", "version", "artifact", "architecture",
+                        "min_runtime_api", "entries", "requires"}
+BUNDLE_ENTRY_KEYS = {"name", "size_bytes", "sha256", "executable"}
+BUNDLE_REQUIREMENT_KEYS = {"capability", "min_api"}
+BUNDLE_ARCHITECTURES = {"xtensa-esp32s3", "riscv32"}
+BUNDLE_ID_RE = re.compile(r"[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\Z")
+BUNDLE_NAME_RE = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z")
+# PackageOrdinaryManifest/Preflight and the narrower current stored-ZIP
+# bootstrap bounds. Historical independent records keep their old contract.
+BUNDLE_MAX_ENTRIES = 16
+BUNDLE_MAX_REQUIREMENTS = 16
+BUNDLE_MAX_ENTRY_BYTES = 1024 * 1024
+BUNDLE_MAX_TOTAL_BYTES = 4 * 1024 * 1024
+BUNDLE_MAX_MANIFEST_BYTES = 4096
+BUNDLE_MAX_ARCHIVE_BYTES = BUNDLE_MAX_TOTAL_BYTES + 65536
+UINT32_MAX = 0xFFFFFFFF
 
 
 def version_tuple(value: str) -> tuple[int, int, int]:
@@ -30,11 +47,105 @@ def version_tuple(value: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())
 
 
+def validate_bundle_manifest(manifest: Any, identity: str, version: str,
+                             architecture: str) -> dict[str, Any]:
+    """Validate the exact ordinary driver descriptor, without granting trust.
+
+    This structural check is shared by record construction and index intake.
+    The builder must additionally verify raw manifest length, all payload
+    hashes/ELF bytes and the actual ZIP; an index alone cannot prove those.
+    """
+    if not isinstance(manifest, dict) or set(manifest) != BUNDLE_MANIFEST_KEYS:
+        raise ValueError("bundle manifest requires exactly the ordinary schema-1 fields")
+    if type(manifest["schema"]) is not int or manifest["schema"] != 1:
+        raise ValueError("bundle manifest requires ordinary schema 1")
+    if (manifest["kind"] != "driver" or manifest["id"] != identity or
+            manifest["version"] != version or manifest["architecture"] != architecture):
+        raise ValueError("bundle manifest kind, identity, version and architecture must match the record")
+    if (not isinstance(identity, str) or not 0 < len(identity) < 64 or
+            not BUNDLE_ID_RE.fullmatch(identity)):
+        raise ValueError("bundle manifest requires a canonical package identity")
+    if (not isinstance(version, str) or len(version) >= 32 or
+            any(component > UINT32_MAX for component in version_tuple(version))):
+        raise ValueError("bundle manifest version must contain canonical uint32 components")
+    if not isinstance(architecture, str) or architecture not in BUNDLE_ARCHITECTURES:
+        raise ValueError("bundle manifest architecture is unsupported")
+    artifact = manifest["artifact"]
+    if (not isinstance(artifact, str) or not 4 < len(artifact) < 128 or
+            not BUNDLE_NAME_RE.fullmatch(artifact) or ".." in artifact or
+            not artifact.endswith(".elf")):
+        raise ValueError("bundle manifest requires a safe executable artifact")
+    if (type(manifest["min_runtime_api"]) is not int or
+            not 0 < manifest["min_runtime_api"] <= UINT32_MAX):
+        raise ValueError("bundle manifest requires a positive uint32 runtime API")
+
+    entries = manifest["entries"]
+    if not isinstance(entries, list) or not 1 <= len(entries) <= BUNDLE_MAX_ENTRIES:
+        raise ValueError("bundle manifest inventory must contain 1-16 entries")
+    inventory = {}
+    total = 0
+    for item in entries:
+        if not isinstance(item, dict) or set(item) != BUNDLE_ENTRY_KEYS:
+            raise ValueError("bundle inventory requires exact ordinary entry fields")
+        name = item["name"]
+        if (not isinstance(name, str) or not 0 < len(name) < 128 or
+                not BUNDLE_NAME_RE.fullmatch(name) or ".." in name or
+                name.casefold() in inventory):
+            raise ValueError("bundle inventory has an unsafe or duplicate entry name")
+        if (type(item["size_bytes"]) is not int or
+                not 0 < item["size_bytes"] <= BUNDLE_MAX_ENTRY_BYTES):
+            raise ValueError("bundle inventory entry exceeds the ZIP size bound")
+        if not isinstance(item["sha256"], str) or not SHA256_RE.fullmatch(item["sha256"]):
+            raise ValueError("bundle inventory requires lowercase SHA-256 digests")
+        if type(item["executable"]) is not bool:
+            raise ValueError("bundle inventory executable role must be boolean")
+        if (item["executable"] != (name == artifact) or
+                (name.endswith(".elf") and name != artifact) or
+                (item["executable"] and item["size_bytes"] < 52)):
+            raise ValueError("bundle inventory must contain exactly its declared executable")
+        inventory[name.casefold()] = item
+        total += item["size_bytes"]
+    if artifact not in inventory or not {"provider-abi.v1", "privileged-imports.v1"} <= inventory.keys():
+        raise ValueError("driver bundle omits its executable or provider ABI/import metadata")
+
+    requirements = manifest["requires"]
+    if not isinstance(requirements, list) or len(requirements) > BUNDLE_MAX_REQUIREMENTS:
+        raise ValueError("bundle manifest exceeds its 16-requirement bound")
+    capabilities = set()
+    for requirement in requirements:
+        if not isinstance(requirement, dict) or set(requirement) != BUNDLE_REQUIREMENT_KEYS:
+            raise ValueError("bundle dependency requires exact capability/min_api fields")
+        capability = requirement["capability"]
+        if (not isinstance(capability, str) or not 0 < len(capability) < 64 or
+                not BUNDLE_NAME_RE.fullmatch(capability) or ".." in capability or
+                capability in capabilities or type(requirement["min_api"]) is not int or
+                not 0 < requirement["min_api"] <= UINT32_MAX):
+            raise ValueError("bundle dependency has an unsafe, duplicate or invalid capability/API")
+        capabilities.add(capability)
+
+    # Values have now been reduced to bounded ASCII strings, exact scalar
+    # types and bounded lists. Include the manifest in the ZIP content budget.
+    encoded_size = len(json.dumps(manifest, separators=(",", ":"), ensure_ascii=True))
+    if encoded_size > BUNDLE_MAX_MANIFEST_BYTES:
+        raise ValueError("bundle manifest exceeds its 4096-byte parser bound")
+    if total + encoded_size > BUNDLE_MAX_TOTAL_BYTES:
+        raise ValueError("bundle inventory exceeds the ZIP total-content bound")
+    return manifest
+
+
 def validate_record(product: str, record: Any) -> dict[str, Any]:
     if product not in ("firmware", "apps", "drivers"):
         raise ValueError("product must be firmware, apps, or drivers")
     if not isinstance(record, dict):
         raise ValueError("record must be a JSON object")
+    kind = product[:-1] if product != "firmware" else "firmware"
+    if "kind" in record and record["kind"] != kind:
+        raise ValueError("record kind must match its product")
+    bundled = "format" in record
+    if bundled and (product != "drivers" or record["format"] != BUNDLE_FORMAT):
+        raise ValueError("only driver records support explicit format rte.zip")
+    if not bundled and "architecture" in record:
+        raise ValueError("archive architecture requires explicit format rte.zip")
     required = {"version", "tag", "asset", "url", "size", "sha256"}
     if product != "firmware":
         required.add("manifest")
@@ -69,23 +180,10 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
         if manifest_id != stable_id:
             raise ValueError("manifest identity must match the release record")
         if product == "drivers":
-            if (not isinstance(manifest.get("capability"), str) or not manifest["capability"] or
-                    type(manifest.get("api")) is not int or manifest["api"] <= 0):
-                raise ValueError("driver manifest requires a capability and positive API")
-            files = manifest.get("files")
-            if not isinstance(files, list) or len(files) != 4:
-                raise ValueError("driver manifest must list its four package files")
-            inventory = {}
-            for item in files:
-                if not isinstance(item, dict) or not isinstance(item.get("name"), str):
-                    raise ValueError("driver package inventory is malformed")
-                if item["name"] in inventory or type(item.get("size_bytes")) is not int or item["size_bytes"] <= 0:
-                    raise ValueError("driver package inventory has duplicate or invalid files")
-                if not isinstance(item.get("sha256"), str) or not SHA256_RE.fullmatch(item["sha256"]):
-                    raise ValueError("driver package inventory requires SHA-256 digests")
-                inventory[item["name"]] = item
-            if set(inventory) != DRIVER_FILES:
-                raise ValueError("driver package inventory does not match the installable package format")
+            if bundled:
+                validate_bundle_manifest(manifest, stable_id, version, record.get("architecture"))
+            else:
+                validate_legacy_driver_manifest(manifest)
         source_repo = record.get("source_repo")
         if source_repo is not None:
             if (product != "apps" or stable_id != "gameboy" or
@@ -106,6 +204,10 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
     expected_asset = "firmware-t5s3-pro.bin" if product == "firmware" else (
         f"{stable_id}.elf" if product == "apps" else f"{stable_id}--driver.elf"
     )
+    if bundled:
+        expected_asset = f"driver-{stable_id}-{version}-{record['architecture']}.rte.zip"
+        if len(asset) >= 160:
+            raise ValueError("bundle asset exceeds the device catalog name bound")
     if asset != expected_asset:
         raise ValueError(f"asset must be {expected_asset!r}")
     release_repository = record.get("source_repo", REPOSITORY)
@@ -115,13 +217,38 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
     size = record["size"]
     if type(size) is not int or size <= 0:
         raise ValueError("size must be a positive integer")
+    if bundled and not 22 <= size <= BUNDLE_MAX_ARCHIVE_BYTES:
+        raise ValueError("bundle asset exceeds the ZIP archive size bound")
     digest = record["sha256"]
     if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
         raise ValueError("sha256 must be 64 lowercase hexadecimal characters")
 
     clean = {key: value for key, value in record.items()}
-    clean["kind"] = product[:-1] if product != "firmware" else "firmware"
+    clean["kind"] = kind
     return clean
+
+
+def validate_legacy_driver_manifest(manifest: dict[str, Any]) -> None:
+    """Retain historical split-file records without treating them as bundles."""
+    if {"schema", "kind", "architecture", "artifact", "min_runtime_api", "entries"} & manifest.keys():
+        raise ValueError("legacy driver record mixes ordinary bundle metadata")
+    if (not isinstance(manifest.get("capability"), str) or not manifest["capability"] or
+            type(manifest.get("api")) is not int or manifest["api"] <= 0):
+        raise ValueError("driver manifest requires a capability and positive API")
+    files = manifest.get("files")
+    if not isinstance(files, list) or len(files) != 4:
+        raise ValueError("driver manifest must list its four package files")
+    inventory = {}
+    for item in files:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            raise ValueError("driver package inventory is malformed")
+        if item["name"] in inventory or type(item.get("size_bytes")) is not int or item["size_bytes"] <= 0:
+            raise ValueError("driver package inventory has duplicate or invalid files")
+        if not isinstance(item.get("sha256"), str) or not SHA256_RE.fullmatch(item["sha256"]):
+            raise ValueError("driver package inventory requires SHA-256 digests")
+        inventory[item["name"]] = item
+    if set(inventory) != DRIVER_FILES:
+        raise ValueError("driver package inventory does not match the installable package format")
 
 
 def validate_index_budget(index: dict[str, Any]) -> dict[str, Any]:
