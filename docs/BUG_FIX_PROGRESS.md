@@ -1,9 +1,17 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01, after Timecard PR341 exact-head CI. The completion record below supersedes historical held/open statuses and batch counts; older evidence and applicability history are retained.
+Snapshot: 2026-10-01, after Timecard PR341 merge closure. The completion record below supersedes historical held/open statuses and batch counts; older evidence and applicability history are retained.
 
 
-## Completed Timecard clock snapshot repair — PR #341
+## Completed Timecard merge closure — PR341
+
+- Narrow documentation-only closure by `01a0f728-f5cb-70e7-9297-7a6abc7c6034`; active ledger/implementation owner **none**. Captured ledger parent `28c13f732e44336d4e59ffb3b496add44412ce46`; no competing durable claim. PR332 remains the existing open coordination PR.
+- Owner merged PR341 at2026-10-01 11:41:47UTC as `d4df4609f3e6fdd6889bb70a0971240711e35c3f`. GitHub state independently verified closed/merged, exact repaired head `e7002c1decc917760540492354508c7b71259914` verified as second parent and ancestor of current master. Canonical **14: Fixed on master**; Timecard1.0.2 retained.
+- App source/manifest, production clock bridge and focused regression sources are unchanged from the previously verified repair head. Fresh unsanitized actual-C fault/retry/Back/midnight regression and source contract PASS from isolated merge checkout. Prior exact-head CI/build evidence remains historical, not rerun. No fresh sanitizer, aggregate, firmware/app target rebuild, storage durability or physical-device test; existing limits retained.
+- Inventory **249 retained reports /243 outstanding**:242 need revalidation and252 host-fault confirmed with storage/device limits;14/16/17/91/205/249 fixed. Next ID261 unchanged. Timecard now occupies zero outstanding code-batch slots; no new batch selected. Preserve all248 unrelated report sections, original Timecard report/provenance and prior completion history.
+- Claims remain released; this batch is closed. Closed PR341 untouched. No new scan/fix/helper, master write, merge, release/catalog publication, dispatch or device I/O. Historical ready/awaiting wording below is superseded by this closure.
+
+## Historical completed Timecard clock snapshot repair — PR #341
 
 - Coordinator `01a0f728-f5cb-70e7-9297-7a6abc7c6034` (isolated Mac task-3); active ledger/implementation owner **none** after this terminal checkpoint. Durable claim `998556a0c36a6b7e7311f1023050e93dea65e184` was published before source changes; prior ledger worker was idle/completed. Fresh user direction resumed bounded bug work while older duplicate tasks remain paused.
 - Canonical **14: Awaiting merge**, matched by `Apps/timecard.c::punch_today/today/now_minutes` and original failure, not reused numeric IDs. Reused preserved `fix/timecard-clock-failure` at `97fd307c8636fd42a57b2c99b321455eacd0eb5d`, merged master `8157c0bb8bbb94c52229359ecef876dba046726a`, and extended the existing regression. [Ready-for-review PR341](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/341) targets master at remote `e7002c1decc917760540492354508c7b71259914`; tree `c4938d0696cf32b6f93819fdd9176173370b73ff` equals tested local `faf31560f13861293c6f30ec89ac24e38e0dd500` exactly. Remote fetch/diff verified. Only app, manifest and three test files differ from master; no second bugs.md change in the code PR.
