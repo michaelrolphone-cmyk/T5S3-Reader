@@ -20,6 +20,7 @@ int32_t cam_hw_poll(const uint8_t **p,uint32_t *n){*p=null_frame?NULL:pixels;*n=
 bool cam_hw_stop_capture(void){stops++;return can_stop;}
 bool cam_hw_shutdown(void){shutdowns++;return can_stop;}
 const char *cam_hw_wait_reason(void){return "VSYNC boundary deadline";}
+const char *cam_hw_fault_reason(void){return "DSCER c=00000000 r=00000000 d=00000000 g=00000000 x=00000000";}
 uint64_t cam_hw_now(void){return now;}
 void cam_hw_yield(void){yields++;now++;}
 static int32_t publish(uint64_t c,const risc_stream_endpoint_v1 *s,uint32_t *out){
@@ -58,6 +59,16 @@ int main(void){
  cam_jpeg_scan_step(&parser,frame,512);assert(parser.scan==512 && !parser.found);
  cam_jpeg_scan_step(&parser,frame,1024);assert(parser.scan==1024 && parser.found && !parser.done);
  cam_jpeg_scan_step(&parser,frame,2048);assert(parser.done && parser.soi==511 && parser.length==514);
+ uint8_t compact[32]={0};uint32_t used=0;
+ compact[0]=0xff;compact[1]=0xd8;compact[2]=0xff;
+ compact[8]=0x11;compact[9]=0x22;compact[10]=0xff;compact[11]=0xd9;
+ assert(cam_frame_append(compact,32,&used,0,8,3) && used==3);
+ assert(cam_frame_append(compact,32,&used,8,8,4) && used==7);
+ assert(!memcmp(compact,(uint8_t[]){0xff,0xd8,0xff,0x11,0x22,0xff,0xd9},7));
+ assert(!cam_frame_append(compact,32,&used,8,8,9) && used==7);
+ compact[16]=1;compact[17]=2;compact[18]=3;compact[19]=4;
+ assert(cam_frame_append(compact,32,&used,16,8,4) && used==11 && compact[7]==1 && compact[10]==4);
+ assert(cam_frame_append(compact,32,&used,24,8,0) && used==11);
  parser=(cam_jpeg_scan){0};memset(frame,0,sizeof(frame));
  for(unsigned i=0;i<4;i++)cam_jpeg_scan_step(&parser,frame,sizeof(frame));
  assert(parser.scan==sizeof(frame) && !parser.done);

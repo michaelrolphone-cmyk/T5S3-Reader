@@ -75,7 +75,7 @@ static void poll(uint32_t budget_ms) {
             if(!frame || length<4 || length>96u*1024u)fail(T5_STREAM_IO,"invalid captured frame");
             else {state.length=length;state.state=RISC_CAMERA_DELIVERING;}
         }
-        else if(rc!=T5_STREAM_AGAIN){cam_hw_stop_capture();fail(rc,"sensor capture failed");}
+        else if(rc!=T5_STREAM_AGAIN){const char *why=cam_hw_fault_reason();cam_hw_stop_capture();fail(rc,why);}
     }else if(state.state==RISC_CAMERA_DELIVERING){
         uint32_t count=state.length-state.transferred;if(count>512)count=512;
         uint32_t written=0;int32_t rc=host.produce(host.context,endpoint,frame+state.transferred,count,&written);

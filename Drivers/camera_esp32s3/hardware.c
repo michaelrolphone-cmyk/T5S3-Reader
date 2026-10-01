@@ -39,6 +39,7 @@ static bool touched, dma_owned, active, waiting, fault;
 static uint32_t sampled_gpio, sampled_changes, available, harvested;
 static cam_jpeg_scan jpeg;
 static uint64_t init_deadline;
+static const char *poll_fault="CAPTR";
 uint64_t cam_hw_now(void) {
     struct timespec t;
     if(clock_gettime(CLOCK_MONOTONIC,&t) || t.tv_sec<0)return UINT64_MAX;
@@ -190,7 +191,7 @@ bool cam_hw_begin(unsigned quality) {
         memset(&desc[i],0,sizeof(desc[i]));desc[i].size=NODE_BYTES;desc[i].owner=1;
         desc[i].buf=buffer+i*NODE_BYTES;desc[i].qe.stqe_next=i+1<NODES?&desc[i+1]:NULL;
     }
-    memset(&jpeg,0,sizeof(jpeg));available=0;harvested=0;CAM.lc_dma_int_clr.val=~0u;
+    memset(&jpeg,0,sizeof(jpeg));available=0;harvested=0;poll_fault="CAPTR";CAM.lc_dma_int_clr.val=~0u;
     sampled_gpio=PADS.in;sampled_changes=0;
     /* With DMA parked, FIFO fills before a later VSYNC can be observed. Do
      * not auto-stop sampling on that expected overflow. No DMA can write yet;
@@ -229,8 +230,8 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
         if(!cam_hw_stop_capture())return T5_STREAM_AGAIN;
         *bytes=buffer+jpeg.soi;*length=jpeg.length;return T5_STREAM_OK;
     }
-    if(!active)return T5_STREAM_IO;
-    if(DMA.channel[ch].in.int_raw.in_dscr_err)return T5_STREAM_IO;
+    if(!active){poll_fault="IDLE";return T5_STREAM_IO;}
+    if(DMA.channel[ch].in.int_raw.in_dscr_err){poll_fault="DSCER";return T5_STREAM_IO;}
     /* Only acquire completed, CPU-owned descriptors. This finite chain is
      * never rearmed while scanning; DMA cannot revisit or overwrite them.
      * Harvest <=4KiB and scan <=512 bytes per owner tick. A full-chain empty
@@ -239,8 +240,11 @@ int32_t cam_hw_poll(const uint8_t **bytes,uint32_t *length) {
         volatile lldesc_t *node=&desc[harvested];
         if(node->owner)break;
         __asm__ volatile("memw" ::: "memory");
-        if(node->length!=NODE_BYTES)return T5_STREAM_IO;
-        available+=NODE_BYTES;harvested++;
+        uint32_t size=node->length;
+        if(!cam_frame_append(buffer,FRAME_LIMIT,&available,harvested*NODE_BYTES,NODE_BYTES,size)){
+            poll_fault="BADLN";return T5_STREAM_IO;
+        }
+        harvested++;
     }
     cam_jpeg_scan_step(&jpeg,buffer,available);
     if(jpeg.done){
@@ -278,5 +282,14 @@ const char *cam_hw_wait_reason(void) {
     cam_hw_format_detail(detail,waiting?"VSYNC":active?"DMA":"JPEG",
         CAM.cam_ctrl1.val,CAM.lc_dma_int_raw.val,
         DMA.channel[pins.dma_channel].in.int_raw.val,sampled_gpio,sampled_changes);
+    return detail;
+}
+
+const char *cam_hw_fault_reason(void){
+    static char detail[64];
+    unsigned ch=pins.dma_channel;
+    uint32_t node=harvested<NODES?desc[harvested].length:0;
+    cam_hw_format_detail(detail,poll_fault,CAM.cam_ctrl1.val,
+        DMA.channel[ch].in.int_raw.val,available,(harvested<<16)|(node&0xffff),sampled_changes);
     return detail;
 }

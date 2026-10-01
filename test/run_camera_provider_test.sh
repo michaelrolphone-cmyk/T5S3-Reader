@@ -14,7 +14,7 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -Wno-missing-field-initializers \
 
 # Compile the actual opt-in deployment helper against fault-injectable storage
 # and package-manager boundaries; no board or package mutations are performed.
-for package in driver_cam_ov3660_profile_0_1_0 driver_camera_esp32s3_ov3660_0_1_3; do
+for package in driver_cam_ov3660_profile_0_1_0 driver_camera_esp32s3_ov3660_0_1_4; do
   symbol="_binary_dist_packages_${package}_xtensa_esp32s3_rte_zip"
   cat >> "$out/archives.s" <<EOF
 .text

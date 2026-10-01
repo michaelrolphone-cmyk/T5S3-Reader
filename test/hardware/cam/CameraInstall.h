@@ -10,18 +10,18 @@
  * through the ordinary manager's version/integrity/recovery rules. */
 extern const uint8_t camProfileStart[] asm("_binary_dist_packages_driver_cam_ov3660_profile_0_1_0_xtensa_esp32s3_rte_zip_start");
 extern const uint8_t camProfileEnd[] asm("_binary_dist_packages_driver_cam_ov3660_profile_0_1_0_xtensa_esp32s3_rte_zip_end");
-extern const uint8_t camDriverStart[] asm("_binary_dist_packages_driver_camera_esp32s3_ov3660_0_1_3_xtensa_esp32s3_rte_zip_start");
-extern const uint8_t camDriverEnd[] asm("_binary_dist_packages_driver_camera_esp32s3_ov3660_0_1_3_xtensa_esp32s3_rte_zip_end");
+extern const uint8_t camDriverStart[] asm("_binary_dist_packages_driver_camera_esp32s3_ov3660_0_1_4_xtensa_esp32s3_rte_zip_start");
+extern const uint8_t camDriverEnd[] asm("_binary_dist_packages_driver_camera_esp32s3_ov3660_0_1_4_xtensa_esp32s3_rte_zip_end");
 namespace RuntimeBoot {
 inline bool installCameraExperiment() {
   namespace P=RuntimePackages;
   struct Item{const char* id;const char* version;const char* path;const uint8_t* begin;const uint8_t* end;const uint8_t* manifest;size_t manifestLength;};
   const Item items[]{
-    {"cam-ov3660-profile","0.1.0","/Inbox/camera-elf-04/profile.rte.zip",camProfileStart,camProfileEnd,camProfileManifest,sizeof(camProfileManifest)},
-    {"camera-esp32s3-ov3660","0.1.3","/Inbox/camera-elf-04/camera.rte.zip",camDriverStart,camDriverEnd,camDriverManifest,sizeof(camDriverManifest)}
+    {"cam-ov3660-profile","0.1.0","/Inbox/camera-elf-05/profile.rte.zip",camProfileStart,camProfileEnd,camProfileManifest,sizeof(camProfileManifest)},
+    {"camera-esp32s3-ov3660","0.1.4","/Inbox/camera-elf-05/camera.rte.zip",camDriverStart,camDriverEnd,camDriverManifest,sizeof(camDriverManifest)}
   };
   if(!Storage.begin() || native_app_register_sd_vfs()!=ESP_OK)return false;
-  bool good=Storage.mkdir("/Inbox/camera-elf-04",true);
+  bool good=Storage.mkdir("/Inbox/camera-elf-05",true);
   const uint32_t began=millis();
   for(const auto& item:items){
     if(!good)break;

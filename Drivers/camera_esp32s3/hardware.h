@@ -12,3 +12,4 @@ uint64_t cam_hw_now(void);
 void cam_hw_yield(void);
 
 const char *cam_hw_wait_reason(void);
+const char *cam_hw_fault_reason(void);
