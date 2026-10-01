@@ -59,6 +59,8 @@ bool DeviceProviderExecutorV2::registerManagerValidated(
       input.providesApi, input.requirements, input.requirementCount};
   spec.requiredOsCpuAbi = 1;
   spec.resourceIdentity = input.resourceIdentity;
+  if (input.packageManifestSha256) std::memcpy(spec.packageManifestSha256,input.packageManifestSha256,32);
+  spec.packageSourceStamp = input.packageSourceStamp;
   spec.verifiedElfBytes = input.elfBytes;
   spec.verifiedElfLength = input.elfLength;
   spec.declaredImports = input.importedSymbols;

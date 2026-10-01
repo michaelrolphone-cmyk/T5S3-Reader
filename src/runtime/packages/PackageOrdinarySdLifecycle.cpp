@@ -42,7 +42,7 @@ bool purgeKnownTombstone(const char* root, Kind kind, const char* id) {
   OrdinarySdTreeOps ops(root);
   // A manifest-free tombstone is removable only if the shared inventory finds
   // no files or directories. Unknown/user-owned data always prevents cleanup.
-  return purgeOrdinaryTree(*plan, ops, false);
+  return purgeOrdinaryTree(*plan, ops, false, true);
 }
 } // namespace
 

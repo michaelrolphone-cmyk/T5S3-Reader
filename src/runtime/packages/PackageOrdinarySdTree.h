@@ -40,7 +40,7 @@ class OrdinarySdTreeOps {
       if (!entry.isOpen()) { good = directory.getError() == 0; break; }
       char name[128]{};
       const size_t length = entry.getName(name, sizeof(name));
-      good = ++count <= kMaxPackageEntries * kPackageResourceDepth + 1 &&
+      good = ++count <= kMaxPackageEntries * kPackageResourceDepth + 2 &&
           length && length < sizeof(name) && visitor(name, entry.isDirectory());
       if (!entry.close()) good = false;
     }

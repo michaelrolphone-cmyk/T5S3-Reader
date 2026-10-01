@@ -25,13 +25,17 @@ struct ManagerProviderCandidateV2 {
   // A matching digest is NOT a publisher identity or privilege authorization.
   const uint8_t* declaredSha256 = nullptr;
   Identity resourceIdentity{};
+  const uint8_t* packageManifestSha256 = nullptr;
+  StorageGenerationStamp packageSourceStamp{};
 };
 
 class DeviceProviderExecutorV2 final {
  public:
   // Manager-only native firmware entry. Copies all metadata and executable
   // bytes into the graph. Installation callers verify checksums by default;
-  // installed-provider discovery passes verifyContents=false. Does NOT activate or grant consumer rights.
+  // installed-provider admission defers ELF hashing to its actual loader-owned
+  // snapshot and supplies the manifest/digest/source epoch. Does NOT activate
+  // or grant consumer rights.
   // Graph/loader independently enforce generic OS/CPU imports and relocation.
   // No P-256 signer, trust root or NVS security floor is required.
   static bool registerManagerValidated(RuntimeProviders::GraphV2& graph,

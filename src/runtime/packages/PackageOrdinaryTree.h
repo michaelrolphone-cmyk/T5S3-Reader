@@ -1,5 +1,6 @@
 #pragma once
 #include "PackageOrdinaryStage.h"
+#include "PackageVerificationReceipt.h"
 #include <cstring>
 
 namespace RuntimePackages {
@@ -41,18 +42,18 @@ inline void ordinaryTreeDirectory(const OrdinaryPackagePlan& plan,
 // visit(directory, callback) MUST distinguish read failure from clean EOF,
 // bound enumeration and yield/check deadlines. No unknown directory is entered.
 template<class Ops>
-bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full) {
+bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full, bool managedMetadata = false) {
   OrdinaryTreeLayout tree{};
   if (!ordinaryTreeLayout(plan, tree)) return false;
   bool files[kMaxPackageEntries]{}, directories[kMaxPackageEntries * (kPackageResourceDepth - 1)]{};
-  bool manifest = false;
+  bool manifest = false, receipt = false;
   size_t items = 0;
   for (size_t scan = 0; scan <= tree.count; ++scan) {
     char parent[128]{};
     if (scan) ordinaryTreeDirectory(plan, tree.directories[scan - 1], parent);
     if (scan && !ops.exists(parent)) { if (full) return false; else continue; }
     if (!ops.visit(parent, [&](const char* basename, bool isDirectory) {
-      if (++items > plan.entryCount + tree.count + 1 || !basename ||
+      if (++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u) || !basename ||
           std::strchr(basename, '/')) return false;
       char path[128]{};
       const size_t p = std::strlen(parent), n = std::strlen(basename);
@@ -62,6 +63,11 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full)
       if (!std::strcmp(path, kOrdinaryManifestName)) {
         if (isDirectory || manifest) return false;
         manifest = true;
+        return true;
+      }
+      if (managedMetadata && !std::strcmp(path, kPackageReceiptName)) {
+        if (isDirectory || receipt) return false;
+        receipt = true;
         return true;
       }
       if (!safePackageResourcePath(path)) return false;
@@ -93,12 +99,16 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full)
 }
 
 template<class Ops>
-bool purgeOrdinaryTree(const OrdinaryPackagePlan& plan, Ops& ops, bool ownedPartial) {
-  if (!ordinaryTreeInventory(plan, ops, false)) return false;
+bool purgeOrdinaryTree(const OrdinaryPackagePlan& plan, Ops& ops, bool ownedPartial, bool managedMetadata = false) {
+  if (!ordinaryTreeInventory(plan, ops, false, managedMetadata)) return false;
   const bool manifest = ops.exists(kOrdinaryManifestName);
-  if (!manifest && !ownedPartial && plan.entryCount) return false;
+  const bool receipt = managedMetadata && ops.exists(kPackageReceiptName);
+  if (!manifest && !ownedPartial && (plan.entryCount || receipt)) return false;
   OrdinaryTreeLayout tree{};
   if (!ordinaryTreeLayout(plan, tree)) return false;
+  // A known regular-file receipt is manager metadata, even when truncated.
+  // It never supplies deletion authority; the retained manifest/owned plan does.
+  if (receipt && !ops.remove(kPackageReceiptName)) return false;
   for (size_t f = 0; f < plan.entryCount; ++f)
     if (ops.exists(plan.entries[f].name) && !ops.remove(plan.entries[f].name)) return false;
   // Reverse lexical depth is sufficient; peers may be removed in any order.

@@ -1,4 +1,5 @@
 #pragma once
+#include "../../../lib/hal/StorageGeneration.h"
 #include <RiscProviderV2.h>
 #include <RiscPackageResourcesV1.h>
 #include "runtime/packages/PackageIdentity.h"
@@ -32,9 +33,10 @@ class ModuleV2 final {
   bool load(const char* validatedElf, const char* expectedId,
             const char* expectedCapability, uint32_t expectedApi,
             const risc_provider_dependency_v1* dependencies, size_t count);
-  /* PRIVATE firmware admission path. Installation checks payload integrity.
-   * Runtime loading snapshots the bytes and checks ABI, exact allowed imports
-   * and relocation structure. It does not recompute package checksums.
+  /* PRIVATE firmware admission path. Installation checks all payload bytes.
+   * Runtime loading verifies its owned ELF snapshot at cold/uncertain boundaries;
+   * unchanged quiescent generation proof avoids repeated executable hashing.
+   * ABI, exact allowed imports and relocation checks remain mandatory.
    * Host builds deny this path; ownership requires separate capability grants
    * and successful quiescence before unmapping. */
   bool loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
@@ -51,6 +53,11 @@ class ModuleV2 final {
   bool setResourceIdentity(const RuntimePackages::Identity& identity) {
     if (state_ != State::Absent || handle_) return false;
     resourceIdentity_ = identity; return true;
+  }
+  bool setPackageAdmission(const uint8_t (&manifest)[32], const StorageGenerationStamp& stamp) {
+    if (state_ != State::Absent || handle_) return false;
+    for (size_t i=0;i<32;++i) packageManifestSha256_[i]=manifest[i];
+    packageSourceStamp_ = stamp; return true;
   }
   uint64_t streamContext() const { return state_ == State::Active ? streamApi_.streams.context : 0; }
   bool poll(uint32_t budgetMs);
@@ -73,6 +80,8 @@ class ModuleV2 final {
   const StreamHostV1* streamHost_ = nullptr;
   risc_stream_provider_resources_v1 streamApi_{};
   RuntimePackages::Identity resourceIdentity_{};
+  uint8_t packageManifestSha256_[32]{};
+  StorageGenerationStamp packageSourceStamp_{};
   bool streamsRevoked_ = false;
   void* handle_ = nullptr;
   const risc_driver_v2* driver_ = nullptr;

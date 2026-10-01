@@ -7,17 +7,34 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current published resource-only checkpoint is
-**c80bdee158eb7ef98096c7b000cd92f339c7442b**, identical tree
-**8fd2c5987e78e00c6cbc3e7bb39be3c000d855c0** to locally tested **b5cba2b2**.
-The ordinary-package and stream aggregates, loaded provider consumer, release
-checks and baseline-fails/fixed-passes SD ZIP stage regression passed locally.
-Exact-head workflows **36835619954 / 36835620195** both passed. Previous four-kind distribution checkpoint **bd9b09a7**
-passed both workflows **36829998475 / 36829998394**.
+Current published metadata-cache checkpoint is
+**029a58da054523eb4c29d0bcc373a0391fd0549d**, identical tree
+**8c583e6414042ee17352641d470759a6208c3486** to tested local **255f791e**.
+Both workflows **36836831826 / 36836831798** passed. Resource-only **c80bdee1**
+previously passed **36835619954 / 36835620195**; four-kind distribution
+**bd9b09a7** passed **36829998475 / 36829998394**.
 Master **1e0188c1** remains integrated; PR96 was verified open on October1 at
-08:30 UTC. The sole owner is continuing coherent capability metadata reuse after the
-verified data-only resource/scoped-consumer closure. No competing writer is authorized.
+08:54 UTC. The sole owner is continuing staged verification receipts and the
+first installed-provider owned-snapshot admission consumer. No competing writer
+is authorized. This new slice remains local, with target verification pending.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: staged receipt and provider-owned snapshot admission
+
+Directory and ZIP staging now persist/read back one bounded local receipt inside
+the existing rename transaction. Exact managed-tree cleanup recognizes only its
+reserved regular filename and keeps the manifest last; transport inputs cannot
+supply receipt authority. Provider admission binds captured manifest policy,
+profile/import snapshots and the actual loader-owned ELF buffer. A current-
+process memo requires the original pre-read epoch, never a fresh stamp attached
+to old bytes. Boot, invalid receipts and raw uncertainty cannot skip cold checks.
+
+Actual HalStorage/helper and ESP Module fixtures, receipt wire/SD/cleanup faults,
+ordinary-package, provider-graph and driver host aggregates pass locally. Target
+checks remain pending; independent final review did not complete and is not
+claimed. Applications' loader admission and conservative repeated remapping of
+old provider snapshots remain explicit gaps. See
+**U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md** for exact scope and limitations.
 
 ## October 1: coherent capability metadata reuse
 
@@ -30,7 +47,7 @@ warm capture, mutation/remount/failed-remount invalidation, interleaving refusal
 raw-session compatibility, transient inspection retry without a mutation,
 directory errors and overflow. Full driver aggregate also passed; ASan/UBSan
 retained with LeakSanitizer disabled for executor ptrace limits. Matching target
-verification for this new cache code remains pending. Durable staged receipts
+verification for this cache code passed both workflows at029a58da. Durable staged receipts
 and loader-owned byte admission remain the next connected implementation gap.
 
 ## October 1: explicit resource-only services and authorized consumers

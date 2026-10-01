@@ -30,6 +30,11 @@ echo '== Ordinary package MVP: production SD resource tree =='
 c++ "${flags[@]}" -I"$repo_dir/test/resources/tree_stubs" \
     "$repo_dir/test/resources/package_ordinary_sd_tree_test.cpp" -o "$binary"
 "$binary"
+echo '== Ordinary package MVP: durable receipt wire/SD/cleanup boundary =='
+c++ "${flags[@]}" -I"$repo_dir/test/resources/tree_stubs" \
+    -I"$repo_dir/test/resources/cdc_sd_stubs" \
+    "$repo_dir/test/resources/package_verification_receipt_test.cpp" -lcrypto -o "$binary"
+"$binary"
 # Separate translation units detect a bridge-local gate that would appear
 # correct in a one-file unit test but permit simultaneous /Drivers mutation.
 echo '== Ordinary package MVP: package_mutation_gate =='

@@ -2,6 +2,7 @@
 #include "PackageOrdinarySdZipAdapter.h"
 #include "PackageOrdinarySdAdapter.h"
 #include "PackageOrdinarySdTree.h"
+#include "PackageVerificationReceiptSd.h"
 #include "PackageRteZipInstall.h"
 
 #include <HalStorage.h>
@@ -92,11 +93,11 @@ class Hash {
 // directory intake. ZIP transport must not silently restore flat-only staging.
 bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool complete) {
   OrdinarySdTreeOps ops(root);
-  return ordinaryTreeInventory(plan, ops, complete);
+  return ordinaryTreeInventory(plan, ops, complete, true);
 }
 bool removeKnown(const char* root, const OrdinaryPackagePlan& plan) {
   OrdinarySdTreeOps ops(root);
-  return purgeOrdinaryTree(plan, ops, true);
+  return purgeOrdinaryTree(plan, ops, true, true);
 }
 
 class Stage {
@@ -139,12 +140,14 @@ class Stage {
       return false;
     }
     const bool written = file.write(data, count) == count;
-    return file.close() && written;
+    if (!file.close() || !written) return false;
+    receipt_ = writeVerifiedStageReceipt(root_.c_str(), plan_, data, count);
+    return receipt_ == ReceiptWriteResult::Complete;
   }
-  bool seal() { return owned_ && !writer_.isOpen() &&
+  bool seal() { return owned_ && !writer_.isOpen() && receipt_ == ReceiptWriteResult::Complete &&
                        inventory(root_.c_str(), plan_, true); }
   bool discard() {
-    if (!owned_ || (writer_.isOpen() && !writer_.close()) ||
+    if (!owned_ || receipt_ == ReceiptWriteResult::CloseUncertain || (writer_.isOpen() && !writer_.close()) ||
         !removeKnown(root_.c_str(), plan_)) return false;
     owned_ = false;
     return true;
@@ -154,6 +157,7 @@ class Stage {
   OrdinaryPackagePlan plan_{};
   HalFile writer_;
   bool owned_ = false;
+  ReceiptWriteResult receipt_ = ReceiptWriteResult::Failed;
 };
 
 struct Ops {

@@ -3,6 +3,7 @@
 #include "PackageOrdinaryManagedInstall.h"
 #include "PackageSequentialSdReader.h"
 #include "PackageOrdinarySdTree.h"
+#include "PackageVerificationReceiptSd.h"
 #include "runtime/drivers/DriverPackage.h"
 
 #include <HalStorage.h>
@@ -93,16 +94,16 @@ bool readManifest(const char* directory, const char* name,
 
 // A partial OWNED stage may lack some declared files. For all other paths a
 // missing manifest plus nonempty directory is ambiguous and never purged.
-bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full) {
+bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full, bool managedMetadata = true) {
   if (!root) return false;
   OrdinarySdTreeOps ops(root);
-  return ordinaryTreeInventory(plan, ops, full);
+  return ordinaryTreeInventory(plan, ops, full, managedMetadata);
 }
 bool purgeKnown(const char* root, const OrdinaryPackagePlan& plan,
                 bool ownedPartial) {
   if (!root) return false;
   OrdinarySdTreeOps ops(root);
-  return purgeOrdinaryTree(plan, ops, ownedPartial);
+  return purgeOrdinaryTree(plan, ops, ownedPartial, true);
 }
 
 // Legacy first-party driver generations are compatible with canonical
@@ -263,10 +264,12 @@ class SdStage {
       return false;
     }
     const bool written = file.write(metadata, length) == length;
-    return file.close() && written;
+    if (!file.close() || !written) return false;
+    receipt_ = writeVerifiedStageReceipt(root_.c_str(), plan_, metadata, length);
+    return receipt_ == ReceiptWriteResult::Complete;
   }
   bool seal() {
-    if (!owns_ || writer_.isOpen()) return false;
+    if (!owns_ || writer_.isOpen() || receipt_ != ReceiptWriteResult::Complete) return false;
     SdDirectory directory(root_.c_str());
     std::unique_ptr<char[]> metadata(new (std::nothrow) char[kManifestBytes]{});
     if (!metadata) return false;
@@ -275,7 +278,7 @@ class SdStage {
            inventory(root_.c_str(), plan_, true);
   }
   bool discard() {
-    if (!owns_ || (writer_.isOpen() && !writer_.close()) ||
+    if (!owns_ || receipt_ == ReceiptWriteResult::CloseUncertain || (writer_.isOpen() && !writer_.close()) ||
         !purgeKnown(root_.c_str(), plan_, true)) return false;
     owns_ = false;
     return true;
@@ -286,6 +289,7 @@ class SdStage {
   HalFile writer_;
   OrdinarySequentialSdReader reader_;
   bool owns_ = false;
+  ReceiptWriteResult receipt_ = ReceiptWriteResult::Failed;
 };
 struct Ops {
   bool exists(const char* path) const { return Storage.exists(path); }
@@ -374,7 +378,7 @@ bool inspectManagedOrdinarySdTree(const char* path, Kind kind, const char* id) {
         readManifest(path, "manifest.json", text.get(), kManifestBytes, length) &&
         parseDriverPackageManifest(std::string(text.get(), length), info) && !std::strcmp(info.id, id);
   }
-  return inventory(path, *plan, false); // Manifest-free cleanup is empty only.
+  return inventory(path, *plan, false, false); // Manifest-free cleanup is empty only.
 }
 bool purgeManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id) {
   return Storage.ready() && safeSourcePath(path) && purgeManaged(path, kind, id);
@@ -392,7 +396,7 @@ OrdinaryInstallOutcome installOrdinaryFromSd(
   if (!readManifest(sourceDirectory, kOrdinaryManifestName, metadata.get(),
                     kManifestBytes, length) ||
       !parseOrdinaryManifest(metadata.get(), length, *plan) ||
-      !inventory(sourceDirectory, *plan, true)) return invalid;
+      !inventory(sourceDirectory, *plan, true, false)) return invalid;
   const Kind kind = plan->identity.kind;
   const std::string id(plan->identity.id);
   OrdinaryTransactionPaths paths{};

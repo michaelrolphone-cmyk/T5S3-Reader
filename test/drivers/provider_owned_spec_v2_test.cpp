@@ -42,6 +42,8 @@ int main(int argc, char** argv) {
   request.declaredImports = names;
   request.declaredImportCount = 2;
   request.contentSha256[0] = 0xab;
+  request.packageManifestSha256[0] = 0xcd;
+  request.packageSourceStamp = {3,4,true};
   OwnedNodeV2 owned;
   assert(owned.snapshot(request));
   assert(owned.spec.id != request.id && owned.spec.provides != request.provides);
@@ -55,6 +57,8 @@ int main(int argc, char** argv) {
   std::strcpy(secondImport, "other_import");
   candidate[0] = 0;
   request.contentSha256[0] = 0;
+  request.packageManifestSha256[0] = 0;
+  request.packageSourceStamp = {};
   assert(std::strcmp(owned.spec.id, "physical-provider") == 0);
   assert(std::strcmp(owned.spec.provides, "cap.physical") == 0);
   assert(std::strcmp(owned.spec.requirements[0].capability, "cap.clock") == 0);
@@ -62,6 +66,8 @@ int main(int argc, char** argv) {
   assert(std::strcmp(owned.spec.declaredImports[1], "malloc") == 0);
   assert(owned.spec.verifiedElfBytes[0] == 0x7f);
   assert(owned.spec.contentSha256[0] == 0xab);
+  assert(owned.spec.packageManifestSha256[0] == 0xcd);
+  assert(owned.spec.packageSourceStamp.mount == 3 && owned.spec.packageSourceStamp.mutation == 4 && owned.spec.packageSourceStamp.quiescent);
 
   // Reject overlong identifiers, paths, imports, and empty/malformed shapes.
   char overlongPath[513]{};

@@ -27,6 +27,8 @@ struct SpecV2 {
   size_t declaredImportCount = 0;
   uint8_t contentSha256[32] = {};
   RuntimePackages::Identity resourceIdentity{};
+  uint8_t packageManifestSha256[32]{};
+  StorageGenerationStamp packageSourceStamp{};
 };
 struct GrantV2 {
   uint32_t slot = 0;

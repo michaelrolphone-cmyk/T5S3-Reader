@@ -13,7 +13,7 @@
 struct TreeSd {
   std::map<std::string,bool> nodes;
   std::map<std::string,std::vector<uint8_t>> contents;
-  std::string readFailure, closeFailure, createFailure;
+  std::string readFailure, closeFailure, createFailure, writeFailure;
   std::vector<std::string> mutations;
   int handles=0;
 };
@@ -47,7 +47,7 @@ class HalFile {
     std::memcpy(out,bytes.data()+position_,count);position_+=count;return static_cast<int>(count);
   }
   size_t write(const void* data,size_t count){
-    if(!open_||isDirectory())return 0;
+    if(!open_||isDirectory()||path_==treeSd.writeFailure)return 0;
     const auto* bytes=static_cast<const uint8_t*>(data);
     auto& out=treeSd.contents[path_];out.insert(out.end(),bytes,bytes+count);return count;
   }

@@ -1,4 +1,7 @@
 #include "ProviderModuleV2.h"
+#ifdef ESP_PLATFORM
+#include "runtime/packages/PackageExecutableAdmission.h"
+#endif
 #include <cstring>
 #include <cstdio>
 #include <limits>
@@ -214,8 +217,23 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     return false;
   }
   std::memcpy(snapshot, candidateBytes, length);
-  // Payload integrity was checked during installation. Keep the immutable
-  // snapshot and exact import/relocation checks, without rehashing on load.
+  // Verify the exact owned bytes that relocation consumes. Reusable proof is
+  // bound to the epoch captured BEFORE the manager read these bytes; never
+  // attach a fresh stamp to an older snapshot after intervening writes.
+  bool admitted = false;
+  if (resourceIdentity_.id[0]) {
+    admitted = RuntimePackages::admitInstalledExecutableSnapshot(resourceIdentity_,
+        packageManifestSha256_, contentSha256, snapshot, length, packageSourceStamp_);
+  } else {
+    uint8_t digest[32]{};
+    admitted = RuntimePackages::packageSnapshotDigest(snapshot,length,digest) &&
+        !std::memcmp(digest,contentSha256,sizeof(digest));
+  }
+  if (!admitted) {
+    heap_caps_free(snapshot);
+    report(expectedId, "installed-snapshot-integrity");
+    return false;
+  }
 
   auto* image = static_cast<esp_elf_t*>(std::malloc(sizeof(esp_elf_t)));
   if (!image) {

@@ -8,6 +8,8 @@
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinaryStage.h"
 #include "runtime/packages/PackageUseGate.h"
+#include "runtime/packages/PackageExecutableAdmission.h"
+#include "runtime/packages/PackageVerificationReceipt.h"
 #include <HalStorage.h>
 #include <Arduino.h>
 #include <cstdio>
@@ -198,6 +200,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     if (n <= 0 || static_cast<size_t>(n) >= sizeof(target) ||
         !systemPackageUseGate().pin(target)) return false;
     bool accepted = false;
+    const auto packageSourceStamp = Storage.generation();
     do {
         auto& identity = frame.identity;
         identity = {};
@@ -216,18 +219,22 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         // A multi-kilobyte manifest plan must not live on loopTask's stack
         // during ELF read, SHA-256 and downstream graph registration.
         std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-        const bool parsed = plan && parseOrdinaryManifest(
-            reinterpret_cast<const char*>(json), jsonSize, *plan);
+        uint8_t packageManifestSha256[32]{};
+        const bool parsed = plan && packageSnapshotDigest(json,jsonSize,packageManifestSha256) &&
+            parseOrdinaryManifest(reinterpret_cast<const char*>(json), jsonSize, *plan);
         std::free(json);
         if (!parsed || resourceOnly(plan->identity) || plan->identity.kind != kind ||
-            std::strcmp(plan->identity.id, id)) break;
+            std::strcmp(plan->identity.id, id) ||
+            preflightOrdinaryPackage(*plan,kPolicy,[](const char*) -> uint32_t { return UINT32_MAX; }) !=
+                PreflightResult::ReadyForContentVerification) break;
         bool hasProfile = false, hasImports = false, hasExecutable = false;
+        uint8_t executableDigest[32]{};
         for (size_t i = 0; i < plan->entryCount; ++i) {
             const auto& entry = plan->entries[i];
             if (!std::strcmp(entry.name, "provider-abi.v1")) hasProfile = true;
             if (!std::strcmp(entry.name, "privileged-imports.v1")) hasImports = true;
             if (!std::strcmp(entry.name, "driver.elf") && entry.executable)
-                hasExecutable = true;
+                hasExecutable = receiptDigest(entry.sha256, executableDigest);
         }
         if (!hasProfile || !hasImports || !hasExecutable) break;
         if (!pathFor(name, root, id, "provider-abi.v1")) break;
@@ -236,8 +243,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         if (!profileBytes) break;
         auto& capability = frame.capability;
         uint32_t api = 0;
-        const bool goodProfile = profile(reinterpret_cast<const char*>(profileBytes),
-                                         profileSize, capability, api);
+        const bool goodProfile = declaredPackageSnapshot(*plan,"provider-abi.v1",profileBytes,profileSize) &&
+            profile(reinterpret_cast<const char*>(profileBytes), profileSize, capability, api);
         std::free(profileBytes);
         if (!goodProfile || std::strcmp(capability, expectedCapability) ||
             api != expectedApi) break;
@@ -263,7 +270,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         if (!imports) break;
         auto& symbols = frame.symbols;
         size_t symbolCount = 0;
-        const bool goodImports = parseExactImports(imports, importsSize, symbols, symbolCount);
+        const bool goodImports = declaredPackageSnapshot(*plan,"privileged-imports.v1",imports,importsSize) &&
+            parseExactImports(imports, importsSize, symbols, symbolCount);
         if (!goodImports) { std::free(imports); break; }
         if (!pathFor(name, root, id, "driver.elf")) {
             std::free(imports);
@@ -285,6 +293,9 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         candidate.importedSymbolCount = symbolCount;
         candidate.requiredOsCpuAbi = 1;
         candidate.resourceIdentity = plan->identity;
+        candidate.declaredSha256 = executableDigest;
+        candidate.packageManifestSha256 = packageManifestSha256;
+        candidate.packageSourceStamp = packageSourceStamp;
         accepted = DeviceProviderExecutorV2::registerManagerValidated(destination, candidate, false);
         std::free(elf);
         std::free(imports);

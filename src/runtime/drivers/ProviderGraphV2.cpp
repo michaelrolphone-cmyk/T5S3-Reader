@@ -196,6 +196,7 @@ bool GraphV2::activate(size_t index) {
   }
   (void)node.module.setStreamHost(streamHost_);
   (void)node.module.setResourceIdentity(node.spec.resourceIdentity);
+  (void)node.module.setPackageAdmission(node.spec.packageManifestSha256, node.spec.packageSourceStamp);
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
