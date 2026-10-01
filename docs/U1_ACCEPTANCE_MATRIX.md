@@ -1,15 +1,13 @@
 # U1 acceptance reconciliation — October 1, 2026
 
-Current continuation after this inventory: PR #96 now backmerges actual master
-**fa517fea**, including display foundation #220 and display safety #343.
-The candidate reconciles Model Viewer ZIP 1.2.8, Risc Strike ZIP 1.0.4,
-display provider ZIP 0.1.4 and firmware 1.3.52 above master's respective
-loose/source versions. The changed-package-source PR guard checks numeric
-version increases against the actual base, including all loose-to-ZIP apps;
-the existing index updater checks published same-version content conflicts.
-Exact-head source checkpoint **1d93550f** passed PlatformIO/host run
-**36915387635** (both boards and host) and USB/ELF run **36915387656**.
-The detailed older checkpoints below remain historical evidence.
+Current continuation integrates master **d2d5a9a1** into sole PR #96,
+including Wi-Fi #345 and Status Bar #346. Firmware candidate **1.3.54** is
+above published/master 1.3.53 and distinct from the display migration's
+reserved 1.3.55. Status Bar ZIP **1.0.3** is above published/master loose 1.0.2.
+The unchanged prior source checkpoint 1d93550f passed PlatformIO/host
+36915387635 and USB/ELF 36915387656. New integration exact-head CI and
+artifact identities must be checked before using the handoff. The detailed
+older checkpoints below remain historical evidence.
 
 Authority: `NEXT_HARDWARE_TEST_MILESTONE.md`,
 `FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md`,
@@ -52,7 +50,7 @@ code needs the named production/link evidence, rather than a replacement design.
 | Stable CDC identity and safe legacy migration | Connected; target/package checks passed at5466d93c | `usb-cdc-acm` 0.1.8 replaces alias 0.1.7 through the existing ordinary engine, shared canonical ABI-1 adapter, two-root leases and fingerprint-bound retirement/recovery. Production proxy retired to test fixtures; builders/index update enforce canonical lineage | Both workflows36819882405/36819882484 passed matching-head firmware/ELF/ZIP/catalog; reconcile final version identities; preserve unknown data and partial-recovery evidence. See U1_CDC_IDENTITY_MIGRATION.md. No live release/index mutation or physical power-cut claim |
 | Generation-bound installed verification receipts / inventory snapshot | Connected; explicit-boundary and built-set host-work evidence verified at730d0773 | Metadata-only installed inspection exists (`inspectInstalledOrdinarySdDirectory`, `inspectInstalledAppPair`); install/recovery retain SHA. Observed RAM storage epochs and strict retained Package Manager inventory passed both workflows at8dafce33; staged receipts/provider snapshots passed both workflows atc33cb044 after the guard-preserving frame correction; canonical app admission passed both workflows atad7a0431 | See U1_STORAGE_GENERATION_IMPLEMENTATION.md: Discarded-close uncertainty is verified at8dafce33; compatible capability metadata reuse passed both workflows at029a58da. Receipt/provider admission is target-verified atc33cb044 (U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md); canonical app admission is target-verified; graph-owned remap proof passed at a928d444; checksum-bearing loose legacy admission passed both workflows at3ba73f92; measure bounded hot-path work (U1_ELF_HOT_PATH_AUDIT.md), explicit full-check invalidation passed both workflows at730d0773; built-set host work reports are verified, preserve full install/update/verification |
 | Physically remove package-signing-only subsystem | Complete at cf1ac054 | The signing checkpoint deletes 45 isolated implementation/tool/fixture/experiment files, removes unused preflight security floors and neutralizes internal signing names. [Exact audit](U1_SIGNING_PURGE_AUDIT.md) records all removals and retained helpers. Ordinary-package, springboard, provider graph, authorization and stream suites pass; the new absence guard passes | Both workflows passed with the files physically absent. Preserve all SHA/ABI/import/TLS/authorization/quiescence behavior and user media; no deployed data/settings are changed |
-| Final software integration and single owner qualification sheet | Software candidate connected; owner qualification pending | One U1 PR; current master integrated; repeated exact-head host/target checkpoints available | Master fa517fea is an ancestor; firmware candidate 1.3.52 exceeds master 1.3.51. Both exact-head workflows passed at 1d93550f; see `U1_OWNER_HANDOFF.md` for source versions, CI artifact inventory and one-session physical procedure. No merge, release, flash or physical result is implied |
+| Final software integration and single owner qualification sheet | Software candidate connected; owner qualification pending | One U1 PR; current master integrated; repeated exact-head host/target checkpoints available | Master d2d5a9a1 is being integrated; firmware candidate 1.3.54 exceeds published/master 1.3.53. Prior exact-head workflows passed at 1d93550f; new integration CI must be checked. See `U1_OWNER_HANDOFF.md` for source versions, artifact selection and one-session physical procedure. No merge, release, flash or physical result is implied |
 
 ## Remaining implementation versus evidence
 

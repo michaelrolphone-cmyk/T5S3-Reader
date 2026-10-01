@@ -80,7 +80,7 @@ wrappers are enabled on both current board profiles. The relevant framework sour
 - `libraries/SD/src/sd_diskio.cpp`:da967338589e71d18517d6137ecc8a573b438d13
 - `libraries/FS/src/vfs_api.cpp`:1dd8da94ac93cc6bf5e4f5bcc6854ab4fdef5481
 
-At the current integrated PR #96 checkpoint the cumulative unreleased firmware candidate is 1.3.52. LoRa remains its
+At the current integrated PR #96 checkpoint the cumulative unreleased firmware candidate is 1.3.54. LoRa remains its
 cumulative U1 ZIP1.0.1, above source/published1.0.0; the new refusal behavior is
 part of that same unreleased payload. The only observed LoRa release tag at
 13:34 UTC was app-lora-v1.0.0. Text Editor342 is owner-merged in master4530c8b2;

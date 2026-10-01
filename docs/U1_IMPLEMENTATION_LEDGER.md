@@ -1,5 +1,16 @@
 # U1 implementation ledger
 
+## October 1: Wi-Fi/Status Bar master integration candidate
+
+Actual master d2d5a9a1 merges Wi-Fi #345 and Status Bar #346. The existing
+PR #96 backmerge preserves both source fixes. Firmware1.3.54 is reserved for
+U1 above the actually published1.3.53 tag; the separate display migration
+reserves1.3.55. Status Bar U1 ZIP1.0.3 exceeds the published loose1.0.2 tag.
+The prior green1d93550f source remains historical evidence. Focused Wi-Fi
+source/transaction, Status Bar held-confirm, release-plan/bulk-release and
+changed-package-source version checks pass locally; new exact-head CI/artifacts
+remain to verify before handoff. No publication/release/master write is implied.
+
 ## October 1: current software handoff reconciliation
 
 PR #96 source checkpoint **1d93550f**, tree **38bbdc24**, integrates actual
