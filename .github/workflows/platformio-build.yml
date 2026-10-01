@@ -190,7 +190,9 @@ jobs:
         run: bash test/run_runtime_network_test.sh
 
       - name: Verify Wi-Fi credential persistence failure handling
-        run: python3 test/native_apps/wifi_credential_persistence_test.py
+        run: |
+          python3 test/native_apps/wifi_credential_persistence_test.py
+          bash test/run_wifi_credential_store_fault_test.sh
 
       - name: Run native app launcher tests
         timeout-minutes: 10
