@@ -1,19 +1,29 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 01:09 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 01:15 UTC. This record supersedes the pre-merge restoration snapshot.
+
+## Board applicability correction — review request withdrawn
+
+**Prioritization is awaiting user direction. This is not a demonstrated T5S3 PRO user-path fix.** The request for the user to review this batch is withdrawn. PR #333 stays draft and its code is unchanged.
+
+The tested workflow assumes the inherited Xteink X4 arrangement of four front buttons and two side buttons. On the user's LilyGO T5S3-4.7-e-paper-PRO, [HalGPIO::getState()](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be82695ea0ecb14525c0de1ddc78cd0c77e4614b/lib/hal/HalGPIO.cpp#L29-L39) emits only the expander and power/BOOT inputs (indices 7 and 6), whereas [the remap indices](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be82695ea0ecb14525c0de1ddc78cd0c77e4614b/lib/hal/HalGPIO.h#L55-L62) are 0–3 and its side actions use 4–5. The [original X4 README](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b04806126c1ec2af967d4d4798d239ac6e5c6088/README.md) and [original remap activity](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/b04806126c1ec2af967d4d4798d239ac6e5c6088/src/activities/settings/ButtonRemapActivity.cpp) establish its legacy origin.
+
+Host fault tests and exact-head CI genuinely pass, but they simulate those inputs and establish code/build behavior, not physical-control applicability or actual use on this device. External controller navigation is [combined separately](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be82695ea0ecb14525c0de1ddc78cd0c77e4614b/src/MappedInputManager.cpp#L108-L122) and is not remapped by these four settings.
+
+**Separate triage candidate:** the unsupported Settings → Controls → Remap Front Buttons entry is [inserted without a board/capability gate](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be82695ea0ecb14525c0de1ddc78cd0c77e4614b/src/native/NativeSettingsBridge.cpp#L85-L91). It [launches the ELF or asks the user to install it](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be82695ea0ecb14525c0de1ddc78cd0c77e4614b/src/activities/settings/ButtonRemapActivity.cpp#L18-L59), and button_remap 1.0.0 is present in the [published catalog snapshot](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/7f07d124dc20435618ae32bb2f89e0f9595d6d9a/release-index.json). This needs separate applicability/reachability and duplicate triage; no new canonical bug ID or implementation claim is assigned here. Do not expand #333 into a gating or architecture refactor. Installation/use on the user's device has not been established.
 
 ## Completed hourly run
 
 - Run: 2026-10-01 00:50 UTC; last coordinator: `fix_button_remap_batch`; active ledger owner: **none**
 - State: completed; repair published and exact-head CI passed. Active implementation claim released
-- Canonical bugs: **16 and 17**, **Awaiting merge**
+- Canonical bugs: **16 and 17**, **On hold: prioritization awaiting direction; review request withdrawn**
 - Baseline master: `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`
 - Durable claim published before implementation: `08ba173adc72216635f07f058fda0068561cf287`
 - Coordination branch: `automation/bug-ledger`; draft [#332](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/332), replacing merged #327
 - Repair branch: `fix/button-remap-16-17`; draft [#333](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/333), targeting master
 - Verified remote head: `3619048c6b178ddf6d767842b797d6fb1d7a87d4`
 - Outstanding code batches from this pipeline: **one**. #205 is merged and does not occupy a slot
-- Next invocation: recheck #333/head/merge status before selecting more work; do not duplicate 16/17. One batch remains awaiting the owner's merge, so at most one additional batch may be claimed after revalidation and overlap checks. Continue using coordination PR #332 while it remains open
+- Next invocation: recheck #333/head/merge status before selecting more work; do not duplicate 16/17. One draft batch remains on hold pending direction; count it against the two-batch limit. Do not request its review again or continue it without direction. Select future candidates only after checking relevance to the user's actual T5S3 PRO paths as well as revalidation and overlap. Continue using coordination PR #332 while it remains open
 
 ## Button Remap evidence
 
@@ -42,7 +52,7 @@ This unattended run successfully created a branch, trees/commits, non-force ref 
 
 ## Preserved inventory and provenance
 
-237 retained canonical reports; **235 outstanding**: 233 need revalidation and 16/17 await merge. 91 and 205 are resolved. The next unused canonical ID is **249**.
+237 retained canonical reports; **235 outstanding**: 233 need revalidation and 16/17 are on hold pending prioritization direction. 91 and 205 are resolved. The next unused canonical ID is **249**.
 
 The initial restoration retained all 196 master reports and reconciled 42 later source reports from 14 scan branches into 41 distinct IDs **208–248**. Immutable source aliases and original evidence remain in `bugs.md`. The 08:22 #209 / 15:20 #208 duplicate maps to canonical **215**. The distinct 16:24 and 17:22 reports retain IDs 243–245 and 246–248. Older bugs **4, 6–12** were already merged through [#246](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/246); do not reopen them from old scan/fix branches.
 
