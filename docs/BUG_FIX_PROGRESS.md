@@ -1,3 +1,11 @@
+## Active Status Bar held-confirm repair claim
+
+- Owner: current isolated Mac bug run. Claim canonical report **19** by the actual level-triggered Confirm handling and repeated settings-write trigger, not the reused ID alone. Baseline master `fa517fea3a882505f10bb432c0c08864b73516c8`; source branch `fix/status-bar-confirm-edge`; app-only, no firmware changes. Existing single ledger PR332 remains the coordination PR.
+- Capacity reconciliation: PR345 is the only open bug-pipeline repair batch (one of two slots). PR344 is the separately authorized camera/hardware milestone and is excluded from bug-batch capacity. No other active bug claim appears in the latest progress record.
+- Revalidation: the released Customize Status Bar app receives level-triggered Confirm in `Apps/status_bar_settings.c::app_main`; it calls `item_activate` on every 50 ms poll while held. This mutates/persists the selected setting repeatedly. Existing `test/native_apps/status_bar_settings_test.c` covers separate single polls, not a held press. No matching status-bar repair branch or open repair PR was found.
+- Version coordination: master and published release-index status_bar_settings version 1.0.0; U1 PR96 head `2d4e8552674efe2349cb5e7ced68082da8a041ac` carries 1.0.1. Parent was sent the version collision and requested allocation before publishing the manifest. Source/test implementation proceeds; app-version publication is gated on that allocation.
+- Phase: claimed; implement rising-edge gating in the existing app and extend its host regression for held/release/re-press behavior. No hardware, device or U1 changes.
+
 ## Completed Wi-Fi credential persistence repair — PR345
 
 - Active implementation/ledger owner **none** after this verified version-resolution checkpoint; durable claim released. The claim was published before source edits on ledger parent `08b273fb619f5cdfcfba69c94a868a7e02c0e221`. Existing PR332 remains the sole coordination PR.
