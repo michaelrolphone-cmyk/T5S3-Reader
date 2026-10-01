@@ -191,6 +191,15 @@ cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
 python3 "$repo_dir/test/native_apps/confirmation_input_test.py"
+echo '== Canonical app owned-buffer and invocation metadata admission =='
+c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -fsanitize=address,undefined \
+  -I"$repo_dir/test/hal/storage_stubs" -I"$repo_dir/lib/hal" -I"$repo_dir/src" \
+  -I"$repo_dir/test/resources/cdc_sd_stubs" \
+  "$repo_dir/lib/hal/HalStorage.cpp" "$repo_dir/src/runtime/packages/PackageExecutableAdmission.cpp" \
+  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/test/resources/managed_app_admission_test.cpp" \
+  -lcrypto -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/elf_owned_admission_test.py"
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"

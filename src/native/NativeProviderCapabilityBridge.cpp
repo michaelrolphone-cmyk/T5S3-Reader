@@ -1,3 +1,4 @@
+#include "ManagedAppAdmission.h"
 #include <T5ProviderCapabilityApi.h>
 #include <T5AppApi.h>
 #include <NativeAppLauncher.h>
@@ -65,11 +66,23 @@ bool declaredCapability(const char* capability, uint32_t version) {
     if (filename.size() < 5 || filename.compare(filename.size() - 4, 4, ".elf")) return false;
     filename.replace(filename.size() - 4, 4, ".json");
     t5_app_manifest_t validated{};
-    if (!readAppManifest(filename.c_str(), validated) || !validated.compatible) return false;
+    std::shared_ptr<const std::string> captured;
+    RuntimePackages::Identity identity{};
+    const auto state=RuntimePackages::captureManagedAppSidecar(path,captured,&identity);
+    if(state==RuntimePackages::ManagedAppMetadata::Denied)return false;
+    std::string json;
+    if(state==RuntimePackages::ManagedAppMetadata::Captured){
+        std::string version;
+        if(!parseAppManifest(*captured,validated,&version,true)||version!=identity.version)return false;
+        json=*captured;
+    }else{
+        if(!readAppManifest(filename.c_str(),validated))return false;
+        const String bytes=Storage.readFile(filename.c_str());json.assign(bytes.c_str(),bytes.length());
+    }
+    if(!validated.compatible)return false;
     const std::string elf(path + 3);
     if (elf.substr(elf.find_last_of('/') + 1) != validated.file_name) return false;
-    const String json = Storage.readFile(filename.c_str());
-    if (!json.length() || json.length() > 2048) return false;
+    if (json.empty() || json.size() > 2048) return false;
     JsonDocument doc;
     if (deserializeJson(doc, json)) return false;
 

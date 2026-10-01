@@ -62,10 +62,18 @@ static portMUX_TYPE resolver_mux = portMUX_INITIALIZER_UNLOCKED;
  * @note The actual file path will be constructed as "FS_PATH/name"
  * @note Allocates memory for file content using esp_elf_malloc()
  */
+// Core supplies a scoped canonical-app validator. Standalone ports retain
+// loose-file loading, but must not silently bypass managed /Apps/id admission.
+__attribute__((weak)) bool esp_elf_admit_managed_app(const char *path, const uint8_t *bytes, size_t size)
+{
+    (void)bytes; (void)size;
+    return path && !(strncmp(path, "/sd/Apps/", 9) == 0 && strchr(path + 9, '/'));
+}
+
 int esp_elf_open(elf_file_t *file, const char *name)
 {
     ssize_t ret;
-    int fd;
+    int fd = -1;
     char *file_path;
     off_t size;
     uint8_t *pbuf;
@@ -118,8 +126,13 @@ int esp_elf_open(elf_file_t *file, const char *name)
         ESP_LOGE(TAG, "Unsupported or malformed native application");
         goto errout_read_fs;
     }
+    const int closed = close(fd);
+    fd = -1;
+    if (closed != 0 || !esp_elf_admit_managed_app(file_path, pbuf, size)) {
+        ESP_LOGE(TAG, "Managed application snapshot admission or close failed");
+        goto errout_read_fs;
+    }
     free(file_path);
-    close(fd);
     file->payload = pbuf;
     file->size = size;
 
@@ -128,7 +141,7 @@ int esp_elf_open(elf_file_t *file, const char *name)
 errout_read_fs:
     esp_elf_free(pbuf);
 errout_lseek_end:
-    close(fd);
+    if (fd >= 0) close(fd);
 errout_open_file:
     free(file_path);
     return -1;

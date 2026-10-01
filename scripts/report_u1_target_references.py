@@ -18,7 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_NAMES = ('t5_usb_get_api', 't5_serial_port_get_api', 'installedAcquirePort',
               'acquirePort', 'openUsb', 'nativeSerialProviderRead', 'nativeSerialProviderWrite',
               'nativeProviderOwnerTick', 't5_serial_port_get_api_original',
-              'ensureUsbRegistered', 'acquireInstalled', 'diagnosticAcquire')
+              'ensureUsbRegistered', 'acquireInstalled', 'diagnosticAcquire',
+              'esp_elf_open', 'esp_elf_admit_managed_app', 'beginManagedAppAdmission',
+              'admitInstalledExecutableSnapshot')
 LEGACY_NAMES = ('usbAcquirePort', 'UsbSerialProjection', 'NativeUsbDevices',
                 'nativeUsbDirectStreamClaim', 'nativeUsbProviderAttach', 'nativeUsbClassRead',
                 'nativeUsbClassWrite', 'usb_host_install', 'hcd_port_init')
@@ -83,7 +85,7 @@ def report(path, objdump, source_head):
         functions, objects, selected, legacy = {}, {}, [], []
         for symbol, name in zip(symbols, demangled):
             address, size = symbol['st_value'], symbol['st_size']
-            item = {'name': name, 'mangled': symbol.name, 'address': address, 'size': size}
+            item = {'name': name, 'mangled': symbol.name, 'address': address, 'size': size, 'binding': str(symbol['st_info']['bind'])}
             if any(token in name for token in LEGACY_NAMES):
                 legacy.append(item)
             if symbol['st_info']['type'] == 'STT_FUNC':
@@ -122,6 +124,7 @@ def report(path, objdump, source_head):
             item['disassembly'] = assembly
             item['references'] = references(assembly, read_virtual, objects, functions)
     source_files = ['platformio.ini', 'src/native/NativeUsbBridge.cpp',
+                    'src/native/ManagedAppAdmission.cpp', 'lib/elf_loader/src/esp_elf.c',
                     'src/native/NativeSerialPortBridge.cpp',
                     'src/native/NativeSerialPortBridge_implementation.inc', 'src/native/NativeStreamBridge.p1.inc',
                     'src/runtime/drivers/InstalledSerialSession.h', 'lib/NativeApps/include/T5SerialPortApi.h']

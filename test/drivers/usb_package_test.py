@@ -115,7 +115,7 @@ class UsbCdcPackage(unittest.TestCase):
         bridge = (ROOT / 'src/native/NativeUsbBridge.cpp').read_text(encoding='utf-8')
         controller = self.physical_controller()
         self.assertIn('if (event.type == T5_UI_EVENT_EXIT) {\n            release_serial_session();', app)
-        self.assertLess(host.index('const esp_err_t result = resourcesReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;'),
+        self.assertLess(host.index('const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;'),
                         host.index('nativeStreamsEnd();'))
         self.assertIn('invocation.end();', streams)
         self.assertIn('providers.end();', serial)

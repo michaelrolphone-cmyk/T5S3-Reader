@@ -7,19 +7,29 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current published receipt/provider checkpoint is
-**acaac50a20c026cf09bc00bd7423ff21316a073c**, tree
-**9a17f5f84ab5d5668f068e2b5918d85174b56799**, identical to tested local **5c126119**.
-Provider workflow **36839401087** passed. Platform workflow **36839401286**
-passed host/headless jobs but both full firmware builds rejected the provider
-registration frame at1168 bytes against its unchanged384-byte guard.
-The narrow correction keeps new digest/stamp fields in the existing per-depth
-heap workspace and runs full captured-plan preflight outside the recursive
-registration frame. Actual Module/admission tests pass; target verification of
-this correction is pending. Last fully green checkpoint **029a58da** passed
-**36836831826 / 36836831798**. Master **1e0188c1** remains integrated; PR96 was
-verified open on October1 at08:54 UTC. Sole ownership remains unchanged.
+Current target-green checkpoint is
+**c33cb044e2a8197ca294ccdae1d8fc466529ca43**, tree
+**e9cfd55882880de0a2d3d9c035d4e013ac60bcd6**, identical to tested local **eebd0271**.
+Both workflows **36840317554 / 36840317634** passed, including both full targets
+with the unchanged 384-byte recursive registration-frame guard. This corrects
+the explicitly recorded acaac50a frame failure below. Master **1e0188c1** remains
+integrated; PR96 was verified open on October 1 at 09:20 UTC. Sole ownership
+remains unchanged. The current local slice connects canonical app owned-buffer
+admission and immutable invocation metadata; it is not target-verified yet.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: canonical app-owned snapshot and metadata binding
+
+NativeAppHost now creates the private context before launch; existing dependency
+and optional-provider parsers consume its exact SHA-checked sidecar. The existing
+ELF file reader closes its descriptor before admitting the same owned buffer that
+relocation consumes. Owner/path/revoke checks and independent pins prevent late
+work or uncertain metadata close from permitting replacement. No new loader,
+installer, registry or SDK permission grant. Host context/loader fixtures and the
+native-app aggregate pass; current target verification is pending. Loose legacy
+input, retained-provider remap optimization and lower-I/O limits remain explicit.
+See **U1_APPLICATION_SNAPSHOT_ADMISSION.md**. The blocked final review is not
+represented as completed or replaced by these independently executed tests.
 
 ## October 1: staged receipt and provider-owned snapshot admission
 
@@ -33,7 +43,7 @@ to old bytes. Boot, invalid receipts and raw uncertainty cannot skip cold checks
 
 Actual HalStorage/helper and ESP Module fixtures, receipt wire/SD/cleanup faults,
 ordinary-package, provider-graph and driver host aggregates pass locally. Target
-checks remain pending; independent final review did not complete and is not
+checks passed corrected c33cb044; independent final review did not complete and is not
 claimed. Applications' loader admission and conservative repeated remapping of
 old provider snapshots remain explicit gaps. See
 **U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md** for exact scope and limitations.
@@ -124,7 +134,8 @@ boundary. The actual HalStorage fixture exercises failed destructor cleanup
 and verifies remount/coherent inventory remain refused. Source inspection of
 SdFat 2.3.1 confirms successful volume initialization invalidates sector caches,
 which is why raw-SDFS reconciliation needs a real mount, not only an epoch bump.
-This follow-on target verification is pending separately from green74b0b45e.
+This follow-on was subsequently verified at **8dafce33**, workflows
+**36825261735 / 36825261980**, separately from the preceding green74b0b45e.
 
 ## October 1: target dependency repair
 
@@ -134,7 +145,8 @@ and headless target, but both full firmware builds in **36824115747** found
 Board's new full HalStorage include lacked the SdFat transitive include path.
 The fix is a minimal internal lifecycle declaration, keeping Board shutdown
 notification independent of filesystem headers. No storage behavior changes.
-The focused storage aggregate passes; repaired-head target results are pending.
+The focused storage aggregate passed; repaired-head target results subsequently
+passed at **74b0b45e**, workflows **36824640916 / 36824640911**.
 
 ## October 1: observed invalidation and retained Package Manager inventory
 
@@ -147,10 +159,11 @@ capabilities are covered along with named mutators. APIs stay available.
 Package Manager's retained inventory is all-or-nothing and generation-checked,
 with iterator/error/close/item/deadline bounds. General capability metadata
 queries preserve legacy raw-app provider admission and remain explicitly
-outside trusted snapshot reuse. Durable receipts and broader cache policy are
-still open. See **U1_STORAGE_GENERATION_IMPLEMENTATION.md** for boundaries.
-Focused actual-source host tests pass; target verification of this new slice
-is pending. The preceding CDC implementation is fully target-verified at the
+outside trusted snapshot reuse in this initial slice. Later **029a58da** adds
+quiescent metadata reuse and **c33cb044** adds the first staged-receipt/provider
+consumer, without treating metadata as content proof. See **U1_STORAGE_GENERATION_IMPLEMENTATION.md** for boundaries.
+Focused actual-source host tests passed; target verification subsequently
+passed at **8dafce33** after the separately recorded dependency/close repairs. The preceding CDC implementation is fully target-verified at the
 exact checkpoint above, not merely locally tested. Firmware version remains
 1.3.48 pending final reconciliation above actual master/published identities.
 

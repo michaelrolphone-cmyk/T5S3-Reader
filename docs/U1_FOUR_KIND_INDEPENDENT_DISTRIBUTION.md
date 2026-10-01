@@ -73,7 +73,9 @@ This is evidence for review, not an assertion that every indirect call or
 physical PHY path is proven. It does not use the earlier inaccessible firmware
 artifact. Source head, compiled checkout and ELF hash are recorded separately.
 
-Target checks for this distribution checkpoint remain pending. Durable
+Target checks for this distribution checkpoint passed at **bd9b09a7**, both
+workflows **36829998475 / 36829998394**, including the actual built archive
+record/runtime-locator witness. Durable
 receipts, resource-only semantics, lower blocked-I/O termination, final
 reachability/PHY evidence and final firmware-version integration remain open.
 

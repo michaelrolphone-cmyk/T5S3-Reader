@@ -83,15 +83,17 @@ in36839401286. Both full firmware builds rejected a1168-byte recursive provider
 registration frame against the existing384-byte limit. The correction preserves
 the guard, keeps new digest/stamp workspace in the existing per-depth heap frame,
 and places complete policy preflight out of that recursive frame. Its actual
-Module/admission tests pass; new target verification remains pending. Independent final review did not
+Module/admission tests pass; both target workflows36840317554 / 36840317634
+subsequently passed corrected c33cb044. Independent final review did not
 complete; no completed final review is claimed. Findings returned before that
 interruption were addressed and corresponding executed tests are identified
 above; this is not a substitute claim about unreturned review coverage.
 
 This does **not** close the whole permanent-verification requirement:
 
-- The application loader still uses the documented temporary installed-load
-  bypass. Its own immutable-buffer admission boundary remains to be connected
+- Canonical application owned-buffer/context admission is now connected locally
+  (U1_APPLICATION_SNAPSHOT_ADMISSION.md), with target verification pending. Loose
+  legacy input retains its existing compatibility contract
 - A retained provider node whose source-read epoch became stale conservatively
   rehashes on later remapping until rebuilt. Do not restamp old source bytes to
   suppress that work; a further optimization needs explicit immutable graph-

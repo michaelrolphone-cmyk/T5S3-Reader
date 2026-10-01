@@ -24,6 +24,18 @@ MAIN = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
 
 
 class LiveInstallContract(unittest.TestCase):
+    def test_canonical_launch_binds_owned_metadata_before_loader(self):
+        launch = HOST.split('esp_err_t runNativeApp(', 1)[1]
+        self.assertLess(launch.index('nativeStreamsBegin();'), launch.index('beginManagedAppAdmission('))
+        self.assertLess(launch.index('beginManagedAppAdmission('), launch.index('launch_elf_app(path)'))
+        self.assertLess(launch.index('launch_elf_app(path)'), launch.index('endManagedAppAdmission();'))
+        self.assertLess(launch.index('endManagedAppAdmission();'), launch.index('nativeStreamsEnd();'))
+        for filename in ('NativeCapabilityGate.cpp', 'NativeProviderCapabilityBridge.cpp'):
+            bridge = (ROOT / 'src/native' / filename).read_text()
+            self.assertIn('captureManagedAppSidecar(', bridge)
+            self.assertIn('ManagedAppMetadata::Denied', bridge)
+            self.assertIn('parseAppManifest(*captured', bridge)
+
     def test_live_installer_is_digest_verified_and_publishes_pair(self):
         start = HOST.index('bool appCatalogDownloadWithProgress(uint32_t index,')
         end = HOST.index('\nbool installedRefresh()', start)

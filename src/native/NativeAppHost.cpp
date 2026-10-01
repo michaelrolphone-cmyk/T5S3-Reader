@@ -3,6 +3,7 @@
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
+#include "ManagedAppAdmission.h"
 #include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
@@ -1511,10 +1512,13 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeStreamsBegin();
   const bool resourcesReady = canonicalRoot.empty() ||
       nativeStreamsBindPackageResources(canonicalIdentity);
-  const esp_err_t result = resourcesReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
+  const bool admissionReady = resourcesReady && (canonicalRoot.empty() ||
+      RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
+  const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
+  if (admissionReady && !canonicalRoot.empty()) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
   nativeNetworkEnd();
-  if (!canonicalRoot.empty() && (result == ESP_OK || !resourcesReady))
+  if (!canonicalRoot.empty() && (result == ESP_OK || !admissionReady))
     (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
   // Clean up even when an app returns without calling its GPS stop callback.
   GpsDriverRuntime::stop();
