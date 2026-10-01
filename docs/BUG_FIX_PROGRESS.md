@@ -1,24 +1,26 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 02:03 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 02:08 UTC. This record supersedes the pre-merge restoration snapshot.
 
-## Active hourly run — native confirmation safety
+## Completed hourly run — native confirmation safety
 
-- Owner: `fix_reachable_confirmation_bug`; phase: draft published, local verification complete; exact-head CI running; claimed 2026-10-01 01:48 UTC
-- Canonical claim: **249 only**, two related app confirmation fixes; branch `fix/native-confirmation-249` from master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`
+- Last owner: `fix_reachable_confirmation_bug`; active ledger owner: **none**; completed 2026-10-01 02:08 UTC; claim released after terminal exact-head CI
+- Canonical bug: **249**, **Awaiting merge**, two related app confirmation fixes; branch `fix/native-confirmation-249` from master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`
 - Ledger parent captured: `fc72ad0dba3d207e44c83d0ee76738a9a017377d`; draft #332 still open. No prior active owner
 - Open #96/#194/#220/#277/#333 checked: no edits to `Apps/ota_update.c`, `Apps/clear_cache.c` or their manifests. Aggregate test runner may require additive integration reconciliation
-- #246 touches the separate legacy ConfirmationActivity also modified by #220; excluded from this batch. #333 remains held with review withdrawn; this claim reserves the second and final outstanding code-batch slot
+- #246 touches the separate legacy ConfirmationActivity also modified by #220; excluded from this batch. #333 remains held with review withdrawn; draft #334 occupies the second and final outstanding code-batch slot
 - Source reachability: NativeSettingsBridge System actions → ClearCacheActivity/OtaUpdateActivity → installed native app → NativeAppHost raw tap → NativeUiBridge row hit test. PRO uses installed touch provider, not legacy X4 front buttons. Requires installed compatible apps and working touch; OTA needs network/new firmware. Owner device installation/use is not claimed
-- Published index `e495c5e1` and current master both have clear_cache 1.0.0 and ota_update 1.0.0; planned app-only bump to 1.0.1 each. Existing UI event ABI suffices; no firmware bump
+- Published index `e495c5e1` and current master both have clear_cache 1.0.0 and ota_update 1.0.0; completed app-only bump to 1.0.1 each. Existing UI event ABI suffices; no firmware bump
 - Reconciled scan `66bc650056964dcba8e5164d6d76f6c45cdb81ab` by affected function/trigger/failure: 249 native confirmation differs from 246; 250 terminal FLASH_END loss differs from earlier flashing reports; 251 skipped-role/incomplete validation differs from 16 persistence rollback and 17 labels. IDs 249–251 preserve scan provenance; 250/251 remain unclaimed/unvalidated
-- Current inventory: **240 canonical reports, 238 outstanding** (249 claimed; 16/17 on hold; 235 need revalidation); 91/205 fixed on master. Next unused ID **252**. Historical counts below describe the earlier snapshot
+- Current inventory: **240 canonical reports, 238 outstanding** (249 awaiting merge; 16/17 on hold; 235 need revalidation); 91/205 fixed on master. Next unused ID **252**. Historical counts below describe the earlier snapshot
 - Draft [#334](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/334); exact remote head `98943199054e409987a957b9b909f32ccd4c9f49` verified by fetch/content comparison; active claim commit `2697c3faa5432b41d30fde2302a1872be49ac610`
 - PASS: 2,788 ASan/UBSan cases linking actual C apps and verbatim production event/hit-test/rotation functions; baseline body-row case fails independently for each original app. All 24 mappings/four orientations, non-control taps, explicit touch/physical Confirm, held buttons, cancellation, exit/poll failure, service failure/reopen and missing event API covered. Rendering/input hardware/destructive services are fixtures
 - PASS: full native aggregate, C syntax, shell syntax, whitespace. LeakSanitizer disabled for ptrace. Both local target app builds attempted and blocked by absent Xtensa compiler
 - Initial CI 36803281830 passed both firmware-board/all-app builds and native aggregate, but old clear_cache/ota_update rendering fixtures lacked the required event callback. Those fixtures now supply explicit events without removing assertions; full springboard/app-manifest suite and focused regression pass locally
-- Final exact-head CI [36803968828](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36803968828) pending/running on `98943199054e409987a957b9b909f32ccd4c9f49`; retain active claim until terminal. Both app manifests bumped to 1.0.1, unchanged minimum firmware
-- Next: finish exact-head host/two-board/app CI and release claim with terminal result. No live deletion, install, flash, merge or release
+- **PASS:** final exact-head CI [36803968828](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36803968828) completed successfully on `98943199054e409987a957b9b909f32ccd4c9f49`: host parser/native/springboard/release tests and both t5s3-pro/lilygo-epd47-s3 firmware jobs, including native ELFs and all released apps/manifests. Local compiler absence is covered by successful CI target builds; no physical-device qualification
+- Both app manifests bumped to 1.0.1, unchanged minimum firmware. #333 rechecked open/draft with original head `3619048c6b178ddf6d767842b797d6fb1d7a87d4`; no review requested
+- Next invocation: recheck #333/#334 and master ancestry. **Two outstanding code batches; do not start another while both occupy slots.** #249 is not fixed on master until a merge/source/regression check proves it. Continue using open ledger #332. #333 stays on hold; do not resume or request review without direction
+- No live deletion, install, flash, merge or release. All work for this run is terminal; unmerged integration remains pending owner action
 
 ## Board applicability correction — review request withdrawn
 
@@ -30,7 +32,7 @@ Host fault tests and exact-head CI genuinely pass, but they simulate those input
 
 **Separate triage candidate:** the unsupported Settings → Controls → Remap Front Buttons entry is [inserted without a board/capability gate](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be82695ea0ecb14525c0de1ddc78cd0c77e4614b/src/native/NativeSettingsBridge.cpp#L85-L91). It [launches the ELF or asks the user to install it](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/be82695ea0ecb14525c0de1ddc78cd0c77e4614b/src/activities/settings/ButtonRemapActivity.cpp#L18-L59), and button_remap 1.0.0 is present in the [published catalog snapshot](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/7f07d124dc20435618ae32bb2f89e0f9595d6d9a/release-index.json). This needs separate applicability/reachability and duplicate triage; no new canonical bug ID or implementation claim is assigned here. Do not expand #333 into a gating or architecture refactor. Installation/use on the user's device has not been established.
 
-## Completed hourly run
+## Historical completed hourly run — Button Remap
 
 - Run: 2026-10-01 00:50 UTC; last coordinator: `fix_button_remap_batch`; active ledger owner: **none**
 - State: completed; repair published and exact-head CI passed. Active implementation claim released
