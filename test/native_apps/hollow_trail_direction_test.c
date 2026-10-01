@@ -21,7 +21,7 @@ int main(void) {
     assert(ht.x-start>=30*256 && ht.x-start<=36*256); /* ~1 sec of ordinary walking. */
     for(int n=0;n<8;++n)ht_step_controls(0,0,false,false);
     assert(ht.vx==0 && ht.grounded);
-    /* Y/back emphasis is transient: output speed/acceleration gain 10%
+    /* Y emphasis is transient: output speed/acceleration gain 10%
      * (integer-rounded) while authored pace storage remains untouched. */
     ht_spawn(true);ht.grounded=true;ht.traversal.mode=HT_FREE;
     ht.pace=300;ht_motion_emphasis=false;

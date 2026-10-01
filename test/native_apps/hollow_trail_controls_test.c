@@ -25,7 +25,7 @@ static void press(unsigned source,uint32_t mask) {
     reports[source][0].buttons=mask; ht_input(1);
 }
 static void schoolroom_controls(void) {
-    const unsigned a[2]={1,2},x[2]={8,4},start[2]={512,128};
+    const unsigned a[2]={1,2},x[2]={8,4},y[2]={4,8},start[2]={512,128};
     healthy=true;host_exit=false;app=&fake_app;pad=&xapi;hid_pad=&hapi;
     for(unsigned source=0;source<2;++source) {
         memset(reports,0,sizeof(reports));reports[source][0].connected=1;
@@ -40,6 +40,8 @@ static void schoolroom_controls(void) {
         assert(ht_schoolroom_studying && !reading && ht_schoolroom_focus==0);
         assert(ht_evidence_found(&ht,3));ht_game frozen=ht;
         for(unsigned i=0;i<20;++i){ht_advance(now+=HT_STEP_MS);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        press(source,y[source]);ht_advance(now+=HT_STEP_MS);
+        assert(ht_schoolroom_studying && !ht_motion_emphasis && !memcmp(&ht,&frozen,sizeof(ht)));
         reports[source][0].buttons=0;ht_input(1);
         reports[source][0].hat=2;ht_input(1);assert(ht_schoolroom_focus==1);
         ht_input(1);assert(ht_schoolroom_focus==1); /* Held direction never repeats. */
@@ -64,6 +66,44 @@ static void schoolroom_controls(void) {
         press(source,a[source]);assert(ht_schoolroom_studying);
         host_exit=true;ht_input(1);assert(quitting);host_exit=false;
         ht_schoolroom_studying=false;
+    }
+}
+/* Drive the real provider mapping and scheduler, not the emphasis helper. */
+static void motion_emphasis_controls(void) {
+    const unsigned x[2]={8,4},y[2]={4,8};
+    healthy=true;host_exit=false;app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        int velocity[3];
+        for(unsigned button=0;button<3;++button) {
+            memset(reports,0,sizeof(reports));
+            reports[source][0].connected=1;reports[source][0].device=source+1;
+            reports[source][0].hat=8;
+            memset(&ht,0,sizeof(ht));ht_spawn(true);ht_geometry_level=0;
+            ht_cutscene.active=false;ht_cutscene_seen=0;
+            reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+            held=previous=mapped=0;ht_pad_owned=ht_input_rearm=false;
+            ht_pad_source=-1;simulation_started=false;
+            ht_input(1); /* Neutral owns/rearms this receiver. */
+            reports[source][0].hat=2;
+            reports[source][0].buttons=button==1?x[source]:button==2?y[source]:0;
+            ht_input(1);ht_advance(now);ht_advance(now+=HT_STEP_MS);
+            velocity[button]=ht.vx;
+            assert(ht_motion_emphasis==(button==2));
+            assert(!reading && !paused && !jump_down && !quitting);
+            assert(((held&HT_BACK)!=0)==(button==1));
+            assert(((held&HT_EMPHASIS)!=0)==(button==2));
+            if(button==2) {
+                reports[source][0].buttons=0;ht_input(1);ht_advance(now+=HT_STEP_MS);
+                assert(!ht_motion_emphasis && !(held&HT_EMPHASIS));
+                reports[source][0].buttons=y[source];ht_input(1);ht_advance(now+=HT_STEP_MS);
+                assert(ht_motion_emphasis);
+                paused=true;ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+                paused=false;reading=true;ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+                reading=false;ht_cutscene_begin(HT_CUTSCENE_INTRO);
+                ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+            }
+        }
+        assert(velocity[0]==48 && velocity[1]==velocity[0] && velocity[2]==53);
     }
 }
 int main(void) {
@@ -242,5 +282,6 @@ int main(void) {
     ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=2140;
     host_exit=true;ht_input(1);assert(quitting && ht_cutscene.active);
     schoolroom_controls();
+    motion_emphasis_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

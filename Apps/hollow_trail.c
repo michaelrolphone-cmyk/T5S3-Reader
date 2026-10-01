@@ -72,6 +72,7 @@ static void ht_perf_finish(const t5_video_api_v1 *video,uint32_t now) {
 #define HT_UP 512u
 #define HT_DOWN 1024u
 #define HT_BACK 256u /* Reading navigation only; never quits gameplay. */
+#define HT_EMPHASIS 2048u /* Y: transient gameplay motion emphasis. */
 #define HT_HAS(api,type,field) ((api) && (api)->struct_size >= offsetof(type,field)+sizeof((api)->field) && (api)->field)
 #include "hollow_trail_journal.inc"
 static void ht_log(const char *message) {
@@ -130,7 +131,7 @@ static void ht_advance(uint32_t now) {
     if(paused) { simulation_accumulator=0; jump_down=false; ht_motion_emphasis=false; return; }
     for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps) {
         int direction=((held&HT_RIGHT)!=0)-((held&HT_LEFT)!=0);
-        ht_motion_emphasis=(held&HT_BACK)!=0;
+        ht_motion_emphasis=(held&HT_EMPHASIS)!=0;
         ht_game before=ht;
         ht_step_controls(direction,((held&HT_DOWN)!=0)-((held&HT_UP)!=0),jump_down,(held&HT_JUMP)!=0);
         jump_down=false; simulation_accumulator-=HT_STEP_MS;
@@ -192,6 +193,7 @@ static void ht_input_update(uint32_t wait) {
             if(state->buttons&(source?0x01u:0x02u)) buttons|=HT_JUMP;
             if(state->buttons&(source?0x02u:0x01u)) buttons|=HT_INTERACT|HT_ACCEPT;
             if(state->buttons&(source?0x04u:0x08u)) buttons|=HT_BACK;
+            if(state->buttons&(source?0x08u:0x04u)) buttons|=HT_EMPHASIS;
             if(state->buttons&(source?0x80u:0x200u)) buttons|=HT_JOURNAL;
             if(state->buttons&(source?0x40u:0x100u)) buttons|=HT_PAUSE;
             break; // One controller owns the frame; never merge receiver slots.
