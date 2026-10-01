@@ -3,6 +3,13 @@
 Snapshot: 2026-10-01, after Timecard PR341 merge closure. The completion record below supersedes historical held/open statuses and batch counts; older evidence and applicability history are retained.
 
 
+## Active Text Editor document-opening batch
+
+- Owner `01a0f728-f5cb-70e7-9297-7a6abc7c6034`, isolated Mac task-3; started2026-10-01. Claim canonical20 and232 by affected functions/trigger/root cause. Baseline master `d4df4609f3e6fdd6889bb70a0971240711e35c3f`; branch `fix/text-editor-document-open`. No active prior ledger/implementation owner; previous Timecard batch closed. One planned code batch, below two-batch limit.
+- Current production source confirms picker stops at64 accepted/128 scanned entries without continuation, and load_handoff_path strips /sd before public storage API calls. Phase: focused failure reproduction and bounded repair; supported installed Text Editor + usb.hid.keyboard capability path, no physical-device claim.
+- Existing editor-diagnostic repair branch is unrelated; no duplicate document-opening repair found. U1's editor manifest version requires coordination before publication; no provider/U1/display/Hollow/archive changes. App-only version bump expected; no firmware reservation conflict.
+- Scope: coherent two-defect document-opening workflow, preserving dirty data, read/save failure/retry/cancel and bounded cursor cleanup. No broad scan/helpers, master/release/catalog/dispatch/device writes.
+
 ## Completed Timecard merge closure — PR341
 
 - Narrow documentation-only closure by `01a0f728-f5cb-70e7-9297-7a6abc7c6034`; active ledger/implementation owner **none**. Captured ledger parent `28c13f732e44336d4e59ffb3b496add44412ce46`; no competing durable claim. PR332 remains the existing open coordination PR.
