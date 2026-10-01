@@ -189,6 +189,9 @@ jobs:
       - name: Run runtime network provider tests
         run: bash test/run_runtime_network_test.sh
 
+      - name: Verify Wi-Fi credential persistence failure handling
+        run: python3 test/native_apps/wifi_credential_persistence_test.py
+
       - name: Run native app launcher tests
         timeout-minutes: 10
         run: bash test/run_native_app_test.sh

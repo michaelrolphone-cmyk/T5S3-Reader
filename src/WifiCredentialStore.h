@@ -10,6 +10,8 @@ struct WifiCredential {
 class WifiCredentialStore;
 namespace JsonSettingsIO {
 bool saveWifi(const WifiCredentialStore& store, const char* path);
+bool saveWifiSnapshot(const std::vector<WifiCredential>& credentials, const std::string& lastConnectedSsid,
+                      const char* path);
 bool loadWifi(WifiCredentialStore& store, const char* json, bool* needsResave);
 }  // namespace JsonSettingsIO
 
@@ -31,6 +33,7 @@ class WifiCredentialStore {
   WifiCredentialStore() = default;
 
   bool loadFromBinaryFile();
+  bool saveSnapshot(const std::vector<WifiCredential>& candidate, const std::string& lastConnected) const;
 
   friend bool JsonSettingsIO::saveWifi(const WifiCredentialStore&, const char*);
   friend bool JsonSettingsIO::loadWifi(WifiCredentialStore&, const char*, bool*);
@@ -59,12 +62,12 @@ class WifiCredentialStore {
   bool hasSavedCredential(const std::string& ssid) const;
 
   // Last connected network
-  void setLastConnectedSsid(const std::string& ssid);
+  bool setLastConnectedSsid(const std::string& ssid);
   const std::string& getLastConnectedSsid() const;
-  void clearLastConnectedSsid();
+  bool clearLastConnectedSsid();
 
   // Clear all credentials
-  void clearAll();
+  bool clearAll();
 };
 
 // Helper macro to access credentials store

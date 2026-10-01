@@ -8,6 +8,7 @@
 
 #include <cstring>
 #include <string>
+#include <utility>
 
 #include "BookmarkEntry.h"
 #include "CrossPointSettings.h"
@@ -311,11 +312,16 @@ bool JsonSettingsIO::loadKOReader(KOReaderCredentialStore& store, const char* js
 // ---- WifiCredentialStore ----
 
 bool JsonSettingsIO::saveWifi(const WifiCredentialStore& store, const char* path) {
+  return saveWifiSnapshot(store.getCredentials(), store.getLastConnectedSsid(), path);
+}
+
+bool JsonSettingsIO::saveWifiSnapshot(const std::vector<WifiCredential>& credentials,
+                                      const std::string& lastConnectedSsid, const char* path) {
   JsonDocument doc;
-  doc["lastConnectedSsid"] = store.getLastConnectedSsid();
+  doc["lastConnectedSsid"] = lastConnectedSsid;
 
   JsonArray arr = doc["credentials"].to<JsonArray>();
-  for (const auto& cred : store.getCredentials()) {
+  for (const auto& cred : credentials) {
     JsonObject obj = arr.add<JsonObject>();
     obj["ssid"] = cred.ssid;
     obj["password_obf"] = obfuscation::obfuscateToBase64(cred.password);
@@ -335,22 +341,32 @@ bool JsonSettingsIO::loadWifi(WifiCredentialStore& store, const char* json, bool
     return false;
   }
 
-  store.lastConnectedSsid = doc["lastConnectedSsid"] | std::string("");
-
-  store.credentials.clear();
+  if ((!doc["lastConnectedSsid"].isNull() && !doc["lastConnectedSsid"].is<const char*>()) ||
+      !doc["credentials"].is<JsonArrayConst>()) return false;
+  const std::string lastConnectedSsid = doc["lastConnectedSsid"] | std::string("");
+  if (lastConnectedSsid.size() > 32) return false;
+  std::vector<WifiCredential> credentials;
   JsonArray arr = doc["credentials"].as<JsonArray>();
   for (JsonObject obj : arr) {
-    if (store.credentials.size() >= store.MAX_NETWORKS) break;
+    if (credentials.size() >= store.MAX_NETWORKS || obj.isNull() || !obj["ssid"].is<const char*>()) return false;
     WifiCredential cred;
     cred.ssid = obj["ssid"] | std::string("");
+    if (cred.ssid.empty() || cred.ssid.size() > 32) return false;
+    if ((!obj["password_obf"].isNull() && !obj["password_obf"].is<const char*>()) ||
+        (!obj["password"].isNull() && !obj["password"].is<const char*>())) return false;
     bool ok = false;
     cred.password = obfuscation::deobfuscateFromBase64(obj["password_obf"] | "", &ok);
     if (!ok || cred.password.empty()) {
+      if (!ok && !obj["password_obf"].isNull() && obj["password"].isNull()) return false;
       cred.password = obj["password"] | std::string("");
       if (!cred.password.empty() && needsResave) *needsResave = true;
     }
-    store.credentials.push_back(cred);
+    if (cred.password.size() > 64) return false;
+    credentials.push_back(std::move(cred));
   }
+
+  store.lastConnectedSsid = lastConnectedSsid;
+  store.credentials = std::move(credentials);
 
   LOG_DBG("WCS", "Loaded %zu WiFi credentials from file", store.credentials.size());
   return true;
