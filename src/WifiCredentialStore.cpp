@@ -6,6 +6,8 @@
 #include <ObfuscationUtils.h>
 #include <Serialization.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <utility>
 
 // Initialize the static instance
@@ -191,7 +193,7 @@ bool WifiCredentialStore::removeCredential(const std::string& ssid) {
 }
 
 const WifiCredential* WifiCredentialStore::findCredential(const std::string& ssid) const {
-  const auto cred = find_if(credentials.begin(), credentials.end(),
+  const auto cred = std::find_if(credentials.begin(), credentials.end(),
                             [&ssid](const WifiCredential& cred) { return cred.ssid == ssid; });
 
   if (cred != credentials.end()) {
