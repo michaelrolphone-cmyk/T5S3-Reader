@@ -13,6 +13,23 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: observed archive target build correction
+
+At **68e3b8d4**, PlatformIO/host workflow **36815185748 passed**. The
+USB/ELF run **36815185806** reached the new service and actually compiled/linked
+its Xtensa ELF, then failed its strict builder import check: the inherited target
+flags generated `__stack_chk_guard` / `__stack_chk_fail`, absent from the service
+builder's local subset. They are already scoped OS/CPU ABI-v1 exports. Preserve
+stack protection and admit exactly those two symbols in the builder's subset;
+do not weaken the runtime gate or accept unknown device imports. This correction
+changes validation, not the produced service payload or its version. Python
+syntax checks pass; matching-head target checks remain pending.
+
+The second master backmerge published **2b885a7a**, tree
+**8d14bc4ed1b60ccb9cf784d897138e523da1109a**, equal to local-tested
+**d64c9cca**. Its target workflows are **36815725621 / 36815725674**;
+they predate this builder correction and are not evidence for it.
+
 ## October 1: second current-master reconciliation
 
 Owner master advanced to **1e0188c1** while archive admission repair

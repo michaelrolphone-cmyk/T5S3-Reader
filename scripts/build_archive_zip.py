@@ -46,10 +46,12 @@ def build(cxx=None):
     if exported != {'t5_driver_get'}:
         raise ValueError('archive service must export only its provider descriptor')
     imported = validate_imports(symbols, {name for name in firmware_exports(ROOT) if not name.startswith('t5_')} | privileged_os_cpu_exports(ROOT))
+    # Exact target flags retain stack protection. These two ABI-v1 imports
+    # are already admitted OS/CPU primitives; do not disable stack checking.
     if not imported <= {'memcpy', 'memset', 'strcmp', 'strlen', 'memcmp', 'strncmp', '__assert_func',
                         'xQueueCreateMutex', 'xQueueGenericCreate', 'xQueueGenericSend',
                         'xQueueSemaphoreTake', 'uxQueueMessagesWaiting', 'vQueueDelete',
-                        'vTaskDelay', 'xTaskGetTickCount'}:
+                        'vTaskDelay', 'xTaskGetTickCount', '__stack_chk_guard', '__stack_chk_fail'}:
         raise ValueError('archive service has unexpected imports: ' + repr(imported))
     mapping = audit_loader_map(elf)
     if (mapping['unmapped_relocations'] or mapping['unmapped_relative_values'] or
