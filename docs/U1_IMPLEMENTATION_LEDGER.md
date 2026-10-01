@@ -1,5 +1,17 @@
 # U1 implementation ledger
 
+## Active continuation claim — October 1, 01:15 UTC
+
+Owner: current U1 implementation worker on PR #96 / `impl/u1-riscrte`.
+Base checkpoint `4b5c1816` has verified green firmware/host and USB/ELF CI.
+Scope: per-package immutable online ZIP locators, version-safe aggregate/legacy
+coexistence, bounded failure/recovery checks; integrate observed master
+`3300229d` once. No live release/catalog operations. Other continuations must
+not write this branch while this claim remains active. Claim will be released
+after publication and exact-head CI verification or an explicit blocker handoff.
+
+**Implementation In Progress**
+
 ## October 1: coherent independent release workflow and artifact custody
 
 Checkpoint on sole PR #96 / `impl/u1-riscrte`, integrating master
