@@ -1,6 +1,6 @@
 # Firmware foundation and product boundaries
 
-This analysis starts from the owner's U1–U4 roadmap, not a replacement roadmap. Its parallel constraints are expressive fast e-paper, the smallest firmware foundation that preserves the current experience through apps/drivers, and CrossPoint product parity. Daily usefulness cuts across all three: this hardware is already a mobile device, desk clock, engineering workbench, toolbox and toy. The LCD/watch direction tests the abstractions; it does not define the whole platform.
+This analysis starts from the owner's U1–U4 roadmap, not a replacement roadmap. Its four equal parallel constraints are expressive fast e-paper, the smallest firmware foundation that preserves the current experience through apps/drivers, CrossPoint product parity, and daily reliability: this hardware is already a mobile device, desk clock, engineering workbench, toolbox and toy. The LCD/watch direction tests the abstractions; it does not define the whole platform.
 
 ## What the four milestones already decide
 
@@ -42,7 +42,7 @@ The intended order is:
 
 At zero installed drivers, missing display, touch, removable media or provisioning manifest must lead to observable recoverable idle, not an error screen that itself requires the missing drivers. A download path starts only after a functioning authorized network/storage chain exists; online availability cannot be a prerequisite for repairing that chain.
 
-For each selected device, explicitly identify the first readable package source, how it is populated, its bounds, its own power/pin prerequisites, the last-good recovery path, and the moment bootstrap hardware ownership is released. The current SPIFFS partition entry is not evidence that a boot package store is implemented. U1 also distinguishes install/recovery integrity checks from cheap installed-generation lookup: its permanent receipt/invalidation requirement must be evidenced before treating metadata-only inspection as a durable integrity cache. Rehashing every ELF on each interaction and assuming writable media never changes are both unsuitable substitutes. CAM sensor/media/pins and the future watch remain unverified.
+For each selected device, explicitly identify the first readable package source, how it is populated, its bounds, its own power/pin prerequisites, the last-good recovery path, and the moment bootstrap hardware ownership is released. The current SPIFFS partition entry is not evidence that a boot package store is implemented. U1 also distinguishes install/recovery integrity checks from cheap installed-generation lookup: its permanent receipt/invalidation requirement must be evidenced before treating metadata-only inspection as a durable integrity cache. Rehashing every ELF on each interaction and assuming writable media never changes are both unsuitable substitutes. The current lab reports a FORIOT CAM with SD, but the package integration and exclusive handoff remain unproven; sensor/pins/output and the future watch still require appropriate evidence [E16](evidence.md#e16-october-1-current-checkpoints-and-evidence-boundaries).
 
 Credible choices:
 - **Narrow boot-only media reader, then exclusive provider handoff.** Closest to the allowed roadmap. Low duplication only if its scope stays bounded; risky if a retained file handle or shared pad prevents native takeover.
@@ -50,6 +50,22 @@ Credible choices:
 - **Compile normal drivers/network/UI into a permanent rescue fallback.** Easiest initial availability but hides provider absence, duplicates owners and grows core. Reject as the normal architecture; narrowly isolated ROM/recovery remains allowed.
 
 Falsify the first choice if its medium cannot be read without the driver being loaded, or if boot and runtime controllers cannot hand off exclusively. Falsify the second if capacity/update recovery makes it unable to retain a usable boot set. Do not pick either from an assumed CAM/watch BOM.
+
+## Storage and memory contracts: distinguish recoverability from capability
+
+The lab changes the strongest R1 assumption: a narrow SD bootstrap reader is a candidate for the actual CAM, not a demonstrated universal root. The supplied diagnostics establish flash/readback/heartbeats only. The isolated SD harness has a bootstrap disk and compile/link evidence through an unchanged HalStorage API and existing SdVfs, but its own checkpoint leaves real load/lease, ordinary ZIP/provider integration and recovery pending [E16](evidence.md#e16-october-1-current-checkpoints-and-evidence-boundaries).
+
+| Observed configuration | Useful architectural question | Unsupported inference |
+| --- | --- | --- |
+| FORIOT CAM: 16 MB flash, 8 MB PSRAM, 16 GB SD | Can the existing package/loader path consume this bootstrap store, retain exact generations and recover after its normal provider takes ownership? | Mounted/readable SD proves package admission, provisioning or a camera image |
+| Heltec Tracker V2: 8 MB flash, zero PSRAM, TFT | Does the actual loader support executable placement and bounded working sets without external RAM? What compatible small package can be admitted while preserving recovery reserve? | A heartbeat or TFT presence proves native package execution or portable display apps |
+| Waveshare relay: actual 16 MB flash, no SD, PSRAM unproven | What independently accessible, safely populated package store and recovery route are available? | Flash capacity means a package partition exists, or unproven PSRAM can be budgeted |
+
+For each declared supported target, record **two independent contracts**, using existing profile/package metadata where sufficient: storage (first bytes, writable roots, generation identity, replacement/recovery space, media removal) and memory (executable mapping, internal/DMA-capable versus external RAM, relocation/candidate overlap, task/queue buffers and recovery reserve). A working set must fit its required memory classes, not just total advertised RAM. “No PSRAM” is not a smaller framebuffer setting; “no SD” is not an empty catalog. Until evidenced, label a target diagnostic-only or unsupported for package execution rather than silently accepting it. These are proposed evidence labels, not new package kinds or a required ABI extension.
+
+Retain the SD route where it works. Compare it with an independently readable pre-staged flash package set only for a target that actually needs that alternative. The latter incurs storage/layout/population/update and last-good-generation costs; capacity alone cannot choose it. Neither option permits a second installer or a permanent normal-driver fallback. Reject a universal internal-flash store as the default recommendation until it solves a verified dependency or capacity problem. No-SD/no-PSRAM findings do not expand U1; integrate with the existing lab and milestone owners.
+
+There is also a **mutation boundary**, separate from bootstrap ownership. A receipt cache invalidated only by HalStorage writes cannot certify bytes if compatible native apps can use raw SD/FS writable imports [E17](evidence.md#e17-receipts-and-legacy-mutation-boundaries). Preserve those working apps while the U1 owner establishes conservative invalidation for bypass-capable execution and meaningful media/trust boundaries. If mutation can continue concurrently or through retained handles, “rehash once after exit” is insufficient: do not call a generation trusted while unobserved writers can still alter it. A receipt is local cache evidence, not authority or publisher authentication. No recipe here replaces U1's active implementation.
 
 ## Current coupling that matters
 

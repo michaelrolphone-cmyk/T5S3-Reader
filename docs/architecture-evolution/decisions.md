@@ -39,3 +39,16 @@ For each later change record date, affected proposal, new immutable evidence, wh
 - Do not turn the minimum-core aspiration into an immediate UI-ELF gate: U3 explicitly keeps UI compiled but optional; U4 does not require its extraction. Later product packaging needs a scoped decision, not an invented extra milestone.
 
 **Final reconciliation:** active U1 head `8d8f2472` contains later sequencing/U3/USB-remediation text requiring the Wi-Fi hardware/provider boundary; it overrides the older master exclusion. The earlier `74c7bdfd` contract/CI findings remain historical. R1–R3 are analysis questions, not priority weights: U1 should close with reuse and bounded scope, without subordinating expressive e-paper, minimal core, CrossPoint parity or daily usefulness to endless foundation work.
+
+## 2026-10-01 Beta evidence, actual lab tiers and retained designs
+
+[E16–E18](evidence.md#e16-october-1-current-checkpoints-and-evidence-boundaries) materially change the next evidence to seek:
+
+- **Narrow R1:** keep one recoverable bootstrap closure, but stop treating an SD reader as a universal solution. The actual no-SD and zero-PSRAM boards expose separate storage/executable-memory contracts. Diagnostics and a compile-linked SD harness leave package/ownership/recovery proof open. Retire a default universal flash store; compare pre-staging only where a verified target needs it. No automatic U1 board expansion.
+- **Promote R4 ahead of wholesale R2 extraction:** independent builds now exist, and Drivers' byte/mode-aware audit fixes real provenance weakness. The missing discriminating result is a clean useful-package install/update/recovery round trip. This is U2's existing design made concrete for the beta planning target, not a new installer, onboarding program or U1 gate.
+- **Retain compiled-optional GUI and current source during migration:** a full reader rewrite is a weaker next step than a small external witness. Preserve R2's product/parity analysis as a later scoped extraction question; neither beta urgency nor repository separation authorizes cutover.
+- **Narrow the display completion criticism:** current accepted flip is not a promise of optical settling. Retire any suggestion that every frame must wait for settling; retain the separate truthful stop/lifetime question and no-copy/overlap paths.
+- **Reject HalStorage-only receipt confidence:** raw compatible SD/FS writers are counterevidence. U1 already owns conservative invalidation and coherent inventory; do not duplicate it or remove working apps to simplify a cache.
+- Keep all four goals equal. October 9 is a planning interpretation, not a release promise or a firmware version change. Daily T5S3 testing remains deferred; no CI/diagnostic result closes product qualification.
+
+Publication discipline: this pass started from open draft #328 at `c65ed014`; the branch had no competing PR comment claim and no other active architecture writer was visible in the checked task inventory. GitHub reported mergeable=true on recheck, so the previously reported conflict required no repair. No master merge or out-of-path change was used.

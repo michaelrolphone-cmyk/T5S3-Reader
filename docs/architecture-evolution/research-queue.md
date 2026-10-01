@@ -1,35 +1,37 @@
 # Focused research queue
 
-These questions refine the existing roadmap; they do not authorize implementation, hardware operations or automatic milestone advancement.
+These questions refine the existing roadmap; they do not authorize implementation, device operations or milestone advancement. IDs below refer to the stable R1–R4 recommendations, not goal weights.
 
-## 1 Bootstrap and recovery facts
+## 1 Close the actual bootstrap and resource contract — R1
 
-For the actual Pro and U3 CAM configuration, identify the first accessible package source, its own power/pin/storage dependencies, population/update route, last-good recovery path and exclusive boot-to-runtime controller handoff. Determine which current board/SD calls are truly required bootstrap versus normal product behavior, and how a future packaged clock preserves the current no-SD/no-full-UI timer-resume path. Verify whether U1's permanent generation-bound integrity receipt/invalidation and coherent inventory work is implemented beyond the intentional hash bypass.
+Follow the existing SD-witness owner from bootstrap disk/compile-linked HalStorage/SdVfs to the unchanged ordinary package manager, loader and provider graph. Record the first readable package, exact mount/package generations, exclusive handoff, recoverable last-good state and behavior with removed/corrupt media. Coordinate its generation seam with the sole U1 receipt/inventory owner. Raw writable legacy SD/FS imports mean HalStorage-only invalidation is not enough; resolve ongoing/retained writer uncertainty while preserving compatibility.
 
-**Evidence that changes R1:** a real dependency graph and linked/runtime witness; failure to read a provider without that same provider; overlap of bootstrap/runtime ownership; or a recovery path lost during ordinary updates. Missing display/media must not require GUI to diagnose/recover.
+For the no-SD relay and zero-PSRAM Tracker, separately establish package-store population/recovery and executable mapping/peak memory-class feasibility before labeling package execution supported. Do not create a universal flash store or new U1 gate from diagnostic success. Preserve the clock's no-SD/no-full-UI wake path. PSRAM on the relay remains unknown.
 
-## 2 CrossPoint target and product boundary
+**Evidence that changes R1:** a real ordinary-package load/recovery/ownership witness, or a concrete cycle/capacity/memory-class failure that falsifies the retained SD or pre-staged-store alternative. No physical tests are requested by this review.
 
-Select the intended original/upstream revision and clarify the actual app source/build interface. Use the [comparison](crosspoint-parity.md) to agree on applicable user-visible features and persisted data. Trace one reading flow's dependencies through reader, settings/font/content state, storage, display and input; record product-specific firmware exports still needed by the candidate app boundary.
+## 2 One reproducible developer round trip — R4
 
-**Evidence that changes R2:** a reproducible upstream app/port with preserved behavior and small stable adaptation; or proof that the adapter merely relocates an entry point while retaining product logic in core. Do not equate USB host storage with USB-device drive mode, runtime TTF with build font assets, or source presence with full parity.
+Use an existing useful external app and actual provider dependencies with pinned runtime/SDK/toolchain/source. Capture clean build, exact imports/ABI, canonical ZIP identity/hash, ordinary install/launch, strictly newer update and failed-update recovery/relaunch preserving user data. Record storage generations and aggregate memory headroom. Retain current Reader sourcing as a baseline until independent source/package delivery is proven; build parity alone is insufficient. Distinguish software fixtures from physical evidence and respect deferred daily T5S3 testing.
 
-## 3 Expressive rendering and daily-work regression budget
+**Evidence that changes R4:** another developer can reproduce the complete declared path without hidden checkout state or manual file replacement. A failure identifies the last proven stage; it does not justify a new manager. October 9 beta planning should be assessed against these explicit claims, not inferred from heartbeat counts.
 
-Establish exact-scene/quality baseline for fast e-paper before moving a boundary. Reuse current render/pack/copy/wait/input and scan-stage metrics. Attribute peak memory to retained images, relocation, provider frames/state/DMA and quarantine. Include a daily serial/programmer/USB workflow, desk-clock sleep/wake and return from game to Home/reader; determine acceptable disruption with the owner when implementation is scoped.
+## 3 Expressive rendering and daily-work budgets — R3
 
-**Evidence that changes R3:** actual device timing/power/working-set regressions or improvements, copy counts and bounded cancellation; host-only FPS or changing visual quality cannot settle the question. Preserve optimized data paths while generic control manages ownership.
+Use current display `0987497c` and GameBoy `9610cb45` as updated source/CI baselines, retaining geometry/format limits. Separate buffer acquisition, accepted flip, optical settling and verified quiescence; do not turn optical settling into every-frame backpressure. Review the void-stop contract independently.
 
-## 4 First non-e-paper provider facts
+At an authorized qualification point, compare identical scenes/quality using render/pack/copy/wait/input and scan metrics; account for provider/candidate/relocation/frame/DMA/quarantine memory. Include serial/programmer use, game exit/Home restoration, reading-state resume and clock sleep/wake. Current daily-device physical testing is deferred, not passed. Host FPS and build success cannot settle latency, power or visual quality.
 
-When actual reflective LCD or watch hardware is selected, verify CPU/ABI, memory, bootstrap, power/input, geometry, stride/color layout, damage/refresh behavior and completion semantics. Check whether the existing display SDK can describe them before extending it. Keep input independent from display and map rotation/safe layout consistently.
+## 4 Product boundary and selected CrossPoint target — R2
 
-**Decision:** introduce only a missing required semantic, not a universal compositor or guessed watch stack. Maintain optional high-performance e-paper behavior and clear unsupported-feature refusal.
+Preserve the [pinned feature comparison](crosspoint-parity.md) while the intended revision/app build contract is selected. Trace book open/render/page/save/exit/resume plus representative transfer/settings and applicable parity gaps. A coherent product bundle with a small reusable interface remains the candidate; compiled-optional GUI stays the U3 baseline. Source/package migration does not prove product code left firmware.
 
-## 5 Existing contract issues and conditional reopening
+**Evidence that changes R2:** a thin reproducible adaptation preserves actual behavior and persistent state without adding feature-specific firmware calls. Full extraction is not required by U3/U4 or authorized by the beta label.
 
-Track PR #220's scan-start/completion and void-stop/quiescence issues without repeatedly reporting resolved defects. Witness the U1 old/new CDC endpoint compatibility seam with pinned packages/runtime. Reopen a standalone package-transaction proposal only on concrete loss-of-generation, mapped-replacement, unbounded recovery or required upgrade evidence that existing safeguards do not handle.
+## 5 Conditional questions only
+
+When a genuine second display target is selected, establish CPU/ABI, storage, memory classes, input, geometry/stride/format and refresh semantics against the existing SDK before extending it. Tracker TFT presence is not a provider witness or permission to migrate it. Reopen transaction/lifecycle rewrites only on concrete failures the existing machinery cannot handle. Verify current CDC compatibility at canonical 0.1.8 rather than treating the old 0.1.7 identity snapshot as current.
 
 ## Maintenance rule
 
-Recheck master/PR state and immutable source revisions. Never edit a closed PR. Keep prior facts and limitations, mark superseded rankings, and publish only meaningful analysis changes. Separate roadmap requirements, implementation evidence, device results and owner acceptance. No code, config, build, manifest, version, merge or release work belongs to this document task.
+Read current source/ownership and PR state; preserve user edits and never edit a closed PR. Keep the ranked set at three to five ideas. Separate roadmap design, build/source checks, actual package/runtime results, physical qualification and owner acceptance. Only docs/architecture-evolution/ belongs to this task.
