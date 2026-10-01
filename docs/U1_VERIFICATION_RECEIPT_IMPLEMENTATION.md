@@ -93,7 +93,7 @@ This does **not** close the whole permanent-verification requirement:
 
 - Canonical application owned-buffer/context admission passed both workflows at
   ad7a0431 (U1_APPLICATION_SNAPSHOT_ADMISSION.md). Checksum-bearing loose admission
-  is connected with passing host tests and target verification pending; digestless
+  passed both workflows at3ba73f92 (36848254092 / 36848254100); digestless
   manual input retains its explicit compatibility contract
 - Retained provider remapping now has a separate graph-owned immutable-memory
   proof, verified at a928d444 by workflows36845426266 / 36845426285. Only GraphV2 privately

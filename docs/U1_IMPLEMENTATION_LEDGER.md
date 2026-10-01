@@ -7,15 +7,28 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current target-green checkpoint is **a928d444ed7496ac69da0cb99ae2ecb06a84a379**,
-tree **d41f6a447783bd66e1cb6cce753a513dd412bba6**, identical to tested local
-**00c693a0**. Both workflows **36845426266 / 36845426285** passed, including
-private graph-owned remap proof. Canonical app admission and its actual linked
-strong callback edge passed at **ad7a0431** (36842590302 / 36842590322).
+Current target-green checkpoint is **3ba73f9274250cb5fd68a4fda8bff3eafa4c3cbb**,
+tree **a1f120933677456e00bd881e1dc716086edec310**, identical to tested local
+**6b46c40b**. Both workflows **36848254092 / 36848254100** passed, including both
+boards' actual-parser/owned-app fixture. Graph-owned remap proof passed at
+**a928d444** (36845426266 / 36845426285); canonical app admission and its actual
+linked strong callback edge passed at **ad7a0431** (36842590302 / 36842590322).
 Master **1e0188c1** remains integrated; PR96 was verified open on October 1 at
-10:15 UTC. Sole ownership remains unchanged. The current loose-checksum slice
-has passing host tests; its new target checks are pending publication.
+10:25 UTC. Sole ownership remains unchanged. Current local work bounds loader
+contention and repeated reads; deeper HalStorage/media termination remains open.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: bounded loader descriptor/read work
+
+The existing VFS now refuses descriptor lock contention after1000ms without
+accessing or releasing an unowned slot. Failed close retains its slot and refuses
+admission. The existing reader checks allocation size, reads at most4KiB per
+request, yields each chunk and enforces a30-second cooperative read budget with
+throttled progress. Actual-source fixtures pass timeout/ownership/capacity,
+short/error reads, deadline/wrap and cleanup; the full native-app aggregate
+also passed. Target verification is pending.
+HalStorage/media calls still need a safe real termination contract; this slice
+makes no broader lower-I/O completion claim. See U1_LOADER_IO_BOUNDS.md.
 
 ## October 1: checksum-bearing loose app admission
 
@@ -29,7 +42,8 @@ absence; revoke, changed bytes/length and source mutation are tested.
 The complete native-app aggregate, actual-parser/real-storage fixture, app
 installation integration (10 tests) and USB package tests (7 tests) pass locally.
 Normal board CI now runs the actual parser fixture against its already installed
-ArduinoJson dependency. Exact target results for this slice remain pending.
+ArduinoJson dependency. Both exact-head target workflows passed at3ba73f92; both board jobs also ran
+the actual-parser fixture successfully.
 
 ## October 1: immutable provider-node remap evidence
 

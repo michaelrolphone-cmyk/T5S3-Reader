@@ -109,16 +109,48 @@ int esp_elf_open(elf_file_t *file, const char *name)
         goto errout_lseek_end;
     }
 
+    /* Keep the reader bounded even for ports other than the SD VFS. */
+    if (size < 52 || size > 8 * 1024 * 1024) {
+        errno = EFBIG;
+        goto errout_lseek_end;
+    }
     pbuf = esp_elf_malloc(size, false);
     if (!pbuf) {
         ESP_LOGE(TAG, "Failed to malloc %" PRId64 " bytes", (int64_t)size);
         goto errout_lseek_end;
     }
 
-    ret = read(fd, pbuf, size);
-    if (ret != (ssize_t)size) {
-        ESP_LOGE(TAG, "Failed to read ret=%zd", ret);
-        goto errout_read_fs;
+    /* A synchronous media call still needs its own driver timeout; these
+     * checkpoints bound repeated work and yield between bounded read requests. */
+    const TickType_t read_started = xTaskGetTickCount();
+    const TickType_t read_budget = pdMS_TO_TICKS(30000);
+    size_t offset = 0, reported_offset = 0;
+    TickType_t reported_at = read_started;
+    while (offset < (size_t)size) {
+        if ((TickType_t)(xTaskGetTickCount() - read_started) >= read_budget) {
+            errno = ETIMEDOUT;
+            goto errout_read_fs;
+        }
+        const size_t remaining = (size_t)size - offset;
+        const size_t chunk = remaining < 4096 ? remaining : 4096;
+        ret = read(fd, pbuf + offset, chunk);
+        if (ret != (ssize_t)chunk) {
+            ESP_LOGE(TAG, "Failed to read ret=%zd", ret);
+            goto errout_read_fs;
+        }
+        offset += chunk;
+        const TickType_t now = xTaskGetTickCount();
+        if (offset == (size_t)size || offset - reported_offset >= 256 * 1024 ||
+                (TickType_t)(now - reported_at) >= pdMS_TO_TICKS(500)) {
+            ESP_LOGD(TAG, "ELF read %u/%u bytes", (unsigned)offset, (unsigned)size);
+            reported_offset = offset;
+            reported_at = now;
+        }
+        vTaskDelay(1);
+        if ((TickType_t)(xTaskGetTickCount() - read_started) >= read_budget) {
+            errno = ETIMEDOUT;
+            goto errout_read_fs;
+        }
     }
 
     extern bool esp_elf_validate_file(const uint8_t *, size_t);

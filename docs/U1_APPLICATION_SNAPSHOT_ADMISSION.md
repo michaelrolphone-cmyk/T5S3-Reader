@@ -107,7 +107,9 @@ fixture pass against ArduinoJson7.4.2, as does the full native-app host aggregat
 Fixtures cover actual byte SHA, warm reuse, mutation and size refusal, revoke,
 digestless/missing sidecars and an observed metadata error during absence.
 Both normal board CI jobs now run the real parser fixture using their already
-installed dependency. Target verification of this loose extension is pending.
+installed dependency. Both workflows passed exact **3ba73f9274250cb5fd68a4fda8bff3eafa4c3cbb**
+(36848254092 / 36848254100), tree **a1f120933677456e00bd881e1dc716086edec310**,
+identical to tested local6b46c40b. Both board jobs executed the real-parser fixture.
 
 Remaining implementation/evidence is explicit:
 

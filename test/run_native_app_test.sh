@@ -200,6 +200,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -fsanitize=address,
   -lcrypto -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/elf_owned_admission_test.py"
+python3 "$repo_dir/test/native_apps/sd_vfs_lock_test.py"
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"
