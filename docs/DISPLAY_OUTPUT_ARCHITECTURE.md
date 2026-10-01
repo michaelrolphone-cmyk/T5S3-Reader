@@ -10,8 +10,9 @@ UI compatibility backend is still compiled into firmware during migration.
 
 ## Master integration (October 1, 2026)
 
-Backmerged master `5c1284bf`, including PRs #277, #333, #334, #336, #337,
-#339 and #340. Hollow Trail retains the published 1.1.41 source and manifest
+Backmerged master `d4df4609`, including PRs #277, #333, #334, #336, #337,
+#339, #340 and #341. Timecard 1.0.2 retains the merged clock-failure fix
+and its manifest unchanged. Hollow Trail retains the published 1.1.41 source and manifest
 unchanged, including Y motion-emphasis controls and the playable schoolroom.
 Preserves X/Back navigation, asynchronous boot/loading and wisp transitions,
 controller/math changes, the video narration strip, inherited video backlight,
