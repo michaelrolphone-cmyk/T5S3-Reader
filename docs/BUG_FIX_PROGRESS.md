@@ -1,6 +1,16 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 02:08 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 02:23 UTC. This record supersedes the pre-merge restoration snapshot.
+
+## Completed ledger-only reconciliation — 19:21 scan
+
+- Coordinator: `fix_reachable_confirmation_bug`; active ledger owner: **none**. Read master `3300229d0a232b4e6047a7c93b2f518c033c3cfa`, ledger parent `06ce4a38f19ece22f6a1ce40be58283436d4720d` and open draft #332 before this atomic documentation update; no prior active claim
+- Reconciled immutable scan `5a4a4653ce37b932f1485bb8cd9a5d4dda8dce87` from `automation/bug-scan-20260930-1921`: local **249 → canonical 252**, **250 → 253**, **251 → 254**. Existing 249–251 unchanged
+- 252: installed-app resolver accepts provisional uniqueness after iterator failure; distinct from #24 provider count cutoff, #227 partial live inventory publication, and #129 resolver capacity exhaustion. Similar shared iterator error/EOF limitation is cross-referenced without collapsing distinct consumers/failures
+- 253: combined I2C per-phase timeout reuse; 254: multi-device USB class-rejection cache represented by one token. Source patterns inspected on current master; these are **unclaimed candidates needing revalidation**, not new runtime or hardware findings. #254 overlaps NativeUsbBridge under active U1 #96 and must be reconciled before any repair
+- Current inventory: **243 canonical reports, 241 outstanding**: 238 need revalidation, 16/17 held, 249 awaiting merge; 91/205 fixed. Next unused ID **255**
+- **Two code-batch slots remain occupied** by #333 and #334. No implementation claim or third batch was created. No runtime/build/version edits, target tests, hardware I/O, merge or release for this documentation-only reconciliation
+- Verification: canonical headings/unique IDs, immutable source aliases, preserved existing report bodies, current-source/dedup notes, captured-parent non-force publication and remote content verification. Keep using open #332; next run must refresh claims and PR state
 
 ## Completed hourly run — native confirmation safety
 
@@ -12,7 +22,7 @@ Snapshot: 2026-10-01 02:08 UTC. This record supersedes the pre-merge restoration
 - Source reachability: NativeSettingsBridge System actions → ClearCacheActivity/OtaUpdateActivity → installed native app → NativeAppHost raw tap → NativeUiBridge row hit test. PRO uses installed touch provider, not legacy X4 front buttons. Requires installed compatible apps and working touch; OTA needs network/new firmware. Owner device installation/use is not claimed
 - Published index `e495c5e1` and current master both have clear_cache 1.0.0 and ota_update 1.0.0; completed app-only bump to 1.0.1 each. Existing UI event ABI suffices; no firmware bump
 - Reconciled scan `66bc650056964dcba8e5164d6d76f6c45cdb81ab` by affected function/trigger/failure: 249 native confirmation differs from 246; 250 terminal FLASH_END loss differs from earlier flashing reports; 251 skipped-role/incomplete validation differs from 16 persistence rollback and 17 labels. IDs 249–251 preserve scan provenance; 250/251 remain unclaimed/unvalidated
-- Current inventory: **240 canonical reports, 238 outstanding** (249 awaiting merge; 16/17 on hold; 235 need revalidation); 91/205 fixed on master. Next unused ID **252**. Historical counts below describe the earlier snapshot
+- Earlier batch inventory: **240 canonical reports, 238 outstanding** (249 awaiting merge; 16/17 on hold; 235 need revalidation); 91/205 fixed on master. Next unused ID **252**. Historical counts below describe the earlier snapshot
 - Draft [#334](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/334); exact remote head `98943199054e409987a957b9b909f32ccd4c9f49` verified by fetch/content comparison; active claim commit `2697c3faa5432b41d30fde2302a1872be49ac610`
 - PASS: 2,788 ASan/UBSan cases linking actual C apps and verbatim production event/hit-test/rotation functions; baseline body-row case fails independently for each original app. All 24 mappings/four orientations, non-control taps, explicit touch/physical Confirm, held buttons, cancellation, exit/poll failure, service failure/reopen and missing event API covered. Rendering/input hardware/destructive services are fixtures
 - PASS: full native aggregate, C syntax, shell syntax, whitespace. LeakSanitizer disabled for ptrace. Both local target app builds attempted and blocked by absent Xtensa compiler
