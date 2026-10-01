@@ -63,7 +63,7 @@ void app_main(void) {
     app = t5_app_get_api(T5_APP_ABI_VERSION);
     ota = t5_ota_get_api(T5_OTA_API_VERSION);
     ui = t5_ui_get_api(T5_UI_API_VERSION);
-    if (!app || !ota || !ui || !app->poll || !ui->render_list || !ota->check_for_update ||
+    if (!app || !ota || !ui || !app->poll || !ui->render_list || !ui->poll_event || !ota->check_for_update ||
         !ota->is_update_newer || !ota->latest_version || !ota->install_update ||
         !ota->processed_size || !ota->total_size || !ota->restart_after_update) return;
 
@@ -94,11 +94,12 @@ void app_main(void) {
                    latest, "Cancel", "Update");
 
     for (;;) {
-        t5_app_input_t input;
-        if (!app->poll(&input, 50) || input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK)) return;
-        bool confirm = (input.buttons & T5_APP_BUTTON_CONFIRM) != 0;
-        if (input.tapped && ui->hit_test) confirm = ui->hit_test(input.touch_x, input.touch_y) >= 0;
-        if (!confirm) continue;
+        t5_ui_event_t event;
+        if (!ui->poll_event(&event, 50) || event.type == T5_UI_EVENT_EXIT ||
+            event.type == T5_UI_EVENT_BACK) return;
+        // Body/header taps are not approval. The UI event API resolves the
+        // rendered action hint (including orientation and button mapping).
+        if (event.type != T5_UI_EVENT_CONFIRM) continue;
 
         render_progress();
         const t5_ota_result_t installed = ota->install_update(progress_callback, NULL);
