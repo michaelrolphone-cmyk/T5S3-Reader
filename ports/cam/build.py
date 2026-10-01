@@ -23,3 +23,29 @@ env.BuildSources("$BUILD_DIR/streams", "$PROJECT_DIR/src/runtime/streams", src_f
 
 if env.subst("$PIOENV") == "cam-headless-qualification":
     env.BuildSources("$BUILD_DIR/cam-qualification", "$PROJECT_DIR/test/hardware/cam", src_filter="+<*.cpp>")
+
+# Pin the exact archive manifests for the lab-only idempotent install check.
+# The ordinary manager still verifies every declared installed payload byte.
+if env.subst("$PIOENV") == "cam-camera-experiment":
+    import zipfile
+    generated = Path(env.subst("$BUILD_DIR")) / "camera-package-identity"
+    generated.mkdir(parents=True, exist_ok=True)
+    declarations = ["#pragma once", "#include <stdint.h>"]
+    for symbol, archive in (
+        ("camProfileManifest", "driver-cam-ov3660-profile-0.1.0-xtensa-esp32s3.rte.zip"),
+        ("camDriverManifest", "driver-camera-esp32s3-ov3660-0.1.1-xtensa-esp32s3.rte.zip"),
+    ):
+        with zipfile.ZipFile(root / "dist/packages" / archive) as package:
+            if package.namelist().count(".package.json") != 1:
+                raise RuntimeError("Expected one canonical package manifest")
+            entry = package.getinfo(".package.json")
+            if not 0 < entry.file_size <= 4096:
+                raise RuntimeError("Lab package manifest exceeds bounded identity check")
+            manifest = package.read(entry)
+        declarations.append("static constexpr uint8_t " + symbol + "[]={" +
+                            ",".join(str(byte) for byte in manifest) + "};")
+    header = generated / "CameraPackageIdentity.h"
+    contents = "\n".join(declarations) + "\n"
+    if not header.exists() or header.read_text() != contents:
+        header.write_text(contents)
+    env.Prepend(CPPPATH=[str(generated)])
