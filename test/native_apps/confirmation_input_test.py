@@ -13,7 +13,9 @@ import tempfile
 repo = Path(__file__).resolve().parents[2]
 source_root = Path(os.environ.get('APP_SOURCE_ROOT', repo))
 source = (repo / 'src/native/NativeUiBridge.cpp').read_text()
-parts = [source[source.index('Rect rotatePortraitRectToCurrentOrientation('):source.index('void drawChrome(')],
+# The adaptive layout between input helpers and drawChrome is unrelated to
+# confirmation dispatch; keep the verbatim helper slice out of renderer fixtures.
+parts = [source[source.index('Rect rotatePortraitRectToCurrentOrientation('):source.index('struct NativeUiLayout')],
          source[source.index('int32_t hitTest('):source.index('int32_t nextIndex(')]]
 with tempfile.TemporaryDirectory() as tmp:
     tmp = Path(tmp)

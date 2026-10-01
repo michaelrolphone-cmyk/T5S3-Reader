@@ -193,6 +193,15 @@ jobs:
         timeout-minutes: 10
         run: bash test/run_native_app_test.sh
 
+      - name: Verify display abstraction contract
+        run: python3 test/native_apps/display_abstraction_contract_test.py
+
+      - name: Exercise display surface metadata validation
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -Ilib/DisplaySurface \
+            test/display/display_surface_validation_test.cpp -o /tmp/display-surface-validation
+          /tmp/display-surface-validation
+
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh
 

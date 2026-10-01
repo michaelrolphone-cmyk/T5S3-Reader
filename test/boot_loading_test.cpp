@@ -14,7 +14,7 @@ void delay(unsigned n) { std::this_thread::sleep_for(std::chrono::milliseconds(n
 namespace Color { enum { Black }; }
 namespace EpdFontFamily { enum { BOLD }; }
 [[maybe_unused]] static struct { void suppressInitialFullRefresh(){} } display;
-namespace HalDisplay { enum RefreshMode { HALF_REFRESH, FAST_REFRESH, FULL_REFRESH }; }
+enum class DisplayPresentMode { Quality, LowLatency, Clean };
 constexpr int UI_12_FONT_ID=0, SMALL_FONT_ID=1;
 struct GfxRenderer {
  enum { BW }; int presents=0;
@@ -22,8 +22,8 @@ struct GfxRenderer {
  void clearScreen(){} int getScreenWidth(){return 540;} int getScreenHeight(){return 960;}
  void fillRoundedRect(int,int,int,int,int,int){}
  void drawCenteredText(int,int,const char*,bool=false,int=0){}
- void displayBuffer(HalDisplay::RefreshMode){++presents;}
- void requestNextRefresh(HalDisplay::RefreshMode){}
+ void displayBuffer(DisplayPresentMode){++presents;}
+ void requestNextRefresh(DisplayPresentMode){}
 };
 using esp_err_t=int;
 constexpr int ESP_OK=0;

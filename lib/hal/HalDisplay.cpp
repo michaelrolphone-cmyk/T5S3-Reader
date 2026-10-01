@@ -435,7 +435,7 @@ bool HalDisplay::resumeFromExternalOwner() {
   // cleanup once. Boot can substitute FAST after settling its final white frame.
   begin(false);
   if (!displayReady) {
-    LOG_ERR("DSP", "Could not restore display after ELF released hardware");
+    LOG_ERR("DSP", "Could not restore display after ELF released hardware; retained panel image preserved");
     return false;
   }
   requestNextRefresh(FULL_REFRESH);
@@ -701,9 +701,17 @@ void HalDisplay::pushPanelCanvas(const RefreshMode mode, const lgfx::epd_mode::e
 }
 
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen) {
-  if (!displayReady || !gfx || !panelCanvas) {
+  static bool warnedUnavailable = false;
+  if (!displayReady || !frameBuffer || !gfx || !panelCanvas) {
+    if (!warnedUnavailable) {
+      LOG_ERR("DSP", "Present rejected: ready=%d framebuffer=%p gfx=%p canvas=%p externalOwner=%d",
+              displayReady ? 1 : 0, static_cast<void*>(frameBuffer), static_cast<void*>(gfx),
+              static_cast<void*>(panelCanvas), externalOwner ? 1 : 0);
+      warnedUnavailable = true;
+    }
     return;
   }
+  warnedUnavailable = false;
   (void)turnOffScreen;
 
   renderBwToPanelCanvas();
@@ -944,9 +952,18 @@ void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
 }
 
 void HalDisplay::displayGrayBuffer(HalDisplay::RefreshMode mode) {
-  if (!displayReady || !gfx || !panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
+  static bool warnedGrayUnavailable = false;
+  if (!displayReady || !frameBuffer || !gfx || !panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
+    if (!warnedGrayUnavailable) {
+      LOG_ERR("DSP", "Gray present rejected: ready=%d framebuffer=%p gfx=%p canvas=%p lsb=%p msb=%p",
+              displayReady ? 1 : 0, static_cast<void*>(frameBuffer), static_cast<void*>(gfx),
+              static_cast<void*>(panelCanvas), static_cast<void*>(grayscaleLsbBuffer),
+              static_cast<void*>(grayscaleMsbBuffer));
+      warnedGrayUnavailable = true;
+    }
     return;
   }
+  warnedGrayUnavailable = false;
 
   if (!grayscaleBaseCaptured) {
     if (!captureGrayscaleBaseBuffer(frameBuffer)) {

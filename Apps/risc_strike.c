@@ -270,7 +270,7 @@ static bool fps_render_controller(uint32_t now) {
 static void fps_show_controller_video_error(void) {
     if (g_surface.width != 960u || g_surface.height != 540u ||
         g_surface.stride_bytes < 240u ||
-        g_surface.pixel_format != T5_VIDEO_PIXEL_GRAY_2BPP_MSB) {
+        g_surface.pixel_format != DISPLAY_CLIENT_GRAY2) {
         return;
     }
     size_t bytes = 0;
@@ -379,11 +379,11 @@ static bool fps_update_controller_input(
 }
 
 static bool fps_start_video(void) {
-    uint8_t format=g_mono?T5_VIDEO_PIXEL_MONO_1BPP_MSB:T5_VIDEO_PIXEL_GRAY_2BPP_MSB;
+    uint8_t format=g_mono?DISPLAY_CLIENT_MONO1:DISPLAY_CLIENT_GRAY2;
     if(!g_video->start_format(&g_surface,format)) return false;
     if(g_surface.width!=960 || g_surface.height!=540 ||
        g_surface.stride_bytes!=(g_mono?120:240) || g_surface.pixel_format!=format ||
-       !(g_surface.flags&T5_VIDEO_FLAG_ONE_IS_BLACK)) { g_video->stop(); return false; }
+       !(g_surface.flags&DISPLAY_CLIENT_ONE_IS_BLACK)) { g_video->stop(); return false; }
     return true;
 }
 __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
@@ -392,9 +392,9 @@ __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
 
 __attribute__((visibility("default"))) void app_main(void) {
     g_app = t5_app_get_api(T5_APP_ABI_VERSION);
-    g_video = t5_video_get_api(T5_VIDEO_API_VERSION);
-    if (!g_app || !g_video || g_video->struct_size < sizeof(*g_video) ||
-        !g_app->poll || !g_app->millis || !g_video->start_format ||
+    g_video = display_client_get_api();
+    if (!g_app || !g_video ||
+        !g_app->poll || !g_app->millis || !g_video->start ||
         !g_video->backbuffer || !g_video->can_submit ||
         !g_video->submit || !g_video->stop) {
         return;
@@ -414,8 +414,8 @@ __attribute__((visibility("default"))) void app_main(void) {
     video_started = true;
 
     fps_log(g_xinput_api
-        ? "Risc Strike 1.0.2 started with XInput controls"
-        : "Risc Strike 1.0.2 started without XInput provider");
+        ? "Risc Strike 1.0.3 started with XInput controls"
+        : "Risc Strike 1.0.3 started without XInput provider");
     g_state = FPS_STATE_TITLE;
     g_prev_buttons = 0u;
     g_back_hold_start_ms = 0u;

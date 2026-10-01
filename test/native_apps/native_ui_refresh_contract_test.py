@@ -8,7 +8,7 @@ host = (ROOT / "src/native/NativeAppHost.cpp").read_text()
 # the EPD frame from loopTask starves IDLE0 on the T5S3 display driver.
 assert bridge.count("presentNativeAppUiFrame()") == 3
 assert "displayBuffer(" not in bridge
-assert "HalDisplay::BALANCED_REFRESH" in host
+assert "DisplayPresentMode::Balanced" in host
 assert "xPortGetCoreID() == 0 ? 1 : 0" in host
 assert "vTaskDelay(1);" in host
 
@@ -36,8 +36,13 @@ assert "T5_UI_LIST_ICON_COMPACT" in bridge
 assert "compactStateIcons" in bridge
 assert "const int stateIconSize = compactStateIcons ? 12 : 16;" in bridge
 assert "stateIconGutter" not in bridge
-assert "const Rect content{0, listTop, pageWidth," in bridge
-assert "stateIconFn" in bridge and "TextRole::System, stateIconFn, stateIconSize" in bridge
+# Adaptive display work must keep the theme-owned full-row icon rendering while
+# deriving the list rectangle from the active display's safe viewport.
+assert "struct NativeUiLayout" in bridge
+assert "renderer.getOrientedViewableTRBL" in bridge
+assert "const Rect content{layout.safeLeft, layout.contentTop, layout.safeWidth()," in bridge
+assert "stateIconFn" in bridge and "TextRole::System, stateIconFn" in bridge
+assert "TextRole::System, stateIconFn, stateIconSize" in bridge
 assert "FontAwesomeIcons::draw" not in bridge
 
 # Every theme owns the leading icon inside its existing full-width row

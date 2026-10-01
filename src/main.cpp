@@ -315,13 +315,31 @@ void enterPowerOffKeepingScreen(const char* status) {
 // power-off. Consumed at the top of loop() so the battery-cut runs in the main-loop
 // context rather than inside an activity's call stack.
 bool g_shutdownRequested = false;
+bool g_displayBootFailed = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
-void setupDisplayAndFonts(bool clearPanel = true) {
-  display.begin(clearPanel);
-  renderer.begin();
+bool setupDisplayAndFonts() {
+  // This runs before any display backend initialization. A bad width, stride,
+  // format or safe-area edit must be rejected before it can reconfigure the
+  // panel or disturb the retained e-paper image.
+  if (!renderer.preflightSurface()) {
+    LOG_ERR("MAIN", "Display metadata preflight failed; panel backend was not touched");
+    return false;
+  }
+
+  // Preserve the physical image while the already-validated backend starts.
+  display.begin(false);
+  if (!display.isReady()) {
+    LOG_ERR("MAIN", "Display backend initialization failed; retained panel image left untouched");
+    return false;
+  }
+  if (!renderer.begin()) {
+    LOG_ERR("MAIN", "Renderer initialization failed; showing emergency display code 0xD1");
+    (void)display.showEmergencyFailurePattern(0xD1);
+    return false;
+  }
   activityManager.begin();
-  LOG_DBG("MAIN", "Display initialized");
+  LOG_DBG("MAIN", "Display initialized and renderer surface validated");
 
   // Initialize font decompressor for compressed reader fonts
   if (!fontDecompressor.init()) {
@@ -349,6 +367,7 @@ void setupDisplayAndFonts(bool clearPanel = true) {
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
   LOG_DBG("MAIN", "Built-in fonts setup");
+  return true;
 }
 
 void ensureSdFontLoaded() { sdFontSystem.ensureLoaded(renderer); }
@@ -431,7 +450,10 @@ void setup() {
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
     LOG_ERR("MAIN", "SD card initialization failed");
-    setupDisplayAndFonts();
+    if (!setupDisplayAndFonts()) {
+      g_displayBootFailed = true;
+      return;
+    }
     activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
     return;
   }
@@ -503,11 +525,16 @@ void setup() {
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
   const bool animateBoot = !recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake;
-#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
-  setupDisplayAndFonts(!animateBoot);  // Spatial scrub owns the first physical clear.
-#else
-  setupDisplayAndFonts();
-#endif
+  if (!setupDisplayAndFonts()) {
+    g_displayBootFailed = true;
+    return;
+  }
+  // Touch is an optional installed provider capability. Do not attempt to
+  // activate it during setup: input.navigation gets the first provider-graph
+  // opportunity from MappedInputManager::update(), so a missing touch package
+  // can never strand USB/controller navigation before Driver Manager is usable.
+  // nativeTouchTick() activates touch later in the normal input loop.
+  LOG_INF("MAIN", "Touch provider activation deferred to input loop");
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
   // Start the independent animation before SD font discovery, state loading,
@@ -569,6 +596,13 @@ void setup() {
 }
 
 void loop() {
+  if (g_displayBootFailed) {
+    // Do not touch ActivityManager/renderer after failed display bootstrap.
+    // Leave the retained image or emergency failure pattern stable for diagnosis.
+    delay(250);
+    return;
+  }
+
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;

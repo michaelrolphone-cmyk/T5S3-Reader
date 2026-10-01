@@ -5,18 +5,17 @@
 #include "../../Apps/risc_strike.c"
 #include "../../Apps/hollow_trail_engine.inc"
 const t5_app_api_v1 *t5_app_get_api(uint32_t v) { (void)v; return NULL; }
-const t5_video_api_v1 *t5_video_get_api(uint32_t v) { (void)v; return NULL; }
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v) { (void)v; return NULL; }
 const t5_math_api_v1 *t5_math_get_api(uint32_t v) { (void)v; return NULL; }
 static unsigned stops;
 static bool bad_surface, fail_start;
-static bool start_video(t5_video_surface_v1 *s,uint8_t f) {
-    *s=(t5_video_surface_v1){960,540,f==1?120:240,f,T5_VIDEO_FLAG_ONE_IS_BLACK};
+static bool start_video(display_client_surface *s,uint8_t f) {
+    *s=(display_client_surface){960,540,f==1?120:240,f,DISPLAY_CLIENT_ONE_IS_BLACK};
     if(bad_surface) s->stride_bytes=1;
     return !fail_start;
 }
 static void stop_video(void) { ++stops; }
-static const t5_video_api_v1 video={.start_format=start_video,.stop=stop_video};
+static const display_client_api video={.start_format=start_video,.stop=stop_video};
 int main(void) {
     /* Packed arithmetic must be independent across lanes, including carries
      * and thresholds exactly at the 127/128 boundary. */
@@ -69,7 +68,7 @@ int main(void) {
     fps_reset_game();
     for(unsigned scene=0;scene<3;++scene) {
         g_player_angle=(float)scene*1.1f;
-        g_surface=(t5_video_surface_v1){960,540,240,2,T5_VIDEO_FLAG_ONE_IS_BLACK};
+        g_surface=(display_client_surface){960,540,240,2,DISPLAY_CLIENT_ONE_IS_BLACK};
         memset(gray,0,240u*540); fps_draw_world(gray,0); fps_draw_controller_hud(gray,0);
         g_surface.stride_bytes=120; g_surface.pixel_format=1;
         memset(mono,0,120u*540); fps_draw_world(mono,0); fps_draw_controller_hud(mono,0);

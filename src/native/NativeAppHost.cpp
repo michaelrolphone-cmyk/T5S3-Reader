@@ -25,6 +25,7 @@
 #include "components/FontAwesomeIcons.h"
 #include <Arduino.h>
 #include <GfxRenderer.h>
+#include <HalDisplay.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -148,7 +149,7 @@ void replayTonePlane(Session& s, bool lsbPlane) {
   }
 }
 
-bool presentToneFrame(Session& s, HalDisplay::RefreshMode mode) {
+bool presentToneFrame(Session& s, DisplayPresentMode mode) {
   if (s.toneRects.empty()) {
     s.renderer.displayBuffer(mode);
     return true;
@@ -225,13 +226,13 @@ bool touchContact(t5_app_contact_t* out) {
 void present(bool full) {
   if (auto* s = current()) {
     esp_task_wdt_reset();
-    (void)presentToneFrame(*s, full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    (void)presentToneFrame(*s, full ? DisplayPresentMode::Clean : DisplayPresentMode::Quality);
     esp_task_wdt_reset();
   }
 }
 struct ServicedFrame {
   GfxRenderer* renderer;
-  HalDisplay::RefreshMode mode;
+  DisplayPresentMode mode;
   std::atomic<bool> done{false};
 };
 // A redraw used to allocate and delete an 8 KiB task stack each time. Under
@@ -253,7 +254,7 @@ void renderServicedFrame(void*) {
     frame->done.store(true, std::memory_order_release);
   }
 }
-bool presentServicedMode(HalDisplay::RefreshMode mode,
+bool presentServicedMode(DisplayPresentMode mode,
                          void (*service)(void*), void* context) {
   auto* s = current();
   if (!s || !service) return false;
@@ -282,7 +283,7 @@ bool presentServicedMode(HalDisplay::RefreshMode mode,
 }
 void noRefreshService(void*) {}
 bool presentServiced(bool full, void (*service)(void*), void* context) {
-  return presentServicedMode(full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH,
+  return presentServicedMode(full ? DisplayPresentMode::Clean : DisplayPresentMode::LowLatency,
                              service, context);
 }
 void setBackExitsApp(bool enabled) {
@@ -1369,7 +1370,7 @@ bool presentNativeAppUiFrame() {
   // Native UI lists and tables use the reader-friendly balanced waveform.
   // Reuse the serviced refresh path so synchronous panel pixel transfer does
   // not starve the loop task's core idle watchdog.
-  const bool presented = presentServicedMode(HalDisplay::BALANCED_REFRESH,
+  const bool presented = presentServicedMode(DisplayPresentMode::Balanced,
                                               noRefreshService, nullptr);
   if (!presented) LOG_ERR("APPSTORE", "Could not start cooperative native UI refresh");
   return presented;
@@ -1513,7 +1514,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeSettingsEnd();
   renderer.setOrientation(orientation);
   renderer.setRenderMode(mode);
-  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  renderer.requestNextRefresh(DisplayPresentMode::Clean);
   unsigned long quiet = millis();
   do {
     input.update();
@@ -1545,7 +1546,7 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     renderer.drawText(UI_12_FONT_ID, 24, 100, msg.substr(0, split).c_str());
     if (split != std::string::npos) renderer.drawText(UI_12_FONT_ID, 24, 136, msg.substr(split + 1).c_str());
     renderer.drawText(UI_12_FONT_ID, 24, 200, "Tap or press Back to return.");
-    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Clean);
     for (;;) {
       esp_task_wdt_reset(); delay(20); input.update();
       MappedInputManager::TouchPoint point{};

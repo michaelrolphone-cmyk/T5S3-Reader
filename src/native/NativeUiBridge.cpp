@@ -2,7 +2,6 @@
 #include <T5UiApi.h>
 
 #include <GfxRenderer.h>
-#include <HalDisplay.h>
 
 #include <algorithm>
 #include <functional>
@@ -73,21 +72,68 @@ bool containsPoint(const Rect& rect, int16_t x, int16_t y) {
   return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
 }
 
+struct NativeUiLayout {
+  int pageWidth = 0;
+  int pageHeight = 0;
+  int safeTop = 0;
+  int safeRight = 0;
+  int safeBottom = 0;
+  int safeLeft = 0;
+  int padding = 0;
+  int spacing = 0;
+  int headerTop = 0;
+  int headerHeight = 0;
+  int headerBottom = 0;
+  int footerTop = 0;
+  int statusTop = 0;
+  int contentTop = 0;
+  int contentBottom = 0;
+  int statusLineHeight = 0;
+  bool compact = false;
+
+  int safeWidth() const { return std::max(1, pageWidth - safeLeft - safeRight); }
+  int safeHeight() const { return std::max(1, pageHeight - safeTop - safeBottom); }
+};
+
+NativeUiLayout layoutFor(const GfxRenderer& renderer, const t5_ui_chrome_t* chrome) {
+  NativeUiLayout layout;
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  layout.pageWidth = renderer.getScreenWidth();
+  layout.pageHeight = renderer.getScreenHeight();
+  renderer.getOrientedViewableTRBL(&layout.safeTop, &layout.safeRight, &layout.safeBottom, &layout.safeLeft);
+  layout.compact = std::min(layout.safeWidth(), layout.safeHeight()) < 360;
+  layout.padding = layout.compact ? std::max(8, metrics.contentSidePadding / 2) : metrics.contentSidePadding;
+  layout.spacing = layout.compact ? std::max(4, metrics.verticalSpacing / 2) : metrics.verticalSpacing;
+  layout.headerTop = layout.safeTop + metrics.topPadding;
+  const int safeBottomY = layout.pageHeight - layout.safeBottom;
+  layout.headerHeight = std::min(metrics.headerHeight, std::max(1, safeBottomY - layout.headerTop));
+  layout.headerBottom = layout.headerTop + layout.headerHeight;
+  layout.footerTop = std::max(layout.headerBottom, safeBottomY - metrics.buttonHintsHeight);
+
+  const bool hasStatus = chrome && chrome->status && chrome->status[0];
+  layout.statusLineHeight = hasStatus ? std::max(1, renderer.getLineHeight(SMALL_FONT_ID)) : 0;
+  layout.statusTop = hasStatus
+                         ? std::max(layout.headerBottom, layout.footerTop - layout.spacing - layout.statusLineHeight)
+                         : layout.footerTop;
+  layout.contentTop = std::min(layout.footerTop, layout.headerBottom + layout.spacing);
+  const int contentLimit = hasStatus ? layout.statusTop - layout.spacing : layout.footerTop - layout.spacing;
+  layout.contentBottom = std::max(layout.contentTop, contentLimit);
+  return layout;
+}
+
 void drawChrome(GfxRenderer& renderer, MappedInputManager& input, const t5_ui_chrome_t* chrome) {
   if (!chrome) return;
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = renderer.getScreenWidth();
-  const int pageHeight = renderer.getScreenHeight();
-  const int left = metrics.contentSidePadding;
-  const int rowWidth = pageWidth - left * 2;
+  const auto layout = layoutFor(renderer, chrome);
+  const int headerWidth = layout.safeWidth();
 
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, safe(chrome->title),
-                 chrome->subtitle && chrome->subtitle[0] ? chrome->subtitle : nullptr);
+  GUI.drawHeader(renderer, Rect{layout.safeLeft, layout.headerTop, headerWidth, layout.headerHeight},
+                 safe(chrome->title), chrome->subtitle && chrome->subtitle[0] ? chrome->subtitle : nullptr);
 
   if (chrome->status && chrome->status[0]) {
-    const int statusY = pageHeight - metrics.buttonHintsHeight - 22;
-    const std::string status = renderer.truncatedText(SMALL_FONT_ID, chrome->status, rowWidth);
-    renderer.drawText(SMALL_FONT_ID, left, statusY, status.c_str());
+    const int textX = layout.safeLeft + layout.padding;
+    const int textWidth = std::max(1, headerWidth - layout.padding * 2);
+    const std::string status = renderer.truncatedText(SMALL_FONT_ID, chrome->status, textWidth);
+    renderer.drawText(SMALL_FONT_ID, textX, layout.statusTop, status.c_str());
   }
 
   const auto labels = input.mapLabels(safe(chrome->back_label), safe(chrome->confirm_label),
@@ -103,9 +149,9 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
 
   r->clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = r->getScreenWidth();
-  const int pageHeight = r->getScreenHeight();
-  const int listTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 8;
+  const auto layout = layoutFor(*r, chrome);
+  const Rect content{layout.safeLeft, layout.contentTop, layout.safeWidth(),
+                     std::max(0, layout.contentBottom - layout.contentTop)};
 
   bool hasSubtitle = false;
   bool hasValue = false;
@@ -121,9 +167,6 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
     compactStateIcons = compactStateIcons ||
         (rowHasStateIcon && (rows[i].flags & T5_UI_LIST_ICON_COMPACT) != 0);
   }
-
-  const Rect content{0, listTop, pageWidth,
-                     pageHeight - listTop - metrics.buttonHintsHeight - 8};
 
   std::function<std::string(int)> subtitleFn;
   std::function<std::string(int)> valueFn;
@@ -143,13 +186,12 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   const int pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
 
   drawChrome(*r, *in, chrome);
-  hitLayout.headerBottom = metrics.topPadding + metrics.headerHeight;
+  hitLayout.headerBottom = layout.headerBottom;
   hitLayout.rowTop = content.y;
   hitLayout.rowHeight = rowHeight;
   hitLayout.pageItems = pageItems;
-  hitLayout.pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
+  hitLayout.pageStart = pageStart;
   hitLayout.rowCount = static_cast<int>(rowCount);
-
   (void)presentNativeAppUiFrame();
 }
 
@@ -161,20 +203,20 @@ void renderTable(const t5_ui_chrome_t* chrome, const t5_ui_table_column_t* colum
 
   r->clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = r->getScreenWidth();
-  const int pageHeight = r->getScreenHeight();
-  const int left = metrics.contentSidePadding;
-  const int tableWidth = pageWidth - left * 2;
-  const int tableTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing + 8;
-  const int bottom = pageHeight - metrics.buttonHintsHeight - 36;
-  const int available = std::max(120, bottom - tableTop);
-  const int headerHeight = std::max(30, metrics.listRowHeight);
-  const int desiredRowHeight = std::max(30, metrics.listRowHeight);
-  const int pageItems = std::max(1, (available - headerHeight) / desiredRowHeight);
+  const auto layout = layoutFor(*r, chrome);
+  const int left = layout.safeLeft + layout.padding;
+  const int tableWidth = std::max(1, layout.safeWidth() - layout.padding * 2);
+  const int tableTop = layout.contentTop;
+  const int available = std::max(1, layout.contentBottom - tableTop);
+  const int fontLine = std::max(1, r->getLineHeight(UI_10_FONT_ID));
+  const int headerHeight = std::min(std::max(24, fontLine + 10), std::max(24, available / 2));
+  const int desiredRowHeight = std::max(24, metrics.listRowHeight);
+  const int rowSpace = std::max(1, available - headerHeight);
+  const int pageItems = std::max(1, rowSpace / desiredRowHeight);
   const int selected = rowCount ? std::clamp(selectedIndex, 0, static_cast<int32_t>(rowCount) - 1) : 0;
   const int pageStart = rowCount ? (selected / pageItems) * pageItems : 0;
   const int visibleCount = std::min(static_cast<int>(rowCount) - pageStart, pageItems);
-  const int rowHeight = visibleCount > 0 ? std::max(30, (available - headerHeight) / visibleCount) : desiredRowHeight;
+  const int rowHeight = visibleCount > 0 ? std::max(24, rowSpace / visibleCount) : desiredRowHeight;
 
   uint32_t totalWeight = 0;
   for (uint32_t c = 0; c < columnCount; ++c) totalWeight += columns[c].weight ? columns[c].weight : 1u;
@@ -191,29 +233,30 @@ void renderTable(const t5_ui_chrome_t* chrome, const t5_ui_table_column_t* colum
     cursor += colWidth[c];
   }
 
+  const int headerTextY = tableTop + std::max(2, (headerHeight - fontLine) / 2);
   for (uint32_t c = 0; c < columnCount; ++c) {
     const auto label = r->truncatedText(UI_10_FONT_ID, safe(columns[c].title), std::max(1, colWidth[c] - 6));
-    r->drawText(UI_10_FONT_ID, colX[c], tableTop + 8, label.c_str());
+    r->drawText(UI_10_FONT_ID, colX[c], headerTextY, label.c_str());
   }
-  r->drawLine(left, tableTop + headerHeight - 6, left + tableWidth, tableTop + headerHeight - 6, true);
+  r->drawLine(left, tableTop + headerHeight - 2, left + tableWidth, tableTop + headerHeight - 2, true);
 
   const int rowsTop = tableTop + headerHeight;
   for (int local = 0; local < visibleCount; ++local) {
     const int index = pageStart + local;
     const int y = rowsTop + local * rowHeight;
     const bool selectedRow = index == selectedIndex;
-    if (selectedRow) r->fillRect(left - 4, y, tableWidth + 8, rowHeight - 2, true);
+    if (selectedRow) r->fillRect(left - 4, y, tableWidth + 8, std::max(1, rowHeight - 2), true);
     const bool ink = !selectedRow;
+    const int textY = y + std::max(2, (rowHeight - fontLine) / 2);
 
     if (rows[index].flags & T5_UI_TABLE_ROW_FULL_WIDTH) {
       const auto label = r->truncatedText(UI_12_FONT_ID, safe(rows[index].cells[0]), tableWidth - 8);
-      r->drawText(UI_12_FONT_ID, left, y + 10, label.c_str(), ink);
+      r->drawText(UI_12_FONT_ID, left, textY, label.c_str(), ink);
       continue;
     }
-
     for (uint32_t c = 0; c < columnCount; ++c) {
       const auto value = r->truncatedText(UI_10_FONT_ID, safe(rows[index].cells[c]), std::max(1, colWidth[c] - 6));
-      r->drawText(UI_10_FONT_ID, colX[c], y + 10, value.c_str(), ink);
+      r->drawText(UI_10_FONT_ID, colX[c], textY, value.c_str(), ink);
     }
   }
 
@@ -235,15 +278,10 @@ void renderTextView(const t5_ui_chrome_t* chrome, const char* text, int32_t scro
   if (!r || !in) return;
 
   r->clearScreen();
-  const auto& metrics = UITheme::getInstance().getMetrics();
-  const int pageWidth = r->getScreenWidth();
-  const int pageHeight = r->getScreenHeight();
-  const int contentTop = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  int contentBottom = pageHeight - metrics.buttonHintsHeight - metrics.verticalSpacing;
-  if (chrome && chrome->status && chrome->status[0]) contentBottom -= 26;
-  const int maxWidth = pageWidth - metrics.contentSidePadding * 2;
+  const auto layout = layoutFor(*r, chrome);
+  const int maxWidth = std::max(1, layout.safeWidth() - layout.padding * 2);
   const int lineHeight = std::max(1, BaseTheme::getLineHeightForRole(*r, UI_10_FONT_ID, TextRole::UserContent));
-  const int visibleLines = std::max(1, (contentBottom - contentTop) / lineHeight);
+  const int visibleLines = std::max(1, (layout.contentBottom - layout.contentTop) / lineHeight);
 
   std::vector<std::string> lines;
   const std::string source = safe(text);
@@ -267,18 +305,18 @@ void renderTextView(const t5_ui_chrome_t* chrome, const char* text, int32_t scro
   const int maxScroll = std::max(0, static_cast<int>(lines.size()) - visibleLines);
   const int scroll = std::clamp(scrollFromBottom, 0, maxScroll);
   const int first = maxScroll - scroll;
-  int y = contentTop;
+  int y = layout.contentTop;
   for (int i = first; i < static_cast<int>(lines.size()) && i < first + visibleLines; ++i) {
     if (!lines[i].empty()) {
-      BaseTheme::drawTextForRole(*r, UI_10_FONT_ID, TextRole::UserContent, metrics.contentSidePadding, y,
+      BaseTheme::drawTextForRole(*r, UI_10_FONT_ID, TextRole::UserContent, layout.safeLeft + layout.padding, y,
                                  lines[i].c_str());
     }
     y += lineHeight;
   }
 
   drawChrome(*r, *in, chrome);
-  hitLayout.headerBottom = metrics.topPadding + metrics.headerHeight;
-  hitLayout.rowTop = contentTop;
+  hitLayout.headerBottom = layout.headerBottom;
+  hitLayout.rowTop = layout.contentTop;
   hitLayout.rowHeight = lineHeight;
   hitLayout.pageItems = visibleLines;
   hitLayout.pageStart = first;
@@ -376,8 +414,30 @@ int32_t previousIndex(int32_t currentIndex, uint32_t itemCount) {
   return ButtonNavigator::previousIndex(currentIndex, static_cast<int>(itemCount));
 }
 
+bool getViewport(t5_ui_viewport_t* out) {
+  if (!out) return false;
+  auto* r = renderer();
+  if (!r) return false;
+  const auto layout = layoutFor(*r, nullptr);
+  *out = {};
+  out->width = layout.pageWidth;
+  out->height = layout.pageHeight;
+  out->safe_top = static_cast<int16_t>(layout.safeTop);
+  out->safe_right = static_cast<int16_t>(layout.safeRight);
+  out->safe_bottom = static_cast<int16_t>(layout.safeBottom);
+  out->safe_left = static_cast<int16_t>(layout.safeLeft);
+  out->content_padding = static_cast<uint16_t>(layout.padding);
+  out->vertical_spacing = static_cast<uint16_t>(layout.spacing);
+  out->orientation = layout.pageWidth >= layout.pageHeight ? T5_UI_ORIENTATION_LANDSCAPE : T5_UI_ORIENTATION_PORTRAIT;
+  const int shortSide = std::min(layout.safeWidth(), layout.safeHeight());
+  out->size_class = shortSide < 360 ? T5_UI_SIZE_COMPACT
+                    : shortSide >= 600 ? T5_UI_SIZE_EXPANDED
+                                       : T5_UI_SIZE_REGULAR;
+  return true;
+}
+
 const t5_ui_api_v1 api = {T5_UI_API_VERSION, sizeof(t5_ui_api_v1), renderList, renderTable,
-                          hitTest, pollEvent, nextIndex, previousIndex, renderTextView};
+                          hitTest, pollEvent, nextIndex, previousIndex, renderTextView, getViewport};
 }  // namespace
 
 extern "C" const t5_ui_api_v1* t5_ui_get_api(uint32_t apiVersion) {

@@ -1,6 +1,6 @@
 #include "T5AppApi.h"
 #include "T5HardwareTakeover.h"
-#include "T5VideoApi.h"
+#include "display_output_client.h"
 #include "epd_dither.h"
 
 #include <stdbool.h>
@@ -70,8 +70,8 @@ static const float g_enemy_starts[FPS_ENEMY_COUNT][2] = {
 };
 
 static const t5_app_api_v1 *g_app;
-static const t5_video_api_v1 *g_video;
-static t5_video_surface_v1 g_surface;
+static const display_client_api *g_video;
+static display_client_surface g_surface;
 static fps_enemy_t g_enemies[FPS_ENEMY_COUNT];
 static float g_depth[FPS_LOGICAL_W];
 static float g_player_x;
@@ -145,7 +145,7 @@ static void fps_log(const char *message) {
  * Packed 2-bit pixels encode white, light gray, dark gray and black. */
 static void fps_tone_pixel(uint8_t *buffer, int x, int y, uint8_t tone) {
     if (!buffer || x < 0 || y < 0 || x >= FPS_LOGICAL_W || y >= FPS_LOGICAL_H) return;
-    if (g_surface.pixel_format == T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+    if (g_surface.pixel_format == DISPLAY_CLIENT_MONO1) {
         size_t offset=(size_t)y*g_surface.stride_bytes+(unsigned)x/8u;
         uint8_t mask=(uint8_t)(0x80u>>(x&7));
         bool black=epd_dither_black((uint8_t)((tone&3u)*85u),(unsigned)x,(unsigned)y);
@@ -167,7 +167,7 @@ static void fps_tone_vspan(uint8_t *buffer, int x, int y0, int y1, uint8_t tone)
     y0 = fps_max_i(y0, 0);
     y1 = fps_min_i(y1, FPS_LOGICAL_H - 1);
     if (y0 > y1) return;
-    if (g_surface.pixel_format == T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+    if (g_surface.pixel_format == DISPLAY_CLIENT_MONO1) {
         const uint8_t mask=(uint8_t)(0x80u>>(x&7));
         uint8_t values[8];
         for(unsigned y=0;y<8;++y)
@@ -655,7 +655,7 @@ static void fps_draw_ground(uint8_t *buffer) {
     };
     for (int y = FPS_HORIZON + 1; y <= FPS_VIEW_BOTTOM; ++y) {
         uint8_t *row = buffer + (size_t)y * g_surface.stride_bytes;
-        if (g_surface.pixel_format == T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+        if (g_surface.pixel_format == DISPLAY_CLIENT_MONO1) {
             uint8_t bits=0;
             for(unsigned x=0;x<8;++x)
                 bits=(uint8_t)((bits<<1)|epd_dither_black(85,x,(unsigned)y));
@@ -825,7 +825,7 @@ static bool fps_update_input(uint32_t buttons, uint32_t down,
 static void fps_show_video_error(void) {
     if (g_surface.width != 960u || g_surface.height != 540u ||
         g_surface.stride_bytes < 240u ||
-        g_surface.pixel_format != T5_VIDEO_PIXEL_GRAY_2BPP_MSB) {
+        g_surface.pixel_format != DISPLAY_CLIENT_GRAY2) {
         return;
     }
     size_t bytes = 0;
@@ -844,8 +844,8 @@ __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
 
 __attribute__((visibility("default"))) void app_main(void) {
     g_app = t5_app_get_api(T5_APP_ABI_VERSION);
-    g_video = t5_video_get_api(T5_VIDEO_API_VERSION);
-    if (!g_app || !g_video || g_video->struct_size < sizeof(*g_video) ||
+    g_video = display_client_get_api();
+    if (!g_app || !g_video ||
         !g_app->poll || !g_app->millis || !g_video->start ||
         !g_video->backbuffer || !g_video->can_submit ||
         !g_video->submit || !g_video->stop) {
@@ -860,15 +860,15 @@ __attribute__((visibility("default"))) void app_main(void) {
 
     memset(&g_surface, 0, sizeof(g_surface));
     if (!g_video->start_format ||
-        !g_video->start_format(&g_surface, T5_VIDEO_PIXEL_GRAY_2BPP_MSB)) {
+        !g_video->start_format(&g_surface, DISPLAY_CLIENT_GRAY2)) {
         if (can_configure_back) g_app->set_back_exits_app(true);
         return;
     }
 
     if (g_surface.width != 960u || g_surface.height != 540u ||
         g_surface.stride_bytes != 240u ||
-        g_surface.pixel_format != T5_VIDEO_PIXEL_GRAY_2BPP_MSB ||
-        (g_surface.flags & T5_VIDEO_FLAG_ONE_IS_BLACK) == 0u) {
+        g_surface.pixel_format != DISPLAY_CLIENT_GRAY2 ||
+        (g_surface.flags & DISPLAY_CLIENT_ONE_IS_BLACK) == 0u) {
         fps_show_video_error();
         const uint32_t deadline = g_app->millis() + 2500u;
         while (!fps_time_reached(g_app->millis(), deadline)) {

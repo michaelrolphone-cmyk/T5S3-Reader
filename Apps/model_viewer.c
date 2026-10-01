@@ -3,7 +3,7 @@
 #include "T5HardwareTakeover.h"
 #include "T5ProviderCapabilityApi.h"
 #include "T5StorageApi.h"
-#include "T5VideoApi.h"
+#include "display_output_client.h"
 #include "T5MathApi.h"
 static const t5_math_api_v1 *g_math;
 #include "RiscTouchV1.h"
@@ -79,12 +79,12 @@ typedef struct {
 static const t5_app_api_v1 *g_app;
 static const t5_storage_api_v1 *g_storage;
 static const t5_file_open_api_v1 *g_file_open;
-static const t5_video_api_v1 *g_video;
+static const display_client_api *g_video;
 static const t5_provider_capability_api_v1 *g_caps;
 static const risc_touch_api_v1 *g_touch;
 static t5_provider_capability_lease_t g_touch_lease;
 static uint64_t g_touch_subscription;
-static t5_video_surface_v1 g_surface;
+static display_client_surface g_surface;
 static bool g_use_psram;
 static mv_model_t g_model;
 static mv_view_t g_view;
@@ -1167,12 +1167,12 @@ __attribute__((visibility("default"))) void app_main(void) {
     g_app=t5_app_get_api(T5_APP_ABI_VERSION);
     g_storage=t5_storage_get_api(T5_STORAGE_API_VERSION);
     g_file_open=t5_file_open_get_api(T5_FILE_OPEN_API_VERSION);
-    g_video=t5_video_get_api(T5_VIDEO_API_VERSION);
+    g_video=display_client_get_api();
     if(!g_app || !g_storage || !g_file_open || !g_video ||
        g_storage->struct_size<offsetof(t5_storage_api_v1,stream_close)+sizeof(g_storage->stream_close) ||
        !g_storage->stream_open || !g_storage->stream_read || !g_storage->stream_seek || !g_storage->stream_close ||
        g_file_open->struct_size<sizeof(*g_file_open) || !g_file_open->source_path_get ||
-       g_video->struct_size<sizeof(*g_video) || !g_video->start || !g_video->backbuffer ||
+        !g_video->start || !g_video->backbuffer ||
        !g_video->can_submit || !g_video->submit || !g_video->stop) return;
 
     const size_t psram_end=offsetof(t5_app_api_v1,psram_free)+sizeof(g_app->psram_free);
@@ -1181,8 +1181,8 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(!g_video->start(&g_surface)) return;
     if(g_surface.width!=960u || g_surface.height!=540u ||
        g_surface.stride_bytes!=120u ||
-       g_surface.pixel_format!=T5_VIDEO_PIXEL_MONO_1BPP_MSB ||
-       (g_surface.flags&T5_VIDEO_FLAG_ONE_IS_BLACK)==0u) {
+       g_surface.pixel_format!=DISPLAY_CLIENT_MONO1 ||
+       (g_surface.flags&DISPLAY_CLIENT_ONE_IS_BLACK)==0u) {
         mv_message("UNSUPPORTED VIDEO","EXPECTED 960X540 MONO");
         g_video->stop();
         return;
