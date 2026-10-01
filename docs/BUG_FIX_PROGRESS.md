@@ -1,3 +1,9 @@
+## Current capacity policy — 2026-10-01
+
+- The user removed the fixed two-open-bug-PR cap. There is no numerical limit on open bugfix PRs; select and sequence work by user priority, ownership, overlap, and evidence.
+- PRs #345 and #346 are merged. Older two-slot references below are historical snapshots, not current policy. PR344 remains a separately authorized camera/hardware milestone.
+- PR332 remains the canonical ledger PR. This docs-only closeout leaves no active repair owner and starts no new bug batch.
+
 ## Completed Status Bar held-confirm repair — PR346
 
 - Owner: **none** after terminal exact-head CI and ledger checkpoint; canonical report **19** claim released. Current baseline master `fa517fea3a882505f10bb432c0c08864b73516c8`.
@@ -5,14 +11,14 @@
 - [PR #346](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/346) is ready for review, open/unmerged, exact head `efafbb70363c4b6f67dd99813c2b0acf79ca2675`, branch `fix/status-bar-confirm-edge`. App candidate is 1.0.2. Published version remains 1.0.0; U1 PR96 remains separately at 1.0.1. Parent allocated 1.0.2 to this repair; if this merges first U1 must advance to 1.0.3 before its next master integration. No U1 changes were made.
 - **PASS:** focused held/release/re-press C regression, native app build, direct ELF structural validation, and exact-head CI [36932777161](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36932777161). CI passed both board builds and released-app/manifest validation, host parser/native/Springboard aggregates, and headless core.
 - Local test limits: app-specific ELF wrapper could not start because GNU `timeout` is unavailable on this Mac; the same validator passed directly. Local Springboard aggregate was stopped after 90 seconds without output; the exact-head CI aggregate passed. No physical input/settings persistence or device behavior was tested.
-- Capacity: PR345 and PR346 are the two open bugfix batches. PR344 remains the separately authorized camera/hardware milestone and is excluded from bug-pipeline capacity. Do not open another bugfix batch until a slot is freed and ledger state is refreshed.
+- Capacity: no fixed numerical cap applies to open bugfix PRs. PR345 and PR346 are merged; PR344 remains a separately authorized camera/hardware milestone.
 - No merge, release, device I/O or firmware change. Await owner review/merge; confirm ancestry and app/manifest/regression after merge before marking #19 fixed on master.
 
 ## Completed Wi-Fi credential persistence repair — PR345
 
 - Active implementation/ledger owner **none** after this verified version-resolution checkpoint; durable claim released. The claim was published before source edits on ledger parent `08b273fb619f5cdfcfba69c94a868a7e02c0e221`. Existing PR332 remains the sole coordination PR.
 - Canonical reports **75, 98, and 149** confirmed by current source behavior in `WifiCredentialStore`, `JsonSettingsIO::loadWifi`, and reachable selector/automatic-connection callers; original reports, bodies, and provenance are retained. `HalStorage::writeFile` removes the prior destination before writing and reports short writes. Old store methods mutated live state before calling it; JSON schema errors were accepted or stale cached credentials were used after failed loads.
-- [PR345](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/345), branch `fix/wifi-credential-persistence`, targets master `fa517fea3a882505f10bb432c0c08864b73516c8`. Ready for review, not merged; exact remote head `9ae0585ae1f194d23cd52eb742e3464cfe2166e7`, mergeable. Two-batch ceiling is occupied by PR345 and separately owned CAM PR344.
+- [PR345](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/345), branch `fix/wifi-credential-persistence`, targets master `fa517fea3a882505f10bb432c0c08864b73516c8`. Merged at `d2d5a9a132d747122b0f0b607f228132ba79e667`; exact repair head `9ae0585ae1f194d23cd52eb742e3464cfe2166e7`. No fixed outstanding-PR cap applies.
 - Version collision rechecked: published firmware release/tag and current master are **1.3.51**; U1 PR96 head `2d4e8552674efe2349cb5e7ced68082da8a041ac` declares candidate **1.3.52**. Wi-Fi now reserves **1.3.53**. U1 branch was not changed. If Wi-Fi merges first, U1 owner must advance its candidate above the resulting master version at the next master integration; if U1 merges first at1.3.52, Wi-Fi1.3.53 remains above it. No app version change.
 - Supported workflows: native Wi-Fi Networks request enters firmware `WifiSelectionActivity::onEnter`, scans/selects or auto-connects from saved state, prompts to save after a new-password connection, and prompts to forget after a saved-password connection fails. The same store feeds `SavedNetworkConnection::ensureSavedConnection` and OTA bootstrap. These are firmware-owned RuntimeNetwork paths. No board, saved credentials, network settings, or radio were accessed. An established OTA association is preserved before saved-network bootstrap; load failure now clears cached credentials when no valid primary/backup/legacy source exists.
 - Repair: store mutations now persist candidate snapshots before publishing. JSON writes stage to a temporary file, preserve the old complete snapshot as a backup, restore on promotion failure, and recover the backup after interrupted promotion. The JSON loader validates complete structure, field types and bounds before replacing singleton state. Legacy plaintext-password and binary-file migration remain supported. Save/forget errors remain visible for retry.
@@ -134,7 +140,7 @@
 - Initial CI 36803281830 passed both firmware-board/all-app builds and native aggregate, but old clear_cache/ota_update rendering fixtures lacked the required event callback. Those fixtures now supply explicit events without removing assertions; full springboard/app-manifest suite and focused regression pass locally
 - **PASS:** final exact-head CI [36803968828](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36803968828) completed successfully on `98943199054e409987a957b9b909f32ccd4c9f49`: host parser/native/springboard/release tests and both t5s3-pro/lilygo-epd47-s3 firmware jobs, including native ELFs and all released apps/manifests. Local compiler absence is covered by successful CI target builds; no physical-device qualification
 - Both app manifests bumped to 1.0.1, unchanged minimum firmware. #333 rechecked open/draft with original head `3619048c6b178ddf6d767842b797d6fb1d7a87d4`; no review requested
-- Next invocation: recheck #333/#334 and master ancestry. **Two outstanding code batches; do not start another while both occupy slots.** #249 is not fixed on master until a merge/source/regression check proves it. Continue using open ledger #332. #333 stays on hold; do not resume or request review without direction
+- Next invocation: recheck #333/#334 and master ancestry. At that historical checkpoint two batches were recorded as open; the numeric stop is superseded by current user direction. #249 is not fixed on master until a merge/source/regression check proves it. Continue using open ledger #332. #333 stays on hold; do not resume or request review without direction
 - No live deletion, install, flash, merge or release. All work for this run is terminal; unmerged integration remains pending owner action
 
 ## Board applicability correction — review request withdrawn
@@ -158,7 +164,7 @@ Host fault tests and exact-head CI genuinely pass, but they simulate those input
 - Repair branch: `fix/button-remap-16-17`; draft [#333](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/333), targeting master
 - Verified remote head: `3619048c6b178ddf6d767842b797d6fb1d7a87d4`
 - Outstanding code batches from this pipeline: **one**. #205 is merged and does not occupy a slot
-- Next invocation: recheck #333/head/merge status before selecting more work; do not duplicate 16/17. One draft batch remains on hold pending direction; count it against the two-batch limit. Do not request its review again or continue it without direction. Select future candidates only after checking relevance to the user's actual T5S3 PRO paths as well as revalidation and overlap. Continue using coordination PR #332 while it remains open
+- Next invocation: recheck #333/head/merge status before selecting more work; do not duplicate 16/17. One draft batch remains on hold pending direction; the old numeric cap is superseded by current user direction. Do not request its review again or continue it without direction. Select future candidates only after checking relevance to the user's actual T5S3 PRO paths as well as revalidation and overlap. Continue using coordination PR #332 while it remains open
 
 ## Button Remap evidence
 
@@ -193,4 +199,4 @@ The initial restoration retained all 196 master reports and reconciled 42 later 
 
 ## Handoff rules
 
-Follow [BUG_FIX_WORKFLOW.md](BUG_FIX_WORKFLOW.md). One ledger writer, captured-parent non-force updates, at most two outstanding code batches, current-master revalidation and durable claims before source changes. Record latest remote head, results, unfinished work, owner and next action before clearing/transferring a claim. Awaiting merge is not fixed on master. A stale timestamp, closed PR or historical narrative is not permission to duplicate work.
+Follow [BUG_FIX_WORKFLOW.md](BUG_FIX_WORKFLOW.md). One ledger writer, captured-parent non-force updates, no fixed numerical cap on outstanding bugfix PRs, current-master revalidation and durable claims before source changes. Record latest remote head, results, unfinished work, owner and next action before clearing/transferring a claim. Awaiting merge is not fixed on master. A stale timestamp, closed PR or historical narrative is not permission to duplicate work.
