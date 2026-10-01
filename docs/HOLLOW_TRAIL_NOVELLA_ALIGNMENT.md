@@ -47,7 +47,10 @@ sets 7–8. Towers and living gullies are world anchored beyond the forest gate;
 they enter through clipping rather than popping in at an actor threshold. The
 first city terrace gains standing water around the ladder's bottom rung, a rubbed
 bolt/thumb patch and competing charcoal arrows, plus chimney cage/nest and a
-shallow reflecting tank on the first roof.
+shallow reflecting tank on the first roof. The reveal opens toward that first
+ladder/door, with bent aerials, chimney cages, sagging cables fading into fog,
+coping courses, drain seams, split plaster and restrained soot/flashing. These
+are fixed world details; no new surfaces or collision shortcuts are implied.
 
 A third in-engine tableau runs only after actual gameplay solves and exits the
 forest gate into the city. It holds/pulls back through the existing roofscape,
@@ -124,8 +127,8 @@ Version: Hollow Trail 1.1.35 → 1.1.36, minimum firmware unchanged at 1.3.37.
 Published release-index was read before this bump and confirms 1.1.35.
 Host previews were inspected and corrected: initial latch arm targeted the wrong
 projected coordinates; final version targets the actual latch using the shared
-articulated pose. The forest/mill middle-view and first-city-view goldens change; the other
-28 complete renderer references, including all boat/dam references, stay exact.
+articulated pose. The forest/mill middle-view and three city-view goldens change; the other
+26 complete renderer references, including all boat/dam references, stay exact.
 
 Local targeted timeline, input, full-route and Xtensa app results plus aggregate
 and CI status are recorded in the PR. No hardware appearance/FPS claim; no merge,

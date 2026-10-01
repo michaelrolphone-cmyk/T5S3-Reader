@@ -39,6 +39,51 @@ static void ht_city_mass_draw(const ht_city_mass *b,int cx,int cy,int plane) {
             }
         }
     }
+    if(plane) {
+        /* Used masonry: coping courses, water-blackened seams and a broken
+         * plaster edge are anchored to each building, not screen noise. */
+        int low=135+(0-135)*256/ht_world_scale;
+        int high=135+(HT_H-135)*256/ht_world_scale;
+        int start=ht_max(0,ht_floor_div(low-y,38)),end=ht_min(19,(high-y)/38+1);
+        for(int row=start;row<end;++row) {
+            int yy=y+row*38+36;
+            ht_limb(ht_scene,x+2,yy,x+w-3,yy,0,0,tone-11);
+            if((row+(b->x/10))%3==0) {
+                int xx=x+w*3/4+3;
+                ht_limb(ht_scene,xx,yy-27,xx+4,yy-16,0,0,tone-7);
+                ht_limb(ht_scene,xx+4,yy-16,xx+1,yy-7,0,0,tone-7);
+            }
+        }
+        int pipe=x+w-7;
+        ht_limb(ht_scene,pipe,y+3,pipe+1,ht_min(bottom,high),1,1,tone+18);
+        for(int row=start;row<end;row+=2)ht_limb(ht_scene,pipe-3,y+row*38+19,pipe+4,y+row*38+19,0,0,tone+26);
+        /* Fading cables disappear before their far support, as in the book. */
+        if(b->crown!=1) {
+            int px=x+w-5,py=y+5;
+            for(int k=1;k<=12;++k) {
+                int nx=x+w-5+k*9,ny=y+5+26*k*(12-k)/36;
+                ht_limb(ht_scene,px,py,nx,ny,0,0,tone-(k>7?(k-7)*10:0));px=nx;py=ny;
+            }
+        }
+    }
+    if(plane==2) {
+        /* Chimney stacks, crooked aerials and remaining cage wires interrupt
+         * the pristine box silhouette without inventing playable footing. */
+        int roof=y-(b->crown==2?18:b->crown==1?23:0),ch=x+w/4;
+        ht_rect(ht_scene,ch,roof-24,15,26,tone+16);
+        ht_rect(ht_scene,ch-3,roof-27,21,4,tone+30);
+        for(int row=0;row<3;++row)ht_limb(ht_scene,ch+1,roof-6-row*7,ch+14,roof-6-row*7,0,0,tone-14);
+        ht_limb(ht_scene,ch+6,roof-28,ch+2,roof-57,1,0,tone+15);
+        for(int arm=0;arm<3;++arm) {
+            int yy=roof-39-arm*6;
+            ht_limb(ht_scene,ch-8+arm*3,yy,ch+14-arm*2,yy-3,0,0,tone+10);
+        }
+        for(int bar=0;bar<3;++bar)ht_limb(ht_scene,ch-1+bar*8,roof-28,ch-1+bar*8,roof-37+(bar==2?3:0),0,0,tone+28);
+        /* Soot under one roof bay and patched flashing are broad enough to
+         * survive mono packing. They remain behind the actual walkable roofs. */
+        ht_triangle(ht_scene,x+5,y+4,x+26,y+4,x+13,y+31,tone+9);
+        ht_limb(ht_scene,x+w-26,y+2,x+w-7,y+3,1,0,tone-25);
+    }
     ht_checkpoint();
 }
 static void ht_city_backdrop_low(const ht_game *g) {
