@@ -91,11 +91,12 @@ above; this is not a substitute claim about unreturned review coverage.
 
 This does **not** close the whole permanent-verification requirement:
 
-- Canonical application owned-buffer/context admission is now connected locally
-  (U1_APPLICATION_SNAPSHOT_ADMISSION.md), with target verification pending. Loose
-  legacy input retains its existing compatibility contract
+- Canonical application owned-buffer/context admission passed both workflows at
+  ad7a0431 (U1_APPLICATION_SNAPSHOT_ADMISSION.md). Checksum-bearing loose admission
+  is connected with passing host tests and target verification pending; digestless
+  manual input retains its explicit compatibility contract
 - Retained provider remapping now has a separate graph-owned immutable-memory
-  proof, connected locally and awaiting target checks. Only GraphV2 privately
+  proof, verified at a928d444 by workflows36845426266 / 36845426285. Only GraphV2 privately
   binds its owned copy; direct Module callers cannot opt in. After successful
   integrity admission, a fresh copy of those same immutable bytes can avoid
   rehashing on later remaps, even after unrelated storage mutation. Current

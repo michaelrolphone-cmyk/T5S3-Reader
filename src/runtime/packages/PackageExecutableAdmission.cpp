@@ -77,6 +77,41 @@ bool declaredPackageSnapshot(const OrdinaryPackagePlan& plan, const char* name, 
   }
   return false;
 }
+bool admitLooseExecutableSnapshot(const char* path, const uint8_t* sidecarDigest, const uint8_t* executableDigest,
+                                  const uint8_t* snapshot, size_t length, const StorageGenerationStamp& sourceStamp) {
+  if (!path || std::strncmp(path, "/sd/", 4) || !sidecarDigest || !executableDigest || !snapshot || length < 52 ||
+      length > 8u * 1024u * 1024u || !Storage.ready())
+    return false;
+  AdmittedImage candidate{};
+  const size_t pathBytes = std::strlen(path);
+  const bool reusable = pathBytes < sizeof(candidate.root) && Storage.unchanged(sourceStamp);
+  if (reusable) {
+    // Canonical keys start /Apps, /Drivers, /Services or /Providers, never /sd/.
+    std::memcpy(candidate.root, path, pathBytes + 1);
+    candidate.bytes = length;
+    candidate.stamp = sourceStamp;
+    std::memcpy(candidate.manifest, sidecarDigest, 32);
+    std::memcpy(candidate.executable, executableDigest, 32);
+    bool warm = false;
+    {
+      std::lock_guard<std::mutex> lock(admissionMutex);
+      for (const auto& item : admitted)
+        if (sameImage(item, candidate)) {
+          warm = true;
+          break;
+        }
+    }
+    if (warm) return Storage.unchanged(sourceStamp);
+  }
+  uint8_t digest[32]{};
+  if (!packageSnapshotDigest(snapshot, length, digest) || std::memcmp(digest, executableDigest, 32)) return false;
+  if (reusable && Storage.unchanged(sourceStamp)) {
+    std::lock_guard<std::mutex> lock(admissionMutex);
+    admitted[nextAdmission] = candidate;
+    nextAdmission = (nextAdmission + 1) % 32;
+  }
+  return true;
+}
 bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* expectedManifestDigest,
                                       const uint8_t* expectedExecutableDigest, const uint8_t* snapshot, size_t length,
                                       const StorageGenerationStamp& sourceStamp,

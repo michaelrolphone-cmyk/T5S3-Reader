@@ -7,17 +7,29 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current target-green checkpoint is
-**ad7a0431af1c18e95cce96dbf4337cf79b01e7df**, tree
-**07c794fe3441a3760dd746a15e077f7a17677ca7**, identical to tested local **a59642d5**.
-Both workflows **36842590302 / 36842590322** passed. Compact target reports
-confirm strong app callback binding and the actual loader literal/callx edge
-into the shared snapshot helper on both boards. Prior receipt/provider correction
-**c33cb044** passed **36840317554 / 36840317634** with the384-byte recursive frame
-guard unchanged. Master **1e0188c1** remains integrated; PR96 was verified open on
-October 1 at09:20 UTC. Sole ownership remains unchanged. Legacy checksum-bearing
-loose admission, retained-node remap optimization and lower-I/O limits remain.
+Current target-green checkpoint is **a928d444ed7496ac69da0cb99ae2ecb06a84a379**,
+tree **d41f6a447783bd66e1cb6cce753a513dd412bba6**, identical to tested local
+**00c693a0**. Both workflows **36845426266 / 36845426285** passed, including
+private graph-owned remap proof. Canonical app admission and its actual linked
+strong callback edge passed at **ad7a0431** (36842590302 / 36842590322).
+Master **1e0188c1** remains integrated; PR96 was verified open on October 1 at
+10:15 UTC. Sole ownership remains unchanged. The current loose-checksum slice
+has passing host tests; its new target checks are pending publication.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: checksum-bearing loose app admission
+
+The existing invocation context now also captures legacy loose sidecars through
+the actual AppManifest parser. Paired declared length/SHA binds the loader-owned
+bytes; its unchanged-epoch reuse uses the existing bounded RAM memo. No synthetic
+ID/version, persisted loose receipt or alternate installer is introduced.
+Digestless manual sidecars and missing sidecars remain intentional compatibility
+inputs without an invented checksum claim. Observed metadata errors refuse
+absence; revoke, changed bytes/length and source mutation are tested.
+The complete native-app aggregate, actual-parser/real-storage fixture, app
+installation integration (10 tests) and USB package tests (7 tests) pass locally.
+Normal board CI now runs the actual parser fixture against its already installed
+ArduinoJson dependency. Exact target results for this slice remain pending.
 
 ## October 1: immutable provider-node remap evidence
 
@@ -28,7 +40,7 @@ current metadata/policy/close checks, without repeating ELF hashing or promoting
 an old source epoch into a new filesystem memo. New graphs start without proof.
 Actual graph + ESP Module/admission fixtures pass caller-buffer mutation,
 first-hash/remap byte counts, changed-metadata refusal and fresh-node rejection;
-provider graph regressions pass. Target verification remains pending. The
+provider graph regressions pass. Both exact-head target workflows passed at a928d444. The
 optimized host build also required an overlap-safe bounded diagnostic copy,
 retaining all warnings instead of suppressing its snprintf restrict warning.
 
@@ -40,8 +52,8 @@ ELF file reader closes its descriptor before admitting the same owned buffer tha
 relocation consumes. Owner/path/revoke checks and independent pins prevent late
 work or uncertain metadata close from permitting replacement. No new loader,
 installer, registry or SDK permission grant. Host context/loader fixtures and the
-native-app aggregate passed; both target workflows passed exact ad7a0431. Loose legacy
-input, retained-provider remap optimization and lower-I/O limits remain explicit.
+native-app aggregate passed; both target workflows passed exact ad7a0431. The next loose legacy
+input slice and lower-I/O limits remain explicit.
 See **U1_APPLICATION_SNAPSHOT_ADMISSION.md**. The blocked final review is not
 represented as completed or replaced by these independently executed tests.
 
@@ -58,8 +70,8 @@ to old bytes. Boot, invalid receipts and raw uncertainty cannot skip cold checks
 Actual HalStorage/helper and ESP Module fixtures, receipt wire/SD/cleanup faults,
 ordinary-package, provider-graph and driver host aggregates pass locally. Target
 checks passed corrected c33cb044; independent final review did not complete and is not
-claimed. Applications' loader admission and conservative repeated remapping of
-old provider snapshots remain explicit gaps. See
+claimed. Later canonical app admission and graph-owned remap proof passed at ad7a0431
+and a928d444 respectively. See
 **U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md** for exact scope and limitations.
 
 ## October 1: coherent capability metadata reuse

@@ -1,12 +1,16 @@
 #define HAL_STORAGE_IMPL
 #include <HalStorage.h>
 #include <SdFat.h>
+#include <mbedtls/sha256.h>
 
 #include <cassert>
 #include <cstdio>
 #include <vector>
 
 #include "native/ManagedAppAdmission.h"
+#ifdef U1_TEST_REAL_APP_PARSER
+#include "native/AppManifest.h"
+#endif
 #include "runtime/packages/PackageExecutableAdmission.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageUseGate.h"
@@ -23,6 +27,23 @@ std::string digestText(const uint8_t* bytes, size_t size) {
     out += hex[b & 15];
   }
   return out;
+}
+static std::string legacyDigest;
+static bool legacyValidator(const std::string& json, const std::string& filename, AppIntegrity& integrity) {
+#ifdef U1_TEST_REAL_APP_PARSER
+  t5_app_manifest_t manifest{};
+  return parseAppManifest(json, manifest, nullptr, false, nullptr, nullptr, &integrity) && manifest.compatible &&
+         filename == manifest.file_name;
+#else
+  integrity = {};
+  if (filename != "loose.elf" || json.find("\"file_name\":\"loose.elf\"") == std::string::npos) return false;
+  if (json.find("\"size_bytes\":8192") != std::string::npos) {
+    integrity.present = true;
+    integrity.sizeBytes = 8192;
+    std::strcpy(integrity.sha256, legacyDigest.c_str());
+  }
+  return true;
+#endif
 }
 int main() {
   assert(Storage.begin());
@@ -42,7 +63,7 @@ int main() {
   elf[21] = elf[22] = elf[23] = 0;
   const std::string sidecar =
       "{\"display_name\":\"Reader\",\"file_name\":\"reader.elf\",\"version\":\"1.0.0\","
-      "\"min_firmware_version\":\"1.0.0\",\"icon\":\"solid:book\",\"requires\":[],\"optional\":[]}";
+      "\"min_firmware_version\":\"1.0.0\",\"icon\":\"solid:f02d\",\"requires\":[],\"optional\":[]}";
   const std::string manifest =
       "{\"schema\":1,\"kind\":\"application\",\"id\":\"reader\",\"version\":\"1.0.0\","
       "\"artifact\":\"reader.elf\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":2,\"entries\":["
@@ -100,6 +121,55 @@ int main() {
   assert(!gate.pinned("/Apps/reader"));
   context.end();
   assert(Storage.writeFile("/Apps/reader/reader.json", sidecar));
+  const char* loosePath = "/sd/Apps/loose.elf";
+  legacyDigest = digestText(elf.data(), elf.size());
+  const std::string looseBase =
+      "{\"display_name\":\"Loose\",\"file_name\":\"loose.elf\",\"min_firmware_version\":\"1.0.0\",\"icon\":\"solid:"
+      "f02d\"";
+  const std::string looseJson = looseBase + ",\"size_bytes\":8192,\"sha256\":\"" + legacyDigest + "\"}";
+  assert(Storage.writeFile("/Apps/loose.json", looseJson));
+  RuntimeResources::ExecutionContext loose;
+  assert(loose.begin());
+  assert(beginLooseAppAdmission(loosePath, legacyValidator));
+  receiptTestHashBytes = 0;
+  assert(esp_elf_admit_managed_app(loosePath, elf.data(), elf.size()));
+  assert(receiptTestHashBytes == elf.size());
+  endManagedAppAdmission();
+  assert(beginLooseAppAdmission(loosePath, legacyValidator));
+  receiptTestHashBytes = 0;
+  assert(esp_elf_admit_managed_app(loosePath, elf.data(), elf.size()));
+  assert(!receiptTestHashBytes);
+  assert(captureManagedAppSidecar(loosePath, copied) == ManagedAppMetadata::CapturedLegacy && *copied == looseJson);
+  assert(Storage.writeFile("/between-loose-read", "changed"));
+  elf.back() ^= 1;
+  assert(!esp_elf_admit_managed_app(loosePath, elf.data(), elf.size()));
+  elf.back() ^= 1;
+  assert(!esp_elf_admit_managed_app(loosePath, elf.data(), elf.size() - 1));
+  loose.requestStop();
+  assert(!esp_elf_admit_managed_app(loosePath, elf.data(), elf.size()));
+  endManagedAppAdmission();
+  copied.reset();
+  loose.end();
+  assert(Storage.writeFile("/Apps/loose.json", looseBase + "}"));
+  RuntimeResources::ExecutionContext manual;
+  assert(manual.begin());
+  assert(beginLooseAppAdmission(loosePath, legacyValidator));
+  receiptTestHashBytes = 0;
+  assert(esp_elf_admit_managed_app(loosePath, elf.data(), elf.size()));
+  assert(!receiptTestHashBytes);
+  endManagedAppAdmission();
+  assert(Storage.remove("/Apps/loose.json"));
+  assert(beginLooseAppAdmission(loosePath, legacyValidator));
+  assert(captureManagedAppSidecar(loosePath, copied) == ManagedAppMetadata::CapturedLegacy && copied->empty());
+  endManagedAppAdmission();
+  copied.reset();
+  FakeSd::mediaError = 1;
+  assert(!beginLooseAppAdmission(loosePath, legacyValidator));
+  FakeSd::mediaError = 0;
+  manual.end();
+  puts(
+      "Loose app admission: actual declared-byte SHA, warm reuse, mutation/size/revoke refusal and honest digestless "
+      "compatibility PASS");
   RuntimeResources::ExecutionContext next;
   assert(next.begin());
   assert(gate.pin("/Apps/reader"));

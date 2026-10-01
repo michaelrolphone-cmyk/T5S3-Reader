@@ -27,6 +27,8 @@ struct Admission {
   StorageGenerationStamp sourceStamp{};
   uint32_t owner = 0;
   bool closeUncertain = false;
+  bool legacy = false;
+  AppIntegrity legacyIntegrity{};
   ~Admission() {
     if (root[0] && !closeUncertain) (void)systemPackageUseGate().unpin(root);
   }
@@ -112,6 +114,47 @@ bool beginManagedAppAdmission(const Identity& identity, const char* sdPath) {
   current = std::move(candidate);
   return true;
 }
+bool beginLooseAppAdmission(const char* sdPath, LegacyAppSidecarValidator validator) {
+  const uint32_t owner = invocation();
+  if (!owner || !sdPath || std::strncmp(sdPath, "/sd/", 4) || managedPath(sdPath) || !validator) return false;
+  const std::string path(sdPath);
+  if (path.size() < 8 || path.compare(path.size() - 4, 4, ".elf")) return false;
+  {
+    std::lock_guard<std::mutex> lock(admissionMutex);
+    if (current) return false;
+  }
+  (void)Storage.reconcileExternalStorage();
+  if (!Storage.ready()) return false;
+  std::shared_ptr<Admission> candidate(new (std::nothrow) Admission());
+  if (!candidate) return false;
+  candidate->legacy = true;
+  candidate->identity.legacyVersion = true;
+  candidate->path = path;
+  candidate->owner = owner;
+  candidate->sourceStamp = Storage.generation();
+  const std::string sidecar = path.substr(3, path.size() - 3 - 4) + ".json";
+  const bool present = Storage.exists(sidecar.c_str());
+  const auto observed = Storage.generation();
+  if (!present &&
+      (observed.mount != candidate->sourceStamp.mount || observed.mutation != candidate->sourceStamp.mutation))
+    return false;
+  if (present) {
+    if (!readMetadata(sidecar, 2048, candidate->sidecar, candidate->closeUncertain) ||
+        !validator(candidate->sidecar, path.substr(path.find_last_of('/') + 1), candidate->legacyIntegrity))
+      return false;
+    if (candidate->legacyIntegrity.present &&
+        (candidate->legacyIntegrity.sizeBytes < 52 || candidate->legacyIntegrity.sizeBytes > 8u * 1024u * 1024u ||
+         !receiptDigest(candidate->legacyIntegrity.sha256, candidate->executableDigest)))
+      return false;
+  }
+  if (!candidate->sidecar.empty() && !packageSnapshotDigest(reinterpret_cast<const uint8_t*>(candidate->sidecar.data()),
+                                                            candidate->sidecar.size(), candidate->manifestDigest))
+    return false;
+  std::lock_guard<std::mutex> lock(admissionMutex);
+  if (current || invocation() != owner) return false;
+  current = std::move(candidate);
+  return true;
+}
 void endManagedAppAdmission() {
   std::shared_ptr<Admission> retired;
   {
@@ -123,23 +166,34 @@ ManagedAppMetadata captureManagedAppSidecar(const char* sdPath, std::shared_ptr<
                                             Identity* identity) {
   sidecar.reset();
   if (identity) *identity = {};
-  if (!managedPath(sdPath)) return ManagedAppMetadata::Unmanaged;
   auto active = capture(sdPath);
-  if (!active) return ManagedAppMetadata::Denied;
+  if (!active) {
+    std::lock_guard<std::mutex> lock(admissionMutex);
+    return managedPath(sdPath) || (current && sdPath && current->path == sdPath) ? ManagedAppMetadata::Denied
+                                                                                 : ManagedAppMetadata::Unmanaged;
+  }
   sidecar = std::shared_ptr<const std::string>(active, &active->sidecar);
   if (identity) *identity = active->identity;
-  return ManagedAppMetadata::Captured;
+  return active->legacy ? ManagedAppMetadata::CapturedLegacy : ManagedAppMetadata::Captured;
 }
 }  // namespace RuntimePackages
 
 // Private loader callback, deliberately absent from ELF import registration.
 extern "C" bool esp_elf_admit_managed_app(const char* path, const uint8_t* bytes, size_t size) {
   using namespace RuntimePackages;
-  if (!managedPath(path)) return true;  // Legacy loose input keeps its existing contract.
   auto active = capture(path);
-  if (!active) return false;
-  if (!admitInstalledExecutableSnapshot(active->identity, active->manifestDigest, active->executableDigest, bytes, size,
-                                        active->sourceStamp))
+  if (!active) {
+    std::lock_guard<std::mutex> lock(admissionMutex);
+    return !managedPath(path) && !(current && path && current->path == path);
+  }
+  if (active->legacy) {
+    if (active->legacyIntegrity.present &&
+        (size != active->legacyIntegrity.sizeBytes ||
+         !admitLooseExecutableSnapshot(path, active->manifestDigest, active->executableDigest, bytes, size,
+                                       active->sourceStamp)))
+      return false;
+  } else if (!admitInstalledExecutableSnapshot(active->identity, active->manifestDigest, active->executableDigest,
+                                               bytes, size, active->sourceStamp))
     return false;
   return capture(path) == active;  // Revoke/replacement during IO cannot admit late work.
 }

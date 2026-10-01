@@ -91,6 +91,9 @@ jobs:
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
 
+      - name: Verify actual runtime sidecar parser and owned app admission
+        run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
+
       - name: Record production serial and USB target references
         run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
       - name: Preserve compact target reference evidence

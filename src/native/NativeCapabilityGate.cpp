@@ -47,10 +47,12 @@ bool loadRequirements(const char* sdPath, RuntimeDevices::AppCapabilityRequireme
   RuntimePackages::Identity identity{};
   const auto state=RuntimePackages::captureManagedAppSidecar(sdPath,captured,&identity);
   if(state==RuntimePackages::ManagedAppMetadata::Denied)return false;
-  if(state==RuntimePackages::ManagedAppMetadata::Captured){
+  if(state==RuntimePackages::ManagedAppMetadata::Captured || state==RuntimePackages::ManagedAppMetadata::CapturedLegacy){
+    if(captured->empty())return state==RuntimePackages::ManagedAppMetadata::CapturedLegacy;
     hasManifest=true;t5_app_manifest_t manifest{};std::string version;
-    return parseAppManifest(*captured,manifest,&version,true,&requirements) && manifest.compatible &&
-        version==identity.version && elf.substr(elf.find_last_of('/')+1)==manifest.file_name;
+    const bool canonical=state==RuntimePackages::ManagedAppMetadata::Captured;
+    return parseAppManifest(*captured,manifest,&version,canonical,&requirements) && manifest.compatible &&
+        (!canonical || version==identity.version) && elf.substr(elf.find_last_of('/')+1)==manifest.file_name;
   }
   if (!Storage.exists(sidecar.c_str())) return true;
   hasManifest = true;

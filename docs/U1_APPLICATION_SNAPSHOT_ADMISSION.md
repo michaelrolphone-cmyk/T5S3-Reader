@@ -84,18 +84,41 @@ head workflows **36840317554 / 36840317634**, retaining the 384-byte recursive
 registration guard. The earlier independent receipt review did not complete;
 no later review result is inferred from that failure.
 
+## Checksum-bearing loose input
+
+The same private invocation context now supports loose ELF paths. It captures a
+bounded sidecar once and uses the existing real AppManifest parser for paired
+size/SHA, compatibility and filename checks. Mandatory and optional capability
+parsers consume that captured sidecar; missing legacy version remains accepted.
+The loader-owned buffer is checked against any declared size/SHA before mapping.
+Warm reuse shares the existing 32-slot RAM memo and requires the original
+quiescent storage epoch, exact path, sidecar digest, executable digest and size.
+Long paths remain cold-verified rather than truncated into a cache key.
+
+No canonical identity/version or durable loose receipt is fabricated. A valid
+digestless manual sidecar, or missing sidecar without observed storage error,
+keeps the existing manual-input contract. Format/import checks still apply;
+there is no claimed checksum authority for undeclared bytes. Raw uncertainty
+stays cold. A revoked matching invocation cannot silently use the standalone
+loose fallback. Existing package pin/mapping failure rules remain unchanged.
+
+The actual AppManifest parser tests and real-parser + HalStorage + invocation
+fixture pass against ArduinoJson7.4.2, as does the full native-app host aggregate.
+Fixtures cover actual byte SHA, warm reuse, mutation and size refusal, revoke,
+digestless/missing sidecars and an observed metadata error during absence.
+Both normal board CI jobs now run the real parser fixture using their already
+installed dependency. Target verification of this loose extension is pending.
+
 Remaining implementation/evidence is explicit:
 
-- Loose legacy app paths keep their existing compatibility/temporary installed-
-  load contract; this new canonical invocation context does not silently rename
-  or upgrade them
-- Retained provider remapping now has graph-owned memory evidence connected
-  locally, with target checks pending (U1_VERIFICATION_RECEIPT_IMPLEMENTATION.md)
+- Retained provider remapping passed both workflows at a928d444
+  (36845426266 / 36845426285)
 - Observed storage coherence is not authentication or a universal detector of
   unobserved media edits. Cold admission covers executable and used metadata,
   while install/recovery/explicit verification still check every declared leaf
-- Remaining lower-I/O termination, complete indirect/
-  PHY evidence, final master/version reconciliation and owner qualification stay
-  separate from these local host results
+- Real lower-I/O termination, complete indirect/PHY evidence, final master/version
+  reconciliation and owner qualification remain open
+- The blocked independent receipt review remains incomplete; these tests do not
+  replace or imply a completed review
 
 **Implementation In Progress**

@@ -1399,6 +1399,13 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   return version == T5_APP_ABI_VERSION && current() ? &api : nullptr;
 }
 
+static bool validateLooseAdmissionSidecar(const std::string& json,const std::string& filename,
+                                         AppIntegrity& integrity) {
+  t5_app_manifest_t manifest{};
+  return parseAppManifest(json,manifest,nullptr,false,nullptr,nullptr,&integrity) &&
+      manifest.compatible && filename==manifest.file_name;
+}
+
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
   lastLaunchError.clear();
   if (session) {
@@ -1512,10 +1519,11 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeStreamsBegin();
   const bool resourcesReady = canonicalRoot.empty() ||
       nativeStreamsBindPackageResources(canonicalIdentity);
-  const bool admissionReady = resourcesReady && (canonicalRoot.empty() ||
-      RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
+  const bool admissionReady = resourcesReady && (canonicalRoot.empty()
+      ? RuntimePackages::beginLooseAppAdmission(path,validateLooseAdmissionSidecar)
+      : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
   const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
-  if (admissionReady && !canonicalRoot.empty()) RuntimePackages::endManagedAppAdmission();
+  if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
   nativeNetworkEnd();
   if (!canonicalRoot.empty() && (result == ESP_OK || !admissionReady))

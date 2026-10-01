@@ -71,9 +71,10 @@ bool declaredCapability(const char* capability, uint32_t version) {
     const auto state=RuntimePackages::captureManagedAppSidecar(path,captured,&identity);
     if(state==RuntimePackages::ManagedAppMetadata::Denied)return false;
     std::string json;
-    if(state==RuntimePackages::ManagedAppMetadata::Captured){
+    if(state==RuntimePackages::ManagedAppMetadata::Captured || state==RuntimePackages::ManagedAppMetadata::CapturedLegacy){
         std::string version;
-        if(!parseAppManifest(*captured,validated,&version,true)||version!=identity.version)return false;
+        const bool canonical=state==RuntimePackages::ManagedAppMetadata::Captured;
+        if(!parseAppManifest(*captured,validated,&version,canonical)||(canonical && version!=identity.version))return false;
         json=*captured;
     }else{
         if(!readAppManifest(filename.c_str(),validated))return false;

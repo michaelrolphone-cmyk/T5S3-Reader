@@ -34,6 +34,10 @@ class VerifiedImageCopy final {
 // manager admission for small profile/import snapshots and cold ELF mapping.
 bool packageSnapshotDigest(const uint8_t* bytes, size_t size, uint8_t (&digest)[32]);
 bool declaredPackageSnapshot(const OrdinaryPackagePlan& plan, const char* name, const uint8_t* bytes, size_t size);
+// Loose inputs bind exact path/sidecar bytes without invented package identity.
+// Long paths remain cold-verified rather than being truncated into cache keys.
+bool admitLooseExecutableSnapshot(const char* path, const uint8_t* sidecarDigest, const uint8_t* executableDigest,
+                                  const uint8_t* snapshot, size_t length, const StorageGenerationStamp& sourceStamp);
 // Private loader boundary. Caller retains the installed package-use pin and
 // owns the immutable bytes that will be relocated. Manifest/import declarations
 // do not grant capability or hardware authority. Warm reuse is current-process
