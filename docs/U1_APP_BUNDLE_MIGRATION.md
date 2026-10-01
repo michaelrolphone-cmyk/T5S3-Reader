@@ -120,8 +120,7 @@ before the final U1 candidate. No release/catalog publication is implied.
 
 October1 version coordination reserves Timecard1.0.2 for the independent
 clock-failure repair. U1's unreleased ZIP candidate advances1.0.2 →1.0.3;
-master/published baseline remains1.0.1 at this checkpoint. The repair's
-NativePlatformBridge change is not copied; merge it through actual master
+master/published baseline remains1.0.1 at this checkpoint. The repair is not copied before merge; integrate it through actual master
 when the owner lands it, then recheck lineage before the final candidate.
 
 October1 subsequent master5c1284bf includes the owner-merged schoolroom1.1.41
@@ -130,5 +129,13 @@ merged behavior. The earlier table is the initial ZIP-transition snapshot;
 these dated reconciliation entries supersede its candidate values. Timecard's
 current U1 candidate remains1.0.3; its independent1.0.2 repair is not yet in this
 master snapshot.
+
+October1 masterd4df4609 backmerge integrates the actual Timecard341 app repair:
+one local-datetime snapshot and a visible clock-unavailable refusal. Its1.0.2
+release is published; U1 retains1.0.3 for immutable ZIP distribution. Contrary
+to the earlier coordination description, the merged diff does not change
+NativePlatformBridge. Native and actual sidecar/pair regressions are rerun on
+this integrated source. Firmware candidate1.3.50 exceeds published/master1.3.48
+and the separately reserved display1.3.49; no release is requested or performed.
 
 **Implementation In Progress**

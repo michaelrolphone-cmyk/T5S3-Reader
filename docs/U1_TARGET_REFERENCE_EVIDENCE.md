@@ -51,4 +51,45 @@ Earlier bd9b09a7 compact reports remain valid narrower evidence. This report
 never accessed the separately blocked74b0 full firmware artifact and makes no
 claim about its bytes. No release, flash or physical execution occurred.
 
+## Integrated candidate: controller cleanup and selected indirect boundaries
+
+The current source adds a controller profile to the same bounded report, emitted
+from the actual PIC-linked controller ELF in its existing build. It selects the
+exported getter, start/stop/quiesce, role service, startup, PHY release/capture/
+restore and event entrypoints that survive target optimization. Missing inlined
+symbols are not interpreted as missing behavior. Firmware reports additionally
+select installed configure/control/release and checked lease cleanup. The new
+reports remain pending until this exact candidate's target builds finish.
+
+Source boundaries for the deliberately indirect production path:
+
+- InstalledSerialSession validates the versioned serial API, binds its exact
+  device/generation and retains a failed-close token. Its endpoints callback
+  supplies distinct RX/TX handles; installedAcquirePort attaches those exact
+  handles through InstalledSerialInventory/InstalledProviderGraph, rather than
+  falling back to read/write firmware USB transfers
+- ProviderModuleV2::activateMapped validates the loaded t5_driver_get identity,
+  capability/API and lifecycle table, binds a provider-owned stream context,
+  and retains the mapping on failed quiescence. ModuleV2::poll calls the loaded
+  poll suffix only while active with consumers; GraphV2::poll supplies the
+  bounded owner-task dispatch reached by nativeProviderOwnerTick
+- Class ELFs register their own capability/stream/poll tables. The unchanged
+  real loaded host/class integration fixture exercises CDC, CP210x, CH34x and
+  the fourth witness. This is executable host evidence for selected dynamic
+  edges, not proof of every possible externally installed provider
+
+The new controller_quiesce_path_test.py extracts and compiles the unchanged
+production quiesce_host body with failing IDF boundary ports. It covers thirteen
+failure/timeout cases, outstanding claims, unknown/source-active VBUS, faulted
+controller cleanup and clock wrap. Assertions preserve outstanding handles and
+PHY-route capture on failure, retry consumed versus retained resources, keep
+waits finite and restore the saved route only after DMA/host/PHY/VBUS cleanup
+and source-off observation. Existing production HostStartup and RoleSwitch
+fixtures cover partial startup and role retry ordering. No controller behavior,
+version or electrical policy changes; this closes an actual-source test gap.
+
+Physical mux write/readback, SDK/interrupt timing and attached-cable behavior
+remain qualification evidence. Neither selected call reports nor these fault
+ports establish universal dynamic reachability or physical restoration success.
+
 **Implementation In Progress**

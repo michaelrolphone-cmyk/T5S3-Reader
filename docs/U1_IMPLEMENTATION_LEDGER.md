@@ -7,16 +7,49 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current target-green checkpoint is **64d19d645720cba5c207f67c5d7fa1a031a07c0a**,
-tree **59044fc1649d6737ceb22222fc6073298c935093**, identical to tested local
-**f4ef3a0b**. Both workflows **36851475126 / 36851475033** passed the HTTP correction,
-including both boards' actual Arduino body-loop witness. Bounded loader work
-passed **73288020** (36849119638 / 36849119632); loose admission passed **3ba73f92**
-(36848254092 / 36848254100). Master **5c1284bf** is now integrated; PR96 was
-verified open on October 1 at11:28 UTC. Sole ownership remains unchanged.
-Current local work corrects the existing legacy sidecar snapshot/read-close
-boundary; SD/SPI policy remains an explicit owner decision, with no port patch.
-No live release, index, tag, master update or flash. CI remains feedback.
+Current target-green checkpoint is **730d0773a96329f970030c34adf4df34d6094056**,
+tree **7dc5a992162b2509b92d8c79d362a2a580ce497c**, matching tested local
+**df0a4673**. Both workflows **36856309372 / 36856309324** passed; the compiled PR
+checkout was **8bf83b8ddb6119b4056f4929d5b52585b8e642ea**. Both compact app-work
+reports were independently downloaded and their ZIP/source hashes checked.
+This head integrates master **5c1284bf**, Hollow1.1.42 and Timecard1.0.3.
+PR96 remains open and the remote head matches at11:43 UTC. Master subsequently
+advanced to **d4df4609**; that newer source is not integrated into this checkpoint.
+
+The coordinating owner resumed this same writer at12:15 UTC for one coherent
+software integration/completion chunk, with no helpers or broad repeat audit.
+The five retained terminal-evidence updates are preserved for this publication.
+PR96 is open; fetched remote U1 remains730d0773 and actual master isd4df4609,
+including owner-merged Timecard341. Integrate that repair while preserving the
+unreleased Timecard1.0.3 ZIP identity, then close independently supportable
+source/target ownership evidence in the same necessary build. The SD/SPI policy
+is still unapproved: no port patch, live release, index, tag, master update or
+flash. The blocked independent review remains blocked and is not recreated.
+
+## October 1: integrated completion candidate
+
+Preserved terminal evidence is local3fa4d8d8. Local merge9be92b34 integrates
+owner-merged masterd4df4609; the only conflict was Timecard's manifest, resolved
+to the existing U1 ZIP1.0.3 above actually published1.0.2. The merged repair is
+in Apps/timecard.c, not NativePlatformBridge. Hollow1.1.42 remains unchanged.
+Firmware candidate advances1.3.48 →1.3.50, above actual firmware-v1.3.48
+(tag targetf79f7291) and the separate display1.3.49 reservation observed12:20 UTC.
+
+The actual controller quiesce_host body now executes against fault ports for
+DMA drain, claims, device close, transfer/client cleanup, host event waits and
+uninstall, PHY deletion, VBUS release and unknown/source-active power. Each
+failure retains the route/remaining ownership; successful retry restores only
+after source-off, with bounded waits and tick-wrap coverage. This changes no
+controller payload or hardware policy. Existing startup/role tests remain.
+The necessary target build also exports compact linked controller references
+alongside the existing firmware serial reference reports. These are selected
+call/table evidence, not universal indirect-call resolution or physical proof.
+
+Full native-app aggregate, actual parser/sidecar pair regressions, actual
+controller teardown and existing host/class tests passed locally. Stream/graph
+checks and exact-head target results remain pending at publication preparation. The only known unimplemented bounded-media contract still requires the
+owner's SD/SPI compatibility choice; synchronous SDK limitations remain explicit.
+No further independent implementation is invented to avoid that decision.
 
 ## October 1: backmerge merged Hollow Y correction
 
@@ -54,7 +87,8 @@ now advance the existing observed storage generation before checking; metadata-
 only inspection does not. Old/in-flight snapshots cannot receive the new epoch;
 new valid verification can regain warm reuse. Tests also show the invalidation
 performs no media I/O or mount and retains a live reader. No stopped SD port
-policy, task/handle ownership or new registry is involved. Target checks pending.
+policy, task/handle ownership or new registry is involved. Both workflows passed
+at730d0773.
 
 ## October 1: one bounded legacy sidecar read
 
@@ -63,7 +97,7 @@ the pair adapter consumes its validated AppIntegrity instead of another read.
 Actual-source media-mutation tests fail both the old probe/reopen parser and the
 old second-read adapter, and pass the correction. Sidecar/ELF close failures,
 full SHA, deadline and hash-free installed inspection are covered. Identity and
-manual-input compatibility stay unchanged. Target integration is pending.
+manual-input compatibility stay unchanged. Both workflows passed at730d0773.
 See U1_LEGACY_SIDECAR_SNAPSHOT.md. SD/SPI policy is separately recorded in
 U1_SD_IO_OWNER_DECISION.md and remains unapproved/unimplemented.
 

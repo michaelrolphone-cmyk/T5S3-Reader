@@ -88,6 +88,7 @@ on:
       - "scripts/instrument_usb_enumeration.py"
       - "scripts/probe_i2c_esp32s3_v2.py"
       - "scripts/audit_usb_controller_elf.py"
+      - "scripts/report_u1_target_references.py"
       - "scripts/audit_i2c_esp32s3_elf.py"
       - "scripts/export_canonical_driver_release.py"
       - "test/drivers/usb_cdc_v2*.c"
@@ -110,6 +111,7 @@ on:
       - "test/drivers/native_navigation_input_test.cpp"
       - "test/drivers/controller_startup_diagnostic_test.cpp"
       - "test/drivers/controller_host_startup_test.cpp"
+      - "test/drivers/controller_quiesce_path_test.py"
       - "test/drivers/controller_role_switch_test.cpp"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
@@ -196,6 +198,14 @@ jobs:
           pio pkg install -e t5s3-pro
       - name: Compile physical controller and link PIC IDF USB implementation into ELF
         run: python scripts/probe_usb_controller_esp32s3.py --link-experiment
+      - name: Record linked controller ownership references
+        run: python scripts/report_u1_target_references.py --profile controller --elf dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output dist/u1-controller-references.json
+      - name: Preserve compact controller ownership evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-controller-references
+          path: dist/u1-controller-references.json
+          if-no-files-found: error
       - name: Audit physical ELF imports and exact loader relocation support
         run: |
           python scripts/audit_usb_controller_elf.py --strict

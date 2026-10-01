@@ -20,7 +20,11 @@ ROOT_NAMES = ('t5_usb_get_api', 't5_serial_port_get_api', 'installedAcquirePort'
               'nativeProviderOwnerTick', 't5_serial_port_get_api_original',
               'ensureUsbRegistered', 'acquireInstalled', 'diagnosticAcquire',
               'esp_elf_open', 'esp_elf_admit_managed_app', 'beginManagedAppAdmission',
-              'admitInstalledExecutableSnapshot')
+              'admitInstalledExecutableSnapshot', 'configureInstalled',
+              'controlInstalled', 'releaseInstalled', 'clearInstalledLease')
+CONTROLLER_NAMES = ('t5_driver_get', 'start', 'stop', 'quiesce', 'quiesce_host',
+                    'start_host_controller', 'release_host_phy', 'capture_phy_route',
+                    'restore_phy_route', 'service_role', 'next_event')
 LEGACY_NAMES = ('usbAcquirePort', 'UsbSerialProjection', 'NativeUsbDevices',
                 'nativeUsbDirectStreamClaim', 'nativeUsbProviderAttach', 'nativeUsbClassRead',
                 'nativeUsbClassWrite', 'usb_host_install', 'hcd_port_init')
@@ -60,7 +64,9 @@ def references(disassembly, read_virtual, objects, functions):
     return {'direct_calls': direct, 'indirect_call_instructions': indirect, 'literal_references': literals}
 
 
-def report(path, objdump, source_head):
+def report(path, objdump, source_head, profile="firmware"):
+    roots = CONTROLLER_NAMES if profile == "controller" else ROOT_NAMES
+    required = "t5_driver_get" if profile == "controller" else "t5_serial_port_get_api"
     from elftools.elf.elffile import ELFFile
     deadline = time.monotonic() + 120
     if not path.is_file() or not 52 <= path.stat().st_size <= 256 * 1024 * 1024:
@@ -72,7 +78,7 @@ def report(path, objdump, source_head):
         stream.seek(0)
         elf = ELFFile(stream)
         if elf.elfclass != 32 or not elf.little_endian or elf['e_machine'] != 'EM_XTENSA':
-            raise ValueError('expected linked Xtensa ELF32 firmware')
+            raise ValueError('expected linked Xtensa ELF32 image')
         table = elf.get_section_by_name('.symtab')
         if table is None or table.num_symbols() > 100000:
             raise ValueError('missing or oversized linked symbol table')
@@ -90,12 +96,12 @@ def report(path, objdump, source_head):
                 legacy.append(item)
             if symbol['st_info']['type'] == 'STT_FUNC':
                 functions.setdefault(address, []).append(name)
-                if size and any(re.search(r'\b'+token+r'\b', name) for token in ROOT_NAMES):
+                if size and any(re.search(r'\b'+token+r'\b', name) for token in roots):
                     selected.append(item)
             elif symbol['st_info']['type'] == 'STT_OBJECT':
                 objects.setdefault(address, []).append(item)
-        if not any(item['name'] == 't5_serial_port_get_api' for item in selected):
-            raise ValueError('linked serial API entrypoint not found')
+        if not any(item['name'] == required for item in selected):
+            raise ValueError('linked required entrypoint not found: ' + required)
         if len(selected) > 32 or len(legacy) > 512:
             raise ValueError('reference report exceeds symbol bound')
         sections = [section for section in elf.iter_sections()
@@ -128,9 +134,14 @@ def report(path, objdump, source_head):
                     'src/native/NativeSerialPortBridge.cpp',
                     'src/native/NativeSerialPortBridge_implementation.inc', 'src/native/NativeStreamBridge.p1.inc',
                     'src/runtime/drivers/InstalledSerialSession.h', 'lib/NativeApps/include/T5SerialPortApi.h']
+    if profile == 'controller':
+        source_files = ['Drivers/usb_controller_esp32s3/' + name for name in
+                        ('driver.cpp', 'driver_base.cpp', 'HostStartup.h', 'PhyRoute.h',
+                         'RoleSwitch.h', 'ClaimReleasePolicy.h', 'manifest.json')]
+    source_files.append('scripts/report_u1_target_references.py')
     sources = {name: hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in source_files}
-    return {'schema': 1, 'compiled_checkout': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
-            'requested_head': source_head, 'firmware_elf_sha256': digest.hexdigest(), 'source_sha256': sources,
+    return {'schema': 1, 'profile': profile, 'compiled_checkout': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
+            'requested_head': source_head, 'elf_sha256': digest.hexdigest(), 'firmware_elf_sha256': digest.hexdigest(), 'source_sha256': sources,
             'legacy_symbol_observations': legacy, 'entrypoint_references': selected,
             'limits': 'Direct call/literal/API-object references plus source hashes; indirect calls are not fully resolved; no physical PHY result.'}
 
@@ -140,10 +151,11 @@ if __name__ == '__main__':
     parser.add_argument('--elf', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--source-head', required=True)
+    parser.add_argument('--profile', choices=('firmware', 'controller'), default='firmware')
     parser.add_argument('--objdump', type=Path, default=Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home()/'.platformio')) /
                         'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-objdump')
     args = parser.parse_args()
-    result = report(args.elf, args.objdump, args.source_head)
+    result = report(args.elf, args.objdump, args.source_head, args.profile)
     payload = json.dumps(result, indent=2) + '\n'
     if len(payload.encode()) > 2 * 1024 * 1024:
         raise ValueError('compact reference report exceeds two MiB')

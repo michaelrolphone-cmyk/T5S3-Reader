@@ -96,7 +96,7 @@ ownership change is performed by that invalidation. The actual pair/helper
 fixture demonstrates the former failed-full-check memo reuse, its correction,
 old/in-flight snapshot non-promotion, and later valid warm reuse. A live reader
 remains owned and usable at the HalFile layer; prior observation-based consumers
-must reacquire current evidence. This correction's target checks are pending.
+must reacquire current evidence. This correction passed target workflows36856309372 /36856309324 at730d0773.
 The separate SD/SPI stop/quarantine contract remains an owner decision, not a
 consequence of advancing a RAM observation counter.
 Firmware final-version reconciliation remains required before a final candidate.

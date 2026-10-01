@@ -178,6 +178,10 @@ python3 "$repo_dir/test/native_apps/rom_manager_actions_touch_source_test.py"
 python3 "$repo_dir/test/native_apps/text_editor_discard_source_test.py"
 python3 "$repo_dir/test/native_apps/wifi_settings_cookie_source_test.py"
 python3 "$repo_dir/test/native_apps/font_manager_confirm_edge_source_test.py"
+python3 "$repo_dir/test/native_apps/timecard_clock_failure_source_test.py"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/timecard_clock_failure_test.c" -o "$binary"
+"$binary"
 bash "$repo_dir/test/run_serial_launch_contract.sh"
 cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/gnss_consent_contract_test.c" -o "$binary"

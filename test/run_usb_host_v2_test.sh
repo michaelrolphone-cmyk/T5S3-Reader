@@ -79,3 +79,6 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/Drivers/usb_controller_esp32s3" \
 # Guard actual production source wiring: timeout drain, retained retry state,
 # and VBUS release must all survive subsequent provider refactors.
 python3 "$repo/test/drivers/usb_controller_bulk_drain_source_test.py"
+
+# Execute the actual controller cleanup body with failing IDF boundaries.
+python3 "$repo/test/drivers/controller_quiesce_path_test.py"

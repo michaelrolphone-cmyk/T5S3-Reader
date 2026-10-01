@@ -184,12 +184,6 @@ static int32_t today(void) {
     return make_ymd(now.year, now.month, now.day);
 }
 
-static int32_t now_minutes(void) {
-    t5_local_datetime_t now;
-    if (!system_api->local_datetime(&now)) return 0;
-    return (int32_t)now.hour * 60 + now.minute;
-}
-
 static int32_t sunday(int32_t offset) {
     int32_t value = today();
     return add_days(value, -weekday(value) + offset * 7);
@@ -655,8 +649,13 @@ static void open_day(int32_t date) {
 }
 
 static void punch_today(uint8_t punch) {
-    int32_t date = today();
-    int16_t minutes = (int16_t)now_minutes();
+    t5_local_datetime_t now;
+    if (!system_api->local_datetime(&now)) {
+        set_status("Clock unavailable");
+        return;
+    }
+    const int32_t date = make_ymd(now.year, now.month, now.day);
+    const int16_t minutes = (int16_t)((int32_t)now.hour * 60 + now.minute);
     if (!set_punch(date, punch, minutes)) {
         set_status("Could not save punch");
         return;

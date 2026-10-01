@@ -47,6 +47,6 @@ edit or a physical power-cut test. The complete native-app aggregate and the10 e
 checks also passed. Both normal board jobs run this fixture through
 the existing actual-parser step. A second mode measures full versus metadata
 work on the actual built app set; see U1_ELF_HOT_PATH_AUDIT.md. Target integration
-is pending.
+passed exact730d0773 in workflows36856309372 /36856309324.
 
 **Implementation In Progress**
