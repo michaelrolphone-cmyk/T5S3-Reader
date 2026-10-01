@@ -1,0 +1,26 @@
+name: CAM headless port contracts
+on:
+  pull_request:
+    paths:
+      - 'ports/cam/**'
+      - 'src/runtime/boot/Headless*'
+      - 'test/boot/**'
+      - 'test/run_cam_headless_test.sh'
+      - '.github/workflows/cam-headless.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read exact U1 storage API dependency
+        run: |
+          git fetch --depth=1 origin 480bf345906344ce55eef3415e7180d6f6a631fb
+          mkdir -p "$RUNNER_TEMP/u1-hal"
+          git show 480bf345906344ce55eef3415e7180d6f6a631fb:lib/hal/HalStorage.h > "$RUNNER_TEMP/u1-hal/HalStorage.h"
+          git show 480bf345906344ce55eef3415e7180d6f6a631fb:lib/hal/StorageGeneration.h > "$RUNNER_TEMP/u1-hal/StorageGeneration.h"
+      - name: Boot failure and real port coherence contracts
+        run: bash test/run_cam_headless_test.sh "$RUNNER_TEMP/u1-hal"

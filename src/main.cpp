@@ -1,3 +1,8 @@
+#if defined(RISCRTE_PROFILE_HEADLESS)
+#include "runtime/boot/HeadlessRuntime.h"
+void setup() { RuntimeBoot::setup(); }
+void loop() { RuntimeBoot::loop(); }
+#else
 #include <Arduino.h>
 #include <Board.h>
 #include <Epub.h>
@@ -800,3 +805,5 @@ void loop() {
     }
   }
 }
+
+#endif // RISCRTE_PROFILE_HEADLESS
