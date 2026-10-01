@@ -1,6 +1,17 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 02:56 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 03:12 UTC. This record supersedes the pre-merge restoration snapshot.
+
+## Completed ledger-only reconciliation — 20:22 archive scan
+
+- Coordinator `reconcile_archive_scan_candidates`; active ledger owner **none**. Captured ledger parent `cff31d4596f61c23aa34ce266fa0d6afe97e501e`; no active claim. Open draft #332 remains the sole coordination PR. Master `a5e2db59077cc889079668dc9cd7428b08bc32a1` and U1 `e377948b29e83b85a09995fb415045d671e6397d` inspected
+- Immutable scan `3bb0ef3bbc67deb6e9b23ea1319d740362e539ee` (`automation/bug-scan-20260930-2022`) adds scan-local **255 → canonical 255**, **256 → 256**, **257 → 257**. Preserved every prior report and each new original report body/verdict as historical evidence. Scanner “Verified” wording is not fresh host/device confirmation
+- Three distinct, unclaimed **needs-revalidation** candidates: signed negative ZIP streaming reads converted to unsigned lengths; alignment-unsafe EOCD loads; bridge rejecting valid empty entries. Compared with #49/#56/#125/#143/#167/#175; no identical root cause/trigger found. Detailed qualifications and source locations are in each report
+- #255 caveat: NativeArchiveBridge's bounded sink rejects oversized stored writes when the length exceeds remaining maxSize; do not assume a crash in every downstream consumer. #256 alignment is scan-buffer-relative and a target crash remains unverified. #257 empty stored/deflated fixture behavior remains untested here
+- U1 owner confirms its current nested-resource slice does not change these ZIP/bridge files and archive.zip service remains open. These candidates are inputs to future coordinated archive work, not evidence that current U1 changes fix them. Refreshed #96/#194/#220/#277/#333/#334 status/paths; no affected ZIP/bridge edits in their checked diffs
+- **Two code-batch slots remain occupied:** held #333 head `3619048c6b178ddf6d767842b797d6fb1d7a87d4` and draft #334 head `98943199054e409987a957b9b909f32ccd4c9f49`. No third batch, implementation claim, runtime edits or version bump
+- Inventory: **246 canonical reports / 244 outstanding**: 240 need revalidation, #252 host-fault confirmed with storage/device validation pending, #16/#17 held, #249 awaiting merge; #91/#205 fixed. Next unused ID **258**. Prior section counts below are historical snapshots
+- Documentation checks: unique headings/IDs, original-body preservation, immutable aliases, exact captured-parent publication and remote content comparison. No runtime test, build, actual SD fault, target alignment test, hardware I/O, merge, release or flash. Next run must refresh branch/claims and coordinate archive ownership before revalidation or repair
 
 ## Completed revalidation-only run — resolver #252
 
