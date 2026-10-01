@@ -40,6 +40,19 @@ Changing that mutex to a timed wait without an ownership-safe destructor and
 uncertainty contract would permit unlocked FsFile destruction or lose tracked
 handles. No such unsafe substitution is made. No new bus driver, registry or
 forced unmapping is introduced. This slice therefore does not close the whole
-bounded-I/O acceptance requirement. Target verification is pending.
+bounded-I/O acceptance requirement. Exact published73288020 passed both
+workflows36849119638 / 36849119632, tree76170c82 matching tested local17cb7cdb.
+
+The lower dependency boundary is source-pinned:
+[SdFat2.3.1 card waits](https://github.com/greiman/SdFat/blob/2.3.1/src/SdCard/SdSpiCard/SdSpiCard.cpp)
+have finite token/read/write timeouts, but its
+[Arduino SPI adapter](https://github.com/greiman/SdFat/blob/2.3.1/src/SdCard/SdSpiCard/SpiDriver/SdSpiLibDriver.h)
+invokes the existing SPIClass, whose
+[2.0.17 transport](https://github.com/espressif/arduino-esp32/blob/2.0.17/cores/esp32/esp32-hal-spi.c)
+contains indefinite mutex and hardware command-completion waits. A scoped
+module-store port correction would need the existing shared bus ownership,
+whole-operation budget and a sticky failure/quarantine contract before it could
+replace those waits. Neither an outer timer nor silently dropping file handles
+establishes safe transfer cancellation. No controller rewrite is included here.
 
 **Implementation In Progress**

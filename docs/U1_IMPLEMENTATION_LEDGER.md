@@ -7,16 +7,28 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current target-green checkpoint is **3ba73f9274250cb5fd68a4fda8bff3eafa4c3cbb**,
-tree **a1f120933677456e00bd881e1dc716086edec310**, identical to tested local
-**6b46c40b**. Both workflows **36848254092 / 36848254100** passed, including both
-boards' actual-parser/owned-app fixture. Graph-owned remap proof passed at
-**a928d444** (36845426266 / 36845426285); canonical app admission and its actual
-linked strong callback edge passed at **ad7a0431** (36842590302 / 36842590322).
+Current target-green checkpoint is **73288020fe5e688ebe420b15dc2cbc4ca87119b1**,
+tree **76170c82bcf9c6716f8df52ad40752e06256590a**, identical to tested local
+**17cb7cdb**. Both workflows **36849119638 / 36849119632** passed the bounded loader
+slice. Loose admission passed **3ba73f92** (36848254092 / 36848254100);
+graph-owned remap passed **a928d444** (36845426266 / 36845426285).
 Master **1e0188c1** remains integrated; PR96 was verified open on October 1 at
-10:25 UTC. Sole ownership remains unchanged. Current local work bounds loader
-contention and repeated reads; deeper HalStorage/media termination remains open.
+10:47 UTC. Sole ownership remains unchanged. The current HTTP worker correction
+has passing host tests; exact target integration is pending.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: HTTP worker idle-body termination
+
+The actual pinned Arduino HTTP body loop can remain connected with no bytes
+without reaching the stream cancellation sink. The existing fetch path now uses
+a same-worker client budget:30-second idle/5-minute total, preserved across
+redirects, explicit socket/connect/handshake limits, bounded header/chunk lines
+and binary readBytes compatibility. Expired partial EOF remains failure.
+Actual unchanged dependency-loop tests demonstrate baseline-over-budget and
+fixed termination; normal network tests, actual fetch-path/catalog tests and
+the full native-app aggregate pass. Target integration is pending.
+No new parser/network stack, cross-task socket deletion or TLS policy change.
+See U1_HTTP_WORKER_TERMINATION.md for remaining synchronous-call limits.
 
 ## October 1: bounded loader descriptor/read work
 
@@ -26,7 +38,7 @@ admission. The existing reader checks allocation size, reads at most4KiB per
 request, yields each chunk and enforces a30-second cooperative read budget with
 throttled progress. Actual-source fixtures pass timeout/ownership/capacity,
 short/error reads, deadline/wrap and cleanup; the full native-app aggregate
-also passed. Target verification is pending.
+also passed. Both target workflows passed at73288020.
 HalStorage/media calls still need a safe real termination contract; this slice
 makes no broader lower-I/O completion claim. See U1_LOADER_IO_BOUNDS.md.
 

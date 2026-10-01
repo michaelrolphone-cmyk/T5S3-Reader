@@ -25,6 +25,7 @@ HARNESS = r'''
 #include <string>
 #include <vector>
 #include "ReleaseCatalogRequest.h"
+#include "HttpClientBudget.h"
 using String = std::string;
 #define CROSSPOINT_VERSION "test"
 #define HTTP_CODE_OK 200
@@ -36,6 +37,9 @@ static void logLine(const char*,const char*,...) {}
 static bool networkReady=true, nativeInvocation=false;
 static unsigned nonceCalls=0, requests=0, streamDelegations=0, ends=0;
 static int responseStatus=200, writeStatus=0;
+static uint32_t nowMs=0, transferDelay=0;
+static uint32_t millis() { return nowMs; }
+static void delay(unsigned ms) { nowMs+=ms; }
 static std::string wireUrl, delegatedUrl;
 static std::map<std::string,std::string> headers;
 static std::vector<std::string> collected;
@@ -55,11 +59,27 @@ class TextStream : public Stream {
   std::string value;
   size_t write(const uint8_t* data,size_t size) override { value.append(reinterpret_cast<const char*>(data),size);return size; }
 };
-class CrossPointHttpClient { public: virtual ~CrossPointHttpClient()=default; };
-class CrossPointHttpClientSecure : public CrossPointHttpClient { public: void setInsecure() {} };
+class CrossPointHttpClient {
+ public:
+  virtual ~CrossPointHttpClient()=default;
+  virtual int connect(const char*,uint16_t,int32_t) { return 1; }
+  virtual int available() { return 0; }
+  virtual uint8_t connected() { return 1; }
+  virtual int peek() { return -1; }
+  virtual int read() { return -1; }
+  virtual int read(uint8_t*,size_t) { return -1; }
+  virtual size_t readBytes(char*,size_t) { return 0; }
+  virtual size_t readBytes(uint8_t*,size_t) { return 0; }
+  virtual size_t write(uint8_t) { return 1; }
+  virtual size_t write(const uint8_t*,size_t n) { return n; }
+  virtual void stop() {}
+};
+class CrossPointHttpClientSecure : public CrossPointHttpClient { public: void setInsecure() {} void setHandshakeTimeout(unsigned seconds) { assert(seconds==15); } };
 class HTTPClient {
  public:
   void begin(CrossPointHttpClient&,const char* url) { wireUrl=url;headers.clear();collected.clear(); }
+  void setConnectTimeout(int ms) { assert(ms==5000); }
+  void setTimeout(unsigned ms) { assert(ms==5000); }
   void setFollowRedirects(int policy) { assert(policy==HTTPC_STRICT_FOLLOW_REDIRECTS); }
   void addHeader(const char* key,const String& value) { headers[key]=value; }
   void collectHeaders(const char** names,size_t count) { collected.assign(names,names+count); }
@@ -67,6 +87,7 @@ class HTTPClient {
   int GET() { ++requests;return responseStatus; }
   int writeToStream(Stream* stream) {
     if(writeStatus<0) return writeStatus;
+    nowMs+=transferDelay;
     // A URI-keyed shared cache still has the old response at the bare URL.
     const std::string content=wireUrl.find("_rte_refresh=")!=std::string::npos?"current":"cached";
     return static_cast<int>(stream->write(reinterpret_cast<const uint8_t*>(content.data()),content.size()));
@@ -151,7 +172,9 @@ int main() {
   assert(!HttpDownloader::fetchUrl(index,failed,"","") && failed.value.empty());
   responseStatus=200;writeStatus=-1;
   assert(!HttpDownloader::fetchUrl(index,failed,"","") && failed.value.empty());
-  writeStatus=0;networkReady=false;const unsigned count=requests;
+  writeStatus=0;transferDelay=300000;TextStream late;
+  assert(!HttpDownloader::fetchUrl(index,late,"","") && !late.value.empty());
+  transferDelay=0;networkReady=false;const unsigned count=requests;
   assert(!HttpDownloader::fetchUrl(index,failed,"","") && requests==count);
   assert(ends==requests);
   std::puts("catalog: unique URI, revalidation, final-transport native/firmware routing, immutable URLs, diagnostics and failures PASS");

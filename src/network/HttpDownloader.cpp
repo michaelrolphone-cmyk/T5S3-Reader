@@ -1,5 +1,6 @@
 #include "HttpDownloader.h"
 #include "ReleaseCatalogRequest.h"
+#include "HttpClientBudget.h"
 
 #include <Arduino.h>
 #include <HTTPClient.h>
@@ -145,13 +146,15 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
 
   // Privileged provider task / non-ELF firmware path. The open_http adapter
   // uses this exact client, retaining the established redirect and TLS policy.
+  HttpClientBudget::Budget budget([]() -> uint32_t { return millis(); }, 300000, 30000, []() { delay(1); });
   std::unique_ptr<CrossPointHttpClient> client;
   if (UrlUtils::isHttpsUrl(url)) {
-    auto* secureClient = new CrossPointHttpClientSecure();
+    auto* secureClient = new HttpClientBudget::Client<CrossPointHttpClientSecure>(budget);
     secureClient->setInsecure();
+    secureClient->setHandshakeTimeout(15);
     client.reset(secureClient);
   } else {
-    client.reset(new CrossPointHttpClient());
+    client.reset(new HttpClientBudget::Client<CrossPointHttpClient>(budget));
   }
   HTTPClient http;
 
@@ -162,6 +165,8 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
   LOG_DBG("HTTP", "Fetching: %s", requestUrl.c_str());
 
   http.begin(*client, requestUrl.c_str());
+  http.setConnectTimeout(5000);
+  http.setTimeout(5000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.addHeader("User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
   if (freshCatalog) {
@@ -182,8 +187,8 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
             httpCode, http.header("Age").c_str(), http.header("X-Cache").c_str(),
             http.header("ETag").c_str(), http.header("Cache-Control").c_str());
   }
-  if (httpCode != HTTP_CODE_OK) {
-    LOG_ERR("HTTP", "Fetch failed: %d", httpCode);
+  if (httpCode != HTTP_CODE_OK || !budget.allow()) {
+    LOG_ERR("HTTP", "Fetch failed: %d (budget=%u)", httpCode, static_cast<unsigned>(budget.failure()));
     logHttpMemory("metadata TLS/GET failure");
     http.end();
     return false;
@@ -191,8 +196,8 @@ bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const 
 
   const int writeResult = http.writeToStream(&outContent);
   http.end();
-  if (writeResult < 0) {
-    LOG_ERR("HTTP", "Fetch stream failed: %d", writeResult);
+  if (writeResult < 0 || !budget.allow()) {
+    LOG_ERR("HTTP", "Fetch stream failed: %d (budget=%u)", writeResult, static_cast<unsigned>(budget.failure()));
     return false;
   }
 

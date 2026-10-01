@@ -94,6 +94,8 @@ jobs:
       - name: Verify actual runtime sidecar parser and owned app admission
         run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
 
+      - name: Verify actual Arduino HTTP body-loop termination
+        run: python3 test/runtime_network/http_client_body_budget_test.py "$HOME/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src/HTTPClient.cpp"
       - name: Record production serial and USB target references
         run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
       - name: Preserve compact target reference evidence
