@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <new>
 
 namespace RuntimePackages {
 // A bounded, ASCII-only ordinary manifest v1 is retained as .package.json.
@@ -164,9 +165,16 @@ inline bool requirements(Reader& r, OrdinaryPackagePlan& out) {
 }
 } // namespace OrdinaryManifestDetail
 
+// Reinitialize in place. Aggregate assignment can materialize a second ~4.7 KiB
+// plan on constrained caller stacks even when the destination lives in PSRAM.
+inline void clearOrdinaryManifestPlan(OrdinaryPackagePlan& plan) {
+  plan.~OrdinaryPackagePlan();
+  ::new (static_cast<void*>(&plan)) OrdinaryPackagePlan{};
+}
+
 inline bool parseOrdinaryManifest(const char* json, size_t length,
                                  OrdinaryPackagePlan& plan) {
-  plan = {};
+  clearOrdinaryManifestPlan(plan);
   if (!safePackageJsonObject(json, length)) return false;
   OrdinaryManifestDetail::Reader r(json, length);
   char kind[16]{}, id[64]{}, version[32]{}, artifact[128]{};
@@ -202,23 +210,23 @@ inline bool parseOrdinaryManifest(const char* json, size_t length,
     if (!more) break;
   }
   if (!valid || !r.end() || seen != 511u || schema != 1u ||
-      !OrdinaryManifestDetail::canonicalVersion(version)) { plan = {}; return false; }
+      !OrdinaryManifestDetail::canonicalVersion(version)) { clearOrdinaryManifestPlan(plan); return false; }
   Kind parsed{};
   if (!std::strcmp(kind, "application")) parsed = Kind::Application;
   else if (!std::strcmp(kind, "driver")) parsed = Kind::Driver;
   else if (!std::strcmp(kind, "service")) parsed = Kind::Service;
   else if (!std::strcmp(kind, "provider")) parsed = Kind::Provider;
-  else { plan = {}; return false; }
+  else { clearOrdinaryManifestPlan(plan); return false; }
   if (!makeIdentity(parsed, id, version, artifact, false, &plan.identity) ||
       (std::strcmp(plan.architecture, "xtensa-esp32s3") &&
-       std::strcmp(plan.architecture, "riscv32"))) { plan = {}; return false; }
+       std::strcmp(plan.architecture, "riscv32"))) { clearOrdinaryManifestPlan(plan); return false; }
   // Structural checks do not resolve grants or allow a driver to activate.
   // The real capability resolver and policy are mandatory at install/load time.
   const PackageRuntimePolicy structural{plan.architecture, UINT32_MAX, 0,
       kOrdinaryMaxEntryBytes, kOrdinaryMaxTotalBytes};
   if (preflightOrdinaryPackage(plan, structural,
           [](const char*) -> uint32_t { return UINT32_MAX; }) !=
-      PreflightResult::ReadyForContentVerification) { plan = {}; return false; }
+      PreflightResult::ReadyForContentVerification) { clearOrdinaryManifestPlan(plan); return false; }
   return true;
 }
 } // namespace RuntimePackages

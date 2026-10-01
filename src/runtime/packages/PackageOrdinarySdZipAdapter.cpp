@@ -20,7 +20,7 @@ bool safeArchivePath(const char* path) {
   if (!path || path[0] != '/' || !path[1] ||
       std::strncmp(path, "/sd/", 4) == 0) return false;
   const size_t length = std::strlen(path);
-  if (length >= 120 || length < 9 ||
+  if (length >= 192 || length < 9 ||
       std::strcmp(path + length - 8, ".rte.zip")) return false;
   size_t segment = 0;
   for (size_t i = 1; i < length; ++i) {
@@ -60,7 +60,7 @@ class Archive {
   bool valid() const {
     // At most 4 MiB of stored entries plus bounded ZIP headers/directories.
     return file_.isOpen() && !file_.isDirectory() && length_ >= kRteZipEocdBytes &&
-           length_ <= kRteZipMaxTotalBytes + 8192u;
+           length_ <= kRteZipMaxTotalBytes + 65536u;
   }
   uint64_t size() const { return length_; }
   bool readAt(uint64_t offset, uint8_t* out, size_t count) {

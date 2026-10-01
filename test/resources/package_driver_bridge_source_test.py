@@ -18,7 +18,10 @@ assert 'removeManagedDirectory(stage)' not in installer
 # The new archive is downloaded from the exact catalog-pinned release, SHA
 # checked, then passed through the same ordinary ZIP transaction as SD intake.
 online = (root / 'src/native/NativeOnlineRtePackageInstall.h').read_text(encoding='utf-8')
-for required in ('releases/download/', 'archiveMatches(',
+locator = (root / 'src/runtime/packages/PackageOnlineCatalog.h').read_text(encoding='utf-8')
+assert 'releases/download/' in locator
+assert 'releases/latest/download/' not in locator
+for required in ('RuntimePackages::onlineArchiveUrl(', 'archiveMatches(',
                  'HttpDownloader::downloadToFile(url, part, progress)',
                  'Storage.rename(part.c_str(), archive.c_str())',
                  'installOrdinaryFromSdZip(', '&package.identity',

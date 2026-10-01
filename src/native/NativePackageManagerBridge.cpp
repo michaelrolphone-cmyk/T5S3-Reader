@@ -368,7 +368,7 @@ bool onlineGet(uint32_t index, t5_package_catalog_row_t* out) {
     if (out) *out = {};
     if (callerKind() < 0 || !out) return false;
     RuntimePackages::CatalogPackage candidate{};
-    char release[64]{};
+    char release[RuntimePackages::kOnlineReleaseTagBytes]{};
     if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index, candidate, release) ||
         !describeIdentity(candidate.identity, &out->package)) return false;
     std::strcpy(out->archive, candidate.archive);
@@ -394,7 +394,7 @@ bool onlineInstallCommon(uint32_t index, t5_package_progress_fn progress, void* 
         return false;
     }
     RuntimePackages::CatalogPackage candidate{};
-    char release[64]{};
+    char release[RuntimePackages::kOnlineReleaseTagBytes]{};
     if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index, candidate, release)) {
         setOnlineInstallError("selected package is no longer available");
         return false;

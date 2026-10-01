@@ -3,12 +3,73 @@
 ## Active continuation claim — October 1, 01:15 UTC
 
 Owner: current U1 implementation worker on PR #96 / `impl/u1-riscrte`.
-Base checkpoint `4b5c1816` has verified green firmware/host and USB/ELF CI.
-Scope: per-package immutable online ZIP locators, version-safe aggregate/legacy
-coexistence, bounded failure/recovery checks; integrate observed master
-`3300229d` once. No live release/catalog operations. Other continuations must
-not write this branch while this claim remains active. Claim will be released
-after publication and exact-head CI verification or an explicit blocker handoff.
+Continuation starts from verified green `4b5c1816`, integrates observed master
+`3300229d`, and keeps sole ownership while publishing/verifying this checkpoint
+and auditing the remaining whole-U1 acceptance gates. Other continuations must
+not write this branch until this claim is explicitly released. No live release,
+index, tag, master update or flash. CI is feedback, not an idle-work gate.
+
+## October 1: per-package immutable online sources and version-safe coexistence
+
+The ordinary online manager now consumes the validated independent index and
+retains each selected ZIP's own immutable tag. The original four-kind aggregate
+catalog remains a compatible source, without rewriting its schema or treating
+catalog metadata as activation/import authority.
+
+- Added a bounded, duplicate-aware portable index parser for current driver ZIP
+  records and historical app/driver records. Exact outer identity/version/CPU,
+  ordinary manifest, canonical archive/tag/own-repository URL, size and digest
+  must agree. Unknown formats, mixed metadata, corruption and partial JSON fail
+  closed. Historical GameBoy source/tag semantics remain supported.
+- Merge by numeric `(kind,id)` version. Newer valid ZIP wins across sources;
+  equal ZIPs require identical payload metadata and prefer the independent tag.
+  Historical loose entries are version barriers: equal/older aggregate ZIPs are
+  suppressed, never interpreted using the loose ELF hash. App/service/provider
+  aggregate rows retain their own valid paths; CPU filtering remains explicit.
+- A required independent-source failure clears all selectable rows rather than
+  falling back to stale aggregate versions. A wholly unavailable aggregate is
+  optional, but received-invalid, oversized or partial transfers fail. Publish
+  the combined snapshot only after complete validation; reject union overflow.
+- Fixed PSRAM allocation covers response and catalog arrays, not just payload
+  text. Intake caps index at 512 KiB, aggregate at 32 KiB, 128 legacy apps,
+  64 drivers and 64 selected ZIPs; parser/network checkpoints share a 90-second
+  deadline and real scheduler yields. Allocation failure is tested at every
+  object/response stage. Reused manifest scratch and in-place reset avoid large
+  nested stack temporaries; host compiler frame inspection confirmed reduction,
+  not a measurement of target stack high-water.
+- Independent tags use 128-byte buffers. Existing archive/Inbox validators now
+  support valid publisher names without truncation and agree with the existing
+  ZIP inspector's 4 MiB + 65536 byte envelope. Download SHA, selected manifest
+  identity, common transaction/recovery, active-use and installed-version gates
+  remain unchanged. Public package-manager ABI and app/driver payload versions
+  are unchanged; merged Hollow Trail changes/versions are retained.
+
+Observed checks: full ordinary-package host aggregate (including two new C++
+parser/merge programs), real packer→record→index→runtime URL round-trip, actual
+production refresh/selection harness with simulated I/O under ASan/UBSan,
+19 index tests, 16 record tests, eight driver package tests and catalog freshness
+passed. The full native app aggregate passed again after final metadata allocation/stack
+refinement; exact new-head firmware/ELF CI will be recorded on PR #96. LeakSanitizer was disabled solely for executor ptrace incompatibility.
+The runtime parser also accepted the fetched historical index's 40 app/21 driver
+records and mapped all 22 real prior target-built ZIP records to exact immutable
+URLs. These checks perform no release or live index operation.
+
+### Remaining implementation and immediate priority
+
+This closes driver ZIP online locator integration, not all U1 acceptance.
+Independent ordinary-app publication and consumption still need a coherent
+migration: loose app entries remain barriers/compatibility inputs, and can
+suppress old aggregate candidates. Nested resources/scoped access, generation-
+bound verification receipts, canonical CDC migration, signing-only purge and
+remaining normal-runtime USB extraction are still open. Existing underlying
+HTTP/TLS and archive-transfer limitations are not certified by catalog parsing.
+
+The next work is a code-backed matrix against the whole U1 definition, with
+installed-ELF generic byte/record producer/sink endpoints, context/generation/
+rights, bounded backpressure, revoke/quiescence and provider I/O outside global
+locks checked first. Reconcile independently advanced source before adding
+replacement implementations. Preserve the daily-use serial/flashing/clock/USB
+workflows; no touch/network/U2–U4 scope expansion or hardware success claim.
 
 **Implementation In Progress**
 

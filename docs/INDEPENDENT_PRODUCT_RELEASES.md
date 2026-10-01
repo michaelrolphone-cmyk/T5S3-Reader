@@ -97,22 +97,55 @@ and mismatched firmware source versions or OTA aliases. Firmware/app historical
 formats remain explicit compatibility paths; this workflow repair does not claim
 that independent apps have completed U1 ordinary-bundle migration.
 
-### Remaining online routing
+### Ordinary online catalog routing
 
-The online ordinary-package consumer currently pins one aggregate catalog tag
-for all rows. Independently released ZIPs require a per-package immutable tag/URL
-route and version-safe merging with aggregate/legacy entries. Do not replace its
-endpoint with the release index before that complete route exists. The current
-aggregate `package-catalog.json` now receives the same cache revalidation as other
-mutable catalogs; selected versioned ZIP URLs remain unchanged. No live catalog
-or deployed firmware was switched during this repair.
+The ordinary package API now reads the independent index and optionally the
+historical aggregate `package-catalog.json`. Each selected row retains its own
+validated immutable release tag, archive size and SHA-256. New driver ZIP rows
+are routed through the existing common ZIP installer; no arbitrary record URL,
+mutable `latest` archive request or new privileged install path is introduced.
+The aggregate schema stays unchanged and remains the four-kind ZIP source.
+
+Selection compares numeric `(kind, id)` versions. A newer ZIP wins regardless of
+source. Equal ZIP versions must agree on artifact, CPU, archive name, size and
+hash; identical content prefers the independent locator. Historical loose app
+and driver records are validated version barriers, not ZIP candidates: they
+suppress equal/older aggregate ZIPs, while a strictly newer aggregate bundle may
+supersede them. Legacy app metadata, including the existing allowlisted GameBoy
+source/tag rules, retains its separate compatibility ABI. No loose ELF digest
+is ever relabeled as a whole-archive digest.
+
+The independent source must be successfully read and validated on every refresh.
+Failure clears online selections; it never silently falls back to an older
+aggregate. A wholly unavailable aggregate may be absent after independent
+releases, but a received corrupt, oversized or partially transferred aggregate
+fails the entire refresh. Combined output is published atomically, capped at
+64 rows, with overflow rejected rather than truncated. Installed inventory and
+SD workflows remain available without either source. Existing installed-version
+checks prevent downgrade; this is not a persisted catalog freshness floor or
+publisher authentication.
+
+Intake uses separate fixed PSRAM budgets (512 KiB index, 32 KiB aggregate), at
+most 128 legacy app/64 driver records, bounded nesting/keys and duplicate-aware
+JSON validation. Ordinary manifests retain their own 4096-byte limit. Streaming
+and parser checkpoints share a 90-second refresh deadline and scheduler yields;
+underlying HTTP stream stall handling remains in the transport. Each row has a
+128-byte release-tag buffer; archive and Inbox path bounds now cover the
+publisher's valid maximum names without truncation. Archive size ceilings agree
+with the existing ZIP inspector/packer (4 MiB + 65536 bytes of bounded overhead).
+
+Independent ordinary-app publication/consumption is still unfinished: legacy
+app rows do not become current ZIP installs, and an equal/newer loose release
+may intentionally suppress an older aggregate candidate. Complete that migration
+before claiming U1's complete online app distribution. No live release/index
+or deployed firmware was changed by this implementation.
 
 
 ## Temporary third-party app listing
 
 The App Store temporarily includes the RiscRTE ELF from the T5S3-GameBoy repository through the shared release index. A scheduled workflow checks the upstream stable release every five minutes, validates the published `gameboy.json` identity, firmware requirement, ELF size and SHA-256, then updates only the GameBoy app entry on the `release-index` branch. The app remains hosted by the GameBoy release, so GameBoy app updates do not require a RiscRTE firmware or app release.
 
-The device continues to fetch one bounded release index during App Store refresh; it does not make a second live request to the GameBoy repository. The temporary trust rule accepts only the `gameboy` app from `michaelrolphone-cmyk/T5S3-GameBoy`. Replace this rule and the polling workflow when general third-party provider capabilities are available.
+The legacy app-catalog ABI fetches one release index during refresh; it does not make a second live request to the GameBoy repository. The temporary trust rule accepts only the `gameboy` app from `michaelrolphone-cmyk/T5S3-GameBoy`. Replace this rule and the polling workflow when general third-party provider capabilities are available.
 
 ## Migration and acceptance
 

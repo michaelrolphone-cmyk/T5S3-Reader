@@ -64,7 +64,7 @@ inline bool archiveName(const char* name) {
   }
   return size > 8 && std::strcmp(name + size - 8, ".rte.zip") == 0;
 }
-inline bool safeReleaseTag(const char* tag) {
+inline bool safeReleaseTag(const char* tag, size_t capacity = sizeof(PackageCatalog::release)) {
   if (!tag || !*tag) return false;
   size_t n = 0;
   for (; tag[n]; ++n) {
@@ -73,7 +73,7 @@ inline bool safeReleaseTag(const char* tag) {
                        (c >= '0' && c <= '9');
     if (!alnum && c != '-' && c != '_' && c != '.') return false;
     if (c == '.' && n && tag[n - 1] == '.') return false;
-    if (n + 1 >= sizeof(PackageCatalog::release)) return false;
+    if (n + 1 >= capacity) return false;
   }
   return n > 0;
 }
@@ -165,7 +165,7 @@ inline bool parsePackageCatalog(const char* json, size_t length,
             !makeIdentity(kind, id, version, artifact, false, &pkg.identity) ||
             !CatalogDetail::archiveName(pkg.archive) ||
             !CatalogDetail::lowerSha256(pkg.sha256) ||
-            pkg.sizeBytes > 4u * 1024u * 1024u + 8192u)
+            pkg.sizeBytes > 4u * 1024u * 1024u + 65536u)
           valid = false;
         if (!valid) break;
         for (size_t i = 0; i < out.packageCount; ++i) {

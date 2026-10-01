@@ -1,7 +1,7 @@
 #pragma once
 
 #include "runtime/packages/InstalledCapabilityResolver.h"
-#include "runtime/packages/PackageCatalog.h"
+#include "runtime/packages/PackageOnlineCatalog.h"
 #include "runtime/packages/PackageOrdinarySdZipAdapter.h"
 #include "runtime/packages/PackageRteZip.h"
 #include "network/HttpDownloader.h"
@@ -26,18 +26,7 @@ namespace OrdinaryZip {
 // not use releases/latest/download after catalog selection: it can drift.
 inline bool archiveUrl(const RuntimePackages::CatalogPackage& package,
                        const char* releaseTag, std::string& url) {
-  url.clear();
-  if (!RuntimePackages::CatalogDetail::safeReleaseTag(releaseTag) ||
-      !RuntimePackages::CatalogDetail::archiveName(package.archive) ||
-      std::strlen(package.archive) > 95 ||
-      std::strcmp(package.architecture, "xtensa-esp32s3") ||
-      !RuntimePackages::CatalogDetail::lowerSha256(package.sha256) ||
-      package.sizeBytes < RuntimePackages::kRteZipEocdBytes ||
-      package.sizeBytes > RuntimePackages::kRteZipMaxTotalBytes + 8192u)
-    return false;
-  url = std::string("https://github.com/michaelrolphone-cmyk/T5S3-Reader/") +
-        "releases/download/" + releaseTag + "/" + package.archive;
-  return true;
+  return RuntimePackages::onlineArchiveUrl(package, releaseTag, "xtensa-esp32s3", url);
 }
 
 inline bool ensureInbox() {
@@ -107,7 +96,8 @@ inline bool install(const RuntimePackages::CatalogPackage& package,
   if (!archiveUrl(package, releaseTag, url) || !ensureInbox()) return false;
   const std::string archive = std::string("/Packages/Inbox/") + package.archive;
   const std::string part = archive + ".part";
-  if (archive.size() >= 120 || part.size() >= 128) return false;
+  if (archive.size() >= RuntimePackages::kOnlineArchivePathBytes ||
+      part.size() >= RuntimePackages::kOnlineArchivePathBytes) return false;
   if (Storage.exists(archive.c_str())) {
     if (!archiveMatches(archive.c_str(), package)) return false;
   } else {

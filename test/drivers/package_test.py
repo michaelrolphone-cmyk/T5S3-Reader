@@ -113,8 +113,9 @@ class Packages(unittest.TestCase):
         # Keep admission guards at the current catalog/archive boundary.
         catalog = (root / 'src/native/NativeOnlineOrdinaryCatalog.h').read_text()
         online = (root / 'src/native/NativeOnlineRtePackageInstall.h').read_text()
-        self.assertIn('BoundedCatalogSink response;', catalog)
-        self.assertIn('!HttpDownloader::fetchUrl(kLatestCatalog, response) || !response.ready()', catalog)
+        self.assertIn('BoundedCatalogSink response(work);', catalog)
+        self.assertIn('!HttpDownloader::fetchUrl(kIndependentCatalog, response) || !response.ready()', catalog)
+        self.assertIn('RuntimePackages::mergeOnlineCatalog(', catalog)
         self.assertIn('RuntimePackages::parsePackageCatalog(', catalog)
         self.assertIn('archiveMatches(part.c_str(), package)', online)
         self.assertLess(online.index('archiveMatches(part.c_str(), package)'),
