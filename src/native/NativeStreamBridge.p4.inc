@@ -1,12 +1,16 @@
 // Generic copied endpoint ingress for installed providers. Only firmware
 // callbacks enter this table; no provider function pointer enters the registry.
 #include "runtime/drivers/ProviderModuleV2.h"
+#include "runtime/packages/PackageOrdinaryTransaction.h"
 namespace {
 constexpr unsigned kProviderContexts = 16, kProviderEndpoints = 4;
 struct ProviderStreams {
   uint32_t owner = 0;
   bool stopped = false;
   t5_stream_t endpoints[kProviderEndpoints]{};
+  t5_stream_t resources[kProviderEndpoints]{};
+  RuntimePackages::Identity resourceIdentity{};
+  char resourceRoot[96]{};
 };
 ProviderStreams providerStreams[kProviderContexts];
 struct ProviderConsumerGrant {
@@ -98,18 +102,86 @@ int32_t providerFinish(uint64_t context, uint32_t h, int32_t terminal) {
                                   : registry.finish(slot->owner, h, terminal);
   wake(); return result;
 }
+bool providerResource(ProviderStreams* slot, uint32_t h) {
+  if (!slot || !h) return false;
+  for (const auto resource : slot->resources) if (resource == h) return true;
+  return false;
+}
 int32_t providerClose(uint64_t context, uint32_t h) {
   if (!mutex) return T5_STREAM_DENIED;
-  Lock lock; ProviderStreams* slot = nullptr;
-  const auto valid = providerEndpoint(context, h, 0, &slot);
-  if (valid != T5_STREAM_OK) return valid;
-  const auto result = registry.close(slot->owner, h);
+  RetiredProvider retired;
+  Lock lock; ProviderStreams* slot = providerContext(context);
+  if (!slot) return T5_STREAM_DENIED;
+  if (!providerResource(slot, h)) {
+    const auto valid = providerEndpoint(context, h, 0, &slot);
+    if (valid != T5_STREAM_OK) return valid;
+  }
+  const auto result = registry.close(slot->owner, h, &retired.value);
   if (result == T5_STREAM_OK) {
     for (auto& endpoint : slot->endpoints) if (endpoint == h) endpoint = 0;
+    for (auto& resource : slot->resources) if (resource == h) resource = 0;
     for (auto& grant : providerConsumerGrants)
       if (grant.context == context && grant.endpoint == h) grant = {};
   }
   wake(); return result;
+}
+int32_t providerOpenResource(uint64_t context, const char* name, uint32_t* out) {
+  if (out) *out = 0;
+  if (!mutex) return T5_STREAM_DENIED;
+  if (!out || !RuntimePackages::safePackageResourcePath(name)) return T5_STREAM_INVALID;
+  char root[96]{}, relative[128]{};
+  RuntimePackages::Identity expected{};
+  {
+    Lock lock; auto* slot = providerContext(context);
+    if (!slot || !slot->resourceRoot[0]) return T5_STREAM_DENIED;
+    bool room = false;
+    for (const auto h : slot->resources) if (!h) room = true;
+    if (!room) return T5_STREAM_LIMIT;
+    std::strcpy(root, slot->resourceRoot); std::strcpy(relative, name);
+    expected = slot->resourceIdentity;
+  }
+  std::unique_ptr<File> candidate;
+  const int32_t prepared = prepareResource(root, expected, relative, candidate);
+  if (prepared != T5_STREAM_OK) return prepared;
+  RuntimeStreams::Provider provider{candidate.get(), fileRead, nullptr, fileSeek, fileFinish, fileClose};
+  Lock lock; auto* slot = providerContext(context);
+  if (!slot) return T5_STREAM_DENIED;
+  for (auto& h : slot->resources) {
+    if (h) continue;
+    const auto result = registry.attach(slot->owner, T5_STREAM_BYTES,
+        T5_STREAM_READ | T5_STREAM_SEEK, provider, out);
+    if (result == T5_STREAM_OK) { h = *out; (void)candidate.release(); }
+    return result;
+  }
+  return T5_STREAM_LIMIT;
+}
+int32_t providerReadResource(uint64_t context, uint32_t h, void* data,
+                             uint32_t capacity, uint32_t* count) {
+  if (count) *count = 0;
+  if (!mutex) return T5_STREAM_DENIED;
+  RuntimeStreams::DirectIo operation{};
+  int32_t result;
+  {
+    Lock lock; auto* slot = providerContext(context);
+    if (!slot) return T5_STREAM_DENIED;
+    if (!providerResource(slot, h)) return T5_STREAM_INVALID;
+    result = registry.read(slot->owner, h, data, capacity, count, &operation);
+  }
+  if (operation.transfer.pending) result = executeDirect(operation, data, count);
+  return result;
+}
+int32_t providerSeekResource(uint64_t context, uint32_t h, uint64_t offset) {
+  if (!mutex) return T5_STREAM_DENIED;
+  RuntimeStreams::DirectIo operation{};
+  int32_t result;
+  {
+    Lock lock; auto* slot = providerContext(context);
+    if (!slot) return T5_STREAM_DENIED;
+    if (!providerResource(slot, h)) return T5_STREAM_INVALID;
+    result = registry.seek(slot->owner, h, offset, &operation);
+  }
+  if (operation.transfer.pending) result = executeDirect(operation);
+  return result;
 }
 bool providerOpenContext(risc_stream_provider_v1* out) {
   if (!out) return false;
@@ -131,15 +203,16 @@ bool providerOpenContext(risc_stream_provider_v1* out) {
 }
 void providerRevokeContext(uint64_t context) {
   if (!mutex) return;
+  RetiredProviders retired;
   Lock lock;
   auto* slot = providerContext(context);
   if (!slot) return;
   slot->stopped = true;
   for (auto& grant : providerConsumerGrants)
     if (grant.context == context) grant = {};
-  // These are copied queues only: release never calls ELF or storage code.
-  // Closing endpoints fails attached pipes and invalidates every consumer grant.
-  registry.release(slot->owner);
+  // In-flight resource I/O retains its adapter ticket; other file adapters
+  // retire only after unlocking. Endpoint and resource handles both revoke.
+  registry.release(slot->owner, &retired.values);
   wake();
 }
 void providerCloseContext(uint64_t context) {
@@ -148,6 +221,27 @@ void providerCloseContext(uint64_t context) {
   Lock lock;
   for (auto& slot : providerStreams)
     if (slot.owner && slot.owner == context) { slot = {}; return; }
+}
+bool providerOpenResources(risc_stream_provider_resources_v1* out,
+                           const RuntimePackages::Identity& identity) {
+  using namespace RuntimePackages;
+  if (!out) return false;
+  *out = {};
+  Identity canonical{};
+  OrdinaryTransactionPaths paths{};
+  if (identity.kind == Kind::Application || identity.legacyVersion ||
+      !makeIdentity(identity.kind, identity.id, identity.version, identity.artifact, false, &canonical) ||
+      !ordinaryTransactionPaths(identity.kind, identity.id, paths) ||
+      !systemPackageUseGate().pinned(paths.target) || !providerOpenContext(&out->streams)) return false;
+  Lock lock; auto* slot = providerContext(out->streams.context);
+  if (!slot) return false;
+  slot->resourceIdentity = identity;
+  std::strcpy(slot->resourceRoot, paths.target);
+  out->streams.struct_size = sizeof(*out);
+  out->open_resource = providerOpenResource;
+  out->read_resource = providerReadResource;
+  out->seek_resource = providerSeekResource;
+  return true;
 }
 bool providerGrant(uint64_t context, uint64_t lease, uint32_t consumer,
                    uint32_t endpoint, uint32_t rights) {
@@ -188,7 +282,7 @@ void providerRevokeGrant(uint64_t context, uint64_t lease) {
 }
 const RuntimeProviders::StreamHostV1 providerHost{
     providerOpenContext, providerRevokeContext, providerCloseContext,
-    providerGrant, providerRevokeGrant};
+    providerGrant, providerRevokeGrant, providerOpenResources};
 } // namespace
 const RuntimeProviders::StreamHostV1* nativeProviderStreamHost() { return &providerHost; }
 

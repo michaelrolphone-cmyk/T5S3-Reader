@@ -276,25 +276,12 @@ int32_t openFile(const char* path, uint32_t mode, t5_stream_t* out) {
 // Called through an invocation-scoped API. The root/identity are copied only
 // by the trusted loader after canonical admission and package-use pinning.
 constexpr size_t kResourceManifestBytes = 4096;
-int32_t openResource(const char* name, t5_stream_t* out) {
-  if (out) *out = 0;
-  if (!authorized()) return T5_STREAM_DENIED;
-  if (!out || !RuntimePackages::safePackageResourcePath(name)) return T5_STREAM_INVALID;
-  uint32_t openingOwner;
-  char root[96]{}, relative[128]{};
-  RuntimePackages::Identity expected{};
-  {
-    Lock lock;
-    if (!authorized() || !resourceRoot[0]) return T5_STREAM_DENIED;
-    openingOwner = owner;
-    std::strcpy(root, resourceRoot);
-    std::strcpy(relative, name);
-    expected = resourceIdentity;
-  }
+int32_t prepareResource(const char* root, const RuntimePackages::Identity& expected,
+                        const char* relative, std::unique_ptr<File>& candidate) {
   if (!Storage.ready()) return T5_STREAM_IO;
-  auto* f = new (std::nothrow) File;
-  if (!f) return T5_STREAM_LIMIT;
-  std::unique_ptr<File> candidate(f);
+  candidate.reset(new (std::nothrow) File);
+  if (!candidate) return T5_STREAM_LIMIT;
+  auto* f = candidate.get();
   if (!RuntimePackages::systemPackageUseGate().pin(root)) return T5_STREAM_BUSY;
   std::strcpy(f->packagePin, root);
   std::unique_ptr<char[]> metadata(new (std::nothrow) char[kResourceManifestBytes]);
@@ -322,6 +309,27 @@ int32_t openResource(const char* name, t5_stream_t* out) {
   if (!f->file.isOpen() || f->file.isDirectory()) return T5_STREAM_IO;
   f->length = f->file.fileSize64();
   if (f->length != declared->sizeBytes) return T5_STREAM_IO;
+  return T5_STREAM_OK;
+}
+int32_t openResource(const char* name, t5_stream_t* out) {
+  if (out) *out = 0;
+  if (!authorized()) return T5_STREAM_DENIED;
+  if (!out || !RuntimePackages::safePackageResourcePath(name)) return T5_STREAM_INVALID;
+  uint32_t openingOwner;
+  char root[96]{}, relative[128]{};
+  RuntimePackages::Identity expected{};
+  {
+    Lock lock;
+    if (!authorized() || !resourceRoot[0]) return T5_STREAM_DENIED;
+    openingOwner = owner;
+    std::strcpy(root, resourceRoot);
+    std::strcpy(relative, name);
+    expected = resourceIdentity;
+  }
+  std::unique_ptr<File> candidate;
+  const int32_t prepared = prepareResource(root, expected, relative, candidate);
+  if (prepared != T5_STREAM_OK) return prepared;
+  auto* f = candidate.get();
   RuntimeStreams::Provider provider{f, fileRead, nullptr, fileSeek, fileFinish, fileClose};
   int32_t result;
   {

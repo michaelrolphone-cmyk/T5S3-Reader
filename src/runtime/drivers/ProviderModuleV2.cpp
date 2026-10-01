@@ -98,12 +98,14 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     if (extended->bind_streams) {
       if (!hasQuiesce(candidate) || !streamHost_ || !streamHost_->open ||
           !streamHost_->revoke || !streamHost_->close ||
-          !streamHost_->open(&streamApi_)) {
+          !(resourceIdentity_.id[0]
+              ? streamHost_->openResources && streamHost_->openResources(&streamApi_, resourceIdentity_)
+              : streamHost_->open(&streamApi_.streams))) {
         report(expectedId, "stream-context-unavailable");
         return false;
       }
       streamsRevoked_ = false;
-      bound = extended->bind_streams(&streamApi_);
+      bound = extended->bind_streams(&streamApi_.streams);
     }
   }
   trace(expectedId, "hardware-start-begin");
@@ -277,15 +279,15 @@ bool ModuleV2::unpinConsumer() {
 }
 
 void ModuleV2::revokeStreams() {
-  if (streamApi_.context && !streamsRevoked_) {
-    streamHost_->revoke(streamApi_.context);
+  if (streamApi_.streams.context && !streamsRevoked_) {
+    streamHost_->revoke(streamApi_.streams.context);
     streamsRevoked_ = true;
   }
 }
 void ModuleV2::closeStreams() {
-  if (!streamApi_.context) return;
+  if (!streamApi_.streams.context) return;
   revokeStreams();
-  streamHost_->close(streamApi_.context);
+  streamHost_->close(streamApi_.streams.context);
   streamApi_ = {};
 }
 bool ModuleV2::unload() {

@@ -1,5 +1,6 @@
 #pragma once
 #include <RiscProviderV2.h>
+#include <RiscPackageResourcesV1.h>
 typedef struct {
     const risc_stream_provider_v1 *(*streams)(void);
     uint32_t (*source)(void);
@@ -11,4 +12,5 @@ typedef struct {
     uint32_t (*consumed)(void);
     uint32_t (*record_sink)(void);
     uint32_t (*records_consumed)(void);
+    int32_t (*read_resource)(char* out);
 } provider_stream_fixture_api;

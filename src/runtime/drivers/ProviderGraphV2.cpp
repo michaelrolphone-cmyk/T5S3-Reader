@@ -119,6 +119,14 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
       if (std::strcmp(spec.requirements[i].capability,
                       spec.requirements[j].capability) == 0) return false;
   }
+  if (spec.resourceIdentity.id[0]) {
+    const auto& identity = spec.resourceIdentity;
+    RuntimePackages::Identity canonical{};
+    if (!RuntimePackages::makeIdentity(identity.kind, identity.id, identity.version,
+          identity.artifact, false, &canonical) || identity.legacyVersion ||
+        identity.kind == RuntimePackages::Kind::Application ||
+        std::strcmp(identity.id, spec.id)) return false;
+  }
   auto* owned = new (std::nothrow) OwnedNodeV2();
   if (!owned) return false;
   if (!owned->snapshot(spec)) {
@@ -187,6 +195,7 @@ bool GraphV2::activate(size_t index) {
                                  nodes_[dependency].module.capability()};
   }
   (void)node.module.setStreamHost(streamHost_);
+  (void)node.module.setResourceIdentity(node.spec.resourceIdentity);
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,

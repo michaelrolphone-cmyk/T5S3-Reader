@@ -282,6 +282,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         candidate.importedSymbols = symbols;
         candidate.importedSymbolCount = symbolCount;
         candidate.requiredOsCpuAbi = 1;
+        candidate.resourceIdentity = plan->identity;
         accepted = DeviceProviderExecutorV2::registerManagerValidated(destination, candidate, false);
         std::free(elf);
         std::free(imports);

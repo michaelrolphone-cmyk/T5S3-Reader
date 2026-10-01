@@ -86,9 +86,41 @@ Actual stream-bridge tests exercise traversal, undeclared/executable refusal,
 wrong version/length, read-only rights, pin lifetime, context change during open,
 cleanup and uncertain-close retention with storage lock assertions.
 
-Application access is connected; installed provider/driver/service context
-resource bindings, resource-only package semantics, archive service, CDC
-migration and verification receipts remain open. No new
+## Installed provider, driver and service resources
+
+The optional `risc_stream_provider_resources_v1` host-table suffix preserves the
+existing stream-provider ABI prefix and existing package payloads. Its presence
+is negotiated by `struct_size`; existing drivers keep using the original table.
+The installed manager copies its admitted ordinary identity through executor,
+owned graph and module context before binding the table. The module cannot choose
+another root. An absent package-use pin refuses binding; legacy/unscoped module
+contexts retain their original table without resource authority.
+
+The same resource preparation primitive and byte-stream registry serve all four
+kinds. A provider context may open at most four private resource handles. The
+existing close slot closes either owned queues or resources; public endpoint
+grants do not accept resource handles. Resource reads/seeks use existing
+in-flight direct-I/O tickets, preserving revoke-during-I/O behavior. Revoke
+retires file adapters outside the mutex and before normal module teardown;
+failed quiescence still retains the ELF/dependency lifecycle as before.
+
+Three-kind real bridge tests cover bounds, cross-context rejection, attempts to
+publish resource rights, open/read revocation and pin retirement. The actual
+loaded-ELF fixture exercises graph-owned identity copying, reading through the
+extended table, failed-quiescence denial and retry. Original provider graph and
+stream lifecycle suites remain required. No distributable driver source or old
+SDK layout changed; no package version bump is needed for this runtime-only
+addition. New consumers must negotiate the suffix before using it.
+
+The app checkpoint **57c4b0a3** built both firmware boards and all app ZIPs and
+passed USB/ELF **36810000332**. Its host job in **36810000245** found an old
+source-shape test requiring an unconditional launcher statement. The new guarded
+launch still runs stream/serial cleanup on both outcomes; that assertion is
+updated to the guarded statement, and all seven USB-package tests pass locally.
+The provider resource slice needs its own exact-head target verification.
+
+Resource-only package semantics, archive service, CDC migration, verification
+receipts/media invalidation and underlying I/O termination remain open. No new
 package payload, version, live catalog, release or deployment is introduced.
 
 **Implementation In Progress**

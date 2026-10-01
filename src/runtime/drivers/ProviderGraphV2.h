@@ -26,6 +26,7 @@ struct SpecV2 {
   const char* const* declaredImports = nullptr;
   size_t declaredImportCount = 0;
   uint8_t contentSha256[32] = {};
+  RuntimePackages::Identity resourceIdentity{};
 };
 struct GrantV2 {
   uint32_t slot = 0;

@@ -24,6 +24,7 @@ struct ManagerProviderCandidateV2 {
   // OPTIONAL: checksum declared by this package, for corruption detection.
   // A matching digest is NOT a publisher identity or privilege authorization.
   const uint8_t* declaredSha256 = nullptr;
+  Identity resourceIdentity{};
 };
 
 class DeviceProviderExecutorV2 final {

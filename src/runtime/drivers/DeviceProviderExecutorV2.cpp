@@ -58,6 +58,7 @@ bool DeviceProviderExecutorV2::registerManagerValidated(
   RuntimeProviders::SpecV2 spec{input.driverId, nullptr, input.provides,
       input.providesApi, input.requirements, input.requirementCount};
   spec.requiredOsCpuAbi = 1;
+  spec.resourceIdentity = input.resourceIdentity;
   spec.verifiedElfBytes = input.elfBytes;
   spec.verifiedElfLength = input.elfLength;
   spec.declaredImports = input.importedSymbols;

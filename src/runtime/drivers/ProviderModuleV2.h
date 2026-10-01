@@ -1,5 +1,7 @@
 #pragma once
 #include <RiscProviderV2.h>
+#include <RiscPackageResourcesV1.h>
+#include "runtime/packages/PackageIdentity.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -14,6 +16,7 @@ struct StreamHostV1 {
   void (*close)(uint64_t);
   bool (*grant)(uint64_t, uint64_t, uint32_t, uint32_t, uint32_t);
   void (*revokeGrant)(uint64_t, uint64_t);
+  bool (*openResources)(risc_stream_provider_resources_v1*, const RuntimePackages::Identity&) = nullptr;
 };
 class ModuleV2 final {
  public:
@@ -45,7 +48,11 @@ class ModuleV2 final {
     if (state_ != State::Absent || handle_) return false;
     streamHost_ = host; return true;
   }
-  uint64_t streamContext() const { return state_ == State::Active ? streamApi_.context : 0; }
+  bool setResourceIdentity(const RuntimePackages::Identity& identity) {
+    if (state_ != State::Absent || handle_) return false;
+    resourceIdentity_ = identity; return true;
+  }
+  uint64_t streamContext() const { return state_ == State::Active ? streamApi_.streams.context : 0; }
   bool poll(uint32_t budgetMs);
   bool pinConsumer();
   bool unpinConsumer();
@@ -64,7 +71,8 @@ class ModuleV2 final {
   void revokeStreams();
   void closeStreams();
   const StreamHostV1* streamHost_ = nullptr;
-  risc_stream_provider_v1 streamApi_{};
+  risc_stream_provider_resources_v1 streamApi_{};
+  RuntimePackages::Identity resourceIdentity_{};
   bool streamsRevoked_ = false;
   void* handle_ = nullptr;
   const risc_driver_v2* driver_ = nullptr;

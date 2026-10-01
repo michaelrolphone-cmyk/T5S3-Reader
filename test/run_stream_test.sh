@@ -56,6 +56,8 @@ production_common=("${common[@]}")
 common+=(-I"$repo/test/streams/stubs")
 compile_run bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
   "$checked" "$bridge_io" "$repo/test/streams/bridge_test.cpp"
+compile_run provider-resource-bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
+  "$checked" "$bridge_io" "$repo/test/streams/provider_resource_bridge_test.cpp"
 compile_run package-resource-bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \
   "$checked" "$bridge_io" "$repo/test/streams/package_resource_bridge_test.cpp"
 compile_run direct-io-bridge "$stream" "$repo/src/native/NativeStreamBridge.cpp" "$serial" \

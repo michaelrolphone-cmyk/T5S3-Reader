@@ -6,6 +6,7 @@
 #undef main
 #pragma GCC diagnostic pop
 #include "runtime/drivers/ProviderGraphV2.h"
+#include "runtime/packages/PackageUseGate.h"
 #include "../drivers/provider_stream_fixture.h"
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -182,5 +183,33 @@ int main(int argc, char** argv) {
   producer->block_quiesce(false);
   nativeProviderSetOwnerPoll(nullptr); ownerGraph = nullptr;
   assert(autonomous.release(live) && autonomous.shutdown());
+  // Carry a manager-admitted scope through the owned graph and real ELF ABI.
+  // The original caller's identity is mutated after registration to verify copy.
+  {
+    const char* root = "/Providers/fixture-streams";
+    const std::string sha(64, '0');
+    const std::string json = std::string("{\"schema\":2,\"kind\":\"provider\",\"id\":\"fixture-streams\",\"version\":\"1.0.0\","
+        "\"artifact\":\"driver.elf\",\"architecture\":\"xtensa-esp32s3\",\"min_runtime_api\":1,\"entries\":["
+        "{\"name\":\"driver.elf\",\"size_bytes\":52,\"sha256\":\"") + sha + "\",\"executable\":true},"
+        "{\"name\":\"assets/text.txt\",\"size_bytes\":3,\"sha256\":\"" + sha + "\",\"executable\":false}],\"requires\":[]}";
+    auto metadata = std::make_shared<TestFile>(); metadata->data.assign(json.begin(), json.end());
+    files[std::string(root) + "/.package.json"] = metadata;
+    auto payload = std::make_shared<TestFile>(); payload->data = {'a', 'b', 'c'};
+    files[std::string(root) + "/assets/text.txt"] = payload;
+    auto& gate = RuntimePackages::systemPackageUseGate(); assert(gate.pin(root));
+    SpecV2 scoped = spec;
+    assert(RuntimePackages::makeIdentity(RuntimePackages::Kind::Provider, "fixture-streams", "1.0.0",
+        "driver.elf", false, &scoped.resourceIdentity));
+    GraphV2 resources(nativeProviderStreamHost()); assert(resources.addVerified(scoped));
+    std::strcpy(scoped.resourceIdentity.id, "changed");
+    auto lease = resources.acquire("fixture.streams", 1); assert(lease.slot);
+    const auto* bound = static_cast<const provider_stream_fixture_api*>(resources.interfaceFor(lease));
+    char content[4]{}; assert(bound && bound->read_resource(content) == T5_STREAM_OK);
+    assert(!std::strcmp(content, "abc"));
+    bound->block_quiesce(true); assert(!resources.release(lease));
+    assert(bound->read_resource(content) == T5_STREAM_DENIED);
+    bound->block_quiesce(false); assert(resources.release(lease));
+    assert(resources.shutdown()); assert(gate.unpin(root)); assert(!gate.pinned(root));
+  }
   puts("Loaded provider stream contexts, isolation, records and quiescence passed");
 }

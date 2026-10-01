@@ -13,6 +13,33 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: provider-owned installed resource bindings
+
+**57c4b0a3** is the published app-resource checkpoint (local4a2d772f,
+identical treea7365bee). Both firmware targets/all app ZIPs passed; USB/ELF
+**36810000332** passed. PlatformIO/host **36810000245** found a source assertion
+still requiring the old unconditional launcher statement. Cleanup remains
+unconditional after the resource admission branch. The source assertion is
+updated to that branch; seven USB-package tests pass. Full app/stream aggregates
+had already passed at this tree; the expanded driver aggregate now passes.
+
+The provider/driver/service slice carries the manager-admitted identity through
+executor and owned graph into each loaded module's context. An optional host-table
+suffix opens four private read-only resource streams, reusing the app resource
+validator, package pins and existing direct-I/O tickets. Resource handles cannot
+be published as public endpoints; revoke retires adapters outside the mutex and
+invalidates in-flight output. Old SDK layouts and distributable bytes are unchanged.
+
+Focused three-kind bridge tests and an actual loaded-ELF resource call passed,
+including copied identity, stale/open/read revocation and failed-quiescence retry.
+Provider graph/lifetime/admission aggregate passed with ASan/UBSan and
+LeakSanitizer disabled for executor ptrace limits. The initial graph runner
+reset ASAN_OPTIONS and triggered that known tooling limitation; the rerun used
+LSAN_OPTIONS too and passed. Full driver and stream aggregates passed.
+No claim of media-remount integrity or terminated blocked SD I/O is made.
+
+**Implementation In Progress**
+
 ## October 1: scoped installed application resource access
 
 **e377948b** publishes the inherited declared-tree implementation and explicit
