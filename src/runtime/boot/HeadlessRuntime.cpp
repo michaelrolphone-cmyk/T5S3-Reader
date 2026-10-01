@@ -8,6 +8,8 @@
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageCdcSdMigration.h"
 #include <Arduino.h>
+#include <algorithm>
+#include <cstring>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <esp_system.h>
@@ -21,6 +23,10 @@
 #include "../../../test/hardware/cam/Qualification.h"
 #endif
 
+#ifdef RISCRTE_CAM_CAMERA_EXPERIMENT
+#include "../../../test/hardware/cam/CameraProof.h"
+#include "../../../test/hardware/cam/CameraInstall.h"
+#endif
 namespace RuntimeBoot {
 namespace {
 namespace Packages = RuntimePackages;
@@ -32,6 +38,10 @@ struct Request { Packages::Kind kind; const char* id; const char* capability; ui
 constexpr Request requests[] = {
   {Packages::Kind::Driver, "platform-clock-v1", "platform.clock", 1},
   {Packages::Kind::Service, "archive-zip", "archive.zip", 1},
+#ifdef RISCRTE_CAM_CAMERA_EXPERIMENT
+  {Packages::Kind::Driver, "cam-ov3660-profile", "board.camera.esp32s3.profile", 1},
+  {Packages::Kind::Driver, "camera-esp32s3-ov3660", "camera.capture", 1},
+#endif
 };
 constexpr Packages::PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 8u*1024u*1024u, 16u*1024u*1024u};
 class Adapter {
@@ -119,6 +129,12 @@ void setup() {
   LOG_INF("BOOT", "mac=%02x:%02x:%02x:%02x:%02x:%02x app=0x%x flash=%u psram=%u",
     mac[0],mac[1],mac[2],mac[3],mac[4],mac[5], unsigned(esp_ota_get_running_partition()->address),
     ESP.getFlashChipSize(), ESP.getPsramSize());
+#ifdef RISCRTE_CAM_CAMERA_EXPERIMENT
+  // Storage port verifies the dedicated CAM MAC before any filesystem I/O.
+  // This selected profile reserves camera pins/LCD_CAM/GDMA RX4 exclusively;
+  // no other physical provider may activate in this closed lab deployment.
+  if(!installCameraExperiment()){LOG_ERR("CAMERA","result=failed stage=install");return;}
+#endif
   lifecycle.start();
 }
 void loop() {
@@ -136,6 +152,10 @@ void loop() {
   }
 #ifdef RISCRTE_CAM_QUALIFICATION
   qualificationTick(lifecycle, adapter);
+#endif
+#ifdef RISCRTE_CAM_CAMERA_EXPERIMENT
+  if(state==State::Running)
+    cameraProofTick(static_cast<const risc_camera_capture_api_v1*>(adapter.leases[3].interface));
 #endif
   // Same owner task as setup, graph and bootstrap storage; independent of UI.
   vTaskDelay(pdMS_TO_TICKS(20)+1);
