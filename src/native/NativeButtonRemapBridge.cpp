@@ -26,11 +26,21 @@ bool readMapping(t5_button_remap_mapping_t* out) {
 
 bool applyMapping(const t5_button_remap_mapping_t* mapping) {
   if (!valid(mapping)) return false;
+  t5_button_remap_mapping_t previous{};
+  readMapping(&previous);
   SETTINGS.frontButtonBack = mapping->role_to_hardware[T5_BUTTON_REMAP_BACK];
   SETTINGS.frontButtonConfirm = mapping->role_to_hardware[T5_BUTTON_REMAP_CONFIRM];
   SETTINGS.frontButtonLeft = mapping->role_to_hardware[T5_BUTTON_REMAP_LEFT];
   SETTINGS.frontButtonRight = mapping->role_to_hardware[T5_BUTTON_REMAP_RIGHT];
-  return SETTINGS.saveToFile();
+  if (SETTINGS.saveToFile()) return true;
+
+  // Input reads these live settings. A failed save must leave the old mapping
+  // active so the app can still decode physical buttons correctly on retry.
+  SETTINGS.frontButtonBack = previous.role_to_hardware[T5_BUTTON_REMAP_BACK];
+  SETTINGS.frontButtonConfirm = previous.role_to_hardware[T5_BUTTON_REMAP_CONFIRM];
+  SETTINGS.frontButtonLeft = previous.role_to_hardware[T5_BUTTON_REMAP_LEFT];
+  SETTINGS.frontButtonRight = previous.role_to_hardware[T5_BUTTON_REMAP_RIGHT];
+  return false;
 }
 
 bool resetDefaults() {
