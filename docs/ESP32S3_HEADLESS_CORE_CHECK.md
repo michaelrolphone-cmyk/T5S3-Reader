@@ -37,6 +37,7 @@ python -B scripts/esp32_lab.py inventory
 python -B scripts/esp32_lab.py capture-core \
   --port /dev/cu.usbserial-110 --location 1-1 \
   --mac 28:84:85:4b:a1:1c --revision 94dd82766eca2b0f9da3433a89e64f150cc0a756 \
+  --lock-dir /tmp/riscrte-shared-device-locks \
   --esptool-dir "$HOME/.platformio/packages/tool-esptoolpy" \
   --out /tmp/riscrte-capture-NEW
 ```
@@ -44,3 +45,15 @@ python -B scripts/esp32_lab.py capture-core \
 `scripts/build_headless_core.py --core-dir <task-local-pio-state> --out <new-artifact-directory>` builds from a clean source revision using explicitly isolated PlatformIO state, captures build output, and freezes ELF/bin plus a hash/configuration manifest outside mutable `.pio` output. Use `--pio` for the installed PlatformIO executable when necessary. Existing task-local package links reuse installed tools; the helper does not create credentials, alter global settings or run a software update command. A build failure is recorded rather than interpreted as a device failure.
 
 `python3 -B test/lab/test_esp32_lab.py` checks the critical wrong-chip/MAC, partition-overlap, erase-rounding and unexpected-OTA-layout guards without opening devices. Inventory and filtered capture were also exercised on the connected Mac. Initial firmware commit 94dd827 passed both normal T5S3/EPD47 builds and host parser/driver/stream suites in GitHub Actions run 36813349813; these results do not establish a later commit's status.
+
+All device-opening commands require `--lock-dir` pointing to the SAME task-local directory for all workers. A nonblocking process-held lock covers the port and, when known, MAC before serial open through cleanup. Lock files are intentionally retained to avoid unlink/recreate races. A second pySerial `exclusive=True` advisory lock is acquired before termios/control-line setup. These locks coordinate participating tools; they cannot prevent unrelated software that ignores advisory locks. Passive inventory needs no device lock. Cross-process exclusion, same-MAC/different-port rejection and lock reuse after release are host-tested.
+
+macOS `cu` and `tty` aliases share the same task lock. Serial close errors still release the task locks and persist a failed cleanup result. Ten host tests cover these guards. Pass a known `--mac` to `identify` to enforce identity before subsequent queries; `identify --flash-info` uses the ESP32-S3 ROM to query JEDEC flash capacity without downloading a stub or writing flash. Capacity is not proof of board revision, PSRAM, pin mapping or an acceptable partition layout. In particular, the native USB Heltec path remains identification-only; CAM flash guards are unchanged.
+
+For active jobs on a Mac configured to sleep, prefix the command with `/usr/bin/caffeinate -i`. This assertion lasts only for that command and releases when it exits; it does not change persistent power settings. Use the same wrapper for isolated builds. Check `pmset -g assertions` during a job when verifying readiness, and retain each operation's separate evidence directory. Do not leave an unrelated indefinite keep-awake process running.
+
+### SDMMC integration boundary
+
+The next storage step is a bounded bootstrap adapter for the original CAM's SDMMC route (CLK39/CMD38/D0=40, one-bit mode), not a second package installer. Master `1e0188c1` does not yet contain the active U1 `PackageOrdinarySdZipAdapter` interface. Coordinate the accepted U1 revision before wiring package operations. The inspected U1 design requires archive size and arbitrary-offset reads (ZIP inspection starts near EOF), plus its existing destination staging/rename/recovery operations; a sequential-only reader is insufficient. Keep parsing, policy, authorization and transactions in the ordinary package engine.
+
+Initial adapter acceptance must cover one controller owner, one bounded open archive, fixed-size read chunks, per-I/O and total deadlines, actual scheduler yields, short-read/removal/cancellation failures and close/revoke before handoff to an installed storage provider. Read-only mode must reject lower-layer writes and formatting, rather than relying solely on an `O_RDONLY` file handle. Arduino's default SDMMC host timeout is not sufficient evidence of bounded I/O. No SDMMC mount, formatter, installer or new flash filesystem is implemented by this lab-tool change.

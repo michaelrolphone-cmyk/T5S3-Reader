@@ -5,6 +5,7 @@ Use a Python with installed pyserial. For identify/flash/capture, pass the
 installed esptool directory. These operations reset the selected board.
 """
 import argparse
+import fcntl
 import hashlib
 import json
 import re
@@ -16,9 +17,52 @@ import time
 from pathlib import Path
 
 
+class DeviceLocks:
+    """Cooperating workers share one directory; never unlink live lock files."""
+    def __init__(self, directory, port, mac=None):
+        self.directory = Path(directory)
+        canonical_port = str(Path(port).resolve())
+        # macOS cu/tty names address the same physical serial interface.
+        if canonical_port.startswith("/dev/tty."):
+            canonical_port = "/dev/cu." + canonical_port[len("/dev/tty."):]
+        self.keys = ["port:" + canonical_port]
+        if mac:
+            self.keys.append("mac:" + mac.lower())
+        self.files = []
+
+    def __enter__(self):
+        self.directory.mkdir(parents=True, exist_ok=True)
+        try:
+            for key in sorted(self.keys):
+                name = hashlib.sha256(key.encode()).hexdigest() + ".lock"
+                handle = (self.directory / name).open("a+")
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    handle.close()
+                    raise RuntimeError("Device busy in another lab process; no port opened")
+                self.files.append(handle)
+            return self
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+
+    def __exit__(self, *unused):
+        while self.files:
+            self.files.pop().close()  # OS releases lock, including on process death
+
+
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
+
+
+def close_device(port, locks):
+    try:
+        if port is not None:
+            port.close()
+    finally:
+        locks.__exit__(None, None, None)
 
 
 def inventory():
@@ -105,17 +149,21 @@ def main():
     parser.add_argument("--mac", help="Required exact chip MAC; never choose a port by order")
     parser.add_argument("--location", help="Expected current USB location from inventory")
     parser.add_argument("--esptool-dir", type=Path)
+    parser.add_argument("--lock-dir", type=Path, help="Shared task-local lock directory for all workers")
     parser.add_argument("--out", type=Path, help="New evidence directory; existing directories are refused")
     parser.add_argument("--image", type=Path)
     parser.add_argument("--sha256")
     parser.add_argument("--revision", help="Expected 40-digit source commit in core boot output")
+    parser.add_argument("--flash-info", action="store_true", help="Identify only: query JEDEC flash ID without writes")
     args = parser.parse_args()
     signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(180)
     if args.action == "inventory":
         print(json.dumps({"usb_devices": usb_devices(), "serial_interfaces": inventory()}, indent=2))
         return
-    require(args.port and args.esptool_dir and args.out, "port, esptool-dir and out are required")
+    require(not args.flash_info or args.action == "identify", "flash-info requires identify")
+    require(args.port and args.esptool_dir and args.out and args.lock_dir,
+            "port, esptool-dir, shared lock-dir and out are required")
     require(not args.out.exists(), "Evidence directory exists; choose a new path")
     require((args.esptool_dir / "esptool/__init__.py").is_file(), "Installed esptool package missing")
     before = inventory()
@@ -139,13 +187,30 @@ def main():
     report = {"action": args.action, "inventory_before": before, "target": selected[0]}
     sys.path.insert(0, str(args.esptool_dir.resolve()))
     import esptool
+    import serial
     esp = None
+    serial_port = None
+    locks = DeviceLocks(args.lock_dir, args.port, args.mac)
     try:
-        esp = esptool.detect_chip(args.port, 115200, connect_attempts=1)
+        locks.__enter__()  # Must precede every device open or control-line change.
+        # PySerial takes flock before configuring/toggling DTR/RTS. Esptool's
+        # default serial_for_url call does not request this exclusive lock.
+        serial_port = serial.Serial(args.port, baudrate=115200, timeout=1, exclusive=True)
+        esp = esptool.detect_chip(serial_port, 115200, connect_attempts=1)
         report["chip"] = esp.CHIP_NAME
         report["mac"] = ":".join(f"{n:02x}" for n in esp.read_mac())
         print("IDENTITY", report["chip"], report["mac"], flush=True)
         if args.action == "identify":
+            if args.mac:
+                verify_target(esp, args.mac)
+            if args.flash_info:
+                require(esp.CHIP_NAME == "ESP32-S3", "Flash query qualified only for ESP32-S3")
+                esp.flash_spi_attach(0)
+                flash_id = esp.flash_id()
+                capacity_code = (flash_id >> 16) & 255
+                require(0x12 <= capacity_code <= 0x1c, "Unrecognized JEDEC capacity code")
+                report.update(flash_id=hex(flash_id), flash_bytes=1 << capacity_code)
+                print("FLASH", report["flash_id"], report["flash_bytes"], flush=True)
             esp.hard_reset()
         else:
             verify_target(esp, args.mac)
@@ -187,10 +252,16 @@ def main():
         report.update(result="failed", error=f"{type(exc).__name__}: {exc}")
         raise
     finally:
-        if esp is not None:
-            esp._port.close()
-        (args.out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
-        signal.alarm(0)
+        try:
+            close_device(esp._port if esp is not None else serial_port, locks)
+        except Exception as exc:
+            report.update(result="failed", cleanup_error=f"{type(exc).__name__}: {exc}")
+            raise
+        finally:
+            try:
+                (args.out / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+            finally:
+                signal.alarm(0)
 
 
 if __name__ == "__main__":
