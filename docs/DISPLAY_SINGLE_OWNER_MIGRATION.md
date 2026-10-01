@@ -92,3 +92,30 @@ For a failure record versions, trigger, last screen, input/backlight behavior,
 boot/launch/present/exit/re-entry/sleep phase and any existing logs or panic
 report. The emergency X/0xD1 requires a live backend; a retained e-paper image
 alone does not prove a live CPU. No device operations were performed here.
+
+## Scope decision required for complete cutover
+
+The existing private backend cannot represent the required behavior. Its
+`start_format` always scrubs and starts continuous scanning, `submit` only takes
+dirty rows, and its stop releases panel resources; it has no quality refresh,
+retained-start or low-power display session operation. EPD47 has no video
+backend at all (`t5_video_get_api` returns null on that build). A consumer-only
+adapter cannot preserve the supported GUI/clock behavior on these targets.
+
+Two concrete routes remain:
+
+1. Keep this PR's checked teardown fix independently reviewable and complete
+   the normal-output cutover with U3's real panel/shared-chip ownership and
+   module-store work. This preserves current refresh/clock behavior meanwhile,
+   but explicitly leaves parallel legacy consumer paths until that work lands.
+2. Explicitly authorize a larger transitional backend: preserve existing
+   HalDisplay quality/differential/gray operations behind the same selected
+   provider, plus a bounded package-backed timer-wake path. This introduces new
+   temporary firmware display delegation and SD access on each clock wake (or
+   a separately implemented persistent module store). It changes the current
+   backend contract and clock performance/power assumptions; it is not within
+   the present instruction to avoid new ABI shortcuts and preserve staging.
+
+Absent authorization for route 2, route 1 is the safe staging recommendation.
+There is no claim that the remaining cutover has been implemented. No approved
+hardware tests are needed merely to make this scope decision.
