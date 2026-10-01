@@ -31,7 +31,7 @@ static int ht_scene_scale(const ht_game *g) {
     return 256+g->intimacy/2-g->vista*5/16;
 }
 static bool ht_motion_emphasis;
-/* Y/journal-back is a transient performance modifier during gameplay only.
+/* Y is a transient performance modifier during gameplay only.
  * Keep authored pace in g->pace unchanged; multiply the physical action output
  * so releasing Y returns cleanly to the scene-directed speed. */
 static int ht_walk_speed(const ht_game *g) {return g->pace?g->pace:ht_pace_target(g);}

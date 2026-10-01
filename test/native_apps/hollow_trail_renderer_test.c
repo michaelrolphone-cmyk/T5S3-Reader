@@ -4,6 +4,12 @@
 #include <stdlib.h>
 #include "../../Apps/hollow_trail_engine.inc"
 #include "../../Apps/hollow_trail_fps.inc"
+static unsigned full_height_checkpoints,half_height_checkpoints;
+static void observe_production_raster(void) {
+ if(!ht_native_active)return;
+ if(ht_native_foreground_half_y)++half_height_checkpoints;
+ else ++full_height_checkpoints;
+}
 static void fps_tests(void){
  ht_fps_window w;ht_fps_reset(&w,0);
  for(unsigned t=100;t<=10000;t+=100)assert(ht_fps_push(&w,t)==100);
@@ -74,7 +80,9 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
  ht_bind(mem);ht_bind_native(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
  ht.camera=733*256;ht.x=(733+190)*256;ht.vista=256;ht.sway_phase=445;
  ht.rotation_phase=347u<<8;ht.camera_mood=256;
+ ht_service=observe_production_raster;
  ht_render_scene();assert(ht_native_active && !ht_native_foreground_half_y && ht_scene==ht_native_a);
+ assert(full_height_checkpoints && half_height_checkpoints);ht_service=NULL;
  ht_pack_mono(bits,HT_NATIVE_W/8);unsigned first=hash(bits,HT_NATIVE_PIXELS/8);
  ht_render_scene();ht_pack_mono(bits,HT_NATIVE_W/8);
  assert(first==hash(bits,HT_NATIVE_PIXELS/8));
