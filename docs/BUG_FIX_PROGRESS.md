@@ -1,11 +1,11 @@
 # Bug repair progress
 
-Snapshot: 2026-10-01 01:03 UTC. This record supersedes the pre-merge restoration snapshot.
+Snapshot: 2026-10-01 01:09 UTC. This record supersedes the pre-merge restoration snapshot.
 
-## Active hourly run
+## Completed hourly run
 
-- Run: 2026-10-01 00:50 UTC; coordinator and active ledger owner: `fix_button_remap_batch`
-- State: repair published; monitoring exact-head CI
+- Run: 2026-10-01 00:50 UTC; last coordinator: `fix_button_remap_batch`; active ledger owner: **none**
+- State: completed; repair published and exact-head CI passed. Active implementation claim released
 - Canonical bugs: **16 and 17**, **Awaiting merge**
 - Baseline master: `be82695ea0ecb14525c0de1ddc78cd0c77e4614b`
 - Durable claim published before implementation: `08ba173adc72216635f07f058fda0068561cf287`
@@ -13,7 +13,7 @@ Snapshot: 2026-10-01 01:03 UTC. This record supersedes the pre-merge restoration
 - Repair branch: `fix/button-remap-16-17`; draft [#333](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/333), targeting master
 - Verified remote head: `3619048c6b178ddf6d767842b797d6fb1d7a87d4`
 - Outstanding code batches from this pipeline: **one**. #205 is merged and does not occupy a slot
-- Next: follow [exact-head CI run 36799152027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36799152027), currently pending; repair in-scope failures, then release the active claim. Do not start a duplicate run while this owner is active
+- Next invocation: recheck #333/head/merge status before selecting more work; do not duplicate 16/17. One batch remains awaiting the owner's merge, so at most one additional batch may be claimed after revalidation and overlap checks. Continue using coordination PR #332 while it remains open
 
 ## Button Remap evidence
 
@@ -26,7 +26,8 @@ The fix restores the old four fields before returning failed save, preserving or
 - **PASS:** ASan/UBSan regression, 576 mapping transitions and 576 physical-input retry transitions, repeated failed saves, failed reset/reopen/retry, cancel at each stage and after save failure, API/null/duplicate/out-of-range validation, touch selection, exit/poll cleanup
 - **Expected FAIL on baseline:** separate bridge case aborts on retained live-mapping assertion; chrome case aborts on misleading front previous-label assertion
 - **PASS:** full `ASAN_OPTIONS=detect_leaks=0 bash test/run_native_app_test.sh` after test integration, app C syntax, shell syntax and whitespace checks
-- Local `python3 scripts/build_all_apps.py --id button_remap` attempted but blocked by missing Xtensa compiler. Target ELF/sidecar/catalog verification is pending CI
+- Local `python3 scripts/build_all_apps.py --id button_remap` attempted but blocked by missing Xtensa compiler
+- **PASS:** [exact-head CI run 36799152027](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36799152027) on `3619048c6b178ddf6d767842b797d6fb1d7a87d4`: host parser tests, t5s3-pro and lilygo-epd47-s3 all completed successfully. Both board jobs built and validated native ELFs and all released apps/manifests, including the updated Button Remap app. Local compiler absence did not block CI verification
 - LeakSanitizer disabled under container ptrace. The persistence stub models failed atomic storage; these tests do not establish actual filesystem durability
 - No hardware qualification, merge, release, deployment or flash
 
