@@ -1,3 +1,15 @@
+# Hollow Trail 1.1.35 — slower cinematic, solid tableaus, continuous departure
+
+Hollow Trail **1.1.34 -> 1.1.35** responds to on-device review of the Forward-X introduction. The intro is deliberately slowed from roughly thirty seconds to about sixty-one seconds. The six text-bearing opening beats each hold for at least 4.8 seconds, with the two tall-grass memories lasting more than seven seconds each and a long uncaptioned profile walk after the house. Signal flashes are spaced farther apart so the player can read the prose, look back into the scene, and then notice the light rather than processing all three at once.
+
+Forward-X scenery is no longer staged primarily from thin rectangles and limbs. The tableau renderer now has filled perspective boxes and quadrilateral faces for furniture and architecture. Kitchen counter, basin, shelves, table, chair, window frame and bag have visible depth planes; condensation, floor seams and wall wear sit over those masses. Forward trees use filled tapering trunks, root flares, growth-following bark seams, multi-segment branches and irregular overlapping crowns. Forward characters use heavier limbs, a filled coat silhouette with shoulder/waist/hem shape, hair mass, braid/face details and a subdued clothing seam. The tall-grass memory adds a visibly flattened nest of stems and seed-head detail rather than reading as a wireframe field.
+
+Continuity changes after packing: the camera now cuts directly to the side-scroller profile at the exterior of the house. The house, roof, chimney, window, wall and a real dark doorway are present, the door leaf opens, and the protagonist visibly walks out of it before continuing through the garden, orchard, ditch and root-soft road. There is no longer a Forward-X walk that starts partway outside.
+
+The reported forest pop-in came from a cinematic actor-position threshold that created the deeper trunks only after the protagonist passed x=560. That threshold is removed. Orchard and forest-approach trees are permanently world anchored and culled only with generous geometry-aware off-screen extents; roots and observer trunks are also drawn before they can enter the display. A native regression checks that forest ink is already present ahead of the character while she is still before x=560.
+
+This update is layered on the 1.1.34 Y-motion emphasis and 960×270 foreground-detail work from current master; those gameplay and graphics A/B changes are retained unchanged.
+
 # Hollow Trail 1.1.34 — Y motion emphasis and 960×270 foreground detail
 
 During live gameplay, holding the same **Y / journal-back** control used to back out of journal views adds a transient **10% motion emphasis**. The authored scene pace stored in the game state is not changed: ground locomotion, climbing, tree exits, jump takeoff momentum and directional acceleration are boosted only while Y is held. Rolling/crate effort, rowing and rope pumping receive the same bounded emphasis so physical actions respond consistently.

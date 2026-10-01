@@ -36,17 +36,19 @@ typedef struct {
 typedef struct { int x,y,scale,depth; } ht_cutscene_projection;
 
 static const ht_cutscene_cue ht_intro_cues[]={
-    {  0, 90,HT_CUT_KITCHEN,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_WASH,  HT_CUT_FACE_BACK,    0,130,130,  0,  0,0,  0,  0,0,72,270,270},
-    { 90,175,HT_CUT_KITCHEN,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_LOOK,  HT_CUT_FACE_BACK,    1,130,130,  0,  0,0,  0,  0,0,72,270,286},
-    {175,305,HT_CUT_GRASS,    HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_CROUCH,HT_CUT_FACE_BACK,    2, 82, 82,-58,-58,0,  0,  0,0,48,256,256},
-    {305,405,HT_CUT_GRASS,    HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_LOOK,  HT_CUT_FACE_BACK,    3, 82, 82,-58,-58,0,  0,  0,0,48,256,266},
-    {405,500,HT_CUT_KITCHEN,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_IDLE,  HT_CUT_FACE_BACK,    4,130,130,  0,  0,0,  0,  0,0,72,284,266},
-    {500,600,HT_CUT_KITCHEN,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_PACK,  HT_CUT_FACE_RIGHT_3Q,5,128,150,  0, 10,0,  0,  0,0,72,266,250},
-    {600,730,HT_CUT_DEPARTURE,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_WALK,  HT_CUT_FACE_BACK,  255, 90,430,  0,  0,0,  0, 18,0,66,256,244},
-    {730,870,HT_CUT_ORCHARD,  HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,255,430,650,  0,  0,0,230,450,0, 0,244,260},
-    {870,930,HT_CUT_ORCHARD,  HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,  6,650,760,  0,  0,0,450,560,0, 0,260,384},
+    /* Give every readable image time to exist before the next idea arrives. */
+    {   0, 180,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_WASH,  HT_CUT_FACE_BACK,    0,130,130,  0,  0,0,  0,  0,0,72,270,270},
+    { 180, 340,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_LOOK,  HT_CUT_FACE_BACK,    1,130,130,  0,  0,0,  0,  0,0,72,270,286},
+    { 340, 570,HT_CUT_GRASS,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_CROUCH,HT_CUT_FACE_BACK,    2, 82, 82,-58,-58,0,  0,  0,0,48,256,256},
+    { 570, 800,HT_CUT_GRASS,  HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_LOOK,  HT_CUT_FACE_BACK,    3, 82, 82,-58,-58,0,  0,  0,0,48,256,266},
+    { 800, 980,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_IDLE,  HT_CUT_FACE_BACK,    4,130,130,  0,  0,0,  0,  0,0,72,284,270},
+    { 980,1130,HT_CUT_KITCHEN,HT_CUT_VIEW_FORWARD_X,HT_CUT_POSE_PACK,  HT_CUT_FACE_RIGHT_3Q,5,128,150,  0, 10,0,  0,  0,0,72,270,270},
+    /* Continuity cut: profile view begins at the house, not halfway down the road. */
+    {1130,1310,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,5,118,190,  0,  0,0,-40,  0,0, 0,270,270},
+    {1310,1640,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,255,190,540, 0,  0,0,  0,300,0, 0,270,286},
+    {1640,1900,HT_CUT_ORCHARD,HT_CUT_VIEW_PROFILE,  HT_CUT_POSE_WALK,  HT_CUT_FACE_RIGHT_3Q,6,540,760,  0,  0,0,300,560,0, 0,286,384},
 };
-#define HT_INTRO_TICKS 930u
+#define HT_INTRO_TICKS 1900u
 static const ht_cutscene_timeline ht_cutscene_tracks[]={
     {NULL,0,0,0},
     {ht_intro_cues,(uint8_t)(sizeof(ht_intro_cues)/sizeof(ht_intro_cues[0])),0,HT_INTRO_TICKS}
@@ -143,10 +145,29 @@ static void ht_cutscene_forward_limb(const ht_cutscene_camera *camera,ht_cut_vec
     int depth=(p.depth+q.depth)/2,tone=ht_cutscene_depth_tone(camera,depth,ink);
     ht_limb(ht_scene,p.x,p.y,q.x,q.y,r,ht_max(0,r-1),tone);
 }
+static void ht_cutscene_forward_quad(const ht_cutscene_camera *camera,
+    ht_cut_vec3 a,ht_cut_vec3 b,ht_cut_vec3 c,ht_cut_vec3 d,int ink) {
+    ht_cutscene_projection pa=ht_cutscene_project_forward(camera,a),pb=ht_cutscene_project_forward(camera,b);
+    ht_cutscene_projection pc=ht_cutscene_project_forward(camera,c),pd=ht_cutscene_project_forward(camera,d);
+    int depth=(pa.depth+pb.depth+pc.depth+pd.depth)/4,tone=ht_cutscene_depth_tone(camera,depth,ink);
+    ht_triangle(ht_scene,pa.x,pa.y,pb.x,pb.y,pc.x,pc.y,tone);
+    ht_triangle(ht_scene,pa.x,pa.y,pc.x,pc.y,pd.x,pd.y,tone);
+}
+static void ht_cutscene_forward_box(const ht_cutscene_camera *camera,ht_cut_vec3 p,
+    int depth,int width,int height,int ink) {
+    int near=p.x-depth/2,far=p.x+depth/2,left=p.y-width/2,right=p.y+width/2,top=p.z+height;
+    ht_cut_vec3 f0={far,left,p.z},f1={far,right,p.z},f2={far,right,top},f3={far,left,top};
+    ht_cut_vec3 n0={near,left,p.z},n1={near,right,p.z},n2={near,right,top},n3={near,left,top};
+    /* Back, side and top planes give furniture/buildings volume; front is last. */
+    ht_cutscene_forward_quad(camera,f0,f1,f2,f3,ht_max(0,ink-28));
+    ht_cutscene_forward_quad(camera,f1,n1,n2,f2,ht_max(0,ink-12));
+    ht_cutscene_forward_quad(camera,f3,f2,n2,n3,ht_min(255,ink+14));
+    ht_cutscene_forward_quad(camera,n0,n1,n2,n3,ink);
+}
 
 /* Small fixed render queue: far objects first, then near actors/grass naturally
  * occlude them. It is static BSS, not a frame allocation. */
-enum { HT_CUT_OBJ_RECT, HT_CUT_OBJ_STEM, HT_CUT_OBJ_TREE, HT_CUT_OBJ_ACTOR, HT_CUT_OBJ_FLASH };
+enum { HT_CUT_OBJ_RECT, HT_CUT_OBJ_STEM, HT_CUT_OBJ_TREE, HT_CUT_OBJ_ACTOR, HT_CUT_OBJ_FLASH, HT_CUT_OBJ_BOX };
 typedef struct {
     uint8_t type,pose,face,ink;
     ht_cut_vec3 p;
@@ -168,22 +189,40 @@ static void ht_cutscene_sort_objects(void) {
     }
 }
 static void ht_cutscene_forward_tree(const ht_cutscene_camera *camera,const ht_cut_object *o) {
-    ht_cut_vec3 base=o->p,top={o->p.x,o->p.y,o->p.z+o->a};
-    int ink=o->ink;
-    ht_cutscene_forward_limb(camera,base,top,o->b,ink);
-    for(int side=-1;side<=1;side+=2)for(int branch=0;branch<3;++branch) {
-        int z=o->p.z+o->a*(55+branch*13)/100;
-        ht_cut_vec3 root={o->p.x,o->p.y,z};
-        ht_cut_vec3 tip={o->p.x,o->p.y+side*(o->a/4+branch*7),z+o->a/8-branch*3};
-        ht_cutscene_forward_limb(camera,root,tip,ht_max(1,o->b/3),ink-8);
-        ht_cutscene_forward_disk(camera,tip,ht_max(5,o->a/12),ink-14);
+    int h=o->a,w=ht_max(5,(int)o->b),ink=o->ink;
+    /* Filled tapering trunk with a flared root collar instead of one wire-like limb. */
+    ht_cut_vec3 bl={o->p.x,o->p.y-w,o->p.z},br={o->p.x,o->p.y+w,o->p.z};
+    ht_cut_vec3 tl={o->p.x,o->p.y-w/2,o->p.z+h},tr={o->p.x,o->p.y+w/2,o->p.z+h};
+    ht_cutscene_forward_quad(camera,bl,br,tr,tl,ink);
+    ht_cutscene_forward_quad(camera,
+        (ht_cut_vec3){o->p.x,o->p.y-w*2,o->p.z},
+        (ht_cut_vec3){o->p.x,o->p.y+w*2,o->p.z},
+        (ht_cut_vec3){o->p.x,o->p.y+w,o->p.z+h/7},
+        (ht_cut_vec3){o->p.x,o->p.y-w,o->p.z+h/7},ht_min(255,ink+12));
+    /* Bark seams follow growth and remain subordinate to the silhouette. */
+    for(int seam=-1;seam<=1;++seam)
+        ht_cutscene_forward_limb(camera,
+            (ht_cut_vec3){o->p.x-1,o->p.y+seam*w/2,o->p.z+h/10},
+            (ht_cut_vec3){o->p.x,o->p.y+seam*w/3,o->p.z+h*8/10},1,ht_max(0,ink-32));
+    for(int side=-1;side<=1;side+=2)for(int branch=0;branch<4;++branch) {
+        int z=o->p.z+h*(48+branch*11)/100,reach=h/5+branch*5;
+        ht_cut_vec3 root={o->p.x,o->p.y+side*w/3,z};
+        ht_cut_vec3 mid={o->p.x,o->p.y+side*(reach*2/3),z+h/11};
+        ht_cut_vec3 tip={o->p.x,o->p.y+side*reach,z+h/8-branch*2};
+        ht_cutscene_forward_limb(camera,root,mid,ht_max(2,w/3),ht_max(0,ink-5));
+        ht_cutscene_forward_limb(camera,mid,tip,ht_max(1,w/5),ht_max(0,ink-12));
+        /* Irregular clustered crown: several overlapping filled masses, not one disk. */
+        ht_cutscene_forward_disk(camera,tip,ht_max(7,h/13),ht_max(0,ink-18));
+        ht_cutscene_forward_disk(camera,(ht_cut_vec3){tip.x,tip.y-side*h/20,tip.z+h/28},
+            ht_max(5,h/17),ht_max(0,ink-27));
+        ht_cutscene_forward_disk(camera,(ht_cut_vec3){tip.x,tip.y+side*h/24,tip.z-h/35},
+            ht_max(5,h/18),ht_max(0,ink-23));
     }
 }
+
 static void ht_cutscene_forward_actor(const ht_cutscene_camera *camera,const ht_cut_object *o) {
-    int phase=o->a&31;
-    int height=o->pose==HT_CUT_POSE_CROUCH?31:44;
-    ht_cut_vec3 hip={o->p.x,o->p.y,o->p.z+17};
-    ht_cut_vec3 shoulder={o->p.x,o->p.y,o->p.z+31};
+    int phase=o->a&31,height=o->pose==HT_CUT_POSE_CROUCH?31:44;
+    ht_cut_vec3 hip={o->p.x,o->p.y,o->p.z+17},shoulder={o->p.x,o->p.y,o->p.z+31};
     ht_cut_vec3 head={o->p.x,o->p.y,o->p.z+height};
     int quarter=o->face==HT_CUT_FACE_LEFT_3Q?-1:o->face==HT_CUT_FACE_RIGHT_3Q?1:0;
     shoulder.y+=quarter*2;head.y+=quarter*2;
@@ -195,44 +234,47 @@ static void ht_cutscene_forward_actor(const ht_cutscene_camera *camera,const ht_
     }
     ht_cut_vec3 foot0={o->p.x,o->p.y-5+step,o->p.z+lift0};
     ht_cut_vec3 foot1={o->p.x,o->p.y+5-step,o->p.z+lift1};
-    ht_cut_vec3 hand0={o->p.x,o->p.y-9,o->p.z+22};
-    ht_cut_vec3 hand1={o->p.x,o->p.y+9,o->p.z+22};
+    ht_cut_vec3 hand0={o->p.x,o->p.y-9,o->p.z+22},hand1={o->p.x,o->p.y+9,o->p.z+22};
     if(o->pose==HT_CUT_POSE_WASH) {
-        hand0=(ht_cut_vec3){o->p.x+12,o->p.y-6,o->p.z+25};
-        hand1=(ht_cut_vec3){o->p.x+12,o->p.y+6,o->p.z+23};
+        hand0=(ht_cut_vec3){o->p.x+12,o->p.y-6,o->p.z+25}; hand1=(ht_cut_vec3){o->p.x+12,o->p.y+6,o->p.z+23};
     } else if(o->pose==HT_CUT_POSE_LOOK) {
         hand0.z+=3;hand1.z-=2;head.y+=quarter?quarter*2:2;
     } else if(o->pose==HT_CUT_POSE_CROUCH) {
-        hip.z-=7;shoulder.z-=9;head.z-=10;
-        foot0.y-=4;foot1.y+=4;hand0.z-=9;hand1.z-=9;
+        hip.z-=7;shoulder.z-=9;head.z-=10;foot0.y-=4;foot1.y+=4;hand0.z-=9;hand1.z-=9;
     } else if(o->pose==HT_CUT_POSE_PACK) {
-        hand0=(ht_cut_vec3){o->p.x+5,o->p.y-8,o->p.z+19};
-        hand1=(ht_cut_vec3){o->p.x-2,o->p.y+5,o->p.z+16};
-        shoulder.y+=3;
-    } else if(o->pose==HT_CUT_POSE_WALK) {
-        hand0.y+=step/2;hand1.y-=step/2;
-    }
-    ht_cutscene_forward_limb(camera,hip,foot0,2,235);
-    ht_cutscene_forward_limb(camera,hip,foot1,2,255);
-    ht_cutscene_forward_limb(camera,shoulder,hand0,2,235);
-    ht_cutscene_forward_limb(camera,shoulder,hand1,2,255);
+        hand0=(ht_cut_vec3){o->p.x+5,o->p.y-8,o->p.z+19}; hand1=(ht_cut_vec3){o->p.x-2,o->p.y+5,o->p.z+16}; shoulder.y+=3;
+    } else if(o->pose==HT_CUT_POSE_WALK) { hand0.y+=step/2;hand1.y-=step/2; }
+
+    /* Weightier limbs and a filled coat body eliminate the stick/wireframe read. */
+    ht_cutscene_forward_limb(camera,hip,foot0,3,224); ht_cutscene_forward_limb(camera,hip,foot1,3,248);
+    ht_cutscene_forward_limb(camera,shoulder,hand0,3,224); ht_cutscene_forward_limb(camera,shoulder,hand1,3,248);
     ht_cutscene_projection hs=ht_cutscene_project_forward(camera,shoulder),hp=ht_cutscene_project_forward(camera,hip);
-    int torso=ht_cutscene_depth_tone(camera,hs.depth,250);
-    int half=ht_max(2,4*hs.scale/256);
-    ht_triangle(ht_scene,hs.x-half,hs.y,hs.x+half,hs.y,hp.x+half,hp.y,torso);
-    ht_triangle(ht_scene,hs.x-half,hs.y,hp.x-half,hp.y,hp.x+half,hp.y,torso);
-    ht_cutscene_forward_disk(camera,head,5,255);
+    int tone=ht_cutscene_depth_tone(camera,hs.depth,248);
+    int sh=ht_max(3,7*hs.scale/256),waist=ht_max(3,5*hp.scale/256),hem=ht_max(4,8*hp.scale/256);
+    int hem_y=hp.y+ht_max(2,5*hp.scale/256);
+    ht_triangle(ht_scene,hs.x-sh,hs.y,hs.x+sh,hs.y,hp.x+waist,hp.y,tone);
+    ht_triangle(ht_scene,hs.x-sh,hs.y,hp.x-waist,hp.y,hp.x+waist,hp.y,tone);
+    ht_triangle(ht_scene,hp.x-waist,hp.y,hp.x+waist,hp.y,hp.x+hem,hem_y,ht_max(0,tone-7));
+    ht_triangle(ht_scene,hp.x-waist,hp.y,hp.x+hem,hem_y,hp.x-hem,hem_y,ht_max(0,tone-7));
+    /* Head gets a hair mass plus face plane rather than a single white dot. */
+    ht_cutscene_forward_disk(camera,(ht_cut_vec3){head.x+1,head.y,head.z+1},6,225);
+    ht_cutscene_forward_disk(camera,head,5,252);
     if(o->face==HT_CUT_FACE_BACK) {
-        ht_cut_vec3 braid0={o->p.x,o->p.y+2,o->p.z+40},braid1={o->p.x,o->p.y+5,o->p.z+27};
-        ht_cutscene_forward_limb(camera,braid0,braid1,1,240);
-    } else if(o->face==HT_CUT_FACE_LEFT_3Q || o->face==HT_CUT_FACE_RIGHT_3Q) {
-        ht_cut_vec3 nose=head;nose.y+=quarter*5;nose.z-=2;
-        ht_cutscene_forward_disk(camera,nose,1,210);
+        ht_cutscene_forward_disk(camera,(ht_cut_vec3){head.x-1,head.y,head.z+2},6,205);
+        ht_cutscene_forward_limb(camera,(ht_cut_vec3){o->p.x,o->p.y+2,o->p.z+40},
+            (ht_cut_vec3){o->p.x,o->p.y+5,o->p.z+27},2,216);
+        ht_cutscene_forward_limb(camera,(ht_cut_vec3){o->p.x,o->p.y+5,o->p.z+28},
+            (ht_cut_vec3){o->p.x,o->p.y+2,o->p.z+19},1,190);
+    } else if(quarter) {
+        ht_cut_vec3 nose=head;nose.y+=quarter*5;nose.z-=2;ht_cutscene_forward_disk(camera,nose,1,188);
     } else {
-        ht_cut_vec3 face=head;face.x-=1;face.z-=1;
-        ht_cutscene_forward_disk(camera,face,3,218);
+        ht_cutscene_forward_limb(camera,(ht_cut_vec3){head.x-1,head.y-2,head.z+1},
+            (ht_cut_vec3){head.x-1,head.y+2,head.z+1},1,202);
     }
+    /* Jacket center seam remains subtle at useful close scale. */
+    ht_cutscene_forward_limb(camera,(ht_cut_vec3){hip.x,hip.y,hip.z+1},(ht_cut_vec3){shoulder.x,shoulder.y,shoulder.z-2},1,190);
 }
+
 static void ht_cutscene_render_objects(const ht_cutscene_camera *camera) {
     ht_cutscene_sort_objects();
     for(unsigned i=0;i<ht_cut_object_count;++i) {
@@ -245,6 +287,7 @@ static void ht_cutscene_render_objects(const ht_cutscene_camera *camera) {
         } else if(o->type==HT_CUT_OBJ_TREE)ht_cutscene_forward_tree(camera,o);
         else if(o->type==HT_CUT_OBJ_ACTOR)ht_cutscene_forward_actor(camera,o);
         else if(o->type==HT_CUT_OBJ_FLASH)ht_cutscene_forward_disk(camera,o->p,o->a,o->ink);
+        else if(o->type==HT_CUT_OBJ_BOX)ht_cutscene_forward_box(camera,o->p,o->a,o->b,o->c,o->ink);
         if((i&15u)==15u)ht_checkpoint();
     }
 }
@@ -257,17 +300,17 @@ static int ht_cutscene_intro_flash(const ht_cutscene_state *s) {
     const ht_cutscene_cue *cue=ht_cutscene_cue_at(s);if(!cue)return 0;
     int local=(int)s->tick-cue->start,value=0;
     if(cue->scene==HT_CUT_KITCHEN && cue->caption==1) {
-        value=ht_max(value,ht_cutscene_pulse(local,12,5));
-        value=ht_max(value,ht_cutscene_pulse(local,38,5));
-        value=ht_max(value,ht_cutscene_pulse(local,65,5));
+        value=ht_max(value,ht_cutscene_pulse(local,35,7));
+        value=ht_max(value,ht_cutscene_pulse(local,80,7));
+        value=ht_max(value,ht_cutscene_pulse(local,125,7));
     } else if(cue->scene==HT_CUT_GRASS && cue->caption==2) {
-        value=ht_max(value,ht_cutscene_pulse(local,35,4));
-        value=ht_max(value,ht_cutscene_pulse(local,70,4));
-        value=ht_max(value,ht_cutscene_pulse(local,105,4));
+        value=ht_max(value,ht_cutscene_pulse(local,55,6));
+        value=ht_max(value,ht_cutscene_pulse(local,110,6));
+        value=ht_max(value,ht_cutscene_pulse(local,165,6));
     } else if(cue->scene==HT_CUT_GRASS && cue->caption==3) {
-        value=ht_max(value,ht_cutscene_pulse(local,20,4));
-        value=ht_max(value,ht_cutscene_pulse(local,48,4));
-        if(local>=72 && local<92)value=256;
+        value=ht_max(value,ht_cutscene_pulse(local,45,6));
+        value=ht_max(value,ht_cutscene_pulse(local,100,6));
+        if(local>=145 && local<195)value=256;
     }
     return value;
 }
@@ -304,6 +347,10 @@ static void ht_cutscene_queue_rect(int x,int y,int z,int width,int height,int in
     ht_cut_object o={HT_CUT_OBJ_RECT,0,0,(uint8_t)ink,{x,y,z},(int16_t)width,(int16_t)height,0,0};
     ht_cutscene_object_push(o);
 }
+static void ht_cutscene_queue_box(int x,int y,int z,int depth,int width,int height,int ink) {
+    ht_cut_object o={HT_CUT_OBJ_BOX,0,0,(uint8_t)ink,{x,y,z},(int16_t)depth,(int16_t)width,(int16_t)height,0};
+    ht_cutscene_object_push(o);
+}
 static void ht_cutscene_queue_stem(int x,int y,int z,int height,int lean,int ink) {
     ht_cut_object o={HT_CUT_OBJ_STEM,0,0,(uint8_t)ink,{x,y,z},(int16_t)height,(int16_t)lean,0,0};
     ht_cutscene_object_push(o);
@@ -324,68 +371,94 @@ static void ht_cutscene_queue_flash(int x,int y,int z,int radius,int ink) {
 static void ht_cutscene_draw_kitchen_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
     ht_cutscene_camera camera=ht_cutscene_camera_at(s);
     int dawn=cue->caption>=5,flash=ht_cutscene_intro_flash(s);
-    ht_world_scale=256;ht_cutscene_fill(dawn?10:18);
-    ht_rect(ht_scene,0,170,HT_W,100,38); /* floor, deliberately close and plain */
-    /* Bright window opening is painted before depth objects so the garden can
-     * live inside it and the near frame can occlude everything behind. */
-    ht_rect(ht_scene,108,28,264,145,5);
+    ht_world_scale=256;ht_cutscene_fill(dawn?12:20);
+    /* Near room shell: broad filled surfaces first, detail and depth objects over them. */
+    ht_rect(ht_scene,0,166,HT_W,104,44);
+    ht_rect(ht_scene,0,22,104,145,78);ht_rect(ht_scene,376,22,104,145,78);
+    ht_rect(ht_scene,104,22,272,15,72);ht_rect(ht_scene,104,157,272,12,86);
+    ht_rect(ht_scene,108,37,264,120,6); /* fogged opening */
+    /* Floorboard seams and wall wear provide texture without noisy stipple. */
+    for(int x=20;x<HT_W;x+=58)ht_limb(ht_scene,x,169,x-35,270,0,0,63);
+    ht_limb(ht_scene,33,82,98,79,0,0,61);ht_limb(ht_scene,390,91,455,95,0,0,61);
+
     ht_cutscene_objects_reset();
-    ht_cutscene_queue_rect(520,0,22,300,35,72); /* garden wall */
-    ht_cutscene_queue_tree(610,-84,0,125,7,711,92);
-    ht_cutscene_queue_tree(660,65,0,138,8,733,82);
-    ht_cutscene_queue_tree(735,4,0,118,6,757,62);
-    if(flash) ht_cutscene_queue_flash(900,35,92,9,ht_clamp(105+flash*150/256,0,255));
-    /* Window mullions and sill at one depth plane. */
-    ht_cutscene_queue_rect(325,-126,55,5,150,210);
-    ht_cutscene_queue_rect(325,126,55,5,150,210);
-    ht_cutscene_queue_rect(325,0,55,5,150,180);
-    ht_cutscene_queue_rect(325,0,55,255,5,210);
-    ht_cutscene_queue_rect(325,0,190,255,5,210);
-    /* Sink/counter and small domestic anchors between observer and window. */
-    ht_cutscene_queue_rect(210,0,0,235,42,205);
-    ht_cutscene_queue_rect(205,-72,49,42,8,75);   /* basin lip */
-    ht_cutscene_queue_rect(190,-118,132,98,5,160);/* shelf */
-    ht_cutscene_queue_rect(188,-100,132,13,16,222);/* sister cup */
-    ht_cutscene_queue_rect(188,-68,132,13,16,218);
-    /* Table/chair and slippers sit closer to the observer, therefore larger. */
-    ht_cutscene_queue_rect(92,-118,0,102,28,175);
-    ht_cutscene_queue_rect(75,115,0,38,42,128);
-    ht_cutscene_queue_rect(58,72,0,25,6,95);
-    ht_cutscene_queue_rect(58,103,0,25,6,95);
+    /* Exterior exists beyond the glass in real depth. */
+    ht_cutscene_queue_box(520,0,0,24,310,26,80);
+    ht_cutscene_queue_tree(610,-84,0,130,10,711,108);
+    ht_cutscene_queue_tree(665,68,0,143,11,733,98);
+    ht_cutscene_queue_tree(735,4,0,122,9,757,78);
+    if(flash)ht_cutscene_queue_flash(900,35,92,10,ht_clamp(110+flash*145/256,0,255));
+
+    /* Substantial wood window frame; sill has depth and pane bars cast darker seams. */
+    ht_cutscene_queue_box(325,-130,52,18,13,154,205);
+    ht_cutscene_queue_box(325, 130,52,18,13,154,205);
+    ht_cutscene_queue_box(325,0,52,16,10,154,178);
+    ht_cutscene_queue_box(318,0,50,26,268,12,218);
+    ht_cutscene_queue_box(323,0,186,18,268,10,201);
+
+    /* Counter, basin, table and shelf are actual filled volumes now. */
+    ht_cutscene_queue_box(205,-8,0,54,244,42,194);
+    ht_cutscene_queue_box(182,-72,40,26,54,10,88);
+    ht_cutscene_queue_box(174,-118,124,20,108,9,157);
+    ht_cutscene_queue_box(175,-101,126,14,14,18,224); /* sister cup */
+    ht_cutscene_queue_box(175,-67,126,14,14,18,218);
+    ht_cutscene_queue_box(86,-116,0,54,112,29,170);
+    ht_cutscene_queue_box(69,116,0,40,43,46,128);
+    ht_cutscene_queue_box(53,73,0,21,30,7,95);
+    ht_cutscene_queue_box(53,105,0,21,30,7,95);
+    /* Faucet and towel/handle details break up the block forms. */
+    ht_cutscene_queue_rect(182,-72,54,6,28,190);
+    ht_cutscene_queue_rect(180,-62,76,28,5,190);
+    ht_cutscene_queue_rect(202,100,34,34,20,118);
+
     ht_cutscene_queue_actor(ht_cutscene_actor_x(s),ht_cutscene_actor_y(s),0,cue->pose,cue->face,(int)s->tick);
-    if(cue->pose==HT_CUT_POSE_PACK)ht_cutscene_queue_rect(116,18,0,25,25,212);
+    if(cue->pose==HT_CUT_POSE_PACK)ht_cutscene_queue_box(111,18,0,22,28,27,208);
     ht_cutscene_render_objects(&camera);
+
+    /* Condensation and the wiped viewing crescent live on the near side of the glass. */
+    for(int i=0;i<7;++i) {
+        int x=145+i*31,y=55+(i%3)*23;
+        ht_limb(ht_scene,x,y,x-4,y+34,0,0,128+(i%2)*22);
+    }
+    ht_limb(ht_scene,278,54,252,77,1,0,188);ht_limb(ht_scene,252,77,279,103,1,0,188);
 }
+
 static void ht_cutscene_draw_grass_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
     ht_cutscene_camera camera=ht_cutscene_camera_at(s);
-    int phase=(int)s->tick/3,flash=ht_cutscene_intro_flash(s);
-    ht_world_scale=256;ht_cutscene_fill(6);
-    ht_rect(ht_scene,0,190,HT_W,80,48);
+    int phase=(int)s->tick/5,flash=ht_cutscene_intro_flash(s);
+    ht_world_scale=256;ht_cutscene_fill(7);
+    ht_rect(ht_scene,0,188,HT_W,82,52);
+    /* Irregular flattened floor: layered bent stems rather than a clean platform. */
+    for(int x=38;x<450;x+=31) {
+        int y=201+(x/31%3)*3;ht_limb(ht_scene,x,y,x+24,y-5,1,0,92+(x%5)*9);
+    }
     ht_cutscene_objects_reset();
-    /* Far house/window is genuinely far down X and therefore small/light. */
     if(cue->caption==3) {
-        ht_cutscene_queue_rect(980,92,0,145,96,62);
-        ht_cutscene_queue_rect(970,92,72,44,46,205);
+        ht_cutscene_queue_box(980,92,0,80,155,100,68);
+        ht_cutscene_queue_box(935,92,70,18,48,49,204);
     }
     for(int layer=0;layer<5;++layer)for(int i=0;i<15;++i) {
-        int depth=130+layer*130+(i%4)*24;
-        int lateral=((i*71+layer*39)%360)-180;
-        int height=105+(i%5)*13+layer*4;
-        int lean=((phase+i*7+layer*11)%19)-9;
-        ht_cutscene_queue_stem(depth,lateral,0,height,lean,82+layer*18);
+        int depth=130+layer*130+(i%4)*24,lateral=((i*71+layer*39)%360)-180;
+        int height=108+(i%5)*14+layer*4,lean=((phase+i*7+layer*11)%19)-9;
+        ht_cutscene_queue_stem(depth,lateral,0,height,lean,90+layer*18);
     }
-    /* Narrator close to the observer, sister farther inside the flattened room. */
     ht_cutscene_queue_actor(ht_cutscene_actor_x(s),ht_cutscene_actor_y(s),0,cue->pose,cue->face,(int)s->tick);
     int sister_face=cue->caption==3?HT_CUT_FACE_RIGHT_3Q:HT_CUT_FACE_FRONT;
     ht_cutscene_queue_actor(310,38,0,HT_CUT_POSE_CROUCH,sister_face,(int)s->tick+13);
-    if(flash)ht_cutscene_queue_flash(306,23,36,4,ht_clamp(110+flash*145/256,0,255));
-    /* Very near stems are added last by depth sort and can cross both figures. */
+    if(flash)ht_cutscene_queue_flash(306,23,36,5,ht_clamp(115+flash*140/256,0,255));
     for(int i=0;i<10;++i) {
         int depth=42+(i%4)*14,lateral=((i*93+27)%430)-215;
-        ht_cutscene_queue_stem(depth,lateral,0,155+(i%3)*18,((phase+i*5)%17)-8,238);
+        ht_cutscene_queue_stem(depth,lateral,0,158+(i%3)*18,((phase+i*5)%17)-8,238);
     }
     ht_cutscene_render_objects(&camera);
+    /* Seed heads and paired leaves give the grass botanical weight after depth sorting. */
+    for(int i=0;i<18;++i) {
+        int x=16+(i*47)%455,y=55+(i*29)%108;
+        ht_limb(ht_scene,x,y,x+5,y-9,1,0,202+(i%3)*14);
+        ht_disk(ht_scene,x+5,y-10,2+(i&1),218+(i%2)*18);
+    }
 }
+
 static void ht_cutscene_draw_departure_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
     (void)cue;
     ht_cutscene_camera camera=ht_cutscene_camera_at(s);
@@ -408,36 +481,64 @@ static void ht_cutscene_draw_departure_forward(const ht_cutscene_state *s,const 
 }
 static void ht_cutscene_draw_orchard_profile(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
     int camera=ht_cutscene_camera_x(s),actor_world=ht_cutscene_actor_x(s),actor=actor_world-camera;
-    ht_world_scale=ht_cutscene_scale(s);ht_cutscene_fill(7);
-    ht_rect(ht_scene,0,213,HT_W,57,54);
-    int wall_x=80-camera;ht_rect(ht_scene,wall_x,184,188,15,120);
-    ht_rect(ht_scene,298-camera,220,92,10,18);
-    static const int trees[]={120,245,405,575,735,910};
-    for(unsigned i=0;i<sizeof(trees)/sizeof(trees[0]);++i) {
-        int x=trees[i]-camera;if(x< -80 || x>HT_W+80)continue;
-        int h=95+(int)(i%3)*21,w=7+(int)(i%2)*2;
-        ht_organic_tree(ht_scene,x,214,h,w,700u+i*79u,170+(int)i*8,true);
+    ht_world_scale=ht_cutscene_scale(s);ht_cutscene_fill(8);
+    /* Continuous ground from doorstep to root-soft road. */
+    ht_rect(ht_scene,0,213,HT_W,57,58);
+    for(int x=-40;x<HT_W+40;x+=37)ht_limb(ht_scene,x,214,x+24,210+(x/37&1)*4,1,0,96);
+
+    /* The profile grammar begins at the house. Wall segments leave a real doorway gap. */
+    int hx=-80-camera,door=118-camera;
+    if(hx<HT_W+80) {
+        ht_rect(ht_scene,hx,99,195,114,158);
+        ht_triangle(ht_scene,hx-12,100,hx+93,52,hx+210,100,126);
+        ht_rect(ht_scene,hx+18,72,18,54,118); /* chimney */
+        ht_rect(ht_scene,door-22,140,17,73,82);
+        ht_rect(ht_scene,door+16,140,49,73,82); /* split wall around door */
+        ht_rect(ht_scene,door-5,140,21,73,24);  /* dark open interior */
+        /* Open door leaf rotates visually into a thin offset slab as she emerges. */
+        int open=ht_clamp((actor_world-112)*2,0,24);
+        ht_rect(ht_scene,door+15+open,143,5,68,132);
+        ht_rect(ht_scene,hx+67,117,31,29,205);ht_rect(ht_scene,hx+71,121,23,21,48);
+        ht_limb(ht_scene,hx+4,101,hx+194,101,2,2,98); /* eave */
     }
-    int chimney=34-camera;
-    if(chimney>-30){ht_rect(ht_scene,chimney,111,14,64,150);ht_triangle(ht_scene,chimney-18,175,chimney+8,147,chimney+38,175,95);}
-    if(actor_world>560) {
-        for(int i=0;i<5;++i) {
-            int wx=650+i*115,x=wx-camera;
-            ht_limb(ht_scene,x,224,x+(i%2?8:-5),35-i*9,12,7,225-i*16);
-            ht_limb(ht_scene,x-38,217,x+8,202,3,1,190);
-        }
-        for(int i=0;i<8;++i) {
-            int wx=555+i*70,x=wx-camera;
-            ht_limb(ht_scene,x,217,x+30,207-(i%3)*4,3,1,175);
-        }
+    int wall_x=188-camera;ht_rect(ht_scene,wall_x,187,185,12,116);
+    ht_rect(ht_scene,310-camera,220,92,10,22); /* ditch */
+
+    /* Orchard trees are world anchored and drawn with generous off-screen extent. */
+    static const int orchard_trees[]={205,330,465,605,755,920};
+    for(unsigned i=0;i<sizeof(orchard_trees)/sizeof(orchard_trees[0]);++i) {
+        int x=orchard_trees[i]-camera,h=100+(int)(i%3)*22,w=8+(int)(i%2)*3;
+        int extent=h+45;
+        if(x< -extent || x>HT_W+extent)continue;
+        ht_organic_tree(ht_scene,x,214,h,w,700u+i*79u,165+(int)i*8,true);
     }
+    int chimney=5-camera;
+    if(chimney>-45) {ht_rect(ht_scene,chimney,82,13,60,146);}
+
+    /* Forest approach is always present in world space. No actor-position gate:
+     * trunks and roots are rasterized before their crowns can enter the viewport. */
+    for(int i=0;i<6;++i) {
+        int wx=610+i*112,x=wx-camera,h=190+i*17,extent=h/2+85;
+        if(x< -extent || x>HT_W+extent)continue;
+        ht_organic_tree(ht_scene,x,224,h,13+(i%2)*4,1401u+i*83u,210-i*13,true);
+    }
+    for(int i=0;i<11;++i) {
+        int wx=525+i*66,x=wx-camera;
+        if(x< -120 || x>HT_W+120)continue;
+        ht_limb(ht_scene,x,217,x+34,207-(i%3)*5,4,1,166);
+        ht_limb(ht_scene,x+3,216,x-17,210+(i%2)*4,2,0,142);
+    }
+
+    /* Actor draws after terrain but before the closest observer trunk. */
     ht_cutscene_profile_actor(actor,213,cue->pose,(int)s->tick,1);
-    if(actor_world>690) {
-        int x=760-camera;ht_limb(ht_scene,x,270,x-12,-10,18,13,252);
-        ht_limb(ht_scene,x-8,150,x-90,103,7,3,248);
+    int observer_x=760-camera;
+    if(observer_x>-150 && observer_x<HT_W+150) {
+        ht_limb(ht_scene,observer_x,270,observer_x-12,-10,18,13,252);
+        ht_limb(ht_scene,observer_x-8,150,observer_x-90,103,7,3,248);
     }
     ht_world_scale=256;
 }
+
 static void ht_cutscene_render(const ht_cutscene_state *s) {
     const ht_cutscene_cue *cue=ht_cutscene_cue_at(s);if(!cue)return;
     if(cue->view==HT_CUT_VIEW_FORWARD_X) {
