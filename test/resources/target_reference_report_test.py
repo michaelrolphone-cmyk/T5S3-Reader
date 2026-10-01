@@ -19,5 +19,6 @@ assert result['literal_references'][0]['referenced_objects'][0]['function_refere
     {'byte_offset': 8, 'address': '0x3000', 'symbols': ['installedAcquirePort']},
     {'byte_offset': 12, 'address': '0x4000', 'symbols': ['releasePort']}]
 assert result['literal_references'][1]['function_target'] == ['installedAcquirePort']
+assert references('call8 4000 <bool Registry::copy<40u>(char (&)[40u])>\n', lambda a,n: None, {}, {})['direct_calls'] == ['bool Registry::copy<40u>(char (&)[40u])']
 assert references('l32r a2, 9999', lambda a,n: None, objects, functions)['literal_references'] == []
 print('Target evidence decoder: direct/indirect calls, literal values and object function-pointer references PASS')

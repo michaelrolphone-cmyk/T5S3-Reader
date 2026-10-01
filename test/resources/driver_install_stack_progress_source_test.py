@@ -22,7 +22,10 @@ assert 'plan->requirements + plan->requirementCount' in snapshot
 assert 'depth >= kMaxDepth' in graph and 'ancestry[depth] = index;' in graph
 assert 'inspectInstalledOrdinarySdDirectory(' not in graph
 assert 'Storage.open(' not in graph
-assert 'snapshotCandidates(snapshot->candidates)' in resolver
+assert 'snapshotCandidates(*candidates, reusable)' in resolver
+assert 'before.matches(retainedGeneration)' in resolver
+assert 'if (!before.quiescent) return snapshot.release();' in resolver
+assert 'if (!Storage.unchanged(before)) return nullptr;' in resolver
 assert 'releaseInstalledCapabilities(snapshot)' in resolver
 assert 'static std::vector<Candidate>' not in resolver
 

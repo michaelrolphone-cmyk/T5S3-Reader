@@ -50,13 +50,25 @@ Count/get refuse stale rows after mutation, remount or compatibility access.
 The normal invalid-package diagnostic row remains available when its bounded
 metadata inspection fails without a whole-inventory I/O fault.
 
-General installed capability queries deliberately retain their operation-local
-metadata semantics. NativeCapabilityGate and InstalledProviderGraph use them
-while legacy raw-storage applications run. Requiring global quiescence there
-would disable otherwise working provider acquisition. Their directory scan now
-refuses observed iterator failures and overflow instead of returning partial
-candidates, but they are **not** trusted generation-bound reusable snapshots.
-A compatible broader inventory policy remains open.
+General installed capability queries now reuse an immutable metadata snapshot
+only within the same observed quiescent generation. Capture and lookup validate
+the epoch outside a short pointer-ownership mutex; filesystem work never occurs
+under that mutex. A scan that starts quiescent but changes fails closed. Warm
+queries do not re-enumerate files or hash installed ELF bytes. Mutation, remount,
+failed remount and raw compatibility access invalidate coherent snapshots.
+
+NativeCapabilityGate and InstalledProviderGraph also use metadata queries while
+legacy raw-storage applications run. These non-quiescent callers retain fresh,
+operation-local metadata queries, without entering the reusable cache; global
+quiescence is not a new prerequisite for working provider acquisition. Neither
+mode attests executable contents or replaces independent runtime authorization.
+Candidate metadata refusals can also be transient allocation failures without
+a storage mutation. Such scans remain operation-local and are never retained,
+so a later same-generation query can recover the missing provider. Directory
+errors and overflow still refuse partial inventories. The local
+production-HalStorage fixture verifies zero additional SD opens/reads on warm
+capture, invalidation and interleaved-mutation refusal, as well as repeated
+uncached raw-session queries. Target checks for this cache addition are pending.
 
 ## Evidence and limits
 
@@ -72,8 +84,8 @@ module teardown. Tests are wired into the existing platform host workflow.
 These are observed coherence epochs, **not** content hashes, durable verification
 receipts, persistent boot generations, permissions or post-install SD tamper
 proof. SdFat malformed LFN/checksum entries can be rejected without getError;
-no universal media-corruption detector is claimed. Generic capability/provider,
-app and file-association caches still need their respective coherent policies.
+no universal media-corruption detector is claimed. Provider executable admission, app and file-association caches still need
+their respective coherent policies; metadata reuse does not close those gates.
 Install/update/recovery retain SHA verification; durable receipt serialization,
 boot/recovery trust and explicit verification invalidation remain U1 work.
 Firmware final-version reconciliation remains required before a final candidate.

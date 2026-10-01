@@ -67,7 +67,8 @@ fault preservation. Preliminary caller/target metadata reads now hold their
 own use pins and retain them on uncertain close; all three metadata-close
 positions have explicit regression coverage.
 
-Target firmware/provider CI for this new slice is pending. No shipped consumer
+Both firmware/host workflow36835619954 and provider workflow36835620195 passed
+published c80bdee1, identical tree8fd2c598 to locally tested b5cba2b2. No shipped consumer
 or new pack was added merely as a witness, and no live catalog/release was
 changed. Font/theme activation, arbitrary cross-package writes, transitive
 resource dependencies, durable receipts, cryptographic authenticity and physical

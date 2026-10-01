@@ -15,7 +15,7 @@ struct Node {
 };
 inline std::map<std::string, std::shared_ptr<Node>> nodes;
 inline bool mountOkay = true;
-inline unsigned mounts = 0, closedWrites = 0;
+inline unsigned mounts = 0, closedWrites = 0, opens = 0, reads = 0;
 inline std::string failWrite, failRead, failClose, failDirectory, failOpen, failSeek, failName;
 inline unsigned mediaError = 0;
 inline std::string path(const char* name) {
@@ -65,6 +65,7 @@ class FsFile {
   FsFile() = default;
   explicit FsFile(const char* name, int flags = O_RDONLY) {
     FakeSd::locked();
+    ++FakeSd::opens;
     path_ = FakeSd::path(name);
     if (path_ == FakeSd::failOpen) return;
     auto found = FakeSd::nodes.find(path_);
@@ -147,6 +148,7 @@ class FsFile {
   }
   int read(void* out, size_t count) {
     FakeSd::locked();
+    ++FakeSd::reads;
     if (path_ == FakeSd::failRead) {
       error_ = 1;
       return -1;

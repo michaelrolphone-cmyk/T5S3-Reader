@@ -7,14 +7,31 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current published/tested checkpoint is **bd9b09a7e673e97406bc87c7560fdd1af2abd519**,
-identical tree **956480f0a1e55533b3140e3cb30dac7483fdfc9e** to local implementation
-**ce547969**. Both workflows **36829998475 / 36829998394** succeeded, including
-actual newly built archive independent-record/runtime-locator validation.
+Current published resource-only checkpoint is
+**c80bdee158eb7ef98096c7b000cd92f339c7442b**, identical tree
+**8fd2c5987e78e00c6cbc3e7bb39be3c000d855c0** to locally tested **b5cba2b2**.
+The ordinary-package and stream aggregates, loaded provider consumer, release
+checks and baseline-fails/fixed-passes SD ZIP stage regression passed locally.
+Exact-head workflows **36835619954 / 36835620195** both passed. Previous four-kind distribution checkpoint **bd9b09a7**
+passed both workflows **36829998475 / 36829998394**.
 Master **1e0188c1** remains integrated; PR96 was verified open on October1 at
-08:14 UTC. The sole owner is continuing explicit data-only resource services
-and existing scoped consumer APIs. No competing writer is authorized.
+08:30 UTC. The sole owner is continuing coherent capability metadata reuse after the
+verified data-only resource/scoped-consumer closure. No competing writer is authorized.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: coherent capability metadata reuse
+
+A bounded immutable metadata snapshot is reused only under an unchanged
+quiescent observed storage stamp; in-progress changing scans and stale queries
+fail. Compatible mutable raw-storage sessions keep fresh uncached operation-local
+queries. This preserves working provider acquisition and does not attest ELF
+contents. Production HalStorage/resolver tests establish zero SD opens/reads on
+warm capture, mutation/remount/failed-remount invalidation, interleaving refusal,
+raw-session compatibility, transient inspection retry without a mutation,
+directory errors and overflow. Full driver aggregate also passed; ASan/UBSan
+retained with LeakSanitizer disabled for executor ptrace limits. Matching target
+verification for this new cache code remains pending. Durable staged receipts
+and loader-owned byte admission remain the next connected implementation gap.
 
 ## October 1: explicit resource-only services and authorized consumers
 
@@ -30,7 +47,7 @@ path. It now reuses declared-tree helpers; the actual production Stage fails
 its nested-open regression on bd9b09a7 and passes after correction. Import
 metadata-close uncertainty retains temporary caller/target use pins.
 Source delivery, common SHA/readback, rollback/retry, unknown inventory refusal
-and interrupted removal pass locally; target CI for this slice remains pending.
+and interrupted removal pass locally; both target workflows passed at c80bdee1.
 See **U1_RESOURCE_ONLY_IMPLEMENTATION.md** for exact supported use and limits.
 
 ## October 1: four-kind independent distribution

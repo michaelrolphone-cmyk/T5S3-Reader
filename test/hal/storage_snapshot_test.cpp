@@ -10,10 +10,12 @@
 using namespace RuntimePackages;
 namespace {
 bool mutateDuringInspect = false;
+bool refuseInspectionOnce = false;
 }
 namespace RuntimePackages {
 bool inspectInstalledOrdinarySdDirectory(const char* path, const PackageRuntimePolicy&, uint32_t (*)(const char*),
                                          Identity& observed) {
+  if (refuseInspectionOnce) { refuseInspectionOnce = false; return false; }
   if (mutateDuringInspect) {
     mutateDuringInspect = false;
     assert(Storage.writeFile("/interleaved", "changed"));
@@ -38,19 +40,58 @@ int main() {
   assert(Storage.writeFile("/Drivers/clock/provider-abi.v1", "os-cpu-abi=1\nprovides=test.clock\napi=1\n"));
   auto* snapshot = captureInstalledCapabilities();
   assert(snapshot && versionInInstalledSnapshot(snapshot, "test.clock") == 1);
+  const unsigned opened = FakeSd::opens, read = FakeSd::reads;
+  auto* warm = captureInstalledCapabilities();
+  assert(warm && versionInInstalledSnapshot(warm, "test.clock") == 1);
+  assert(FakeSd::opens == opened && FakeSd::reads == read); // zero SD scans/hash IO
+  releaseInstalledCapabilities(warm);
+  assert(Storage.writeFile("/changed", "x"));
+  assert(!versionInInstalledSnapshot(snapshot, "test.clock"));
+  auto* refreshed = captureInstalledCapabilities();
+  assert(refreshed && versionInInstalledSnapshot(refreshed, "test.clock") == 1);
+  assert(FakeSd::opens > opened && FakeSd::reads > read);
+  releaseInstalledCapabilities(refreshed);
+  assert(Storage.writeFile("/changed", "transient"));
+  refuseInspectionOnce = true;
+  auto* omitted = captureInstalledCapabilities();
+  assert(omitted && !versionInInstalledSnapshot(omitted, "test.clock"));
+  releaseInstalledCapabilities(omitted);
+  auto* retry = captureInstalledCapabilities();
+  assert(retry && versionInInstalledSnapshot(retry, "test.clock") == 1);
+  releaseInstalledCapabilities(retry); // omitted metadata was not retained
+  assert(Storage.writeFile("/changed", "y"));
+  mutateDuringInspect = true;
+  assert(!captureInstalledCapabilities()); // changing scan never enters coherent reuse
+  auto* settled = captureInstalledCapabilities();assert(settled);
   Storage.externalStorageBegin();
+  assert(!versionInInstalledSnapshot(settled, "test.clock"));
+  releaseInstalledCapabilities(settled);
   // Legacy capability admission remains usable during raw-compatibility access.
   // This operation-local metadata query is not a trusted coherent cache.
   auto* compatible = captureInstalledCapabilities();
   assert(compatible && versionInInstalledSnapshot(compatible, "test.clock") == 1);
+  const unsigned rawOpens = FakeSd::opens;
+  auto* compatibleAgain = captureInstalledCapabilities();
+  assert(compatibleAgain && FakeSd::opens > rawOpens);
+  releaseInstalledCapabilities(compatibleAgain);
   releaseInstalledCapabilities(compatible);
   Storage.externalStorageEnd(true);
   releaseInstalledCapabilities(snapshot);
+  assert(Storage.reconcileExternalStorage());
+  auto* remounted = captureInstalledCapabilities();assert(remounted);
+  assert(Storage.begin());
+  assert(!versionInInstalledSnapshot(remounted, "test.clock"));
+  releaseInstalledCapabilities(remounted);
+  auto* beforeFailure = captureInstalledCapabilities();assert(beforeFailure);
+  FakeSd::mountOkay = false;assert(!Storage.begin());
+  assert(!versionInInstalledSnapshot(beforeFailure, "test.clock"));
+  assert(!captureInstalledCapabilities());releaseInstalledCapabilities(beforeFailure);
+  FakeSd::mountOkay = true;assert(Storage.begin());
   FakeSd::failDirectory = "/drivers";
   assert(!captureInstalledCapabilities());
   FakeSd::failDirectory.clear();
   for (unsigned i = 0; i < 64; ++i) assert(Storage.mkdir(("/Drivers/extra" + std::to_string(i)).c_str()));
   assert(!captureInstalledCapabilities());
-  std::cout << "Production legacy capability snapshot: compatible raw session, directory I/O "
+  std::cout << "Production capability metadata cache: zero-IO reuse, mutation/remount invalidation, interleaving, uncached compatible raw session, directory I/O "
                "faults and overflow PASS\n";
 }

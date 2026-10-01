@@ -25,7 +25,7 @@ LEGACY_NAMES = ('usbAcquirePort', 'UsbSerialProjection', 'NativeUsbDevices',
 
 
 def references(disassembly, read_virtual, objects, functions):
-    direct = sorted(set(re.findall(r'\bcall(?:0|4|8|12)\b[^\n]*<([^>]+)>', disassembly)))
+    direct = sorted(set(re.findall(r'\bcall(?:0|4|8|12)\b[^\n]*?<([^\n]+)>[ \t]*$', disassembly, re.MULTILINE)))
     indirect = [line.strip() for line in disassembly.splitlines() if re.search(r'\bcallx(?:0|4|8|12)\b', line)]
     literals = []
     for text in sorted(set(re.findall(r'\bl32r\s+\w+,\s*(?:0x)?([0-9a-fA-F]+)\b', disassembly))):

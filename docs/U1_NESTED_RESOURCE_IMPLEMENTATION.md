@@ -12,8 +12,8 @@ OrdinarySdTreeOps parent creation, exact inventory and manifest-last cleanup.
 with the existing faultable SD fake. At bd9b09a7 it fails on nested entry open;
 with this correction it passes nested creation/readback/seal, failed parent
 creation, unknown-data preservation and directory-iterator failure.
-The earlier evidence below remains valid within its narrower scope. Matching
-target checks for this integration correction are pending.
+The earlier evidence below remains valid within its narrower scope. Both
+target workflows36835619954 / 36835620195 passed this correction at c80bdee1.
 
 
 ## Existing engine, versioned format
