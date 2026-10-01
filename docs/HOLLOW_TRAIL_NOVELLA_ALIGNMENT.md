@@ -75,7 +75,7 @@ traversal wholesale with autoplay.
 | 6 Mill hollow | Implemented exterior/desk placement and arrival tableau | Broken-shutter entry and a player-moved desk exposing the register's ink |
 | 7 Ravine/clearing/gate | Existing branch/rope/bell/gate; new layered skyline and earned city tableau | Extend clearing terrain/large vista and refine gate spatial continuity |
 | 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
-| 9 Schoolroom | Partial: city evidence exists | Actual child desks/map room with visible matching route landmarks |
+| 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
 | 10 Rain tank/crossings | Existing roofs and rain | Tank refuge, meaningful opposite-window sightline, brief submerged street glimpse |
 | 11 Signal room/relay | Existing relay/log puzzle and narrative | Empty chair/automated wheel staging; reveal rather than assume mechanism |
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
