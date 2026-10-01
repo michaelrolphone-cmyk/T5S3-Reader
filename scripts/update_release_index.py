@@ -19,7 +19,9 @@ VERSION_RE = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 ID_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}\Z")
 ASSET_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,159}\Z")
 SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
-MAX_ENTRIES = {"apps": 128, "drivers": 64}
+PACKAGE_KINDS = {"apps": "application", "drivers": "driver", "services": "service", "providers": "provider"}
+PRODUCTS = ("firmware", *PACKAGE_KINDS)
+MAX_ENTRIES = {"apps": 128, "drivers": 64, "services": 64, "providers": 64}
 DRIVER_FILES = {".package.json", "driver.elf", "provider-abi.v1", "privileged-imports.v1"}
 BUNDLE_FORMAT = "rte.zip"
 BUNDLE_MANIFEST_KEYS = {"schema", "kind", "id", "version", "artifact", "architecture",
@@ -65,7 +67,7 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
         raise ValueError("bundle manifest requires exactly the ordinary schema-1 fields")
     if type(manifest["schema"]) is not int or manifest["schema"] not in (1, 2):
         raise ValueError("bundle manifest requires ordinary schema 1 or 2")
-    if (kind not in ("driver", "application") or manifest["kind"] != kind or manifest["id"] != identity or
+    if (kind not in PACKAGE_KINDS.values() or manifest["kind"] != kind or manifest["id"] != identity or
             manifest["version"] != version or manifest["architecture"] != architecture):
         raise ValueError("bundle manifest kind, identity, version and architecture must match the record")
     if (not isinstance(identity, str) or not 0 < len(identity) < 64 or
@@ -112,7 +114,7 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
             raise ValueError("bundle inventory must contain exactly its declared executable")
         inventory[name.casefold()] = item
         total += item["size_bytes"]
-    required_entries = {"provider-abi.v1", "privileged-imports.v1"} if kind == "driver" else {f"{identity}.json"}
+    required_entries = {"provider-abi.v1", "privileged-imports.v1"} if kind != "application" else {f"{identity}.json"}
     if artifact not in inventory or not required_entries <= inventory.keys():
         raise ValueError("bundle omits its executable or required runtime metadata")
     if kind == "application" and artifact != f"{identity}.elf":
@@ -144,16 +146,18 @@ def validate_bundle_manifest(manifest: Any, identity: str, version: str,
 
 
 def validate_record(product: str, record: Any) -> dict[str, Any]:
-    if product not in ("firmware", "apps", "drivers"):
-        raise ValueError("product must be firmware, apps, or drivers")
+    if product not in PRODUCTS:
+        raise ValueError("unsupported release product")
     if not isinstance(record, dict):
         raise ValueError("record must be a JSON object")
     kind = product[:-1] if product != "firmware" else "firmware"
     if "kind" in record and record["kind"] != kind:
         raise ValueError("record kind must match its product")
     bundled = "format" in record
-    if bundled and (product not in ("apps", "drivers") or record["format"] != BUNDLE_FORMAT):
-        raise ValueError("only app/driver records support explicit format rte.zip")
+    if bundled and (product not in PACKAGE_KINDS or record["format"] != BUNDLE_FORMAT):
+        raise ValueError("only package records support explicit format rte.zip")
+    if product in ("services", "providers") and not bundled:
+        raise ValueError("service/provider records require explicit rte.zip")
     if not bundled and "architecture" in record:
         raise ValueError("archive architecture requires explicit format rte.zip")
     required = {"version", "tag", "asset", "url", "size", "sha256"}
@@ -165,9 +169,7 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
 
     version = record["version"]
     version_tuple(version)
-    expected_prefix = "firmware-" if product == "firmware" else (
-        "app-" if product == "apps" else "driver-"
-    )
+    expected_prefix = kind + "-"
     stable_id = None
     if product == "firmware":
         expected_tag = f"firmware-v{version}"
@@ -191,7 +193,7 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
             raise ValueError("manifest identity must match the release record")
         if bundled:
             validate_bundle_manifest(manifest, stable_id, version, record.get("architecture"),
-                                     "application" if product == "apps" else "driver")
+                                     PACKAGE_KINDS[product])
         elif product == "drivers":
             validate_legacy_driver_manifest(manifest)
         source_repo = record.get("source_repo")
@@ -215,7 +217,7 @@ def validate_record(product: str, record: Any) -> dict[str, Any]:
         f"{stable_id}.elf" if product == "apps" else f"{stable_id}--driver.elf"
     )
     if bundled:
-        bundle_kind = "application" if product == "apps" else "driver"
+        bundle_kind = PACKAGE_KINDS[product]
         expected_asset = f"{bundle_kind}-{stable_id}-{version}-{record['architecture']}.rte.zip"
         if len(asset) >= 160:
             raise ValueError("bundle asset exceeds the device catalog name bound")
@@ -264,9 +266,18 @@ def validate_legacy_driver_manifest(manifest: dict[str, Any]) -> None:
 
 def validate_index_budget(index: dict[str, Any]) -> dict[str, Any]:
     for kind, maximum in MAX_ENTRIES.items():
-        entries = index.get(kind)
+        entries = index.get(kind, [])
         if not isinstance(entries, list) or len(entries) > maximum:
             raise ValueError(f"{kind} index exceeds its {maximum}-entry limit")
+        if kind in ('services', 'providers'):
+            identities = set()
+            for entry in entries:
+                valid = validate_record(kind, entry)
+                if valid['id'] in identities:
+                    raise ValueError('duplicate module index identity')
+                identities.add(valid['id'])
+    if len(serialize_index(index).encode("utf-8")) > 512 * 1024:
+        raise ValueError("independent index exceeds the runtime byte bound")
     return index
 
 
@@ -283,12 +294,21 @@ def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
         raise ValueError("retired CDC alias cannot be republished")
     result = {"schema": 1, "firmware": index.get("firmware"), "apps": index.get("apps"),
               "drivers": index.get("drivers")}
+    # Preserve optional module arrays through every product update, including
+    # the external GameBoy synchronizer. Historical indexes need no new keys.
+    for key in ("services", "providers"):
+        if key in index or product == key:
+            result[key] = index.get(key, [])
     if result["apps"] is None:
         result["apps"] = []
     if result["drivers"] is None:
         result["drivers"] = []
     if not isinstance(result["apps"], list) or not isinstance(result["drivers"], list):
         raise ValueError("apps and drivers index entries must be arrays")
+
+    for key in ('services', 'providers'):
+        if key in result and not isinstance(result[key], list):
+            raise ValueError('module index entries must be arrays')
 
     if product == "firmware":
         old = result["firmware"]
@@ -302,7 +322,7 @@ def update_index(index: Any, product: str, record: Any) -> dict[str, Any]:
         result["firmware"] = normalized
         return validate_index_budget(result)
 
-    key = "apps" if product == "apps" else "drivers"
+    key = product
     entries = result[key]
     current = {entry.get("id"): entry for entry in entries if isinstance(entry, dict)}
     if len(current) != len(entries):
@@ -331,7 +351,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--index", type=Path, required=True)
     parser.add_argument("--record", type=Path, required=True)
-    parser.add_argument("--product", choices=("firmware", "apps", "drivers"), required=True)
+    parser.add_argument("--product", choices=PRODUCTS, required=True)
     args = parser.parse_args()
 
     index = json.loads(args.index.read_text(encoding="utf-8"))

@@ -47,7 +47,9 @@ def runtime_identity(kind: object, identity: object, version: object,
     )
 
 
-def export(identities: set[str] | None = None, output: Path | None = None) -> None:
+def export(identities: set[str] | None = None, output: Path | None = None, kind_filter: str | None = None) -> None:
+    if kind_filter is not None and kind_filter not in KINDS:
+        raise ValueError('invalid export kind')
     target = output if output is not None else TARGET
     if not SOURCE.is_dir():
         raise FileNotFoundError(f'ordinary package source missing: {SOURCE}')
@@ -86,6 +88,10 @@ def export(identities: set[str] | None = None, output: Path | None = None) -> No
                 not runtime_identity(kind, identity, version, architecture, artifact) or
                 directory.name != identity):
             raise ValueError(f'invalid package identity or schema: {directory}')
+        if kind_filter is not None and kind != kind_filter:
+            if requested is not None and identity in requested:
+                raise ValueError('requested package staged with wrong kind')
+            continue
         if kind == "driver" and identity == "usb-cdc-acm-v2":
             raise ValueError("retired CDC alias cannot be exported")
         key = (kind, identity, architecture)
@@ -109,7 +115,7 @@ def export(identities: set[str] | None = None, output: Path | None = None) -> No
         raise ValueError(f'package source missing requested IDs: {sorted(requested - selected)}')
     if not staged:
         raise ValueError('no ordinary packages found')
-    if (release != 'unpublished-build' and requested is None and
+    if (release != 'unpublished-build' and requested is None and kind_filter is None and
             not {'application', 'driver'} <= observed_kinds):
         raise ValueError(f'release catalog missing required U1 kinds: {observed_kinds}')
 
@@ -127,5 +133,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ids', nargs='+', help='export only these canonical package IDs')
     parser.add_argument('--output', type=Path, help='isolated product artifact directory')
+    parser.add_argument('--kind', choices=sorted(KINDS), help='require this package kind')
     args = parser.parse_args()
-    export(set(args.ids) if args.ids else None, args.output)
+    export(set(args.ids) if args.ids else None, args.output, args.kind)

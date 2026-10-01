@@ -61,7 +61,9 @@ Forced first/second allocation and MMU-init failures leave no double-freeable
 pointers. UndefinedBehaviorSanitizer runs with fatal diagnostics.
 
 The native aggregate runs the synthetic fixture once; the existing USB/ELF CI
-also runs it on that build's actual clock and archive ELFs. Current local
-verification is separate from the forthcoming exact-head target checks.
+also runs it on that build's actual clock and archive ELFs. Exact published **28282e306e662e11c184481ae7727a0fd6a61def** passed both
+**36828487165 / 36828487151** workflows, including that build's actual clock and
+archive mapper fixtures. Local implementation **b45733b8** has identical tree
+**daab0a3b2b02dad3542eddb8b70d9504e125adc1**. Hardware runtime remains unclaimed.
 
 **Implementation In Progress**

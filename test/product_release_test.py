@@ -60,6 +60,41 @@ def stage_app(root, identity='clock', version='1.2.3', requires=None):
             'source_path': app_source, 'payload': payload}
 
 
+def stage_module(root, kind, identity, version='1.0.0'):
+    """Exercise actual common ZIP/record plumbing for either new module kind."""
+    source = {'type': kind, 'id': identity, 'version': version, 'driver_abi': 2,
+              'architecture': 'xtensa-esp32s3', 'file_name': 'driver.elf',
+              'provides': [{'capability': 'test.' + kind, 'api': 1}], 'requires': []}
+    source_path = root / {'service': 'Services', 'provider': 'Providers'}[kind] / identity.replace('-', '_') / 'manifest.json'
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text(json.dumps(source))
+    stage = root / 'dist/packages' / identity
+    stage.mkdir(parents=True, exist_ok=True)
+    entries = []
+    for name, data in [('driver.elf', b'fixture module'.ljust(64, b'\0')),
+                       ('provider-abi.v1', f'os-cpu-abi=1\nprovides=test.{kind}\napi=1\n'.encode()),
+                       ('privileged-imports.v1', b'\n'),
+                       ('assets/help.txt', b'nested four-kind resource')]:
+        target = stage / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        entries.append({'name': name, 'size_bytes': len(data),
+                        'sha256': hashlib.sha256(data).hexdigest(), 'executable': name == 'driver.elf'})
+    manifest = {'schema': 2, 'kind': kind, 'id': identity, 'version': version,
+                'architecture': source['architecture'], 'artifact': 'driver.elf',
+                'min_runtime_api': 2, 'entries': entries, 'requires': []}
+    (stage / '.package.json').write_text(json.dumps(manifest, separators=(',', ':')))
+    output = root / f'dist/release-{kind}-packages'
+    output.mkdir(parents=True, exist_ok=True)
+    name = f'{kind}-{identity}-{version}-xtensa-esp32s3.rte.zip'
+    archive = pack_directory(stage)
+    (output / name).write_bytes(archive)
+    (output / 'package-catalog.json').write_text(json.dumps({'schema': 1, 'release': 'unpublished-build',
+        'packages': [catalog_row(stage, name, archive)]}))
+    return {'source': source, 'source_path': source_path, 'stage': stage,
+            'manifest': manifest, 'output': output, 'name': name, 'archive': archive}
+
+
 class ProductReleaseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -100,6 +135,62 @@ class ProductReleaseTests(unittest.TestCase):
         self.catalog = {'schema': 1, 'release': 'unpublished-build',
                         'packages': [catalog_row(self.stage, self.name, self.archive)]}
         self.catalog_path.write_text(json.dumps(self.catalog))
+
+    def test_service_provider_records_and_cross_product_preservation(self):
+        index = {'schema': 1, 'firmware': None, 'apps': [], 'drivers': []}
+        for kind in ('service', 'provider'):
+            fixture = stage_module(self.root, kind, kind + '-fixture')
+            record = build_record(kind + 's', kind + '-fixture', '1.0.0', self.root)
+            self.assertEqual(record['manifest']['kind'], kind)
+            self.assertEqual(record['tag'], f'{kind}-{kind}-fixture-v1.0.0')
+            self.assertEqual(record['sha256'], hashlib.sha256(fixture['archive']).hexdigest())
+            index = update_index(index, kind + 's', record)
+            wrong = copy.deepcopy(record)
+            wrong.pop('format')
+            with self.assertRaises(ValueError):
+                validate_record(kind + 's', wrong)
+            wrong = copy.deepcopy(record)
+            wrong['manifest']['kind'] = 'driver'
+            with self.assertRaises(ValueError):
+                validate_record(kind + 's', wrong)
+            wrong = copy.deepcopy(record)
+            wrong['sha256'] = 'a' * 64
+            with self.assertRaises(ValueError):
+                update_index(index, kind + 's', wrong)
+        retained = copy.deepcopy(index)
+        index = update_index(index, 'drivers', self.record())
+        stage_app(self.root)
+        index = update_index(index, 'apps', build_record('apps', 'clock', '1.2.3', self.root))
+        self.assertEqual(index['services'], retained['services'])
+        self.assertEqual(index['providers'], retained['providers'])
+
+    def test_export_kind_rejects_wrong_stage_before_output(self):
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import export_canonical_driver_release as exporter
+        previous = exporter.SOURCE
+        target = self.root / 'dist/wrong-kind-output'
+        try:
+            exporter.SOURCE = self.stage.parent
+            with self.assertRaisesRegex(ValueError, 'wrong kind'):
+                exporter.export({'test-driver'}, target, 'service')
+            self.assertFalse(target.exists())
+        finally:
+            exporter.SOURCE = previous
+
+    def test_module_record_rejects_wrong_source_and_restored_corruption(self):
+        for kind in ('service', 'provider'):
+            fixture = stage_module(self.root, kind, kind + '-fixture')
+            source = fixture['source']
+            source['provides'][0]['api'] = 2
+            fixture['source_path'].write_text(json.dumps(source))
+            with self.assertRaisesRegex(ValueError, 'ABI'):
+                build_record(kind + 's', kind + '-fixture', '1.0.0', self.root)
+            source['provides'][0]['api'] = 1
+            fixture['source_path'].write_text(json.dumps(source))
+            archive = fixture['output'] / fixture['name']
+            archive.write_bytes(fixture['archive'][:-1])
+            with self.assertRaises(ValueError):
+                build_record(kind + 's', kind + '-fixture', '1.0.0', self.root)
 
     def rewrite_archive(self, raw=None, changes=None, extra=None):
         files = [('.package.json', raw if raw is not None else self.manifest_path.read_bytes())]

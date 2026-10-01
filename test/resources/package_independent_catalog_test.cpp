@@ -86,11 +86,15 @@ static void reject(const std::string& data) {
   out.appRowCount = 11;
   std::strcpy(out.rows[63].tag, "old-tag");
   std::strcpy(out.appRows[127].id, "old-app");
+  std::strcpy(out.serviceRows[63].id, "old-service");
+  std::strcpy(out.providerRows[63].id, "old-provider");
   assert(!accepted(data, out));
   assert(out.schema == 0 && out.rowCount == 0 && out.appRowCount == 0);
   for (const auto& row : out.rows)
     assert(!row.id[0] && !row.version[0] && !row.tag[0] && !row.bundled && !row.package.archive[0]);
   for (const auto& row : out.appRows) assert(!row.id[0] && !row.version[0]);
+  for (const auto& row : out.serviceRows) assert(!row.id[0] && !row.version[0]);
+  for (const auto& row : out.providerRows) assert(!row.id[0] && !row.version[0]);
 }
 struct Checkpoints { size_t calls = 0; size_t cancelAt = 0; };
 static bool checkpoint(void* context) {
@@ -271,6 +275,40 @@ int main() {
   reject(index("", replace(appZip, "\"kind\":\"application\"", "\"kind\":\"driver\"")));
   reject(index("", replace(appZip, "\"format\":\"rte.zip\"", "\"format\":\"elf\"")));
   reject(index("", replace(appZip, "\"kind\":\"app\"", "\"kind\":\"app\",\"source_repo\":\""+gameboyRepo+"\"")));
+
+  // Optional new arrays retain the historical schema and reject loose modules.
+  auto moduleRecord = [](const std::string& kind, const std::string& id, bool bundled = true) {
+    std::string value = record(id, "1.2.3", bundled);
+    for (const auto& change : {std::make_pair(std::string("\"kind\":\"driver\""), "\"kind\":\"" + kind + "\""),
+                              std::make_pair("driver-" + id + "-", kind + "-" + id + "-")}) {
+      size_t at = 0;
+      while ((at = value.find(change.first, at)) != std::string::npos) {
+        value.replace(at, change.first.size(), change.second); at += change.second.size();
+      }
+    }
+    return value;
+  };
+  auto withModules = [](const std::string& services, const std::string& providers) {
+    std::string value = index(); value.pop_back();
+    return value + ",\"services\":[" + services + "],\"providers\":[" + providers + "]}";
+  };
+  const auto service = moduleRecord("service", "same-id");
+  const auto provider = moduleRecord("provider", "same-id");
+  assert(accepted(withModules(service, provider), out));
+  assert(out.serviceRowCount == 1 && out.providerRowCount == 1);
+  assert(out.serviceRows[0].package.identity.kind == Kind::Service);
+  assert(out.providerRows[0].package.identity.kind == Kind::Provider);
+  reject(withModules(service + "," + service, provider));
+  reject(withModules(provider, service));
+  reject(withModules(moduleRecord("service", "old", false), ""));
+  reject(withModules("", moduleRecord("provider", "old", false)));
+  std::string services;
+  for (unsigned n = 0; n < 64; ++n) {
+    if (n) services += ",";
+    services += moduleRecord("service", "s-" + std::to_string(n));
+  }
+  assert(accepted(withModules(services, provider), out));
+  reject(withModules(services + "," + service, provider));
 
   // Every truncation of a complete driver row must fail without residual data.
   const std::string one = index(row);

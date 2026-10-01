@@ -11,6 +11,8 @@ on:
       - "platformio.ini"
       - "Apps/**/*.json"
       - "Drivers/**/manifest.json"
+      - "Services/**/manifest.json"
+      - "Providers/**/manifest.json"
       - "scripts/publish_updated_packages.py"
       - "scripts/build_release_candidates.py"
       - "scripts/build_installed_usb_stack.py"
@@ -32,6 +34,8 @@ jobs:
       firmware: ${{ steps.outputs.outputs.firmware }}
       apps: ${{ steps.outputs.outputs.apps }}
       drivers: ${{ steps.outputs.outputs.drivers }}
+      services: ${{ steps.outputs.outputs.services }}
+      providers: ${{ steps.outputs.outputs.providers }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -55,7 +59,7 @@ jobs:
           plan = json.loads((Path(os.environ["RUNNER_TEMP"]) / "release-plan.json").read_text())
           products = {item["product"] for item in plan}
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              for product in ("firmware", "apps", "drivers"):
+              for product in ("firmware", "apps", "drivers", "services", "providers"):
                   output.write(f"{product}={str(product in products).lower()}\n")
           PY
       - name: Save release plan
@@ -213,11 +217,111 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build_services:
+    name: Build changed services
+    needs: plan
+    if: ${{ needs.plan.outputs.services == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+      - name: Install service build tools
+        run: |
+          python -m pip install platformio==6.1.19 pyelftools
+          pio pkg install -e t5s3-pro
+      - name: Download release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-release-plan
+          path: ${{ runner.temp }}/release-plan
+      - name: Build, validate, and export only changed services
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product services
+      - name: Verify selected ordinary service ZIP records
+        run: python scripts/verify_release_plan.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product services
+      - name: Stage service release assets
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-artifacts/dist"
+          # Record verification needs the complete ZIP, never hidden staging files.
+          cp -a dist/release-service-packages "$RUNNER_TEMP/release-artifacts/dist/"
+      - name: Save service release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: rte-services
+          path: ${{ runner.temp }}/release-artifacts
+          if-no-files-found: error
+          retention-days: 1
+
+  build_providers:
+    name: Build changed providers
+    needs: plan
+    if: ${{ needs.plan.outputs.providers == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+      - name: Install provider build tools
+        run: |
+          python -m pip install platformio==6.1.19 pyelftools
+          pio pkg install -e t5s3-pro
+      - name: Download release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-release-plan
+          path: ${{ runner.temp }}/release-plan
+      - name: Build, validate, and export only changed providers
+        run: python scripts/build_release_candidates.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product providers
+      - name: Verify selected ordinary provider ZIP records
+        run: python scripts/verify_release_plan.py --plan "$RUNNER_TEMP/release-plan/release-plan.json" --product providers
+      - name: Stage provider release assets
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-artifacts/dist"
+          # Record verification needs the complete ZIP, never hidden staging files.
+          cp -a dist/release-provider-packages "$RUNNER_TEMP/release-artifacts/dist/"
+      - name: Save provider release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: rte-providers
+          path: ${{ runner.temp }}/release-artifacts
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
     name: Publish releases and update the index
     timeout-minutes: 30
-    needs: [plan, build_firmware, build_apps, build_drivers]
-    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.firmware != 'true' || needs.build_firmware.result == 'success') && (needs.plan.outputs.apps != 'true' || needs.build_apps.result == 'success') && (needs.plan.outputs.drivers != 'true' || needs.build_drivers.result == 'success') }}
+    needs: [plan, build_firmware, build_apps, build_drivers, build_services, build_providers]
+    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.firmware != 'true' || needs.build_firmware.result == 'success') && (needs.plan.outputs.apps != 'true' || needs.build_apps.result == 'success') && (needs.plan.outputs.drivers != 'true' || needs.build_drivers.result == 'success') && (needs.plan.outputs.services != 'true' || needs.build_services.result == 'success') && (needs.plan.outputs.providers != 'true' || needs.build_providers.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -250,6 +354,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: rte-drivers
+          path: .
+      - name: Restore service release assets
+        if: ${{ needs.plan.outputs.services == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-services
+          path: .
+      - name: Restore provider release assets
+        if: ${{ needs.plan.outputs.providers == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: rte-providers
           path: .
       - name: Revalidate restored artifacts before any publication
         run: python scripts/verify_release_plan.py --plan "$RUNNER_TEMP/release-plan/release-plan.json"

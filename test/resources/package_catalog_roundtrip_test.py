@@ -57,6 +57,12 @@ def main():
             'packages': [fixture.catalog_row(staged['stage'], staged['name'], archive)]}))
         app = fixture.build_record('apps', 'clock', '1.2.3', case.root)
         index = fixture.update_index(index, 'apps', app)
+        module_records = []
+        for kind in ('service', 'provider'):
+            fixture.stage_module(case.root, kind, kind + '-fixture')
+            module = fixture.build_record(kind + 's', kind + '-fixture', '1.0.0', case.root)
+            module_records.append(module)
+            index = fixture.update_index(index, kind + 's', module)
         with tempfile.TemporaryDirectory(prefix='package-catalog-roundtrip-') as temp:
             path = Path(temp)
             source, binary, metadata = path/'test.cpp', path/'test', path/'index.json'
@@ -65,7 +71,7 @@ def main():
                             '-Werror', '-I'+str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
             metadata.write_text(fixture.serialize_index(index))
             result = subprocess.run([str(binary), str(metadata)], check=True, capture_output=True, text=True)
-            assert set(result.stdout.splitlines()) == {record['url'], app['url']}
+            assert set(result.stdout.splitlines()) == {record['url'], app['url'], *(row['url'] for row in module_records)}
             # The producer's manifest/identity must remain joined at device intake.
             index['drivers'][0]['manifest']['version'] = '2.0.2'
             metadata.write_text(json.dumps(index))

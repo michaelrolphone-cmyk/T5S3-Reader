@@ -26,6 +26,23 @@ class ReleasePlanVerificationTests(unittest.TestCase):
     def tearDown(self):
         self.fixture.tearDown()
 
+    def test_four_kind_restore_and_new_kind_corruption(self):
+        self.add_app()
+        artifacts = []
+        for kind in ('service', 'provider'):
+            staged = fixtures.stage_module(self.root, kind, kind + '-fixture')
+            self.plan.append({'product': kind + 's', 'id': kind + '-fixture', 'version': '1.0.0'})
+            artifacts.append(staged['output'] / staged['name'])
+        # Restored ZIPs/catalogs are sufficient; no hidden build staging is needed.
+        shutil.rmtree(self.root / 'dist/packages')
+        self.assertEqual(len(verify_plan(self.root, self.plan)), 4)
+        for path in artifacts:
+            original = path.read_bytes()
+            path.write_bytes(original[:-1])
+            with self.assertRaises(ValueError):
+                verify_plan(self.root, self.plan)
+            path.write_bytes(original)
+
     def add_app(self):
         self.app = fixtures.stage_app(self.root)
         self.plan.append({'product': 'apps', 'id': 'clock', 'version': '1.2.3'})

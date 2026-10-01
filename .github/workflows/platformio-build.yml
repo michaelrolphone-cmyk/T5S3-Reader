@@ -9,6 +9,8 @@ on:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
       - "Drivers/**"
+      - "Services/**"
+      - "Providers/**"
       - "sdk/**"
       - "SD_fonts/FAClassic*/**"
       - "src/**"
@@ -24,6 +26,8 @@ on:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
       - "Drivers/**"
+      - "Services/**"
+      - "Providers/**"
       - "sdk/**"
       - "SD_fonts/FAClassic*/**"
       - "src/**"
@@ -82,10 +86,19 @@ jobs:
             ${{ runner.os }}-platformio-
 
       - name: Install PlatformIO
-        run: python -m pip install platformio==6.1.19
+        run: python -m pip install platformio==6.1.19 pyelftools==0.32
 
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
+
+      - name: Record production serial and USB target references
+        run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
+      - name: Preserve compact target reference evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-target-references-${{ matrix.board_id }}
+          path: dist/u1-target-references-${{ matrix.board_id }}.json
+          if-no-files-found: error
 
       - name: Build and validate native ELFs
         run: |
@@ -156,6 +169,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Verify target reference report decoding
+        run: python3 test/resources/target_reference_report_test.py
 
       - name: Verify storage generations and retained inventory
         run: bash test/run_storage_generation_test.sh

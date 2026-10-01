@@ -41,7 +41,7 @@ inline bool sameCatalogPayload(const CatalogPackage& a, const CatalogPackage& b)
 
 // Inputs have already passed their source parsers. Independent legacy records
 // are version barriers, never instructions to interpret a loose ELF as a ZIP.
-// At most 64*(128+64) identity comparisons; no network, activation or filesystem I/O.
+// At most 64*(128+3*64) identity comparisons; no network, activation or filesystem I/O.
 // Failure clears all selections, including partially merged rows.
 inline bool mergeOnlineCatalog(const PackageCatalog* aggregate,
                                const IndependentDriverCatalog& independent,
@@ -51,6 +51,8 @@ inline bool mergeOnlineCatalog(const PackageCatalog* aggregate,
   if (!architecture || independent.schema != 1 ||
       independent.rowCount > kIndependentCatalogMaxDrivers ||
       independent.appRowCount > kIndependentCatalogMaxApps ||
+      independent.serviceRowCount > kIndependentCatalogMaxModulesPerKind ||
+      independent.providerRowCount > kIndependentCatalogMaxModulesPerKind ||
       (aggregate && (aggregate->schema != 1 || aggregate->packageCount > kCatalogMaxPackages)))
     return fail();
   auto append = [&](const CatalogPackage& package, const char* tag) {
@@ -67,29 +69,22 @@ inline bool mergeOnlineCatalog(const PackageCatalog* aggregate,
       const auto& package = aggregate->packages[i];
       if (std::strcmp(package.architecture, architecture)) continue;
       bool retain = true;
-      if (package.identity.kind == Kind::Driver) {
-        for (size_t j = 0; j < independent.rowCount; ++j) {
-          const auto& row = independent.rows[j];
-          if (std::strcmp(package.identity.id, row.id)) continue;
-          const auto order = comparePackageVersions(package.identity.version, row.version);
-          if (order == VersionOrder::Invalid) return fail();
-          if (order == VersionOrder::Equal && row.bundled &&
-              !sameCatalogPayload(package, row.package)) return fail();
-          retain = order == VersionOrder::Newer;
-          break;
-        }
-      }
-      if (package.identity.kind == Kind::Application) {
-        for (size_t j = 0; j < independent.appRowCount; ++j) {
-          const auto& row = independent.appRows[j];
-          if (std::strcmp(package.identity.id, row.id)) continue;
-          const auto order = comparePackageVersions(package.identity.version, row.version);
-          if (order == VersionOrder::Invalid) return fail();
-          if (order == VersionOrder::Equal && row.bundled &&
-              !sameCatalogPayload(package, row.package)) return fail();
-          retain = order == VersionOrder::Newer;
-          break;
-        }
+      const auto kind = package.identity.kind;
+      const auto* rows = kind == Kind::Application ? independent.appRows :
+                         kind == Kind::Driver ? independent.rows :
+                         kind == Kind::Service ? independent.serviceRows : independent.providerRows;
+      const size_t count = kind == Kind::Application ? independent.appRowCount :
+                           kind == Kind::Driver ? independent.rowCount :
+                           kind == Kind::Service ? independent.serviceRowCount : independent.providerRowCount;
+      for (size_t j = 0; j < count; ++j) {
+        const auto& row = rows[j];
+        if (std::strcmp(package.identity.id, row.id)) continue;
+        const auto order = comparePackageVersions(package.identity.version, row.version);
+        if (order == VersionOrder::Invalid) return fail();
+        if (order == VersionOrder::Equal && row.bundled &&
+            !sameCatalogPayload(package, row.package)) return fail();
+        retain = order == VersionOrder::Newer;
+        break;
       }
       if (retain && !append(package, aggregate->release)) return fail();
     }
@@ -110,7 +105,9 @@ inline bool mergeOnlineCatalog(const PackageCatalog* aggregate,
     return true;
   };
   if (!appendIndependent(independent.rows, independent.rowCount) ||
-      !appendIndependent(independent.appRows, independent.appRowCount)) return fail();
+      !appendIndependent(independent.appRows, independent.appRowCount) ||
+      !appendIndependent(independent.serviceRows, independent.serviceRowCount) ||
+      !appendIndependent(independent.providerRows, independent.providerRowCount)) return fail();
   return true;
 }
 

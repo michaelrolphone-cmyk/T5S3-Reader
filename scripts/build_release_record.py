@@ -90,22 +90,23 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
     """Verify either kind through the same bounded canonical ZIP contract."""
     if not re.fullmatch(r'[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?', identity):
         raise ValueError('unsafe canonical package identity')
-    if kind == 'driver':
+    if kind in ('driver', 'service', 'provider'):
         sources = []
-        for index, path in enumerate(sorted((root / 'Drivers').glob('*/manifest.json'))):
+        source_root = {'driver': 'Drivers', 'service': 'Services', 'provider': 'Providers'}[kind]
+        for index, path in enumerate(sorted((root / source_root).glob('*/manifest.json'))):
             if index >= 64:
                 raise ValueError('driver source inventory exceeds bound')
             source = bounded_json(root, path, 4096)
             if not isinstance(source, dict):
                 raise ValueError('driver source manifest must be an object')
-            if source.get('type') == 'driver' and source.get('driver_abi') == 2 and source.get('id') == identity:
+            if source.get('type') == kind and source.get('driver_abi') == 2 and source.get('id') == identity:
                 canonical_manifest(path)
                 sources.append(source)
         if len(sources) != 1 or sources[0].get('version') != version:
             raise ValueError('source driver identity/version is missing, duplicated or stale')
         source = sources[0]
         architecture = source['architecture']
-        directory = root / 'dist/release-packages'
+        directory = root / ('dist/release-packages' if kind == 'driver' else f'dist/release-{kind}-packages')
         requirements = [{'capability': item['capability'], 'min_api': item['api']}
                         for item in source['requires']]
     elif kind == 'application':
@@ -155,7 +156,7 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
                     payload = zipped.read(entry['name'])
                     if len(payload) != entry['size_bytes'] or hashlib.sha256(payload).hexdigest() != entry['sha256']:
                         raise ValueError('package ZIP entry size/SHA-256 mismatch')
-                    if kind == 'driver' and entry['name'] == 'provider-abi.v1':
+                    if kind != 'application' and entry['name'] == 'provider-abi.v1':
                         capability, api = source['provides'][0]['capability'], source['provides'][0]['api']
                         expected = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
                         if payload != expected:
@@ -201,18 +202,18 @@ def driver_bundle(identity: str, version: str, root: Path) -> tuple[dict, Path, 
 
 
 def build_record(product: str, identity: str, version: str, root: Path) -> dict:
-    if product not in ("firmware", "apps", "drivers"):
+    if product not in ("firmware", "apps", "drivers", "services", "providers"):
         raise ValueError("unsupported release product")
     if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
         raise ValueError("version must be numeric MAJOR.MINOR.PATCH")
-    prefix = {"firmware": "firmware", "apps": "app", "drivers": "driver"}[product]
+    prefix = {"firmware": "firmware", "apps": "app", "drivers": "driver", "services": "service", "providers": "provider"}[product]
     tag = f"{prefix}-v{version}" if product == "firmware" else f"{prefix}-{identity}-v{version}"
     if product == "firmware":
         asset_path = root / "dist/firmware-t5s3-pro.bin"
         manifest = None
     else:
         manifest, asset_path, archive = package_bundle(
-            'application' if product == 'apps' else 'driver', identity, version, root)
+            'application' if product == 'apps' else product[:-1], identity, version, root)
     size, sha256 = (len(archive), hashlib.sha256(archive).hexdigest()) if product != "firmware" else digest(asset_path)
     asset = asset_path.name
     record = {
@@ -236,14 +237,14 @@ def build_record(product: str, identity: str, version: str, root: Path) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--product", required=True, choices=("firmware", "apps", "drivers"))
+    parser.add_argument("--product", required=True, choices=("firmware", "apps", "drivers", "services", "providers"))
     parser.add_argument("--id", default="")
     parser.add_argument("--version", required=True)
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.product != "firmware" and not args.id:
-        parser.error("--id is required for apps and drivers")
+        parser.error("--id is required for packages")
     record = build_record(args.product, args.id, args.version, args.root)
     args.output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Verified {args.product} release record for {args.id or 'firmware'}")

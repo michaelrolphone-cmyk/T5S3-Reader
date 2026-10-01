@@ -94,11 +94,12 @@ def linked_or_build(identity: str, source_directory: Path) -> Path:
         return linked_elf(identity)
 
 
-def source_candidates() -> list[dict]:
+def source_candidates(root: Path | None = None, allow_empty: bool = False) -> list[dict]:
     """Validate the source graph before any artifact access or build side effects."""
     candidates = []
     identities = set()
-    roots = (DRIVER_SOURCES, DRIVER_SOURCES.parent / 'Services', DRIVER_SOURCES.parent / 'Providers')
+    source_root = root / 'Drivers' if root is not None else DRIVER_SOURCES
+    roots = (source_root, source_root.parent / 'Services', source_root.parent / 'Providers')
     for path in sorted(path for root in roots for path in root.glob('*/manifest.json')):
         if path.is_symlink() or path.parent.is_symlink() or path.stat().st_size > 4096:
             raise ValueError(f'unsafe or oversized provider manifest: {path}')
@@ -122,7 +123,7 @@ def source_candidates() -> list[dict]:
         candidates.append({'id': identity, 'source': path, 'metadata': metadata,
                            'capability': capability, 'api': api, 'version': version,
                            'requires': [required['capability'] for required in requirements]})
-    if not candidates:
+    if not candidates and not allow_empty:
         raise ValueError('no ABI-v2 provider source manifests found')
     return candidates
 

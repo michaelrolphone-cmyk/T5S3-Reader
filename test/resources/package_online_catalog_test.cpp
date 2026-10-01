@@ -122,5 +122,32 @@ int main() {
   assert(!onlineArchiveUrl(longRow.package, longRow.tag, "xtensa-esp32s3", url) && url.empty());
   assert(!onlineArchiveUrl(i->rows[0].package, "../unsafe", "xtensa-esp32s3", url));
   assert(!onlineArchiveUrl(i->rows[0].package, "valid?redirect=evil", "xtensa-esp32s3", url));
+  // Module kinds share the same immutable selection rules without ID aliasing.
+  clearIndependentDriverCatalog(*i); i->schema = 1;
+  auto module = [](Kind kind, const char* prefix) {
+    auto row = record("same-id", "1.2.3");
+    row.package.identity.kind = kind;
+    std::snprintf(row.tag, sizeof(row.tag), "%s-same-id-v1.2.3", prefix);
+    std::snprintf(row.package.archive, sizeof(row.package.archive), "%s-same-id-1.2.3-xtensa-esp32s3.rte.zip", prefix);
+    return row;
+  };
+  i->serviceRows[0] = module(Kind::Service, "service"); i->serviceRowCount = 1;
+  i->providerRows[0] = module(Kind::Provider, "provider"); i->providerRowCount = 1;
+  assert(mergeOnlineCatalog(nullptr, *i, "xtensa-esp32s3", *out) && out->packageCount == 2);
+  assert(out->packages[0].identity.kind != out->packages[1].identity.kind);
+  for (auto* row : {&i->serviceRows[0], &i->providerRows[0]}) {
+    a->packageCount = 1; a->packages[0] = row->package;
+    std::strcpy(a->packages[0].identity.version, "1.2.2");
+    assert(mergeOnlineCatalog(a.get(), *i, "xtensa-esp32s3", *out) && out->packageCount == 2);
+    a->packages[0] = row->package;
+    ++a->packages[0].sizeBytes;
+    assert(!mergeOnlineCatalog(a.get(), *i, "xtensa-esp32s3", *out) && !out->packageCount);
+    a->packages[0] = row->package;
+    std::strcpy(a->packages[0].identity.version, "1.2.4");
+    assert(mergeOnlineCatalog(a.get(), *i, "xtensa-esp32s3", *out) && out->packageCount == 2);
+    assert(!std::strcmp(out->packages[0].identity.version, "1.2.4"));
+  }
+  i->providerRowCount = kIndependentCatalogMaxModulesPerKind + 1;
+  assert(!mergeOnlineCatalog(nullptr, *i, "xtensa-esp32s3", *out) && !out->packageCount);
   std::puts("PASS: immutable per-package catalog merge, versions, legacy barriers, conflicts and limits");
 }

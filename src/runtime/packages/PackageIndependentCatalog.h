@@ -13,10 +13,11 @@ namespace RuntimePackages {
 // release-index.json is discovery metadata, never an execution grant. Keep
 // historical loose records as version barriers; only explicit rte.zip records
 // can become ordinary catalog candidates. The caller owns this bounded output
-// (bounded below 160 KiB) and the immutable input, normally in PSRAM, not a task stack.
+// (bounded below 300 KiB) and the immutable input, normally in PSRAM, not a task stack.
 constexpr size_t kIndependentCatalogMaxBytes = 512u * 1024u;
 constexpr size_t kIndependentCatalogMaxDrivers = 64;
 constexpr size_t kIndependentCatalogMaxApps = 128;
+constexpr size_t kIndependentCatalogMaxModulesPerKind = 64;
 constexpr size_t kPackageReleaseTagBytes = 128;
 
 struct IndependentDriverRecord {
@@ -37,24 +38,48 @@ struct IndependentDriverCatalog {
   size_t rowCount = 0;
   IndependentAppRecord appRows[kIndependentCatalogMaxApps]{};
   size_t appRowCount = 0;
+  IndependentDriverRecord serviceRows[kIndependentCatalogMaxModulesPerKind]{};
+  size_t serviceRowCount = 0;
+  IndependentDriverRecord providerRows[kIndependentCatalogMaxModulesPerKind]{};
+  size_t providerRowCount = 0;
   // Reused manifest workspace belongs to the heap/PSRAM catalog allocation.
   // A local plan here added ~4.8 KiB on top of the ordinary parser's frame,
   // risking exhaustion of the native invocation stack before HTTP caller/app frames.
   OrdinaryPackagePlan parsingScratch{};
 };
 
+static_assert(sizeof(IndependentDriverCatalog) < 300u * 1024u, "independent catalog allocation bound");
+
 inline void clearIndependentDriverCatalog(IndependentDriverCatalog& out) {
   out.schema = 0;
   out.rowCount = 0;
   out.appRowCount = 0;
+  out.serviceRowCount = out.providerRowCount = 0;
   clearOrdinaryManifestPlan(out.parsingScratch);
   for (size_t i = 0; i < kIndependentCatalogMaxApps; ++i)
     out.appRows[i] = IndependentAppRecord();
   for (size_t i = 0; i < kIndependentCatalogMaxDrivers; ++i)
     out.rows[i] = IndependentDriverRecord();
+  for (size_t i = 0; i < kIndependentCatalogMaxModulesPerKind; ++i) {
+    out.serviceRows[i] = IndependentDriverRecord();
+    out.providerRows[i] = IndependentDriverRecord();
+  }
 }
 
 namespace IndependentCatalogDetail {
+inline const char* recordKind(Kind kind) {
+  switch (kind) {
+    case Kind::Application: return "app";
+    case Kind::Driver: return "driver";
+    case Kind::Service: return "service";
+    case Kind::Provider: return "provider";
+  }
+  return "";
+}
+inline const char* packageKind(Kind kind) {
+  return kind == Kind::Application ? "application" : recordKind(kind);
+}
+
 
 // The portable callback can enforce a caller deadline/cancellation and report
 // throttled progress. No allocation or I/O occurs here. It runs at entry, at
@@ -370,9 +395,10 @@ inline bool legacyManifest(const char* data, size_t length,
 }
 
 inline bool bundleManifest(const char* data, size_t length,
-                           IndependentDriverRecord& row, WorkBudget& budget, OrdinaryPackagePlan& plan, bool app) {
+                           IndependentDriverRecord& row, WorkBudget& budget, OrdinaryPackagePlan& plan, Kind kind) {
+  const bool app = kind == Kind::Application;
   if (!budget.poll(true)) return false;
-  if (!parseOrdinaryManifest(data, length, plan) || plan.identity.kind != (app ? Kind::Application : Kind::Driver) ||
+  if (!parseOrdinaryManifest(data, length, plan) || plan.identity.kind != kind ||
       std::strcmp(plan.identity.id, row.id) || std::strcmp(plan.identity.version, row.version) ||
       std::strcmp(plan.architecture, row.package.architecture)) return false;
   uint64_t total = length;
@@ -426,8 +452,10 @@ inline bool appManifest(const char* data, size_t length,
          (!(seen & 8u) || !std::strcmp(sha, row.package.sha256));
 }
 
-inline bool record(Cursor& r, IndependentDriverRecord& row, bool app, WorkBudget& budget,
+inline bool record(Cursor& r, IndependentDriverRecord& row, Kind packageType, WorkBudget& budget,
                    OrdinaryPackagePlan& scratch) {
+  const bool app = packageType == Kind::Application;
+  if (!recordKind(packageType)[0]) return false;
   if (!r.take('{')) return false;
   unsigned seen = 0;
   char kind[16]{}, format[16]{}, url[384]{}, sourceRepo[64]{};
@@ -444,7 +472,7 @@ inline bool record(Cursor& r, IndependentDriverRecord& row, bool app, WorkBudget
     else if (!std::strcmp(key, "size")) { if (!r.integer(row.package.sizeBytes)) return false; seen |= 32; }
     else if (!std::strcmp(key, "sha256")) { if (!r.text(row.package.sha256, sizeof(row.package.sha256))) return false; seen |= 64; }
     else if (!std::strcmp(key, "manifest")) { if (!r.objectAhead() || !r.slice(manifest, manifestLength)) return false; seen |= 128; }
-    else if (!std::strcmp(key, "kind")) { if (!r.text(kind, sizeof(kind)) || std::strcmp(kind, app ? "app" : "driver")) return false; }
+    else if (!std::strcmp(key, "kind")) { if (!r.text(kind, sizeof(kind)) || std::strcmp(kind, recordKind(packageType))) return false; }
     else if (!std::strcmp(key, "format")) {
       if (!r.text(format, sizeof(format)) || std::strcmp(format, "rte.zip")) return false;
       row.bundled = true;
@@ -470,16 +498,17 @@ inline bool record(Cursor& r, IndependentDriverRecord& row, bool app, WorkBudget
     std::strcpy(expectedTag, row.tag);
     n = static_cast<int>(std::strlen(expectedTag));
   } else n = std::snprintf(expectedTag, sizeof(expectedTag), "%s-%s-v%s",
-                           app ? "app" : "driver", row.id, row.version);
+                           recordKind(packageType), row.id, row.version);
   if (n <= 0 || static_cast<size_t>(n) >= sizeof(expectedTag) || std::strcmp(row.tag, expectedTag)) return false;
   char expectedAsset[160]{};
   if (row.bundled) {
     if (!(seen & 256u) || row.package.sizeBytes < kRteZipEocdBytes ||
         row.package.sizeBytes > kRteZipMaxTotalBytes + 65536u ||
-        !bundleManifest(manifest, manifestLength, row, budget, scratch, app)) return false;
+        !bundleManifest(manifest, manifestLength, row, budget, scratch, packageType)) return false;
     n = std::snprintf(expectedAsset, sizeof(expectedAsset), "%s-%s-%s-%s.rte.zip",
-                      app ? "application" : "driver", row.id, row.version, row.package.architecture);
+                      packageKind(packageType), row.id, row.version, row.package.architecture);
   } else {
+    if (packageType != Kind::Application && packageType != Kind::Driver) return false;
     if ((seen & 256u) || !(app ? appManifest(manifest, manifestLength, row, budget) :
                                    legacyManifest(manifest, manifestLength, row, budget))) return false;
     n = std::snprintf(expectedAsset, sizeof(expectedAsset), app ? "%s.elf" : "%s--driver.elf", row.id);
@@ -517,7 +546,7 @@ inline bool parse(const char* json, size_t length, IndependentDriverCatalog& out
       if (!r.take(']')) for (;;) {
         IndependentDriverRecord app;
         if (!budget.poll(true) || out.appRowCount >= kIndependentCatalogMaxApps ||
-            !record(r, app, true, budget, out.parsingScratch)) return false;
+            !record(r, app, Kind::Application, budget, out.parsingScratch)) return false;
         for (size_t i = 0; i < out.appRowCount; ++i)
           if (!std::strcmp(out.appRows[i].id, app.id)) return false;
         out.appRows[out.appRowCount] = app;
@@ -527,19 +556,26 @@ inline bool parse(const char* json, size_t length, IndependentDriverCatalog& out
         if (!more) break;
       }
       seen |= 4;
-    } else if (!std::strcmp(key, "drivers")) {
+    } else if (!std::strcmp(key, "drivers") || !std::strcmp(key, "services") ||
+               !std::strcmp(key, "providers")) {
+      const Kind kind = !std::strcmp(key, "drivers") ? Kind::Driver :
+                        !std::strcmp(key, "services") ? Kind::Service : Kind::Provider;
+      auto* rows = kind == Kind::Driver ? out.rows :
+                   kind == Kind::Service ? out.serviceRows : out.providerRows;
+      auto& count = kind == Kind::Driver ? out.rowCount :
+                    kind == Kind::Service ? out.serviceRowCount : out.providerRowCount;
       if (!r.take('[')) return false;
       if (!r.take(']')) for (;;) {
-        if (!budget.poll(true) || out.rowCount >= kIndependentCatalogMaxDrivers ||
-            !record(r, out.rows[out.rowCount], false, budget, out.parsingScratch)) return false;
-        for (size_t i = 0; i < out.rowCount; ++i)
-          if (!std::strcmp(out.rows[i].id, out.rows[out.rowCount].id)) return false;
-        ++out.rowCount;
+        if (!budget.poll(true) || count >= kIndependentCatalogMaxModulesPerKind ||
+            !record(r, rows[count], kind, budget, out.parsingScratch)) return false;
+        for (size_t i = 0; i < count; ++i)
+          if (!std::strcmp(rows[i].id, rows[count].id)) return false;
+        ++count;
         bool more = false;
         if (!r.next(']', more)) return false;
         if (!more) break;
       }
-      seen |= 8;
+      if (kind == Kind::Driver) seen |= 8; // New arrays are optional in historical indexes.
     } else return false;
     bool more = false;
     if (!r.next('}', more)) return false;
@@ -572,7 +608,7 @@ inline bool parseIndependentAppRecord(const char* json, size_t length,
   IndependentCatalogDetail::Cursor guard(json, length, budget);
   if (!guard.objectOnly()) return false;
   IndependentCatalogDetail::Cursor reader(json, length, budget);
-  if (!IndependentCatalogDetail::record(reader, out, true, budget, scratch) || !reader.end()) {
+  if (!IndependentCatalogDetail::record(reader, out, Kind::Application, budget, scratch) || !reader.end()) {
     out = {}; return false;
   }
   return true;

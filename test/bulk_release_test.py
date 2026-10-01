@@ -82,7 +82,31 @@ class DiscoverCandidatesTest(unittest.TestCase):
         self.assertEqual(commands[:2], [[sys.executable, 'scripts/build_all_apps.py', '--id', 'clock'],
                                       [sys.executable, 'scripts/build_all_apps.py', '--id', 'reminders']])
         self.assertEqual(commands[2], [sys.executable, 'scripts/export_canonical_driver_release.py',
-            '--output', 'dist/release-app-packages', '--ids', 'clock', 'reminders'])
+            '--output', 'dist/release-app-packages', '--kind', 'application', '--ids', 'clock', 'reminders'])
+
+    def test_new_module_kinds_use_existing_selective_build_and_isolated_assets(self):
+        for kind in ('service', 'provider'):
+            identity = kind + '-fixture'
+            staged = fixtures.stage_module(self.root, kind, identity)
+            (self.root / 'scripts' / f"build_{identity.replace('-', '_')}.py").write_text('# fixture builder')
+            candidate = {'product': kind + 's', 'id': identity, 'version': '1.0.0'}
+            self.assertIn(candidate, discover_candidates(self.root, self.current_index()))
+            self.assertEqual(release_assets(self.root, kind + 's', identity, '1.0.0'),
+                             [staged['output'] / staged['name']])
+            with patch.object(release_builder, 'ROOT', self.root), patch.object(release_builder, 'run') as run:
+                release_builder.build_drivers([candidate], kind)
+            commands = [call.args[0] for call in run.call_args_list]
+            self.assertEqual(commands[0][-1], f"scripts/build_{identity.replace('-', '_')}.py")
+            self.assertEqual(commands[-1], [sys.executable, 'scripts/export_canonical_driver_release.py',
+                '--output', f'dist/release-{kind}-packages', '--kind', kind, '--ids', identity])
+
+    def test_ambiguous_flat_output_is_rejected_before_any_builder(self):
+        fixtures.stage_module(self.root, 'service', 'clock')
+        (self.root / 'scripts/build_clock.py').write_text('# fixture builder')
+        with patch.object(release_builder, 'ROOT', self.root), patch.object(release_builder, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'collides'):
+                release_builder.build_plan([{'product': 'services', 'id': 'clock', 'version': '1.0.0'}])
+            run.assert_not_called()
 
     def test_selects_only_newer_source_manifest_versions(self):
         self.assertEqual(
@@ -188,7 +212,7 @@ class DiscoverCandidatesTest(unittest.TestCase):
             unittest.mock.call([sys.executable, "test/drivers/installed_usb_stack_package_test.py",
                                 "--ids", "independent-sensor"]),
             unittest.mock.call([sys.executable, "scripts/export_canonical_driver_release.py",
-                                "--ids", "independent-sensor"]),
+                                "--output", "dist/release-packages", "--kind", "driver", "--ids", "independent-sensor"]),
         ])
 
     def test_unknown_or_duplicate_selection_fails_before_building(self):

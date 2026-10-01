@@ -15,12 +15,12 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .build_release_candidates import discover_driver_builders
+    from .build_release_candidates import discover_module_builders, discover_module_sources
     from .generate_provider_package_inputs_v1 import canonical_manifest
     from .build_release_record import build_record, app_source
     from .update_release_index import serialize_index, update_index, version_tuple
 except ImportError:
-    from build_release_candidates import discover_driver_builders
+    from build_release_candidates import discover_module_builders, discover_module_sources
     from generate_provider_package_inputs_v1 import canonical_manifest
     from build_release_record import build_record, app_source
     from update_release_index import serialize_index, update_index, version_tuple
@@ -36,7 +36,7 @@ def read_json(path: Path) -> Any:
 
 
 def indexed_versions(index: dict[str, Any], kind: str) -> dict[str, tuple[int, int, int]]:
-    entries = index.get(kind)
+    entries = index.get(kind, [] if kind in ("services", "providers") else None)
     if not isinstance(entries, list):
         raise ValueError(f"release index {kind} field must be an array")
     result = {}
@@ -54,7 +54,6 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
     if index.get("schema") != 1:
         raise ValueError("release index must use schema 1")
     apps_released = indexed_versions(index, "apps")
-    drivers_released = indexed_versions(index, "drivers")
     candidates: list[dict[str, str]] = []
 
     config = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";", "#"))
@@ -96,35 +95,27 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
         if latest is None or current > latest:
             candidates.append({"product": "apps", "id": identity, "version": version})
 
-    # Planning and selective builds share manifest-derived source discovery.
-    # A new ABI-2 provider plus its conventional builder needs no ID allowlist.
-    canonical_driver_ids = set(discover_driver_builders(root))
-    seen_drivers: set[str] = set()
-    for path in (root / "Drivers").glob("*/manifest.json"):
-        try:
-            manifest = read_json(path)
-        except (OSError, json.JSONDecodeError):
-            continue
-        if not isinstance(manifest, dict):
-            continue
-        identity = manifest.get("id")
-        if (manifest.get("type") != "driver" or manifest.get("driver_abi") != 2 or
-                identity not in canonical_driver_ids):
-            continue
-        if identity in seen_drivers:
-            raise ValueError(f"duplicate canonical driver manifest ID {identity}")
-        seen_drivers.add(identity)
-        version = manifest.get("version")
-        current = version_tuple(version)
-        latest = drivers_released.get(identity)
-        if identity == "usb-cdc-acm" and "usb-cdc-acm-v2" in drivers_released:
-            alias_version = drivers_released["usb-cdc-acm-v2"]
-            latest = max(latest, alias_version) if latest is not None else alias_version
-        if latest is None or current > latest:
-            candidates.append({"product": "drivers", "id": identity, "version": version})
+    # Planning and selective builds share the existing four-kind source graph.
+    for kind in ('driver', 'service', 'provider'):
+        builders = discover_module_builders(root, kind)
+        released = indexed_versions(index, kind + 's')
+        for item in discover_module_sources(root):
+            manifest = item['metadata']
+            if manifest['type'] != kind:
+                continue
+            identity, version = item['id'], item['version']
+            if identity not in builders:
+                raise ValueError('missing manifest-derived module builder')
+            current = version_tuple(version)
+            latest = released.get(identity)
+            if kind == 'driver' and identity == 'usb-cdc-acm' and 'usb-cdc-acm-v2' in released:
+                alias_version = released['usb-cdc-acm-v2']
+                latest = max(latest, alias_version) if latest is not None else alias_version
+            if latest is None or current > latest:
+                candidates.append({'product': kind + 's', 'id': identity, 'version': version})
 
-    order = {"firmware": 0, "apps": 1, "drivers": 2}
-    return sorted(candidates, key=lambda item: (order[item["product"]], item["id"]))
+    order = {'firmware': 0, 'apps': 1, 'drivers': 2, 'services': 3, 'providers': 4}
+    return sorted(candidates, key=lambda item: (order[item['product']], item['id']))
 
 def release_assets(root: Path, product: str, identity: str,
                    version: str | None = None) -> list[Path]:
@@ -145,14 +136,16 @@ def release_assets(root: Path, product: str, identity: str,
         if asset.is_symlink():
             raise ValueError("app archive is a symlink")
         assets = [asset]
-    else:
+    elif product in ('drivers', 'services', 'providers'):
+        kind = product[:-1]
+        source_root = {'drivers': 'Drivers', 'services': 'Services', 'providers': 'Providers'}[product]
         # Select the exact current source identity/version/target. A broad
         # prefix glob can pick a neighboring ID, stale version, another target
         # or obsolete loose ELF/JSON assets left in the output directory.
         matches = []
-        for path in (root / "Drivers").glob("*/manifest.json"):
+        for path in (root / source_root).glob("*/manifest.json"):
             manifest = read_json(path)
-            if (isinstance(manifest, dict) and manifest.get("type") == "driver" and
+            if (isinstance(manifest, dict) and manifest.get("type") == kind and
                     manifest.get("driver_abi") == 2 and manifest.get("id") == identity):
                 if path.is_symlink() or path.parent.is_symlink():
                     raise ValueError(f"unsafe driver source manifest for {identity}")
@@ -165,11 +158,13 @@ def release_assets(root: Path, product: str, identity: str,
         version_tuple(source_version)
         if version is not None and version != source_version:
             raise ValueError(f"driver source version changed for {identity}")
-        name = f"driver-{identity}-{source_version}-{manifest['architecture']}.rte.zip"
-        asset = root / "dist/release-packages" / name
+        name = f"{kind}-{identity}-{source_version}-{manifest['architecture']}.rte.zip"
+        asset = root / ("dist/release-packages" if kind == "driver" else f"dist/release-{kind}-packages") / name
         if asset.is_symlink():
             raise ValueError(f"driver archive is a symlink: {name}")
         assets = [asset]
+    else:
+        raise ValueError("unsupported release product")
     if not assets or any(not path.is_file() or path.stat().st_size == 0 for path in assets):
         raise ValueError(f"missing or empty assets for {product} {identity}")
     return assets
@@ -338,7 +333,7 @@ def publish_all(root: Path = ROOT, planned: list[dict[str, str]] | None = None) 
     if planned is not None and candidates != planned:
         raise ValueError("release plan no longer matches source manifests or the current index; rerun planning")
     if not candidates:
-        print("No firmware, app, or driver versions are newer than the release index.")
+        print("No firmware or package versions are newer than the release index.")
         return 0
 
     # Check every proposed version and the final index budget before publishing
@@ -384,7 +379,7 @@ def main() -> None:
                 f"{item['product']} {item['id'] or 'firmware'} v{item['version']}"
                 for item in candidates))
         else:
-            print("No firmware, app, or driver versions are newer than the release index.")
+            print("No firmware or package versions are newer than the release index.")
         return
     planned = json.loads(args.plan_file.read_text(encoding="utf-8"))
     if not isinstance(planned, list):

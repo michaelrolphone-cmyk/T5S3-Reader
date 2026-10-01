@@ -7,13 +7,31 @@ The coordinating owner verified that the prior implementation worker was
 interrupted and explicitly transferred this claim at 03:09 UTC. The inherited
 28-file staged resource slice from **cf1ac054** was preserved and integrated.
 This explicit transfer remains active; it was not based on claim expiry.
-Current published/tested checkpoint is **8dafce338996a0687b4fa956698d94c0714ff142**,
-identical tree **2089fefa29fe21d12fa6b941c44a3e149b731e49** to local implementation
-**694b22fb**. Both workflows **36825261735 / 36825261980** succeeded.
-Master **1e0188c1** is integrated. The current local slice fixes confirmed production ELF data-section packing;
-independent four-kind distribution changes are preserved separately. No
+Current published/tested checkpoint is **28282e306e662e11c184481ae7727a0fd6a61def**,
+identical tree **daab0a3b2b02dad3542eddb8b70d9504e125adc1** to local implementation
+**b45733b8**. Both workflows **36828487165 / 36828487151** succeeded, including
+actual newly built clock/archive production-mapper fixtures.
+Master **1e0188c1** is integrated. The current local slice extends existing independent distribution to all four
+package kinds and produces compact target reference evidence. No
 competing writer is authorized.
 No live release, index, tag, master update or flash. CI remains feedback.
+
+## October 1: four-kind independent distribution
+
+Service/provider source planning, selective builds, isolated exports, immutable
+records/index updates and runtime merge now join the existing app/driver path.
+No parallel catalog or installer is introduced. Historical fields/records remain
+supported; new optional arrays require ZIPs and survive other product updates.
+Actual source-ID collisions fail before touching shared flat build outputs.
+
+Release/workflow/ordinary-package tests and four-kind C++ round trips pass
+locally. A SHA-verified real014fb6f7 archive ZIP also passes the new producer and
+runtime locator path. Target CI will repeat on its newly built service and
+retain an offline record report. Details/limits are in
+**U1_FOUR_KIND_INDEPENDENT_DISTRIBUTION.md**. This slice also requests compact
+source/target call and literal-table reference evidence during the normal
+firmware build; it does not revisit the inaccessible74b0 artifact.
+New exact-head target verification is pending. No release/index/dispatch action.
 
 ## October 1: production ELF data-section alignment
 

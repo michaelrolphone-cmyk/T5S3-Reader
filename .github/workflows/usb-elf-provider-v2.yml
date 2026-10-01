@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - "Services/**"
+      - "Providers/**"
+      - "Drivers/**"
+      - "scripts/build_*.py"
+      - "scripts/*release*.py"
+      - "scripts/publish_updated_packages.py"
+      - "test/resources/**"
       - "sdk/driver/RiscArchiveZipV1.h"
       - "scripts/build_archive_zip.py"
       - "test/services/**"
@@ -271,6 +277,7 @@ jobs:
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
           python scripts/export_canonical_driver_release.py
+          python test/resources/independent_module_artifact_test.py
       - name: Preserve installable unsigned package directories and experimental binaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -284,4 +291,7 @@ jobs:
             dist/experimental/archive-zip/
             dist/packages/
             dist/release-packages/
+            dist/release-service-packages/
+            dist/release-provider-packages/
+            dist/independent-module-record-report.json
           if-no-files-found: warn

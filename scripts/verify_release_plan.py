@@ -17,7 +17,7 @@ else:
     from publish_updated_packages import release_assets
     from update_release_index import validate_record, version_tuple
 
-LIMITS = {'firmware': 1, 'apps': 128, 'drivers': 64}
+LIMITS = {'firmware': 1, 'apps': 128, 'drivers': 64, 'services': 64, 'providers': 64}
 MAX_ASSET_BYTES = 128 * 1024 * 1024  # Includes unstripped firmware debug ELF.
 
 

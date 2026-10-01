@@ -109,7 +109,7 @@ inline bool connectSavedWifi() {
   return RuntimeNetwork::ready();
 }
 
-// Catalog objects are also bulk metadata. Keep their ~60/40 KiB arrays out
+// Catalog objects are also bulk metadata. Keep bounded independent/merged arrays out
 // of the internal heap needed by TLS and task stacks; no fallback on failure.
 template<class T> struct CatalogDelete {
   void operator()(T* value) const {

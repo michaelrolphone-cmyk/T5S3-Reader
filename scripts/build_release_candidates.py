@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import configparser
-import hashlib
 import json
 import os
 import re
@@ -15,11 +14,11 @@ from pathlib import Path
 from typing import Any
 
 if __package__:
-    from .generate_provider_package_inputs_v1 import canonical_manifest
-    from .update_release_index import version_tuple
+    from .update_release_index import PRODUCTS
+    from .build_installed_usb_stack import source_candidates
 else:
-    from generate_provider_package_inputs_v1 import canonical_manifest
-    from update_release_index import version_tuple
+    from update_release_index import PRODUCTS
+    from build_installed_usb_stack import source_candidates
 
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE_OUTPUTS = ("firmware.bin", "firmware-merged.bin", "firmware.elf")
@@ -37,39 +36,50 @@ _BOOTSTRAP_BUILD_RECIPES = {
         ("scripts/audit_usb_controller_elf.py", "--strict"),
     ],
 }
-MAX_DRIVER_PACKAGES = 64
 
 
-def discover_driver_builders(root: Path) -> dict[str, list[tuple[str, ...]]]:
-    """Read bounded source metadata without compiling or requiring ELF output."""
-    builders: dict[str, list[tuple[str, ...]]] = {}
-    for manifest_path in sorted((root / "Drivers").glob("*/manifest.json")):
-        source = manifest_path.parent
-        if (source.is_symlink() or manifest_path.is_symlink() or
-                not re.fullmatch(r"[a-z0-9_]+", source.name)):
-            raise ValueError(f"unsafe provider build source: {source}")
-        if manifest_path.stat().st_size > 4096:
-            raise ValueError(f"provider manifest is oversized: {manifest_path}")
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(manifest, dict):
-            raise ValueError(f"invalid provider manifest: {manifest_path}")
-        if manifest.get("type") != "driver" or manifest.get("driver_abi") != 2:
-            continue  # Historical ABI-1 inputs are not current release packages.
-        canonical_manifest(manifest_path)
-        identity = manifest["id"]
-        version_tuple(manifest.get("version"))
-        if identity in builders:
-            raise ValueError(f"duplicate canonical driver manifest ID {identity}")
-        if len(builders) >= MAX_DRIVER_PACKAGES:
-            raise ValueError("provider count exceeds firmware package catalog bound")
-        conventional = f"scripts/build_{source.name}.py"
-        commands = _BOOTSTRAP_BUILD_RECIPES.get(source.name, [(conventional,)])
+def discover_module_sources(root: Path) -> list[dict]:
+    """Use ordinary package discovery; fail before any ambiguous flat output."""
+    sources = source_candidates(root, allow_empty=True)
+    module_ids = {item['id'] for item in sources}
+    for item in sources:
+        expected = {'driver': 'Drivers', 'service': 'Services', 'provider': 'Providers'}[item['metadata']['type']]
+        if item['source'].parent.parent.name != expected:
+            raise ValueError('provider source root/kind mismatch')
+    for index, path in enumerate((root / 'Apps').rglob('*.json')):
+        if index >= 128:
+            raise ValueError('application source inventory exceeds bound')
+        if path.is_symlink() or path.stat().st_size > 4096:
+            raise ValueError('unsafe or oversized application source manifest')
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        if isinstance(manifest, dict) and isinstance(manifest.get('file_name'), str) and manifest['file_name'].removesuffix('.elf') in module_ids:
+            raise ValueError('application/module identity collides in flat build output')
+    return sources
+
+
+def discover_module_builders(root: Path, kind: str) -> dict[str, list[tuple[str, ...]]]:
+    if kind not in ('driver', 'service', 'provider'):
+        raise ValueError('invalid module build kind')
+    builders = {}
+    for item in discover_module_sources(root):
+        if item['metadata']['type'] != kind:
+            continue
+        source = item['source'].parent
+        if not re.fullmatch(r'[a-z0-9_]+', source.name):
+            raise ValueError(f'unsafe provider build source: {source}')
+        conventional = f'scripts/build_{source.name}.py'
+        commands = (_BOOTSTRAP_BUILD_RECIPES.get(source.name, [(conventional,)])
+                    if kind == 'driver' else [(conventional,)])
         for command in commands:
             script = root / command[0]
             if not script.is_file() or script.is_symlink():
-                raise ValueError(f"{identity}: missing or unsafe provider builder {command[0]}")
-        builders[identity] = commands
+                raise ValueError(f"{item['id']}: missing or unsafe provider builder {command[0]}")
+        builders[item['id']] = commands
     return builders
+
+
+def discover_driver_builders(root: Path) -> dict[str, list[tuple[str, ...]]]:
+    return discover_module_builders(root, 'driver')
 
 
 def run(command: list[str]) -> None:
@@ -106,16 +116,17 @@ def build_firmware() -> None:
 
 
 def build_apps(candidates: list[dict[str, str]]) -> None:
+    discover_module_sources(ROOT)  # Validate flat app/module output identities first.
     for candidate in candidates:
         run([sys.executable, "scripts/build_all_apps.py", "--id", candidate["id"]])
     if candidates:
         run([sys.executable, "scripts/export_canonical_driver_release.py", "--output",
-             "dist/release-app-packages", "--ids", *sorted(item["id"] for item in candidates)])
+             "dist/release-app-packages", "--kind", "application", "--ids", *sorted(item["id"] for item in candidates)])
 
 
-def build_drivers(candidates: list[dict[str, str]]) -> None:
+def build_drivers(candidates: list[dict[str, str]], kind: str = 'driver') -> None:
     identities = sorted(candidate["id"] for candidate in candidates)
-    builders = discover_driver_builders(ROOT)
+    builders = discover_module_builders(ROOT, kind)
     if len(identities) != len(set(identities)):
         raise ValueError("release plan contains duplicate driver IDs")
     missing = set(identities) - builders.keys()
@@ -128,7 +139,9 @@ def build_drivers(candidates: list[dict[str, str]]) -> None:
             run([sys.executable, *command])
     run([sys.executable, "scripts/build_installed_usb_stack.py", "--ids", *identities])
     run([sys.executable, "test/drivers/installed_usb_stack_package_test.py", "--ids", *identities])
-    run([sys.executable, "scripts/export_canonical_driver_release.py", "--ids", *identities])
+    output = 'dist/release-packages' if kind == 'driver' else f'dist/release-{kind}-packages'
+    run([sys.executable, "scripts/export_canonical_driver_release.py", "--output", output,
+         "--kind", kind, "--ids", *identities])
 
 
 def stage_firmware() -> None:
@@ -149,16 +162,26 @@ def stage_firmware() -> None:
 
 
 def build_plan(plan: list[dict[str, str]]) -> None:
+    if __package__:
+        from .verify_release_plan import validate_plan
+    else:
+        from verify_release_plan import validate_plan
+    validate_plan(plan)
     if not plan:
         print("Nothing changed; no product builds are needed.")
         return
     products = {candidate["product"] for candidate in plan}
+    if products - {"firmware"}:
+        discover_module_sources(ROOT)
     if "firmware" in products:
         build_firmware()
     if "apps" in products:
         build_apps([item for item in plan if item["product"] == "apps"])
     if "drivers" in products:
         build_drivers([item for item in plan if item["product"] == "drivers"])
+    for product in ('services', 'providers'):
+        if product in products:
+            build_drivers([item for item in plan if item['product'] == product], product[:-1])
     if "firmware" in products:
         stage_firmware()
     print("Built only planned changed products: " + ", ".join(
@@ -168,7 +191,7 @@ def build_plan(plan: list[dict[str, str]]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", type=Path, required=True)
-    parser.add_argument("--product", choices=("firmware", "apps", "drivers"))
+    parser.add_argument("--product", choices=PRODUCTS)
     parser.add_argument("--id", help="build only this planned package ID")
     args = parser.parse_args()
     plan: Any = json.loads(args.plan.read_text(encoding="utf-8"))
@@ -176,6 +199,11 @@ def main() -> None:
         raise ValueError("release plan must be a JSON array")
     if args.id and not args.product:
         parser.error("--id requires --product")
+    if __package__:
+        from .verify_release_plan import validate_plan
+    else:
+        from verify_release_plan import validate_plan
+    validate_plan(plan)
     selected = [item for item in plan
                 if (args.product is None or item.get("product") == args.product)
                 and (args.id is None or item.get("id") == args.id)]
