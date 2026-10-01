@@ -14,6 +14,16 @@ Master **1e0188c1** is integrated. The next local slice adds observed storage
 generations and strict retained inventory; no competing writer is authorized.
 No live release, index, tag, master update or flash. CI remains feedback.
 
+## October 1: target dependency repair
+
+Generation/inventory implementation **06defc76** (local **ae86eddf**, identical
+**11b0c83291eb3f349edcf57b958d2ca57fc252e5** tree) passed the new host checks
+and headless target, but both full firmware builds in **36824115747** found
+Board's new full HalStorage include lacked the SdFat transitive include path.
+The fix is a minimal internal lifecycle declaration, keeping Board shutdown
+notification independent of filesystem headers. No storage behavior changes.
+The focused storage aggregate passes; repaired-head target results are pending.
+
 ## October 1: observed invalidation and retained Package Manager inventory
 
 Real HalStorage now tracks non-wrapping RAM mount/mutation epochs, writable

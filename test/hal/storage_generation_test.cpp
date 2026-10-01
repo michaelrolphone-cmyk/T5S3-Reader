@@ -1,6 +1,7 @@
 #define HAL_STORAGE_IMPL
 #include <Board.h>
 #include <HalStorage.h>
+#include <HalStorageLifecycle.h>
 #include <SdFat.h>
 
 #include <cassert>
@@ -116,7 +117,7 @@ int main() {
     FakeSd::failName.clear();
     assert(bad.close());
   }
-  Storage.markUnavailable();
+  halStorageMediaUnavailable();
   assert(!Storage.ready() && !Storage.generation().quiescent);
   assert(Storage.begin());
   stamp = Storage.generation();

@@ -1,5 +1,6 @@
 #define HAL_STORAGE_IMPL
 #include "HalStorage.h"
+#include "HalStorageLifecycle.h"
 
 #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
 #include <Board.h>
@@ -170,6 +171,7 @@ bool HalStorage::reconcileExternalStorage() {
   return begin();
 }
 void HalStorage::markUnavailable() { StorageLock lock; initialized = false; storageGeneration.mutationAttempt(); }
+void halStorageMediaUnavailable() { Storage.markUnavailable(); }
 
 
 
