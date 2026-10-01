@@ -1,10 +1,11 @@
-# Hollow Trail 1.1.34 — Y motion emphasis
+# Hollow Trail 1.1.34 — Y motion emphasis and 960×270 foreground detail
 
 During live gameplay, holding the same **Y / journal-back** control used to back out of journal views adds a transient **10% motion emphasis**. The authored scene pace stored in the game state is not changed: ground locomotion, climbing, tree exits, jump takeoff momentum and directional acceleration are boosted only while Y is held. Rolling/crate effort, rowing and rope pumping receive the same bounded emphasis so physical actions respond consistently.
 
 Gravity, jump height, puzzle timing, the tree-push struggle duration, weather, camera timing and the fixed simulation clock are unchanged. Releasing Y returns immediately toward the scene-directed pace. In the journal, pause screen and debug level picker, the button retains its existing back/navigation behavior and never accelerates gameplay.
 
-The existing 1.1.33 hybrid native-resolution A/B renderer is unchanged by this control update.
+
+The graphics A/B follow-up also replaces the full-native foreground experiment with **960×270** foreground detail. The original full-native 960×540 background/grotto code is restored unchanged. Foreground geometry keeps native horizontal resolution but computes only 270 Y rows, duplicating each row to the two physical output rows before the existing 960×540 camera/vignette/packer path. This is roughly 2× baseline foreground raster sampling instead of 4×, using only power-of-two scaling.
 
 # Hollow Trail 1.1.32 — Forward-X cutscene tableaus
 
