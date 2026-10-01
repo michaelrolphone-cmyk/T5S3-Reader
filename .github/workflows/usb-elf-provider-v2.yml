@@ -249,11 +249,13 @@ jobs:
           /tmp/riscrte-privileged-imports-ci \
             dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
             dist/experimental/i2c-esp32s3-v2/driver.elf \
-            dist/experimental/platform-clock-v1/driver.elf
+            dist/experimental/platform-clock-v1/driver.elf \
+            dist/experimental/archive-zip/driver.elf
           for elf in \
             dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
             dist/experimental/i2c-esp32s3-v2/driver.elf \
-            dist/experimental/platform-clock-v1/driver.elf; do
+            dist/experimental/platform-clock-v1/driver.elf \
+            dist/experimental/archive-zip/driver.elf; do
             python scripts/generate_privileged_imports_v1.py "$elf"
             /tmp/riscrte-exact-imports-ci "$elf" "$(dirname "$elf")/privileged-imports.v1"
           done

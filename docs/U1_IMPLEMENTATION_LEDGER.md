@@ -13,6 +13,23 @@ and auditing the remaining whole-U1 acceptance gates. Other continuations must
 not write this branch until this claim is explicitly released. No live release,
 index, tag, master update or flash. CI is feedback, not an idle-work gate.
 
+## October 1: archive loader admission integration
+
+Master backmerge **68e3b8d4** matches local-tested **bd73bda5**, tree
+**d547e941398cd9c6539a24406bd871f28ee57476**. Its target workflows
+**36815185748 / 36815185806** started after mergeability was restored.
+
+Independent source review found `memcmp` and `strncmp` in the shared ZIP/path
+primitives. Both are already ordinary public firmware libc exports, but the
+provider loader's explicit libc snapshot omitted them. A regression using the
+actual preflight rejected `memcmp` before the correction. The snapshot now
+includes those two existing generic libc operations; device imports and
+manifest/grant checks are unchanged. Full privileged OS/CPU, exact-manifest,
+resolver and relocation tests passed after the fix. CI now also applies actual
+firmware preflight and exact linked-import checks to the archive service ELF.
+Target observation remains pending. No distributed service source changed, so
+service version remains 0.1.0; final firmware reconciliation is still required.
+
 ## October 1: current-master reconciliation
 
 Archive service published as **d437e4cc18210e44dcd0f4eb24a57b5eac528917**;
