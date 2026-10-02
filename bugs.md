@@ -131,7 +131,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Do not advertise Reset/Cancel through `previous_label`/`next_label` unless the corresponding logical Left/Right inputs actually perform those actions. Either handle Left/Right as Reset/Cancel and provide a separate raw-front-button capture mechanism, or render explicit side-button instructions and leave the front-button hints blank while capturing raw physical front-button presses. Add a test that verifies every rendered control hint invokes the action named by that hint.
 ### 18. A malformed BMP width can overflow row-stride arithmetic and drive out-of-bounds pixel reads
 
-- **Status:** Awaiting merge in open, ready-for-review [PR354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/354), exact head `0e464a2a9558303d845f33d434e4bf6db262cd7d`. Production-source fallback/retry tests and exact-head CI36962896034 (host, both target builds/app validation, headless core) plus36962896747 (focused helper/OTA contract) passed. Implementation claim released; not fixed on master.
+- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md)
 
 - **Affected code:** `src/native/NativeImageBridge.cpp`, `bmpInfo()`, `decodeBmp()`, and the BMP path in `renderFit()`; reachable through `Apps/image_viewer.c` for BMP files.
@@ -718,7 +718,7 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - Repair: publish recent-sync state only after write-back succeeds, or track acquisition and persistence independently.
 ### 70. Automatic network reconnect does not fall back after the preferred stored network fails.
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed on current master `ca66db298c2e735f45e5029083a9bfbd7b6740bd`; repair is in open, ready-for-review [PR354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/354), exact head `0e464a2a9558303d845f33d434e4bf6db262cd7d`. Production-source fallback/retry tests and exact-head CI36962896034 (host, both target builds/app validation, headless core) plus36962896747 (focused helper/OTA contract) passed. Implementation claim released; awaiting merge, not fixed on master.
 - **Sources:** [2026-09-27 12-21 MDT - automation-bug-scan-20260927-1221 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/17BY2jMeFoI2yFrSMEQc9FuTKEK3QlwSZoJfKFKzs_f0/edit?usp=drivesdk)
 
 - Affected: src/runtime/network/SavedNetworkConnection.cpp, ensureSavedConnection(); src/native/NativeOtaBridge.cpp, ensureOtaNetworkReady().
