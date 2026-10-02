@@ -83,8 +83,10 @@ def partition(table, image_size):
             apps.append((subtype, offset, size))
     ranges.sort()
     require(all(a[1] <= b[0] for a, b in zip(ranges, ranges[1:])), "CAM partitions overlap")
-    require(len(apps) == 1 and apps[0][0] == 0 and apps[0][1] == 0x10000
-            and apps[0][2] == 0x300000 and 0 < image_size <= 1024 * 1024,
+    # The qualified SD CAM has two OTA app slots. Its installed baseline and
+    # verified default boot both use app0; preserve app1 and OTA metadata.
+    require(apps == [(16, 0x10000, 0x300000), (17, 0x310000, 0x300000)]
+            and 0 < image_size <= 1024 * 1024,
             "Unqualified CAM app layout or image size")
     return apps[0][1]
 
@@ -183,6 +185,7 @@ def main():
                 offset = partition(table, len(image))
                 require(offset == 0x10000, "CAM app offset mismatch")
                 nvs_digest = hashlib.sha256(esp.read_flash(0x9000, 0x5000)).hexdigest()
+                otadata_digest = hashlib.sha256(esp.read_flash(0xE000, 0x2000)).hexdigest()
                 backup = esp.read_flash(offset, BACKUP_LENGTH)
                 require(hashlib.sha256(backup[:BASELINE_LENGTH]).hexdigest() == BASELINE_SHA,
                         "Installed CAM image differs from verified checkpoint")
@@ -198,6 +201,8 @@ def main():
                     require(esp.read_flash(0x8000, 4096) == table, "CAM partition table changed")
                     require(hashlib.sha256(esp.read_flash(0x9000, 0x5000)).hexdigest() == nvs_digest,
                             "CAM NVS changed")
+                    require(hashlib.sha256(esp.read_flash(0xE000, 0x2000)).hexdigest() == otadata_digest,
+                            "CAM OTA metadata changed")
                     result["candidate_readback_equal"] = True
                     esp.hard_reset()
                     lines = observe(port, 180)
@@ -219,6 +224,8 @@ def main():
                                 "CAM partition changed on restore")
                         require(hashlib.sha256(restore_esp.read_flash(0x9000, 0x5000)).hexdigest() == nvs_digest,
                                 "CAM NVS changed on restore")
+                        require(hashlib.sha256(restore_esp.read_flash(0xE000, 0x2000)).hexdigest() == otadata_digest,
+                                "CAM OTA metadata changed on restore")
                         result["baseline_restored"] = True
                         restore_esp.hard_reset()
             finally:

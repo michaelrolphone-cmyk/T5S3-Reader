@@ -5,10 +5,12 @@ import tempfile
 import unittest
 import os
 import ssl
+import struct
 import zipfile
 from pathlib import Path
 
 import trusted_controller as controller
+import ci_device as device
 
 
 SHA = "a" * 40
@@ -30,6 +32,20 @@ class FakeGitHub:
 
 
 class ControllerTests(unittest.TestCase):
+    def test_qualified_cam_has_two_ota_slots(self):
+        table = bytearray(b"\xff" * 4096)
+        entries = [(1, 2, 0x9000, 0x5000, b"nvs"),
+                   (1, 0, 0xE000, 0x2000, b"otadata"),
+                   (0, 16, 0x10000, 0x300000, b"app0"),
+                   (0, 17, 0x310000, 0x300000, b"app1")]
+        for index, (kind, subtype, offset, size, label) in enumerate(entries):
+            table[index * 32:(index + 1) * 32] = struct.pack(
+                "<HBBII16sI", 0x50AA, kind, subtype, offset, size, label, 0)
+        self.assertEqual(device.partition(bytes(table), 541056), 0x10000)
+        table[3 * 32:4 * 32] = b"\xff" * 32
+        with self.assertRaises(RuntimeError):
+            device.partition(bytes(table), 541056)
+
     def test_https_uses_verified_system_ca_context(self):
         gh = controller.GitHub("test-only-not-a-credential")
         self.assertTrue(gh.ssl_context.check_hostname)
