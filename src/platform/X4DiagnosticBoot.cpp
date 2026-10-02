@@ -9,6 +9,8 @@
 
 #include <Board.h>
 #include <Arduino.h>
+#include <FontCacheManager.h>
+#include <FontDecompressor.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
 #include <cstring>
@@ -17,6 +19,8 @@
 
 extern GfxRenderer renderer;
 extern EpdFont notoserif14RegularFont;
+extern FontDecompressor fontDecompressor;
+extern FontCacheManager fontCacheManager;
 
 namespace {
 RuntimeProviders::ModuleV2 clock_mod;
@@ -31,6 +35,7 @@ risc_display_frame_v1 frame = 0;
 uint32_t sequence = 0;
 uint32_t last_buttons = 0;
 bool ready = false;
+bool shared_text_ready = false;
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
     LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
@@ -81,10 +86,12 @@ void paint(uint32_t edge) {
     if (edge & RISC_NAV_CONFIRM) marker(240, 300);
     /* Exercise the same shared text rasterizer used by Reader UI. It uses
      * 0=black, while the display.output diagnostic surface uses 1=black. */
-    for (uint8_t &value : surface) value = (uint8_t)~value;
-    GfxRenderer ui(renderer, surface, 800, 480);
-    ui.drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
-    for (uint8_t &value : surface) value = (uint8_t)~value;
+    if (shared_text_ready) {
+        for (uint8_t &value : surface) value = (uint8_t)~value;
+        GfxRenderer ui(renderer, surface, 800, 480);
+        ui.drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
+        for (uint8_t &value : surface) value = (uint8_t)~value;
+    }
 }
 bool present() {
     uint32_t black_pixels = 0;
@@ -150,7 +157,13 @@ void x4DiagnosticSetup() {
         return;
     }
     if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
-    renderer.insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
+    shared_text_ready = fontDecompressor.init();
+    if (shared_text_ready) {
+        fontCacheManager.setFontDecompressor(&fontDecompressor);
+        renderer.setFontCacheManager(&fontCacheManager);
+        renderer.insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
+    }
+    LOG_INF("X4", "shared text ready=%d", shared_text_ready ? 1 : 0);
     char probe[160] = "unavailable";
     (void)panel_mod.copyProviderError(probe, sizeof(probe));
     LOG_INF("X4", "%s", probe);
