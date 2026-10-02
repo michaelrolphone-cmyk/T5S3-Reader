@@ -35,16 +35,17 @@ def build_one(name):
     output = ROOT / "dist" / "experimental" / manifest["id"]
     output.mkdir(parents=True, exist_ok=True)
     elf = output / "driver.elf"
-    # GNU ld 2.35.1 in the pinned Linux Xtensa toolchain aborts with a double
-    # free when linking the expanded FAT32 probe at -Os. Keep this source at
-    # -O1 until the toolchain is updated; other providers retain their flags.
+    # GNU ld 2.35.1 in the pinned Linux Xtensa toolchain aborts while relaxing
+    # the enlarged FAT32 provider. Scope both linker and compiler workarounds
+    # to this source; all other providers retain their ordinary flags.
     optimization = "-O1" if name == "x4pro_sd" else "-Os"
+    link_flags = ["-Wl,--no-relax"] if name == "x4pro_sd" else []
     subprocess.run([
         CC, "-std=c11", optimization,
         "-fPIC", "-mtext-section-literals", "-mlongcalls",
         "-fvisibility=hidden", "-fno-builtin", "-nostdlib", "-nostartfiles", "-shared",
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
-        "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL",
+        "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL", *link_flags,
         str(source / "driver.c"), "-lgcc", "-o", str(elf),
     ], check=True)
     readelf = CC.replace("gcc", "readelf")

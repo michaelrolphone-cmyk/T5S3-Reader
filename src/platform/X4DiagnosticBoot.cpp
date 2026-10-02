@@ -55,6 +55,29 @@ const char *storage_status = "SD provider unavailable";
 bool storage_mounted = false;
 bool showing_storage_activity = false;
 std::string storage_preview;
+const risc_storage_volume_api_v1 *preview_volume = nullptr;
+risc_storage_file_t preview_file = RISC_STORAGE_FILE_INVALID;
+std::string preview_name;
+uint64_t preview_position = 0;
+
+void advancePreview() {
+    if (!preview_volume || preview_file == RISC_STORAGE_FILE_INVALID) return;
+    char sample[49] = {0};
+    const size_t count = preview_volume->file_read(preview_volume->context, preview_file,
+                                                   sample, sizeof(sample) - 1);
+    if (!count) {
+        storage_preview = preview_volume->ready(preview_volume->context) ?
+            "End of " + preview_name : "SD read failed";
+        (void)preview_volume->file_close(preview_volume->context, preview_file, false);
+        preview_file = RISC_STORAGE_FILE_INVALID;
+        return;
+    }
+    for (size_t j = 0; j < count; ++j)
+        if ((unsigned char)sample[j] < 32 || (unsigned char)sample[j] > 126) sample[j] = ' ';
+    storage_preview = preview_name + ": " + std::string(sample, count);
+    preview_position += count;
+    LOG_INF("X4", "storage preview bytes=%lu", static_cast<unsigned long>(preview_position));
+}
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
     LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
@@ -169,14 +192,10 @@ void x4DiagnosticSetup() {
                         uint64_t size = 0;
                         const risc_storage_file_t file = volume->file_open_read(volume->context, path, &size);
                         if (file == RISC_STORAGE_FILE_INVALID) break;
-                        char sample[65] = {0};
-                        const size_t count = volume->file_read(volume->context, file, sample, sizeof(sample) - 1);
-                        (void)volume->file_close(volume->context, file, false);
-                        for (size_t j = 0; j < count; ++j)
-                            if ((unsigned char)sample[j] < 32 || (unsigned char)sample[j] > 126) sample[j] = ' ';
-                        storage_preview = std::string(entry.name) + ": " + std::string(sample, count);
-                        LOG_INF("X4", "storage preview file=%s bytes=%lu", entry.name,
-                                static_cast<unsigned long>(count));
+                        preview_volume = volume;
+                        preview_file = file;
+                        preview_name = entry.name;
+                        advancePreview();
                         break;
                     }
                     volume->dir_close(volume->context, directory);
@@ -258,8 +277,13 @@ void x4DiagnosticLoop() {
     nativeNavigationTick();
     const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
     if (frame_in.pressed && showing_storage_activity) {
-        LOG_INF("X4", "navigation edge=%lu while storage preview active",
-                static_cast<unsigned long>(frame_in.pressed));
+        if ((frame_in.pressed & RISC_NAV_RIGHT) && preview_file != RISC_STORAGE_FILE_INVALID) {
+            advancePreview();
+            activityManager.replaceActivity(std::make_unique<FullScreenMessageActivity>(
+                renderer, mappedInputManager, storage_preview, EpdFontFamily::REGULAR,
+                DisplayPresentMode::Clean));
+            if (!provider_surface->lastPresentSucceeded()) ready = false;
+        }
     } else if (frame_in.pressed) {
         ++sequence;
         paint(frame_in.pressed);

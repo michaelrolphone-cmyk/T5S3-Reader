@@ -155,7 +155,7 @@ static bool fat_next_cluster(const fat32_geometry *geometry, uint32_t cluster,
     if (!geometry || !next_out || cluster < 2u ||
         (uint64_t)cluster >= (uint64_t)geometry->clusters + 2u ||
         cluster / 128u >= geometry->fat_sectors) {
-        fail("FAT32 cluster bounds invalid"); return false;
+        fail("FAT32 cluster bounds invalid"); mounted = false; return false;
     }
     uint8_t sector[512];
     if (!read_sector(geometry->fat_lba + cluster / 128u, sector)) {
@@ -164,7 +164,7 @@ static bool fat_next_cluster(const fat32_geometry *geometry, uint32_t cluster,
     const uint32_t next = le32(sector + (cluster % 128u) * 4u) & 0x0fffffffu;
     if (next < 0x0ffffff8u && (next < 2u || next == cluster ||
         (uint64_t)next >= (uint64_t)geometry->clusters + 2u)) {
-        fail("FAT32 root chain invalid"); return false;
+        fail("FAT32 cluster chain invalid"); mounted = false; return false;
     }
     *next_out = next;
     return true;
@@ -174,7 +174,7 @@ static bool read_cluster_sector(const fat32_geometry *geometry, uint32_t cluster
     if (!geometry || !out || cluster < 2u ||
         (uint64_t)cluster >= (uint64_t)geometry->clusters + 2u ||
         offset >= geometry->sectors_per_cluster) {
-        fail("FAT32 data bounds invalid"); return false;
+        fail("FAT32 data bounds invalid"); mounted = false; return false;
     }
     const uint32_t lba = geometry->data_lba +
         (cluster - 2u) * geometry->sectors_per_cluster + offset;

@@ -82,6 +82,17 @@ int main(void) {
     failures += expect(volume->file_read(0, 1u, file_data, sizeof(file_data)) == 0u,
                        "EOF bounded");
     failures += expect(volume->file_close(0, 1u, false), "read handle closes");
+    put16(x4_card_root_sector + 26, 1u);
+    failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) ==
+                       RISC_STORAGE_FILE_INVALID, "invalid first file cluster rejected");
+    put16(x4_card_root_sector + 26, 3u);
+    put32(x4_card_fat_sector + 12, 3u);
+    failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) == 1u &&
+                       volume->file_read(0, 1u, file_data, sizeof(file_data)) == 512u &&
+                       volume->file_read(0, 1u, file_data, sizeof(file_data)) == 0u &&
+                       !volume->ready(0), "self-linked file chain closes mount");
+    put32(x4_card_fat_sector + 12, 4u);
+    failures += expect(volume->refresh(0) && volume->ready(0), "chain repair remounts");
     failures += expect(volume->file_open_write(0, "/NEW.TXT") == RISC_STORAGE_FILE_INVALID &&
                        !volume->remove(0, "/BOOK.TXT"), "write and remove fail closed");
     failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) == 1u,
@@ -128,13 +139,13 @@ int main(void) {
     put32(x4_card_fat_sector + 8, 1u);
     failures += expect(volume->refresh(0), "bad root chain refresh serviced");
     failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 root chain invalid") == 0,
+                       strcmp(error, "FAT32 cluster chain invalid") == 0,
                        "bad FAT root chain closes mount");
     put32(x4_card_fat_sector + 8, 0x0fffffffu);
     put32(x4_card_fat_sector + 8, 2u);
     failures += expect(volume->refresh(0), "self-linked root refresh serviced");
     failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 root chain invalid") == 0,
+                       strcmp(error, "FAT32 cluster chain invalid") == 0,
                        "self-linked root rejected");
     put32(x4_card_fat_sector + 8, 0x0fffffffu);
     memset(x4_card_sector, 0, sizeof(x4_card_sector));
