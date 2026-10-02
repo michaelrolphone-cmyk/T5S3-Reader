@@ -1,3 +1,10 @@
+## Existing repair branch sync — active claim 2026-10-02 14:00:40 UTC
+
+- Owner `sync_repair_prs_after_pr347_20261002`; current master baseline `7e6509d2f89c24b3875f292f8723b752c91ad7ad`; ledger parent `59432aab2ba1f0cf38feb56c6201a1b9f0d70299`. PR #347 is merged; master source firmware version is now 1.3.63. The previous batch claims #250, #26/#27, #76/#174/#258/#259 are terminal/released in the latest checkpoints.
+- Fresh PR/patch inspection found five completed, non-X4 repair branches now report `mergeable=false/state=dirty` after master advanced: #354 saved-network fallback, #355 BMP row-size safety, #361 settings persistence, #362 font catalog validation, #363 ESP ROM terminal reset. Their only changed-path intersection with master since their old base is `platformio.ini`; repair source/tests remain distinct. Re-sync each existing branch with current master using a non-force merge commit whose parents preserve current master and the existing PR head; rerun GitHub CI and update canonical heads only after verification.
+- Version reservations: #354 stays 1.3.64; #361 stays1.3.65; #362 stays1.3.66; #363 stays1.3.67, all above current source1.3.63. #355's old1.3.62 reservation is stale; assign1.3.68 after checking published lineage/open reservations. Published tag latest checked at1.3.61. Do not renumber bug reports.
+- Exclusions: do not touch X4 PRs #348/#350 or CAM/X4 work. PRs #351/#353/#358 have Hollow Trail source overlap with current master and remain with their owner; #357/#360 also overlap files changed on master and are left unchanged pending ownership/reconciliation. No broad code audit, new bug batch, local firmware build, device/hardware operation, release, or master write.
+
 ## ESP ROM terminal reset — completed 2026-10-02 13:08:29 UTC
 
 - Owner `esp_rom_terminal_reset_20261002` completed and released after terminal exact-head CI. Canonical #250 remains awaiting merge; original scan report/provenance retained.
