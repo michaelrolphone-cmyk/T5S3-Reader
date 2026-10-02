@@ -44,9 +44,11 @@ class BootAnimationContract(unittest.TestCase):
     def test_loading_precedes_expensive_initialization(self):
         main = (ROOT / "src/main.cpp").read_text()
         setup = main[main.index("void setup()") : main.index("void loop()")]
+        t5 = setup.split("#ifdef BOARD_XTEINK_X4_PRO", 1)[-1]
+        t5 = t5.split("#endif", 1)[-1]
         for work in ("sdFontSystem.begin(renderer)", "APP_STATE.loadFromFile()",
                      "logPlatformInputHealth()", "mappedInputManager.update()", "activityManager.goHome()"):
-            self.assertLess(setup.index("StartupScreen::boot(renderer)"), setup.index(work))
+            self.assertLess(t5.index("StartupScreen::boot(renderer)"), t5.index(work))
         start = SOURCE[SOURCE.index("bool bootWithVideo("):SOURCE.index("bool finishVideoBoot(")]
         self.assertNotIn("renderLayerReveal()", start)
         self.assertNotIn("kMinimumPulseMs", SOURCE)

@@ -1,5 +1,8 @@
-/* X4 Pro 800x480 SSD1677 panel. Owns the SPI pads. Publishes display.output.
- * UC8179 is not auto-detected. Not executed on device in this tree. */
+/* X4 Pro 800x480 panel provider. This artifact is SSD1677-specific.
+ * UC8179/UC8279 batches are an unresolved hardware prerequisite.
+ * BUSY is active-high. There is no external display PMIC.
+ * GPIO1 is the recovered peripheral-enable name and is not driven here.
+ * Touch power GPIO2 and SD power GPIO5 stay untouched. */
 #include "RiscDisplayOutputV1.h"
 #include "RiscPlatformClockV1.h"
 #include "x4pro_mmio.h"
@@ -11,7 +14,7 @@
 #define FRAME_BYTES ((X4PRO_PANEL_WIDTH / 8u) * X4PRO_PANEL_HEIGHT)
 static const risc_platform_clock_api_v1 *clock_api;
 static uint8_t frame[FRAME_BYTES];
-static bool started, held, present_done;
+static bool started, held, present_done, pins_ready;
 static uint64_t frame_serial, token_serial, pending_token;
 static char last_error_text[64];
 
@@ -48,40 +51,56 @@ static void data1(uint8_t value) {
     x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
 }
 static bool wait_idle(void) {
+    bool saw_busy = false;
+    for (uint32_t i = 0; i < 50u && !saw_busy; ++i) {
+        saw_busy = x4pro_pin_read(X4PRO_PIN_EPD_BUSY);
+        sleep_ms(1);
+    }
+    if (!saw_busy) { fail("busy never asserted"); return false; }
     for (uint32_t i = 0; i < 2000u; ++i) {
         if (!x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) return true;
         sleep_ms(1);
     }
-    fail("panel busy");
+    fail("panel busy timeout");
     return false;
+}
+static void prepare_pins(void) {
+    if (pins_ready) return;
+    x4pro_pin_input(X4PRO_PIN_EPD_BUSY, false);
+    x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
+    x4pro_pin_output(X4PRO_PIN_EPD_SCLK, false);
+    x4pro_pin_output(X4PRO_PIN_EPD_DC, false);
+    pins_ready = true;
 }
 static bool init_panel(void) {
     static const uint8_t booster[] = {0xAE, 0xC7, 0xC3, 0xC0, 0x80};
     static const uint8_t gate[] = {0xDF, 0x01, 0x02};
-    static const uint8_t x_window[] = {0x00, 0x00, 0x1F, 0x03};
+    static const uint8_t x_window[] = {0x00, 0x00, 0x63, 0x00};
     static const uint8_t y_window[] = {0x00, 0x00, 0xDF, 0x01};
-    x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
-    x4pro_pin_output(X4PRO_PIN_EPD_SCLK, false);
+    prepare_pins();
     x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
     sleep_ms(10);
     x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
-    sleep_ms(20);
-    if (!wait_idle()) return false;
+    sleep_ms(10);
+    command(0x12);
+    sleep_ms(10);
+    command(0x18);
+    data1(0x80);
+    command(0x0C);
+    for (size_t i = 0; i < sizeof(booster); ++i) data1(booster[i]);
     command(0x01);
     for (size_t i = 0; i < sizeof(gate); ++i) data1(gate[i]);
-    command(0x03);
-    data1(0x17);
-    command(0x04);
-    for (size_t i = 0; i < sizeof(booster); ++i) data1(booster[i]);
+    command(0x3C);
+    data1(0x80);
     command(0x11);
-    data1(0x03);
+    data1(0x01);
     command(0x44);
     for (size_t i = 0; i < sizeof(x_window); ++i) data1(x_window[i]);
     command(0x45);
     for (size_t i = 0; i < sizeof(y_window); ++i) data1(y_window[i]);
-    command(0x3C);
-    data1(0xC0);
-    return wait_idle();
+    command(0x4E); data1(0x00); data1(0x00);
+    command(0x4F); data1(0x00); data1(0x00);
+    return true;
 }
 static bool present_frame(void) {
     command(0x4E); data1(0x00); data1(0x00);
@@ -91,6 +110,7 @@ static bool present_frame(void) {
     x4pro_pin_output(X4PRO_PIN_EPD_CS, false);
     for (size_t i = 0; i < FRAME_BYTES; ++i) spi_byte(frame[i]);
     x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
+    command(0x21); data1(0x00);
     command(0x22); data1(0xF7); command(0x20);
     return wait_idle();
 }

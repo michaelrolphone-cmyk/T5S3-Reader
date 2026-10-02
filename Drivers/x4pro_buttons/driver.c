@@ -34,9 +34,9 @@ static const risc_input_navigation_api_v1 api = {
 };
 static bool start(const risc_provider_dependency_v1 *dependencies, size_t count) {
     (void)dependencies; (void)count;
-    x4pro_pin_release(X4PRO_PIN_BTN_LEFT);
-    x4pro_pin_release(X4PRO_PIN_BTN_RIGHT);
-    x4pro_pin_release(X4PRO_PIN_BTN_POWER);
+    x4pro_pin_input(X4PRO_PIN_BTN_LEFT, true);
+    x4pro_pin_input(X4PRO_PIN_BTN_RIGHT, true);
+    x4pro_pin_input(X4PRO_PIN_BTN_POWER, true);
     previous = sample();
     started = true;
     return true;

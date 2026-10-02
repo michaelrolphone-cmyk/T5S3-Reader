@@ -82,16 +82,9 @@ void present(const uint8_t* buffer, size_t length) {
 HalDisplay::HalDisplay() = default;
 HalDisplay::~HalDisplay() { free(frameBuffer); }
 
-void HalDisplay::begin(const bool clearPanel) {
-  if (!frameBuffer) {
-    frameBuffer = static_cast<uint8_t*>(heap_caps_malloc(BUFFER_SIZE, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    if (!frameBuffer) frameBuffer = static_cast<uint8_t*>(malloc(BUFFER_SIZE));
-  }
-  if (!frameBuffer) return;
-  memset(frameBuffer, 0xFF, BUFFER_SIZE);
-  displayReady = initPanel();
-  if (displayReady && clearPanel) present(frameBuffer, BUFFER_SIZE);
-  LOG_INF("DSP", "X4 Pro panel %s", displayReady ? "ready" : "failed");
+void HalDisplay::begin(const bool) {
+  displayReady = false;
+  LOG_ERR("DSP", "X4 production paint is the display.output ELF, not HalDisplay");
 }
 void HalDisplay::clearScreen(uint8_t color) const {
   if (frameBuffer) memset(frameBuffer, color, BUFFER_SIZE);

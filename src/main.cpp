@@ -41,7 +41,7 @@
 #include "components/StartupScreen.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
-#include "platform/X4BootScreen.h"
+#include "platform/X4DiagnosticBoot.h"
 #include "util/ScreenshotUtil.h"
 
 MappedInputManager mappedInputManager(gpio);
@@ -429,14 +429,8 @@ void setup() {
 
   HalSystem::begin();
 #ifdef BOARD_XTEINK_X4_PRO
-  // T5S3 Wire, SPI SD, expander, charger and i80 panel stay uncalled.
-  // The shared home path uses the X4 panel backend.
-  gpio.begin();
-  if (!setupDisplayAndFonts()) {
-    g_displayBootFailed = true;
-    return;
-  }
-  activityManager.goHome();
+  // No desk-clock resume, Wire, SPI card, expander, charger, i80 panel, or HomeActivity.
+  x4DiagnosticSetup();
   return;
 #endif
   // Timer wakes never reach this point. A true value means the user explicitly
@@ -609,10 +603,8 @@ void setup() {
 
 void loop() {
 #ifdef BOARD_XTEINK_X4_PRO
-  if (g_displayBootFailed) {
-    delay(250);
-    return;
-  }
+  x4DiagnosticLoop();
+  return;
 #endif
   if (g_displayBootFailed) {
     // Do not touch ActivityManager/renderer after failed display bootstrap.

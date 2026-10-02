@@ -1,19 +1,18 @@
 {
   "type": "driver",
-  "id": "x4pro-frontlight",
+  "id": "platform-clock-v1",
   "version": "0.1.0",
   "driver_abi": 2,
   "architecture": "xtensa-esp32s3",
   "file_name": "driver.elf",
-  "board": "xteink-x4-pro",
   "requires": [],
   "provides": [
     {
-      "capability": "display.frontlight",
+      "capability": "platform.clock",
       "api": 1
     }
   ],
   "status": "experimental-unpublished",
-  "size_bytes": 3128,
-  "sha256": "504b4a291630addb2aa07d61bbae20fb75c0fbf549fcbb230549abe282a25064"
+  "size_bytes": 18708,
+  "sha256": "e668ef855d5e38962a4d8c297415aa8248497fb109c05b79f6975b3c87d2b5c3"
 }

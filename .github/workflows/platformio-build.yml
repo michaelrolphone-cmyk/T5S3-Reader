@@ -54,6 +54,11 @@ jobs:
             firmware_name: riscrte-t5s3-pro.bin
             merged_firmware_name: riscrte-t5s3-pro-merged.bin
             elf_name: riscrte-t5s3-pro.elf
+          - environment: xteink-x4-pro
+            board_id: t5s3-pro
+            firmware_name: riscrte-xteink-x4-pro.bin
+            merged_firmware_name: riscrte-xteink-x4-pro-merged.bin
+            elf_name: riscrte-xteink-x4-pro.elf
           - environment: lilygo-epd47-s3
             board_id: lilygo-epd47-s3
             firmware_name: riscrte-lilygo-epd47-s3.bin
