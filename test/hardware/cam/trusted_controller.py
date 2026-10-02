@@ -20,9 +20,13 @@ import zipfile
 REPO = "michaelrolphone-cmyk/T5S3-Reader"
 OWNER = "michaelrolphone-cmyk"
 WORKFLOW = "cam-hardware-build.yml"
-CHECK = "CAM hardware / trusted owner SHA"
+STATUS_CONTEXT = "CAM hardware / trusted owner SHA"
 API = "https://api.github.com/repos/" + REPO
 SHA = re.compile(r"[0-9a-f]{40}\Z")
+
+
+class CloudBuildFailed(ValueError):
+    """The exact-head cloud workflow completed without a usable success."""
 
 
 class GitHub:
@@ -97,8 +101,10 @@ def candidate(gh, number, sha):
             related.append(run)
     if not related or any(r["status"] != "completed" for r in related):
         return None  # Cloud build has not completed; do not post a premature failure.
-    if len(related) != 1 or related[0]["conclusion"] != "success":
-        raise ValueError("Exact-head CAM cloud build failed or is ambiguous")
+    if len(related) != 1:
+        raise ValueError("Exact-head CAM cloud build is ambiguous")
+    if related[0]["conclusion"] != "success":
+        raise CloudBuildFailed("Exact-head CAM cloud build failed")
     run = related[0]
     artifacts = gh.call(f"/actions/runs/{run['id']}/artifacts?per_page=100")
     matching = [a for a in artifacts["artifacts"] if a["name"] == "cam-candidate-" + sha
@@ -133,11 +139,44 @@ def unpack_candidate(gh, run, artifact, sha, folder):
     return info["sha256"]
 
 
-def post_check(gh, sha, conclusion, summary):
-    return gh.call("/check-runs", "POST", {"name": CHECK, "head_sha": sha,
-        "status": "completed", "conclusion": conclusion,
-        "output": {"title": "CAM hardware " + conclusion,
-                   "summary": summary[:6000]}})
+def describe(result):
+    parts = ["CAM " + result["status_state"]]
+    if "firmware_sha256" in result:
+        parts.append("firmware " + result["firmware_sha256"][:12])
+    device = result.get("device", {})
+    if "image_bytes" in device:
+        parts.append("capture " + str(device["image_bytes"]) + " B")
+    if device.get("baseline_restored"):
+        parts.append("baseline restored")
+    return "; ".join(parts)[:140]
+
+
+def safe_success(result):
+    device = result.get("device", {})
+    return (result.get("result") == "pass" and result.get("device_exit") == 0
+            and device.get("result") == "pass"
+            and device.get("candidate_readback_equal") is True
+            and device.get("baseline_restored") is True
+            and SHA.fullmatch(result.get("source_sha", "")) is not None
+            and re.fullmatch(r"[0-9a-f]{64}", result.get("firmware_sha256", "")) is not None)
+
+
+def terminal_state(result):
+    if safe_success(result):
+        return "success"
+    device = result.get("device", {})
+    if (device.get("baseline_restored") is True
+            and device.get("candidate_readback_equal") is True
+            and (result.get("device_exit") != 0 or device.get("result") != "pass")):
+        return "failure"
+    return "error"
+
+
+def post_status(gh, sha, state, description):
+    if state not in {"pending", "success", "failure", "error"} or not SHA.fullmatch(sha):
+        raise ValueError("Invalid exact-SHA hardware status")
+    return gh.call(f"/statuses/{sha}", "POST", {
+        "state": state, "context": STATUS_CONTEXT, "description": description[:140]})
 
 
 def load_cam_binding(path):
@@ -163,11 +202,16 @@ def once(gh, number, evidence_root, python, binding):
         saved = result_dir / "result.json"
         if saved.exists():
             prior = json.loads(saved.read_text())
-            if prior.get("check_id"):
+            if prior.get("source_sha") != sha:
+                raise RuntimeError("CAM journal does not match current PR head")
+            if prior.get("status_id"):
                 return
-            summary = json.dumps({k: prior[k] for k in ("source_sha", "run_id", "firmware_sha256", "result", "error") if k in prior})
-            check = post_check(gh, sha, "success" if prior["result"] == "pass" else "failure", summary)
-            prior["check_id"] = check["id"]
+            if prior.get("status_state") not in {"success", "failure", "error"}:
+                raise RuntimeError("Incomplete CAM result is not safe to finalize")
+            if prior["status_state"] == "success" and not safe_success(prior):
+                raise RuntimeError("CAM success journal lacks restoration or exact hashes")
+            status = post_status(gh, sha, prior["status_state"], describe(prior))
+            prior["status_id"] = status["id"]
             saved.write_text(json.dumps(prior, indent=2) + "\n")
             return
         raise RuntimeError("Incomplete private CAM journal; manual recovery required")
@@ -176,11 +220,13 @@ def once(gh, number, evidence_root, python, binding):
     except Exception as exc:
         result_dir.mkdir(mode=0o700, parents=True)
         failed = {"schema": 1, "pr": number, "source_sha": sha,
-                  "result": "failed", "error": f"{type(exc).__name__}: {exc}"[:300]}
+                  "result": "failed", "status_state":
+                  "failure" if isinstance(exc, CloudBuildFailed) else "error",
+                  "error": f"{type(exc).__name__}: {exc}"[:300]}
         saved = result_dir / "result.json"
         saved.write_text(json.dumps(failed, indent=2) + "\n")
-        check = post_check(gh, sha, "failure", json.dumps(failed))
-        failed["check_id"] = check["id"]
+        status = post_status(gh, sha, failed["status_state"], describe(failed))
+        failed["status_id"] = status["id"]
         saved.write_text(json.dumps(failed, indent=2) + "\n")
         return
     if found is None:
@@ -193,6 +239,8 @@ def once(gh, number, evidence_root, python, binding):
         artifact_dir = result_dir / "candidate"
         digest = unpack_candidate(gh, run, artifact, sha, artifact_dir)
         result["firmware_sha256"] = digest
+        pending = post_status(gh, sha, "pending", "CAM hardware running; exact cloud artifact accepted")
+        result["pending_status_id"] = pending["id"]
         device_dir = result_dir / "device"
         command = [str(python), str(Path(__file__).with_name("ci_device.py")),
                    "--image", str(artifact_dir / "firmware.bin"),
@@ -209,15 +257,18 @@ def once(gh, number, evidence_root, python, binding):
         if completed.returncode != 0 or result.get("device", {}).get("result") != "pass":
             raise RuntimeError("CAM device suite failed; inspect private local evidence")
         result["result"] = "pass"
+        if not safe_success(result):
+            raise RuntimeError("CAM success lacks verified baseline restoration")
+        result["status_state"] = terminal_state(result)
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"[:300]
+        result["status_state"] = terminal_state(result)
     finally:
-        # Check API errors remain visible; a missing final check is never success.
-        summary = json.dumps({k: result[k] for k in ("source_sha", "run_id", "firmware_sha256", "result", "error") if k in result})
+        # Status API errors remain visible; a missing final status is never success.
         saved = result_dir / "result.json"
         saved.write_text(json.dumps(result, indent=2) + "\n")
-        check = post_check(gh, sha, "success" if result["result"] == "pass" else "failure", summary)
-        result["check_id"] = check["id"]
+        status = post_status(gh, sha, result["status_state"], describe(result))
+        result["status_id"] = status["id"]
         saved.write_text(json.dumps(result, indent=2) + "\n")
 
 

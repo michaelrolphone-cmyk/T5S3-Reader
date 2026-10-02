@@ -47,6 +47,86 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             controller.eligible_source(FakeGitHub(same_repo=False), 123)
 
+    def test_exact_sha_commit_status_and_states(self):
+        class StatusGH:
+            def __init__(self):
+                self.posts = []
+
+            def call(self, path, method="GET", body=None, limit=1_000_000):
+                self.posts.append((path, method, body))
+                return {"id": len(self.posts)}
+
+        gh = StatusGH()
+        for state in ("pending", "success", "failure", "error"):
+            controller.post_status(gh, SHA, state, "numeric result; no image")
+        self.assertEqual([post[0] for post in gh.posts], ["/statuses/" + SHA] * 4)
+        self.assertEqual([post[2]["state"] for post in gh.posts],
+                         ["pending", "success", "failure", "error"])
+        self.assertEqual({post[2]["context"] for post in gh.posts},
+                         {controller.STATUS_CONTEXT})
+        with self.assertRaises(ValueError):
+            controller.post_status(gh, "not-a-sha", "success", "bad")
+
+    def test_retry_never_turns_unrestored_result_into_success(self):
+        class StatusGH(FakeGitHub):
+            def __init__(self):
+                super().__init__()
+                self.posts = []
+
+            def call(self, path, method="GET", body=None, limit=1_000_000):
+                if path.startswith("/statuses/"):
+                    self.posts.append((path, body))
+                    return {"id": 7}
+                return super().call(path, method, body, limit)
+
+        gh = StatusGH()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            folder = root / SHA
+            folder.mkdir()
+            result = {"schema": 1, "source_sha": SHA, "result": "pass", "device_exit": 0,
+                      "status_state": "success", "firmware_sha256": "b" * 64,
+                      "device": {"result": "pass", "candidate_readback_equal": True,
+                                 "baseline_restored": False}}
+            saved = folder / "result.json"
+            saved.write_text(json.dumps(result))
+            with self.assertRaises(RuntimeError):
+                controller.once(gh, 123, root, Path("/unused"), {})
+            self.assertEqual(gh.posts, [])
+            result["source_sha"] = "c" * 40
+            saved.write_text(json.dumps(result))
+            with self.assertRaises(RuntimeError):
+                controller.once(gh, 123, root, Path("/unused"), {})
+            self.assertEqual(gh.posts, [])
+            result["source_sha"] = SHA
+            result["device"]["baseline_restored"] = True
+            result["device"]["image_bytes"] = 24069
+            saved.write_text(json.dumps(result))
+            controller.once(gh, 123, root, Path("/unused"), {})
+            self.assertEqual(gh.posts[0][0], "/statuses/" + SHA)
+            self.assertEqual(gh.posts[0][1]["state"], "success")
+            self.assertIn("capture 24069 B", gh.posts[0][1]["description"])
+            self.assertEqual(json.loads(saved.read_text())["status_id"], 7)
+
+    def test_status_fails_closed_on_missing_or_skipped_device_proof(self):
+        base = {"source_sha": SHA, "firmware_sha256": "b" * 64,
+                "result": "pass", "device_exit": 0,
+                "device": {"result": "pass", "candidate_readback_equal": True,
+                           "baseline_restored": True}}
+        self.assertEqual(controller.terminal_state(base), "success")
+        for field in ("baseline_restored", "candidate_readback_equal"):
+            missing = json.loads(json.dumps(base))
+            missing["device"][field] = False
+            self.assertEqual(controller.terminal_state(missing), "error")
+        skipped = json.loads(json.dumps(base))
+        skipped["device"]["result"] = "skipped"
+        skipped["result"] = "failed"
+        self.assertEqual(controller.terminal_state(skipped), "failure")
+        failed = json.loads(json.dumps(base))
+        failed["device_exit"] = 1
+        failed["result"] = "failed"
+        self.assertEqual(controller.terminal_state(failed), "failure")
+
     def test_artifact_hash_and_entry_boundary(self):
         image = b"candidate-image"
         manifest = {"schema": 1, "source_sha": SHA, "run_id": 7, "run_attempt": 1,

@@ -5,7 +5,7 @@ radio or shared USB power. It does not claim a true power-cycle test: the
 transport uses ESP32 serial boot/reset. Captured JPEGs remain on the CAM SD
 card. The controller stores only output byte counts, hashes and filtered
 diagnostics; no image or raw serial stream goes to Git, a PR, Actions or a
-GitHub check.
+GitHub commit status.
 
 ## Trust boundary
 
@@ -89,7 +89,7 @@ exact trusted commit. Activation uses these operations:
 1. Create one **fine-grained** GitHub credential owned by
    `michaelrolphone-cmyk` for **all repositories** in that personal account,
    as the owner approved for future projects: Actions **read**, Pull requests
-   **read**, Checks **write**, Metadata **read** (automatic). No other write
+   **read**, Commit statuses **write**, Metadata **read** (automatic). No other write
    scopes are needed. Only the Reader CAM job is configured in the local
    controller allowlist, currently disabled; future repositories need
    separate reviewed jobs.
@@ -105,8 +105,9 @@ exact trusted commit. Activation uses these operations:
    private Reader job binding and successful exact-SHA source artifact are
    verified. Its launcher invokes the pinned `trusted_controller.py --scan`
    with a private evidence root and CAM binding. The timer will poll owner PRs, wait
-   for their completed exact-SHA cloud build, then post a Checks API
-   result on the exact head SHA. It must remain unloaded until credential and
+   for their completed exact-SHA cloud build, then post a commit status under
+   `CAM hardware / trusted owner SHA` on the exact head SHA. It must remain
+   unloaded until credential and
    hardware preflight are approved. The Mac must stay awake and the CAM
    connected for automatic execution.
 
@@ -115,20 +116,24 @@ the job allowlist permits only Reader CAM execution. The user launchd timer
 persists until removed. The Mac will
 automatically flash eligible owner-PR firmware to the CAM and save private
 backup/result files. These are the material activation risks. After one
-complete request-to-check pilot is verified, a repository ruleset may require
+complete request-to-status pilot is verified, a repository ruleset may require
 `CAM hardware / trusted owner SHA`
 for merges, but that separate security-setting change needs owner approval.
-Until then the check is advisory.
+Until then the status is advisory. GitHub permits commit statuses to be
+required status checks. Unlike a GitHub App sourced check, a personal-token
+status cannot be restricted to one App identity in a required-check rule;
+repository writers may be able to post the same context. Review that source
+trust limitation before making it a merge gate.
 
-GitHub's current check-run endpoint documentation explicitly lists fine-grained
-PATs with Checks write for create/update, but its general prose says only Apps
-can create checks and its PAT guide lists Checks API access as a limitation.
-The fine-grained PAT path is therefore documented at the endpoint but not yet
-verified with an actual token. If the token form does not offer Checks write,
-stop before creating it. Do not enable the scheduler until an exact-SHA check
-post succeeds in the pilot.
+The controller posts `pending` only after verifying the exact cloud artifact,
+then `success` only after capture and baseline restoration, `failure` for a
+completed failed cloud/device test, or `error` for provenance, transport or
+restore uncertainty. A crash with incomplete private evidence leaves the
+status pending for manual recovery. The private journal retains exact hashes,
+device counts and failure details; the GitHub description carries only short
+numeric/hash outcomes. No JPEG or raw serial content is posted.
 
 Use the local `result.json` journal to diagnose failures. A result without
-`check_id` means the Checks API post needs retry; the controller retries that
+`status_id` means the terminal commit-status post needs retry; the controller retries that
 post without re-flashing. An incomplete journal without `result.json` stops
 for manual recovery so an interrupted flash is never repeated blindly.
