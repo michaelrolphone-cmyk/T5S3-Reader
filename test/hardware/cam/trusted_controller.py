@@ -20,7 +20,7 @@ import zipfile
 REPO = "michaelrolphone-cmyk/T5S3-Reader"
 OWNER = "michaelrolphone-cmyk"
 WORKFLOW = "cam-hardware-build.yml"
-CHECK = "CAM hardware / reviewed SHA"
+CHECK = "CAM hardware / trusted owner SHA"
 API = "https://api.github.com/repos/" + REPO
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 
@@ -67,7 +67,7 @@ class GitHub:
         return json.loads(raw)
 
 
-def approved_source(gh, number):
+def eligible_source(gh, number):
     pr = gh.call(f"/pulls/{number}")
     head = pr["head"]["sha"]
     if (pr["state"] != "open" or pr["base"]["repo"]["full_name"] != REPO
@@ -75,15 +75,10 @@ def approved_source(gh, number):
             or pr["head"]["repo"]["id"] != pr["base"]["repo"]["id"]
             or pr["user"]["login"] != OWNER or not SHA.fullmatch(head)):
         raise ValueError("PR is not an open owner-authored same-repository exact head")
-    # GitHub does not permit a PR author to approve their own review. An exact
-    # commit comment from the repo owner is the explicit source attestation.
-    comments = gh.call(f"/issues/{number}/comments?per_page=100")
-    if len(comments) == 100:
-        raise ValueError("Comment history exceeds one-page safety bound")
-    marker = "/cam-hardware approve " + head
-    if not any(c["user"]["login"] == OWNER and c["body"].strip() == marker
-               for c in comments):
-        raise ValueError("Exact PR head lacks owner hardware approval comment")
+    # This narrow source policy is automatic: the owner controls both the PR
+    # author account and the branch in this repository. External PRs fail
+    # closed. Firmware from an eligible head still runs on the CAM, so this
+    # account and branch provenance are part of the device trust boundary.
     return head
 
 
@@ -162,7 +157,7 @@ def load_cam_binding(path):
 
 
 def once(gh, number, evidence_root, python, binding):
-    sha = approved_source(gh, number)
+    sha = eligible_source(gh, number)
     result_dir = evidence_root / sha
     if result_dir.exists():
         saved = result_dir / "result.json"

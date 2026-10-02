@@ -14,17 +14,17 @@ SHA = "a" * 40
 
 
 class FakeGitHub:
-    def __init__(self, approved=True):
-        self.approved = approved
+    def __init__(self, owner=True, same_repo=True):
+        self.owner = owner
+        self.same_repo = same_repo
 
     def call(self, path, method="GET", body=None, limit=1_000_000):
         if path.startswith("/pulls/"):
             repo = {"full_name": controller.REPO, "id": 42}
-            return {"state": "open", "head": {"sha": SHA, "repo": repo},
-                    "base": {"repo": repo}, "user": {"login": controller.OWNER}}
-        if path.startswith("/issues/"):
-            return [{"user": {"login": controller.OWNER},
-                     "body": "/cam-hardware approve " + (SHA if self.approved else "b" * 40)}]
+            head_repo = repo if self.same_repo else {"full_name": "elsewhere/fork", "id": 99}
+            return {"state": "open", "head": {"sha": SHA, "repo": head_repo},
+                    "base": {"repo": repo},
+                    "user": {"login": controller.OWNER if self.owner else "stranger"}}
         raise AssertionError(path)
 
 
@@ -40,10 +40,12 @@ class ControllerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 controller.load_cam_binding(path)
 
-    def test_exact_head_attestation(self):
-        self.assertEqual(controller.approved_source(FakeGitHub(), 123), SHA)
+    def test_automatic_owner_source_gate(self):
+        self.assertEqual(controller.eligible_source(FakeGitHub(), 123), SHA)
         with self.assertRaises(ValueError):
-            controller.approved_source(FakeGitHub(False), 123)
+            controller.eligible_source(FakeGitHub(owner=False), 123)
+        with self.assertRaises(ValueError):
+            controller.eligible_source(FakeGitHub(same_repo=False), 123)
 
     def test_artifact_hash_and_entry_boundary(self):
         image = b"candidate-image"

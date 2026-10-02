@@ -18,19 +18,17 @@ GitHub-hosted `cam-hardware-build.yml` checks out the exact PR head, runs quick
 tests and builds a CAM firmware artifact. The Mac uses an independently
 installed, reviewed copy of `trusted_controller.py` and `ci_device.py`, pinned
 to a specific trusted repository commit. It never checks out or runs PR code.
-It accepts only an open, same-repository PR authored by
-`michaelrolphone-cmyk`, with an exact-head owner comment:
-
-```
-/cam-hardware approve <40-character PR head SHA>
-```
-
-The owner may comment on their own PR; GitHub does not allow self-review
-approval. A new commit requires a new exact-SHA comment. The controller also
+It automatically accepts only an open, same-repository PR authored by
+`michaelrolphone-cmyk`. Each new head SHA is eligible without a comment or
+manual dispatch once its cloud build succeeds. The controller also
 checks the cloud workflow identity, successful completion, PR association,
 bounded artifact entry set, run ID/attempt and SHA-256. Any missing or
-ambiguous proof fails closed. The firmware still runs on the CAM, so source
-approval is a meaningful device-safety gate, not a sandbox for firmware.
+ambiguous proof fails closed. External and fork PRs are ineligible. The owner
+account and its same-repository branches are trusted sources under this
+policy. Their firmware still runs on the CAM; a compromised owner account or
+malicious owner-branch commit could affect the device despite the host-script
+boundary. The controller uses pinned local device tests; PR edits to those
+tests do not execute on the Mac until separately reviewed and installed.
 
 ## Candidate and physical transaction
 
@@ -44,8 +42,14 @@ The first PR #347 run failed in `Verify CAM build inputs`: current master lacks
 the U1 package runtime and is still open; PR #344 supplies the CAM port/app
 and is still draft. The shortest source path is for the owner to merge #96,
 then integrate/merge #344 against that base, then refresh this same CI PR
-against master and let its cloud build run. Do not construct a candidate by
-mixing unmerged PR heads while labelling it as this PR's exact source SHA.
+against master and let its cloud build run. For an earlier exact-SHA pilot,
+the owner can instead integrate both source PRs into this same draft #347
+branch, resolving conflicts there. Its new actual PR head would contain U1,
+CAM and CI sources, so the workflow can build and label that exact SHA. This
+temporarily expands #347's review scope substantially and duplicates open PR
+work; do it only as an intentional integrated pilot, then reconcile the PR
+history after the source PRs merge. A detached local merge or prebuilt image
+cannot validate the exact-PR-SHA flow.
 The artifact contains only `firmware.bin` and its manifest. The SHA in the
 manifest is the checked-out PR head, not GitHub's synthetic PR merge commit.
 
@@ -83,7 +87,7 @@ explicit approval for these exact operations:
 
 1. Create one **fine-grained** GitHub credential for only
    `michaelrolphone-cmyk/T5S3-Reader`: Actions **read**, Pull requests **read**,
-   Issues **read** (PR comment gate), Checks **write**, Metadata **read**.
+   Checks **write**, Metadata **read**.
    Store it privately in the Mac login Keychain as generic-password service
    `riscrte-cam-ci`, account `michaelrolphone-cmyk` using secure local entry.
    Never place it in a shell command argument, chat, repo, plist or log.
@@ -96,16 +100,17 @@ explicit approval for these exact operations:
    `trusted_controller.py --scan --evidence-root <private-directory>
    --cam-binding <private-mapped-file>` at a
    bounded interval such as five minutes. The timer will poll owner PRs, wait
-   for their exact approval and completed cloud build, then post a Checks API
+   for their completed exact-SHA cloud build, then post a Checks API
    result on the exact head SHA. It must remain unloaded until credential and
    hardware preflight are approved. The Mac must stay awake and the CAM
    connected for automatic execution.
 
 The credential persists in Keychain and can create/update checks in this one
-repo; the user launchd timer persists until unloaded. The Mac will flash
-reviewed PR firmware to the CAM and save private backup/result files. These
-are the material activation risks. After one complete request-to-check pilot
-is verified, a repository ruleset may require `CAM hardware / reviewed SHA`
+repo; the user launchd timer persists until unloaded. The Mac will
+automatically flash eligible owner-PR firmware to the CAM and save private
+backup/result files. These are the material activation risks. After one
+complete request-to-check pilot is verified, a repository ruleset may require
+`CAM hardware / trusted owner SHA`
 for merges, but that separate security-setting change needs owner approval.
 Until then the check is advisory.
 
