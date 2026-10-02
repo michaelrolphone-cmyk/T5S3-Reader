@@ -17,7 +17,9 @@
 #include <FontDecompressor.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
+#include <HalStorage.h>
 #include <Logging.h>
+#include <Txt.h>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -55,21 +57,23 @@ const char *storage_status = "SD provider unavailable";
 bool storage_mounted = false;
 bool showing_storage_activity = false;
 std::string storage_preview;
-const risc_storage_volume_api_v1 *preview_volume = nullptr;
-risc_storage_file_t preview_file = RISC_STORAGE_FILE_INVALID;
+std::unique_ptr<Txt> preview_text;
 std::string preview_name;
 uint64_t preview_position = 0;
 
 void advancePreview() {
-    if (!preview_volume || preview_file == RISC_STORAGE_FILE_INVALID) return;
+    if (!preview_text) return;
+    if (preview_position >= preview_text->getFileSize()) {
+        storage_preview = "End of " + preview_name;
+        return;
+    }
     char sample[49] = {0};
-    const size_t count = preview_volume->file_read(preview_volume->context, preview_file,
-                                                   sample, sizeof(sample) - 1);
-    if (!count) {
-        storage_preview = preview_volume->ready(preview_volume->context) ?
-            "End of " + preview_name : "SD read failed";
-        (void)preview_volume->file_close(preview_volume->context, preview_file, false);
-        preview_file = RISC_STORAGE_FILE_INVALID;
+    const size_t left = preview_text->getFileSize() - preview_position;
+    const size_t count = left < sizeof(sample) - 1u ? left : sizeof(sample) - 1u;
+    if (!preview_text->readContent(reinterpret_cast<uint8_t *>(sample),
+                                   preview_position, count)) {
+        storage_preview = "SD read failed";
+        preview_text.reset();
         return;
     }
     for (size_t j = 0; j < count; ++j)
@@ -83,6 +87,8 @@ bool openFirstText(const risc_storage_volume_api_v1 *volume, const char *directo
     if (cursor == RISC_STORAGE_DIR_INVALID) return false;
     risc_storage_dirent_v1 entry{};
     bool found = false;
+    std::string selected;
+    std::string selected_name;
     for (unsigned i = 0; i < 16 && volume->dir_next(volume->context, cursor, &entry); ++i) {
         const char *extension = std::strrchr(entry.name, '.');
         if (entry.is_directory || !extension || std::strcmp(extension, ".TXT") != 0) continue;
@@ -94,18 +100,23 @@ bool openFirstText(const risc_storage_volume_api_v1 *volume, const char *directo
         size_t at = prefix;
         if (at == 0 || path[at - 1] != '/') path[at++] = '/';
         std::memcpy(path + at, entry.name, name + 1);
-        uint64_t size = 0;
-        const risc_storage_file_t file = volume->file_open_read(volume->context, path, &size);
-        if (file == RISC_STORAGE_FILE_INVALID) break;
-        preview_volume = volume;
-        preview_file = file;
-        preview_name = entry.name;
-        advancePreview();
+        selected = path;
+        selected_name = entry.name;
         found = true;
         break;
     }
     volume->dir_close(volume->context, cursor);
-    return found;
+    if (!found) return false;
+    auto candidate = std::make_unique<Txt>(selected, "/.crosspoint");
+    if (!candidate->load() || candidate->getFileSize() > 131072u) {
+        storage_preview = "TXT unavailable or too large";
+        return true;
+    }
+    preview_text = std::move(candidate);
+    preview_name = std::move(selected_name);
+    preview_position = 0;
+    advancePreview();
+    return true;
 }
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
@@ -201,7 +212,7 @@ void x4DiagnosticSetup() {
         auto *volume = static_cast<const risc_storage_volume_api_v1 *>(sd_mod.capability());
         if (volume && volume->api_version == RISC_STORAGE_VOLUME_API_V1 &&
             volume->struct_size >= sizeof(*volume) && volume->ready) {
-            storage_mounted = volume->ready(volume->context);
+            storage_mounted = Storage.bindVolume(volume);
             char reason[80] = "none";
             if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
             storage_status = storage_mounted ? "SD root read only" : "SD card not ready";
@@ -288,7 +299,7 @@ void x4DiagnosticLoop() {
     nativeNavigationTick();
     const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
     if (frame_in.pressed && showing_storage_activity) {
-        if ((frame_in.pressed & RISC_NAV_RIGHT) && preview_file != RISC_STORAGE_FILE_INVALID) {
+        if ((frame_in.pressed & RISC_NAV_RIGHT) && preview_text) {
             advancePreview();
             activityManager.replaceActivity(std::make_unique<FullScreenMessageActivity>(
                 renderer, mappedInputManager, storage_preview, EpdFontFamily::REGULAR,
