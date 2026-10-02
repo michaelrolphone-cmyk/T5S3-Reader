@@ -62,10 +62,14 @@ int main(void) {
     put32(x4_card_fat_sector + 16, 0x0fffffffu);
     memset(x4_card_file_sector[0], 'A', 512);
     memset(x4_card_file_sector[1], 'B', 512);
+    const unsigned before_directory = x4_card_cmd17_count;
     failures += expect(volume->dir_open(0, "/") == 1u, "populated root opens");
     failures += expect(volume->dir_next(0, 1u, &entry) &&
                        strcmp(entry.name, "BOOK.TXT") == 0 && entry.size == 600u,
                        "short root entry through provider API");
+    failures += expect(!volume->dir_next(0, 1u, &entry) &&
+                       x4_card_cmd17_count == before_directory + 1u,
+                       "directory sector read once across entries and EOF");
     volume->dir_close(0, 1u);
     uint64_t stat_size = 0;
     bool is_directory = true;
@@ -82,6 +86,17 @@ int main(void) {
     failures += expect(volume->file_read(0, 1u, file_data, sizeof(file_data)) == 0u,
                        "EOF bounded");
     failures += expect(volume->file_close(0, 1u, false), "read handle closes");
+    for (unsigned i = 0; i < 512u; ++i) x4_card_file_sector[0][i] = (uint8_t)i;
+    failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) == 1u,
+                       "file reopens for partial reads");
+    failures += expect(volume->file_read(0, 1u, file_data, 48u) == 48u &&
+                       file_data[0] == 0u && file_data[47] == 47u &&
+                       volume->file_read(0, 1u, file_data, 48u) == 48u &&
+                       file_data[0] == 48u && file_data[47] == 95u,
+                       "successive 48-byte Reader chunks keep position");
+    failures += expect(volume->file_close(0, 1u, true),
+                       "read handle closes regardless of write commit flag");
+    memset(x4_card_file_sector[0], 'A', 512);
     put16(x4_card_root_sector + 26, 1u);
     failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) ==
                        RISC_STORAGE_FILE_INVALID, "invalid first file cluster rejected");

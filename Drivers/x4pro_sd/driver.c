@@ -111,8 +111,9 @@ typedef struct {
 } fat32_geometry;
 static fat32_geometry volume_geometry;
 static struct {
-    bool open;
+    bool open, sector_valid;
     uint32_t cluster, sector, slot, traversed;
+    uint8_t data[512];
 } directory_cursor;
 static uint32_t directory_last_cluster;
 static struct {
@@ -304,6 +305,7 @@ static risc_storage_dir_t dir_open(void *context, const char *path) {
     (void)context;
     if (!mounted || !equal(path, "/")) return RISC_STORAGE_DIR_INVALID;
     directory_cursor.open = true;
+    directory_cursor.sector_valid = false;
     directory_cursor.cluster = volume_geometry.root_cluster;
     directory_cursor.sector = directory_cursor.slot = directory_cursor.traversed = 0;
     return 1;
@@ -311,18 +313,20 @@ static risc_storage_dir_t dir_open(void *context, const char *path) {
 static bool dir_next(void *context, risc_storage_dir_t directory, risc_storage_dirent_v1 *entry) {
     (void)context;
     if (!mounted || directory != 1 || !directory_cursor.open || !entry) return false;
-    uint8_t sector[512];
     const uint64_t began = clock_api->monotonic_ms(clock_api->context);
     for (unsigned reads = 0; reads < 128u; ++reads) {
-        if (directory_cursor.traversed >= 128u ||
-            clock_api->monotonic_ms(clock_api->context) - began >= 3000u) {
-            fail("FAT32 root scan limit"); return false;
+        if (!directory_cursor.sector_valid) {
+            if (directory_cursor.traversed >= 128u ||
+                clock_api->monotonic_ms(clock_api->context) - began >= 3000u) {
+                fail("FAT32 root scan limit"); return false;
+            }
+            if (!read_cluster_sector(&volume_geometry, directory_cursor.cluster,
+                                     directory_cursor.sector, directory_cursor.data)) return false;
+            directory_cursor.sector_valid = true;
+            ++directory_cursor.traversed;
         }
-        if (!read_cluster_sector(&volume_geometry, directory_cursor.cluster,
-                                 directory_cursor.sector, sector)) return false;
-        ++directory_cursor.traversed;
         while (directory_cursor.slot < 16u) {
-            const uint8_t *item = sector + 32u * directory_cursor.slot++;
+            const uint8_t *item = directory_cursor.data + 32u * directory_cursor.slot++;
             if (!item[0]) return false;
             if (item[0] == 0xe5u || item[11] == 0x0fu || (item[11] & 0x08u)) continue;
             memset(entry, 0, sizeof(*entry));
@@ -338,6 +342,7 @@ static bool dir_next(void *context, risc_storage_dir_t directory, risc_storage_d
             return true;
         }
         directory_cursor.slot = 0;
+        directory_cursor.sector_valid = false;
         if (++directory_cursor.sector >= volume_geometry.sectors_per_cluster) {
             uint32_t next = 0;
             if (!fat_next_cluster(&volume_geometry, directory_cursor.cluster, &next)) return false;
@@ -407,7 +412,8 @@ static size_t file_write(void *context, risc_storage_file_t file, const void *bu
 }
 static bool file_close(void *context, risc_storage_file_t file, bool commit) {
     (void)context;
-    if (file != 1 || !file_cursor.open || commit) return false;
+    (void)commit; /* Read handles have no transaction to commit. */
+    if (file != 1 || !file_cursor.open) return false;
     file_cursor.open = false;
     return true;
 }

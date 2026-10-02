@@ -35,33 +35,19 @@ def build_one(name):
     output = ROOT / "dist" / "experimental" / manifest["id"]
     output.mkdir(parents=True, exist_ok=True)
     elf = output / "driver.elf"
-    # Pinned Linux Xtensa GNU ld 2.35.1 can abort while linking the enlarged
-    # FAT32 provider. Probe a bounded set of materially different layouts in
-    # one CI run, only after the known signal-6 linker crash. Once a Linux
-    # layout succeeds, pin it and remove the alternatives.
-    layouts = ([
-        ["-O2", "-Wl,--no-relax"],
-        ["-O0", "-Wl,--no-relax"],
-        ["-Os", "-Wl,--no-relax"],
-        ["-O1", "-fno-inline", "-Wl,--no-relax"],
-    ] if name == "x4pro_sd" else [["-Os"]])
-    for layout in layouts:
-        result = subprocess.run([
-        CC, "-std=c11", *layout,
+    # CI run 37048644826 confirmed that pinned Linux Xtensa ld 2.35.1 links
+    # the enlarged FAT32 provider at -O2 with relaxation disabled. Keep the
+    # workaround scoped; all other providers retain their ordinary flags.
+    optimization = "-O2" if name == "x4pro_sd" else "-Os"
+    link_flags = ["-Wl,--no-relax"] if name == "x4pro_sd" else []
+    subprocess.run([
+        CC, "-std=c11", optimization,
         "-fPIC", "-mtext-section-literals", "-mlongcalls",
         "-fvisibility=hidden", "-fno-builtin", "-nostdlib", "-nostartfiles", "-shared",
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
-        "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL",
+        "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL", *link_flags,
         str(source / "driver.c"), "-lgcc", "-o", str(elf),
-        ], capture_output=True, text=True)
-        if result.returncode == 0:
-            print(f"{name}: linked with {' '.join(layout)}")
-            break
-        print(result.stderr, file=sys.stderr)
-        if "ld terminated with signal 6" not in result.stderr:
-            raise RuntimeError(f"{name}: compiler/linker failed with {' '.join(layout)}")
-    else:
-        raise RuntimeError(f"{name}: all scoped Xtensa linker layouts aborted")
+    ], check=True)
     readelf = CC.replace("gcc", "readelf")
     sections = subprocess.check_output([readelf, "-S", str(elf)], text=True)
     if ".rela.plt" in sections or ".rela.dyn" in sections:
