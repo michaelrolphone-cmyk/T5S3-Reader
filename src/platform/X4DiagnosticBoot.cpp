@@ -281,6 +281,9 @@ void x4DiagnosticSetup() {
         UITheme::getInstance().reload();
         activityManager.begin();
         activityManager.goHome();
+        // HomeActivity::onEnter queues a deferred update. X4 does not run the
+        // normal activity loop yet, so wake its render worker for this frame.
+        activityManager.requestUpdate(true);
         showing_home = true;
         LOG_INF("X4", "home activity scheduled=1");
     } else {
