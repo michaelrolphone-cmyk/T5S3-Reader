@@ -404,6 +404,12 @@ static int32_t run_menu(const char *title, const char *subtitle,
     }
 }
 
+static bool picker_can_append(uint32_t count, uint32_t offset) {
+    return count >= offset &&
+           count < sizeof(picker_rows) / sizeof(picker_rows[0]) &&
+           count - offset < sizeof(picker_names) / sizeof(picker_names[0]);
+}
+
 static uint32_t list_picker_directories(bool usb, const char *path, uint32_t offset) {
     uint32_t count = offset;
     const bool show_hidden = browser->show_hidden_files();
@@ -412,7 +418,8 @@ static uint32_t list_picker_directories(bool usb, const char *path, uint32_t off
         risc_storage_dir_t directory = usb_volume->dir_open(usb_volume->context, path);
         if (!directory) return count;
         risc_storage_dirent_v1 item;
-        while (count < PICKER_ENTRIES + 2u && usb_volume->dir_next(usb_volume->context, directory, &item)) {
+        while (picker_can_append(count, offset) &&
+               usb_volume->dir_next(usb_volume->context, directory, &item)) {
             if (!item.is_directory || (!show_hidden && item.name[0] == '.') ||
                 strcmp(item.name, "System Volume Information") == 0) continue;
             copy_text(picker_names[count - offset], sizeof(picker_names[0]), item.name);
@@ -425,7 +432,7 @@ static uint32_t list_picker_directories(bool usb, const char *path, uint32_t off
         make_sd_vfs_dir(path, vfs, sizeof(vfs));
         if (!app->dir_open(vfs)) return count;
         t5_app_dirent_t item;
-        while (count < PICKER_ENTRIES + 2u && app->dir_next(&item)) {
+        while (picker_can_append(count, offset) && app->dir_next(&item)) {
             if (!item.is_directory || (!show_hidden && item.name[0] == '.') ||
                 strcmp(item.name, "System Volume Information") == 0) continue;
             copy_text(picker_names[count - offset], sizeof(picker_names[0]), item.name);
