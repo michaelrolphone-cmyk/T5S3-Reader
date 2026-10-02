@@ -13,6 +13,15 @@
 #include "SdSpiFault.h"
 
 namespace {
+// The X4 slot belongs to the native SD provider. Until HalStorage has a
+// storage.volume adapter, every legacy SdFat entry point must fail closed.
+bool storageBackendUnavailable() {
+#if defined(BOARD_XTEINK_X4_PRO)
+  return true;
+#else
+  return risc_sd_spi_faulted();
+#endif
+}
 constexpr uint32_t SD_SPI_FREQUENCY = 40000000;
 SdFat sd;
 StorageGenerationTracker storageGeneration;
@@ -161,7 +170,7 @@ bool HalStorage::begin() {
   LOG_ERR("SD", "X4 storage.volume filesystem unavailable; SPI mount refused");
   return false;
 #else
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   if (!storageGeneration.mountAttempt()) {
     LOG_ERR("SD", "Remount refused while handles or uncontrolled access remain");
@@ -180,38 +189,38 @@ bool HalStorage::begin() {
 }
 
 bool HalStorage::ready() const {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   return initialized;
 }
 StorageGenerationStamp HalStorage::generation() const {
-  if (risc_sd_spi_faulted()) return {};
+  if (storageBackendUnavailable()) return {};
   StorageLock lock;
   return storageGeneration.stamp(initialized);
 }
 bool HalStorage::unchanged(const StorageGenerationStamp& stamp) const { return stamp.matches(generation()); }
 void HalStorage::invalidateObservations() {
-  if (risc_sd_spi_faulted()) return;
+  if (storageBackendUnavailable()) return;
   StorageLock lock;
   storageGeneration.mutationAttempt();
 }
 void HalStorage::externalStorageBegin() {
-  if (risc_sd_spi_faulted()) return;
+  if (storageBackendUnavailable()) return;
   StorageLock lock;
   storageGeneration.externalBegin();
 }
 void HalStorage::externalStorageEnd(bool closed) {
-  if (risc_sd_spi_faulted()) return;
+  if (storageBackendUnavailable()) return;
   StorageLock lock;
   storageGeneration.externalEnd(closed);
 }
 void HalStorage::externalStorageUncertain() {
-  if (risc_sd_spi_faulted()) return;
+  if (storageBackendUnavailable()) return;
   StorageLock lock;
   storageGeneration.externalUncertain();
 }
 bool HalStorage::reconcileExternalStorage() {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   {
     StorageLock lock;
     if (!storageGeneration.needsReconcile()) return initialized;
@@ -221,7 +230,7 @@ bool HalStorage::reconcileExternalStorage() {
   return begin();
 }
 void HalStorage::markUnavailable() {
-  if (risc_sd_spi_faulted()) return;
+  if (storageBackendUnavailable()) return;
   StorageLock lock;
   initialized = false;
   storageGeneration.mutationAttempt();
@@ -229,7 +238,7 @@ void HalStorage::markUnavailable() {
 void halStorageMediaUnavailable() { Storage.markUnavailable(); }
 
 std::vector<String> HalStorage::listFiles(const char* path, int maxFiles) {
-  if (risc_sd_spi_faulted()) return {};
+  if (storageBackendUnavailable()) return {};
   StorageLock lock;
   std::vector<String> ret;
   if (!initialized) {
@@ -270,7 +279,7 @@ std::vector<String> HalStorage::listFiles(const char* path, int maxFiles) {
 }
 
 String HalStorage::readFile(const char* path) {
-  if (risc_sd_spi_faulted()) return "";
+  if (storageBackendUnavailable()) return "";
   StorageLock lock;
   if (!initialized) {
     LOG_ERR("SD", "Not initialized; cannot read file: %s", path);
@@ -295,7 +304,7 @@ String HalStorage::readFile(const char* path) {
 }
 
 bool HalStorage::readFileToStream(const char* path, Print& out, size_t chunkSize) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   if (!initialized) {
     LOG_ERR("SD", "Not initialized; cannot stream file: %s", path);
@@ -326,7 +335,7 @@ bool HalStorage::readFileToStream(const char* path, Print& out, size_t chunkSize
 }
 
 size_t HalStorage::readFileToBuffer(const char* path, char* buffer, size_t bufferSize, size_t maxBytes) {
-  if (risc_sd_spi_faulted()) return 0;
+  if (storageBackendUnavailable()) return 0;
   StorageLock lock;
   if (!buffer || bufferSize == 0) {
     return 0;
@@ -365,7 +374,7 @@ size_t HalStorage::readFileToBuffer(const char* path, char* buffer, size_t buffe
 }
 
 bool HalStorage::writeFile(const char* path, const String& content) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   storageGeneration.mutationAttempt();
   if (!initialized) {
@@ -401,7 +410,7 @@ bool HalStorage::writeFile(const char* path, const String& content) {
 }
 
 bool HalStorage::ensureDirectoryExists(const char* path) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   storageGeneration.mutationAttempt();
   if (!initialized) {
@@ -462,7 +471,7 @@ HalFile::~HalFile() {
   // FsFile destruction inside the same storage mutex used by every HalFile I/O
   // call; otherwise another task can acquire the SD bus between the final read
   // and this destructor and trigger SPI.endTransaction() from the wrong owner.
-  if (risc_sd_spi_faulted()) {
+  if (storageBackendUnavailable()) {
     (void)impl.release();
     return;
   }
@@ -482,7 +491,7 @@ HalFile& HalFile::operator=(HalFile&& other) {
   // under StorageLock for the same reason as the destructor before adopting the
   // incoming handle.
   if (impl) {
-    if (risc_sd_spi_faulted()) {
+    if (storageBackendUnavailable()) {
       (void)impl.release();  // Raw FsFile destructor may still sync/unlock SPI.
       impl = std::move(other.impl);
       return *this;
@@ -496,7 +505,7 @@ HalFile& HalFile::operator=(HalFile&& other) {
 }
 
 HalFile HalStorage::open(const char* path, const oflag_t oflag) {
-  if (risc_sd_spi_faulted()) return {};
+  if (storageBackendUnavailable()) return {};
   StorageLock lock;
   const bool writable = writableFlags(oflag);
   if (writable) storageGeneration.mutationAttempt();
@@ -506,14 +515,14 @@ HalFile HalStorage::open(const char* path, const oflag_t oflag) {
 }
 
 bool HalStorage::mkdir(const char* path, const bool pFlag) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   storageGeneration.mutationAttempt();
   return sd.mkdir(path, pFlag);
 }
 
 bool HalStorage::exists(const char* path) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   const bool found = sd.exists(path);
   if (!found && sd.sdErrorCode()) storageGeneration.mutationAttempt();
@@ -521,27 +530,27 @@ bool HalStorage::exists(const char* path) {
 }
 
 bool HalStorage::remove(const char* path) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   storageGeneration.mutationAttempt();
   return sd.remove(path);
 }
 bool HalStorage::rename(const char* oldPath, const char* newPath) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   storageGeneration.mutationAttempt();
   return sd.rename(oldPath, newPath);
 }
 
 bool HalStorage::rmdir(const char* path) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   storageGeneration.mutationAttempt();
   return sd.rmdir(path);
 }
 
 bool HalStorage::openFileForRead(const char* moduleName, const char* path, HalFile& file) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   std::unique_ptr<HalFile::Impl> opened;
   bool ok = false;
   {
@@ -558,17 +567,17 @@ bool HalStorage::openFileForRead(const char* moduleName, const char* path, HalFi
 }
 
 bool HalStorage::openFileForRead(const char* moduleName, const std::string& path, HalFile& file) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   return openFileForRead(moduleName, path.c_str(), file);
 }
 
 bool HalStorage::openFileForRead(const char* moduleName, const String& path, HalFile& file) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   return openFileForRead(moduleName, path.c_str(), file);
 }
 
 bool HalStorage::openFileForWrite(const char* moduleName, const char* path, HalFile& file) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   std::unique_ptr<HalFile::Impl> opened;
   bool ok = false;
   {
@@ -584,24 +593,24 @@ bool HalStorage::openFileForWrite(const char* moduleName, const char* path, HalF
 }
 
 bool HalStorage::openFileForWrite(const char* moduleName, const std::string& path, HalFile& file) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   return openFileForWrite(moduleName, path.c_str(), file);
 }
 
 bool HalStorage::openFileForWrite(const char* moduleName, const String& path, HalFile& file) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   return openFileForWrite(moduleName, path.c_str(), file);
 }
 
 bool HalStorage::removeDir(const char* path) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   StorageLock lock;
   storageGeneration.mutationAttempt();
   return removeDirUnlocked(path);
 }
 
 #define HAL_FILE_WRAPPED_CALL(method, ...)                        \
-  if (risc_sd_spi_faulted()) return {};                           \
+  if (storageBackendUnavailable()) return {};                           \
   HalStorage::StorageLock lock;                                   \
   assert(impl != nullptr);                                        \
   const auto result = impl->file.method(__VA_ARGS__);             \
@@ -613,7 +622,7 @@ bool HalStorage::removeDir(const char* path) {
   return impl->file.method(__VA_ARGS__);
 
 void HalFile::flush() {
-  if (risc_sd_spi_faulted()) return;
+  if (storageBackendUnavailable()) return;
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   storageGeneration.mutationAttempt();
@@ -631,7 +640,7 @@ bool HalFile::seekSet(size_t offset) { HAL_FILE_WRAPPED_CALL(seekSet, offset); }
 int HalFile::available() const { HAL_FILE_WRAPPED_CALL(available, ); }
 size_t HalFile::position() const { HAL_FILE_WRAPPED_CALL(position, ); }
 int HalFile::read(void* buf, size_t count) {
-  if (risc_sd_spi_faulted()) return -1;
+  if (storageBackendUnavailable()) return -1;
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   const int read = impl->file.read(buf, count);
@@ -639,7 +648,7 @@ int HalFile::read(void* buf, size_t count) {
   return read;
 }
 int HalFile::read() {
-  if (risc_sd_spi_faulted()) return -1;
+  if (storageBackendUnavailable()) return -1;
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   const int read = impl->file.read();
@@ -647,18 +656,18 @@ int HalFile::read() {
   return read;
 }
 size_t HalFile::write(const void* buf, size_t count) {
-  if (risc_sd_spi_faulted()) return 0;
+  if (storageBackendUnavailable()) return 0;
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   storageGeneration.mutationAttempt();
   return impl->file.write(buf, count);
 }
 size_t HalFile::write(uint8_t b) {
-  if (risc_sd_spi_faulted()) return 0;
+  if (storageBackendUnavailable()) return 0;
   return write(&b, 1);
 }
 bool HalFile::rename(const char* newPath) {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   storageGeneration.mutationAttempt();
@@ -666,14 +675,14 @@ bool HalFile::rename(const char* newPath) {
 }
 bool HalFile::isDirectory() const { HAL_FILE_WRAPPED_CALL(isDirectory, ); }
 void HalFile::rewindDirectory() {
-  if (risc_sd_spi_faulted()) return;
+  if (storageBackendUnavailable()) return;
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   impl->file.rewindDirectory();
   if (impl->file.getError()) storageGeneration.mutationAttempt();
 }
 bool HalFile::close() {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   if (impl->writable && impl->tracked) storageGeneration.mutationAttempt();
@@ -685,7 +694,7 @@ bool HalFile::close() {
   return closed;
 }
 HalFile HalFile::openNextFile() {
-  if (risc_sd_spi_faulted()) return {};
+  if (storageBackendUnavailable()) return {};
   HalStorage::StorageLock lock;
   assert(impl != nullptr);
   auto child = impl->file.openNextFile();
@@ -693,11 +702,11 @@ HalFile HalFile::openNextFile() {
   return HalFile(std::make_unique<Impl>(std::move(child)));
 }
 uint8_t HalFile::getError() const {
-  if (risc_sd_spi_faulted()) return 255;
+  if (storageBackendUnavailable()) return 255;
   HAL_FILE_WRAPPED_CALL(getError, );
 }
 bool HalFile::isOpen() const {
-  if (risc_sd_spi_faulted()) return false;
+  if (storageBackendUnavailable()) return false;
   HalStorage::StorageLock lock;
   return impl != nullptr && impl->file.isOpen();
 }

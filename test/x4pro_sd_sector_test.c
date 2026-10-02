@@ -89,6 +89,12 @@ int main(void) {
                        strcmp(error, "FAT32 root chain invalid") == 0,
                        "bad FAT root chain closes mount");
     put32(x4_card_fat_sector + 8, 0x0fffffffu);
+    put32(x4_card_fat_sector + 8, 2u);
+    failures += expect(volume->refresh(0), "self-linked root refresh serviced");
+    failures += expect(volume->last_error(0, error, sizeof(error)) &&
+                       strcmp(error, "FAT32 root chain invalid") == 0,
+                       "self-linked root rejected");
+    put32(x4_card_fat_sector + 8, 0x0fffffffu);
     memset(x4_card_sector, 0, sizeof(x4_card_sector));
     x4_card_sector[446 + 4] = 0x0cu;
     put32(x4_card_sector + 446 + 8, 1);
