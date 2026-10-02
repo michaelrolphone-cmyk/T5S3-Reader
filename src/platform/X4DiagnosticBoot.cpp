@@ -103,7 +103,6 @@ bool present() {
 void x4DiagnosticSetup() {
     Serial.begin(115200);
     Serial.println("X4 diagnostic entered");
-    Serial.flush();
     const unsigned long start = millis();
     while (!Serial && millis() - start < 200) delay(10);
     LOG_INF("X4", "diagnostic boot %s flash=16MB app0=0x10000", Board::firmwareMarker());
@@ -143,8 +142,7 @@ void x4DiagnosticLoop() {
     const unsigned long now = millis();
     if (now - last >= 2000) {
         last = now;
-        Serial.printf("X4 heartbeat ready=%d\n", ready ? 1 : 0);
-        Serial.flush();
+        LOG_INF("X4", "heartbeat ready=%d", ready ? 1 : 0);
     }
     if (!ready || !nav_api) {
         delay(200);
