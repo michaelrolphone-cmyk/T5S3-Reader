@@ -416,6 +416,11 @@ void logPlatformInputHealth() {
 }
 
 void setup() {
+#ifdef BOARD_XTEINK_X4_PRO
+  Serial.begin(115200);
+  Serial.println("X4 diagnostic entered");
+  Serial.flush();
+#endif
   t1 = millis();
 
   // Keep large general-purpose allocations out of scarce internal RAM without

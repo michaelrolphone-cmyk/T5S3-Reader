@@ -137,6 +137,13 @@ void x4DiagnosticSetup() {
 }
 
 void x4DiagnosticLoop() {
+    static unsigned long last = 0;
+    const unsigned long now = millis();
+    if (now - last >= 2000) {
+        last = now;
+        Serial.printf("X4 heartbeat ready=%d\n", ready ? 1 : 0);
+        Serial.flush();
+    }
     if (!ready || !nav_api) {
         delay(200);
         return;
