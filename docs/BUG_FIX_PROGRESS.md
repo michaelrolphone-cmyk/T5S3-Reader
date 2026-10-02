@@ -1,9 +1,10 @@
 ## Active OTA version collision reconciliation — canonical bug #233
 
-- Owner claim `ota_version_collision_resolution`; original code PR [#351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351) was ready at head `46639d97677e99e5dde48c5a4c1af3a0ca022553`, with candidate1.3.57 and exact CI36953212934 green. Fresh conflict check found owner PR352 open/green on head `dbd17a326bb16686c105f8c068d5d226188c9522`, firmware1.3.57. Its owner candidate is preserved; PR352 is not modified.
-- Other fresh reservations: release-index/master1.3.55; U1 PR96 candidate1.3.56; ClockSync PR353 candidate1.3.58 (open/ready, exact CI36954342160 green). Older X4 PR348/350 are at1.3.53, CAM PR344 at1.3.49, lab PR338 at1.3.48.
-- PR351 has been returned to draft while its own firmware candidate is moved to **1.3.59**, the next unique patch above the preserved reservations. This changes only `platformio.ini`; source/tests unchanged. Exact-head CI must be refreshed on the new commit before PR351 can be marked ready again. Do not claim the prior green run applies to the new SHA.
-- No master/U1/PR352/PR353 code edits, merges, release/catalog publication, deployment or device operation.
+- Owner claim `ota_version_collision_resolution`; open draft [PR351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351), branch `fix/ota-check-state`, current exact head `92b119122f0115da0adbac6ca52b6da55bbd8e6f`, based on merged master `91f3768ebb402c218aff64d41cfcef689d743b2e). PR is draft/mergeable. The previous ready head `46639d9` passed CI36953212934 at1.3.57; that SHA is historical and does not verify current head.
+- Preserved owner reservation PR352 remains open/ready on exact head `dbd17a326bb16686c105f8c068d5d226188c9522`, candidate1.3.57; exact CI36954723668 is green. No PR352 edits.
+- Current reserved lineage: release-index/master1.3.55, U1 PR96 candidate1.3.56, PR352 candidate1.3.57, ClockSync PR353 candidate1.3.58. OTA PR351 moved to candidate**1.3.59**, the next unique patch. No U1/PR352/PR353 modifications.
+- CI rerun for PR351's current exact head is queued as run36955528948. Keep the version-collision claim active; update exact-head status and ledger when terminal, and retain draft until green. Do not claim prior CI on current head.
+- Source repair/tests are unchanged from green PR351 source head46639d9. Candidate update changes only `platformio.ini`; focused source regressions had already passed. No master writes, merges, releases, catalog mutations or device operations.
 
 ---
 
