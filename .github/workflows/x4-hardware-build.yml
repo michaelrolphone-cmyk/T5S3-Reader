@@ -1,0 +1,66 @@
+name: X4 hardware candidate
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Controller, X4 and unchanged CAM host contracts
+        run: |
+          python -m unittest discover -s test/hardware -p 'test_targets.py' -v
+          python -m unittest discover -s test/hardware/cam -p 'test_trusted_controller.py' -v
+  x4-candidate:
+    needs: contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Detect separately owned X4 firmware support
+        id: support
+        run: |
+          if grep -q '^\[env:xteink-x4-pro\]' platformio.ini; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'X4 firmware environment absent on this head. No X4 candidate or hardware qualification produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build exact X4 application
+        if: steps.support.outputs.available == 'true'
+        run: |
+          python -m pip install platformio==6.1.19
+          pio run -e xteink-x4-pro
+      - name: Freeze X4 provenance and target-specific manifest
+        if: steps.support.outputs.available == 'true'
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p "$RUNNER_TEMP/x4-candidate"
+          cp .pio/build/xteink-x4-pro/firmware.bin "$RUNNER_TEMP/x4-candidate/riscrte-xteink-x4-pro.bin"
+          python test/hardware/x4/contract.py "$RUNNER_TEMP/x4-candidate" "$SOURCE_SHA" "$RUN_ID" "$RUN_ATTEMPT"
+      - uses: actions/upload-artifact@v4
+        if: steps.support.outputs.available == 'true'
+        with:
+          name: x4-candidate-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/x4-candidate/
+          retention-days: 7
+          if-no-files-found: error
