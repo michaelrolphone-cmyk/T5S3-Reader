@@ -1,12 +1,11 @@
-## Active ClockSync RTC retry repair — canonical bug #69
+## Completed ClockSync RTC retry repair — PR353
 
-- Owner `clock_sync_rtc_retry_batch`; [draft PR353](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/353), branch `fix/clock-sync-rtc-retry`, exact remote head `533c50733a86b1ca6b356975c22a089b3b6049f8`, base master `91f3768ebb402c218aff64d41cfcef689d743b2e`.
-- Current source finding: `commitCurrentSystemTime()` used to publish `hasNetworkSync/lastNetworkSyncEpoch` before `halClock.syncRtcFromSystemTime()`; a failed RTC write left a later ordinary sync suppressed for up to12h. Reachable through Wi-Fi selection startup and KOReader network sync. Adjacent browser-clock transaction/persistence reports are out of scope.
-- Repair moves retry-throttle publication immediately after successful RTC write. Failure leaves ordinary retry eligibility unchanged; no broader RTC settings/persistence transaction changes.
-- **Local regression PASS:** compiles production `src/ClockSync.cpp`; original source fails at expected second RTC write; repaired source passes NTP success→RTC failure→later ordinary NTP/RTC retry. Shell syntax and `git diff --check` pass.
-- Firmware candidate **1.3.58**. Fresh lineage: published release-index/master1.3.55; PR351 candidate1.3.57; U1 PR96 candidate1.3.56. U1 owner coordination note updated; U1 files unchanged.
-- Exact-head CI run36954342160 has started on `533c507`; result pending. Do not mark ready/release claim until exact run is terminal and green. No local firmware build or RTC/device verification; no merge, release, master write or device I/O.
-
+- Canonical report **69** is fixed in open, unmerged [PR353](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/353), branch `fix/clock-sync-rtc-retry`, exact remote head `533c50733a86b1ca6b356975c22a089b3b6049f8`, based on master `91f3768ebb402c218aff64d41cfcef689d743b2e`. PR remains draft until this terminal checkpoint; mergeability was true. Implementation claim released after exact-head CI.
+- Observable failure: Wi-Fi startup or KOReader could complete NTP acquisition but fail RTC write-back; the premature 12-hour throttle then made a later ordinary sync return success without retrying, leaving hardware clock stale. Repair updates throttle state only after successful `HalClock::syncRtcFromSystemTime()`.
+- **Local regression PASS:** production `ClockSync.cpp` host test fails on original source after the injected RTC failure and passes after the fix when a later ordinary sync re-attempts NTP and RTC write. Shell syntax and `git diff --check` passed.
+- **Exact-head CI PASS:** [36954342160](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36954342160) passed host parser tests (including the new regression), both board builds and headless core on exact remote head `533c507`.
+- Firmware candidate **1.3.58**, uniquely above published/master1.3.55, OTA PR351 candidate1.3.57 and active U1 PR96 candidate1.3.56. U1 owner coordination note updated; U1 remains untouched.
+- No local full firmware build, physical RTC/device I/O or hardware verification. No merge, release/catalog mutation, deployment or master write.
 
 ---
 
