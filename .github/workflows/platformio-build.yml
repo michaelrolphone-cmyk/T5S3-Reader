@@ -251,12 +251,15 @@ jobs:
       - name: Verify boot animation choreography
         run: python3 test/boot_animation_contract_test.py
 
-      - name: Verify X4 boot isolation and panel sequence
+      - name: Verify X4 boot, panel and button contracts
         run: |
           python3 test/x4pro_boot_isolation_test.py
           python3 test/x4pro_panel_sequence_test.py
           cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
           /tmp/x4gpio
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_buttons_fake -I Drivers/x4pro_board \
+            test/x4pro_buttons_state_test.c Drivers/x4pro_buttons/driver.c -o /tmp/x4buttons
+          /tmp/x4buttons
 
       - name: Verify Home reading card rendering and cache behavior
         run: python3 test/home_reading_card_test.py
