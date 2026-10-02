@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 host = (ROOT/'src/native/NativeAppHost.cpp').read_text()
 menu = (ROOT/'src/activities/GlobalMenuActivity.cpp').read_text()
 poll = host[host.index('bool pollInput('):host.index('\nbool poll(t5_app_input_t*')]
+current = host[host.index('Session* current()'):host.index('void beginAppInput(')]
 modal = menu[menu.index('GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal('):menu.index('\nvoid GlobalMenuActivity::render(RenderLock&&)')]
 confirm = menu[menu.index('bool modalShutdownConfirmed('):menu.index('\n}  // namespace')]
 prefix = r'''
@@ -91,10 +92,11 @@ struct GlobalMenuActivity {
  static ModalResult runFirmwareModal(GfxRenderer&,MappedInputManager&);
 };
 struct t5_app_input_t {unsigned buttons=0;bool tapped=false;int touch_x=0,touch_y=0;bool exit_requested=false;};
-struct Session {MappedInputManager input;GfxRenderer renderer;bool backExitsApp=false,exiting=false,presenting=false,pendingHomeSingle=false;unsigned long lastHomeEventMs=0;};
+static int xTaskGetCurrentTaskHandle(){return 1;}
+struct Session {int owner=1;MappedInputManager input;GfxRenderer renderer;bool backExitsApp=false,exiting=false,presenting=false,pendingHomeSingle=false;unsigned long lastHomeEventMs=0;};
 Session* session; bool homeRequested=false;
 constexpr unsigned long kNativeHomeDoubleClickWindowMs=400;
-Session* current(){return session;}
+
 void beginAppInput(Session&) {}
 void nativeProviderOwnerTick() {}
 '''
@@ -122,7 +124,7 @@ int main(){
  reset(s);SETTINGS.doubleClickHomeMenu=false;s.input.homes={990};pollInput(&out,0,false);assert(out.exit_requested&&homeRequested);
  reset(s);RuntimeMemory::failSnapshot=true;s.input.homes={100,300};pollInput(&out,0,false);assert(out.exit_requested&&homeRequested&&s.renderer.frames.empty());
  // No modal may touch the framebuffer during a serviced refresh.
- reset(s);s.presenting=true;s.input.homes={100,300};pollInput(&out,0,false);assert(s.input.homes.size()==2&&s.renderer.frames.empty());
+ reset(s);s.presenting=true;s.input.homes={100,300};assert(!pollInput(&out,0,false));assert(s.input.homes.size()==2&&s.renderer.frames.empty());
  s.presenting=false;homeDismiss(s);pollInput(&out,0,false);assert(!out.exit_requested&&s.input.homes.empty());
  // Cancel shutdown after full-screen confirmation: restore app below menu.
  reset(s);s.input.homes={100,300};s.input.script={{},{int(B::Confirm)},{int(B::Left)},{-1,true}};
@@ -141,6 +143,6 @@ int main(){
 '''
 with tempfile.TemporaryDirectory() as d:
     d=Path(d); cpp=d/'home.cpp'; binary=d/'home'
-    cpp.write_text(prefix+confirm+'\n'+modal+'\n'+poll+tests)
+    cpp.write_text(prefix+current+confirm+'\n'+modal+'\n'+poll+tests)
     subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-fsanitize=address,undefined',str(cpp),'-o',str(binary)],check=True,timeout=60)
     subprocess.run([str(binary)],check=True,timeout=30)

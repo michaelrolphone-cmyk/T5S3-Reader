@@ -322,13 +322,6 @@ bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   }
   if (powerPressed) homeRequested = true;
 
-  // Serviced refresh callbacks poll while another task owns the framebuffer.
-  // Leave captured Home events queued until that refresh has joined.
-  if (s->presenting) {
-    out->exit_requested = s->exiting;
-    return true;
-  }
-
   unsigned long homeEventMs = 0;
   // Drain captured presses before applying the single-click deadline. A busy
   // ELF may deliver both taps only after the 400 ms window has elapsed.

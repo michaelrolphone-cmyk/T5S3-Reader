@@ -123,14 +123,11 @@ bool MappedInputManager::isPressed(const Button button) const {
 }
 
 void MappedInputManager::update() const {
+  navigationHomeConsumed = false;
   gpio.update();
   nativeDeviceDiscoveryTick();
   nativeNavigationConfigure(SETTINGS.externalInputNavigation != 0);
   nativeNavigationTick();
-  if (!navigationHomePending && (nativeNavigationFrame().pressed & RISC_NAV_HOME)) {
-    navigationHomePending = true;
-    navigationHomeEventMs = millis();
-  }
   nativeTouchTick();
 }
 
@@ -178,9 +175,9 @@ bool MappedInputManager::getTouchSwipe(TouchPoint& start, TouchPoint& end, const
 
 bool MappedInputManager::takeTouchHomeButtonPress(unsigned long& eventMs) const {
   if (nativeTouchTakeHomePress(eventMs)) return true;
-  if (navigationHomePending) {
-    navigationHomePending = false;
-    eventMs = navigationHomeEventMs;
+  if (!navigationHomeConsumed && (nativeNavigationFrame().pressed & RISC_NAV_HOME)) {
+    navigationHomeConsumed = true;
+    eventMs = millis();
     return true;
   }
   return false;

@@ -50,8 +50,7 @@ class MappedInputManager {
 
  private:
   HalGPIO& gpio;
-  mutable bool navigationHomePending = false;
-  mutable unsigned long navigationHomeEventMs = 0;
+  mutable bool navigationHomeConsumed = false;
   bool hasInjectedButtonTap = false;
   Button injectedButtonTap = Button::Back;
 

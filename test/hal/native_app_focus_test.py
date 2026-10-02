@@ -16,15 +16,23 @@ void nativeProviderOwnerTick(){++ownerTicks;}
 void nativeTouchDiscardGestures(){++boundaries;taps=0;}
 void esp_task_wdt_reset(){}
 void delay(unsigned){}
+unsigned long millis(){return 0;}
+constexpr unsigned long kNativeHomeDoubleClickWindowMs=400;
+struct {bool doubleClickHomeMenu=true;} SETTINGS;
+bool nativeHardwareTakeoverDisplayActive(){return false;}
 struct MappedInputManager {
  enum class Button{Back,Confirm,Left,Right,Up,Down,Power};
  struct TouchPoint{int16_t x=0,y=0;};
  void update(){}
  bool isPressed(Button){return false;}
  bool wasTouchTapped(TouchPoint& p,int){if(!taps)return false;--taps;p={100,200};return true;}
- bool wasTouchHomeButtonPressed(){return false;}
+ bool takeTouchHomeButtonPress(unsigned long&){return false;}
 };
-struct Session{MappedInputManager input;int renderer=0;bool inputStarted=false,backExitsApp=true,exiting=false;};
+struct GlobalMenuActivity {
+ enum class ModalResult {Dismissed,ShutdownRequested,Unavailable};
+ static ModalResult runFirmwareModal(int,MappedInputManager&){assert(false);return ModalResult::Unavailable;}
+};
+struct Session{MappedInputManager input;int renderer=0;bool inputStarted=false,backExitsApp=true,exiting=false,presenting=false,pendingHomeSingle=false;unsigned long lastHomeEventMs=0;};
 static Session active;
 static Session* current(){return &active;}
 static bool homeRequested=false;
