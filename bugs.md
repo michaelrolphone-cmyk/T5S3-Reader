@@ -2569,7 +2569,7 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair direction:** Preserve the first supported rootfile unless an explicit rendition-selection policy chooses otherwise. Add a container fixture with two supported rootfiles and assert that the preferred first one is selected deterministically.
 ### 248. Natural filename sorting invokes ctype with negative UTF-8 bytes
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed / claimed / in progress on current master `00f9b2458dbfdae2188f2695634edb40c65c7ab0`. Owner `utf8_filename_sort_20261002`; repair branch `fix/utf8-natural-filename-sort`; baseline reproduction pending. `sortFileList()` still passes signed UTF-8 bytes to ctype digit and case-fold helpers. No overlapping open PR path; original scan provenance below is retained.
 - **Scan provenance:** [automation/bug-scan-20260930-1722, scan-local #210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/d581a637894b45df2d45e649dd7a12f25e779692/bugs.md); source commit `d581a637894b45df2d45e649dd7a12f25e779692`.
 - **Affected code:** `lib/FsHelpers/FsHelpers.cpp::sortFileList()`; direct firmware caller includes recovery-mode `src/activities/settings/SdFirmwareUpdateActivity.cpp::loadRecoveryEntries()`.
 - **Trigger / reproduction:** Put ordinary non-ASCII UTF-8 filenames such as `éclair.bin` and `über.bin` in a directory that is passed through `FsHelpers::sortFileList()` (for example the recovery firmware picker), on the ESP32 build where plain `char` is signed.
