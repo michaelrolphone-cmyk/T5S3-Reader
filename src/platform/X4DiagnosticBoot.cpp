@@ -53,6 +53,10 @@ void pixel(int x, int y, bool black) {
 void marker(int x, int y) {
     for (int i = 0; i < 24; ++i) { pixel(x + i, y, true); pixel(x, y + i, true); }
 }
+void rectangle(int left, int top, int right, int bottom, bool black) {
+    for (int y = top; y < bottom; ++y)
+        for (int x = left; x < right; ++x) pixel(x, y, black);
+}
 void paint(uint32_t edge) {
     memset(surface, 0x00, sizeof(surface));
     for (int i = 0; i < 800; ++i) { pixel(i, 0, true); pixel(i, 479, true); }
@@ -62,12 +66,19 @@ void paint(uint32_t edge) {
     marker(8, 440);
     for (int x = 40; x < 200; ++x) pixel(x, 40, true);
     for (int y = 40; y < 120; ++y) pixel(40, y, true);
+    /* Large high-contrast targets make a real first frame unambiguous by eye. */
+    rectangle(80, 80, 400, 320, true);
+    rectangle(180, 160, 300, 240, false);
+    rectangle(520, 120, 680, 420, true);
     for (uint32_t n = 0; n < (sequence & 7u); ++n) marker(80 + (int)n * 28, 200);
     if (edge & RISC_NAV_LEFT) marker(80, 300);
     if (edge & RISC_NAV_RIGHT) marker(160, 300);
     if (edge & RISC_NAV_CONFIRM) marker(240, 300);
 }
 bool present() {
+    uint32_t black_pixels = 0;
+    for (uint8_t value : surface) black_pixels += (uint32_t)__builtin_popcount((unsigned)value);
+    LOG_INF("X4", "diagnostic black_pixels=%lu", static_cast<unsigned long>(black_pixels));
     risc_display_surface_v1 out{};
     if (!display_api->acquire(display_api->context, RISC_DISPLAY_FORMAT_MONO1, &out)) {
         LOG_ERR("X4", "acquire failed");
