@@ -1,3 +1,13 @@
+## Active ClockSync RTC retry repair — canonical bug #69
+
+- Owner `clock_sync_rtc_retry_batch`; implementation branch planned as `fix/clock-sync-rtc-retry`, base current master `91f3768ebb402c218aff64d41cfcef689d743b2e`. Revalidated source: `src/ClockSync.cpp::commitCurrentSystemTime()` publishes `hasNetworkSync/lastNetworkSyncEpoch` before `halClock.syncRtcFromSystemTime()`; after an RTC failure a later ordinary sync within 12 hours is skipped and can return success without retry. Observable workflows include Wi-Fi selection startup and KOReader network sync; this is specifically the platform clock/RTC commit path.
+- Ownership check: no open clock-sync PR found; active U1 PR96 changed-file list does not include `src/ClockSync.cpp`; no active implementation claim for #69 in prior progress. Adjacent reports #2380/#2381 concern separate browser transaction/persistence failures; this repair only moves the NTP throttle update to after successful RTC write.
+- Regression: newly added host test compiles production `ClockSync.cpp`, forces NTP success, RTC write failure, advances time, and verifies an ordinary retry performs a second RTC write. The original source failed at the second-write assertion; fixed local source passes. Exact remote commit and CI still pending.
+- Version lineage freshly checked: published release-index/master firmware1.3.55; PR351 candidate1.3.57; U1 PR96 candidate1.3.56. Proposed ClockSync candidate1.3.58 is distinct and above all three. Coordinate U1 to advance if it integrates after this repair; do not edit U1.
+- Claim remains active until focused test, remote exact-head CI and ledger checkpoint complete. No master write/merge/release/deployment or device I/O.
+
+---
+
 ## Completed OTA versioned-head checkpoint — PR351
 
 - Canonical report **233** is fixed in open, unmerged [PR351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351), now marked ready for review. Branch `fix/ota-check-state`, exact remote head `46639d97677e99e5dde48c5a4c1af3a0ca022553`, base master `91f3768ebb402c218aff64d41cfcef689d743b2e`. The implementation claim is released.
