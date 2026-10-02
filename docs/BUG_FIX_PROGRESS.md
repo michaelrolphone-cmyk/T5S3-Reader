@@ -20,6 +20,7 @@
 - Repair: parse into staging state and publish only after the complete bounded store validates; retain live history on read/parse failure; enter a visible read-only state; block punch and keyboard edits until a successful load. The production-source regression covers read failure, malformed JSON after a valid record, no partial commit/no writes, failed keyboard continuation, edit guard, cancel, recovery and retry.
 - **Local PASS:** baseline test failed at `day_count == 2` after read error, proving the original destructive reset. Repaired focused C test, source contract, existing clock regression and Timecard UI test pass with `-Wall -Wextra -Werror`; shell syntax/diff checks pass. Xtensa Timecard ELF and sidecar build; source/sidecar version1.0.4 agrees.
 - **Local limitation:** ASan/UBSan executable stalled and was interrupted (not a pass). Full native aggregate not run locally; exact-head cloud host aggregate and dedicated/PlatformIO checks remain pending.
+- [Draft PR #356](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/356) is open on the remote branch with exact head `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, 6 commits ahead/0 behind the baseline, and exactly six intended changed files. PlatformIO run36972137696 is queued; keep draft and claim active until exact-head aggregate/targets/headless pass.
 
 ## Active malformed-BMP dimension repair — canonical bug #18
 
