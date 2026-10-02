@@ -26,7 +26,9 @@ static bool poll(void *context, risc_input_navigation_frame_v1 *out) {
             waiting_for_neutral = false;
             stable_count = 0;
         }
-        *out = (risc_input_navigation_frame_v1){0};
+        out->buttons = 0;
+        out->pressed = 0;
+        out->released = 0;
         return true;
     }
     if (raw != pending) { pending = raw; stable_count = 0; }
