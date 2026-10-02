@@ -28,22 +28,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Read exact U1 storage API dependency
-        run: |
-          git fetch --depth=1 origin 480bf345906344ce55eef3415e7180d6f6a631fb
-          mkdir -p "$RUNNER_TEMP/u1-hal"
-          git show 480bf345906344ce55eef3415e7180d6f6a631fb:lib/hal/HalStorage.h > "$RUNNER_TEMP/u1-hal/HalStorage.h"
-          git show 480bf345906344ce55eef3415e7180d6f6a631fb:lib/hal/StorageGeneration.h > "$RUNNER_TEMP/u1-hal/StorageGeneration.h"
       - name: Boot failure and real port coherence contracts
-        run: bash test/run_cam_headless_test.sh "$RUNNER_TEMP/u1-hal"
-      - name: Read pinned provider stream ABI
-        run: |
-          mkdir -p "$RUNNER_TEMP/u1-sdk/sdk/driver"
-          for header in RiscProviderV2.h RiscStreamProviderV1.h; do
-            git show 480bf345906344ce55eef3415e7180d6f6a631fb:sdk/driver/$header > "$RUNNER_TEMP/u1-sdk/sdk/driver/$header"
-          done
+        run: bash test/run_cam_headless_test.sh
       - name: Camera lifecycle and bounded stream contracts
-        run: RISCRTE_PROVIDER_SDK_ROOT="$RUNNER_TEMP/u1-sdk" sh test/run_camera_provider_test.sh
+        run: sh test/run_camera_provider_test.sh
       - name: Default app selection and camera utility contracts
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -Itest/runtime/default_app_stubs -Ilib/NativeApps/include -Isrc test/runtime/default_app_selection_test.cpp -o "$RUNNER_TEMP/default-app-test"

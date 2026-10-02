@@ -1,5 +1,16 @@
 # U1 implementation ledger
 
+## October 2: Hollow Trail master integration candidate
+
+PR #96 merges actual master ca66db29, including Hollow Trail startup and PSRAM
+#352, into prior U1 head 78266e91. Firmware 1.3.61 is above published 1.3.57
+and open PR reservations through 1.3.60. Hollow Trail ZIP 1.1.44 is above
+published 1.1.43. Master PSRAM/source and U1 package/lifecycle code are
+retained. The changed-package-source version guard passes against actual
+master. Focused Hollow Trail and Springboard tests and exact-head CI are
+required for this merge; older green runs do not qualify its artifacts. No
+release, flash or catalog update is implied.
+
 ## October 1: Wi-Fi/Status Bar master integration candidate
 
 Actual master d2d5a9a1 merges Wi-Fi #345 and Status Bar #346. The existing

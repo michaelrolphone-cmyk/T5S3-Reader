@@ -6,8 +6,7 @@ build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror "$repo/test/boot/headless_lifecycle_test.cpp" -o "$build/boot"
 "$build/boot"
-# U1 owns this API; CI supplies the exact pinned headers without copying U1
-# implementation into this PR. Integration builds use the real U1 checkout.
+# U1 is merged; compile against the storage API at this exact PR checkout.
 c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual \
   -I"$repo/test/boot/cam_stubs" -I"$headers" \
   "$repo/ports/cam/HalStorageSdmmc.cpp" "$repo/test/boot/cam_storage_test.cpp" -o "$build/storage"

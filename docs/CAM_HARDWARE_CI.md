@@ -33,11 +33,10 @@ tests do not execute on the Mac until separately reviewed and installed.
 ## Candidate and physical transaction
 
 The cloud build uses PlatformIO 6.1.19 and the CAM port's declared platform.
-PR #347 now includes merge commits from U1 PR #96 and CAM PR #344, plus the
-current master baseline. Thus its exact PR head contains the firmware, CAM
-app, host tests and this controller. Those source PRs remain open; Reader
-maintainers will reconcile merge order. A detached local merge or prebuilt
-image cannot validate the exact-PR-SHA flow.
+U1 PR #96 and CAM PR #344 are merged into master. PR #347 contains the cloud
+candidate workflow, pinned controller source, device suite, and contract tests
+over that shared baseline. The artifact is built from the exact PR head; a
+detached local merge or prebuilt image cannot validate the exact-PR-SHA flow.
 The artifact contains only `firmware.bin` and its manifest. The SHA in the
 manifest is the checked-out PR head, not GitHub's synthetic PR merge commit.
 
@@ -72,22 +71,27 @@ physical mapping is a prerequisite.
 
 ## Activation boundary
 
-This PR stages source. The owner approved a persistent credential and timer;
-the Mac user LaunchAgent is configured for a 60-second interval. An exact-head
-CAM pilot passed with baseline restoration. The first natural timer tick then
-stalled before the controller started because macOS requested Documents Folder
-access for background Python. The agent and Reader job are disabled pending
-the owner's explicit macOS permission decision. The credential, source and
-physical CAM preflights passed. No runner, repository security setting or
-required check has been configured. The controller files are pinned at an
-exact trusted commit. Activation uses these operations:
+The owner approved the persistent credential and timer and granted the Mac's
+background Python Documents Folder access. The user LaunchAgent is active at
+a 60-second interval, and the Reader CAM job is enabled. A natural timer tick
+ran the exact-head candidate for PR #347 head
+`b20965413378682599980b2ae5c4fc9752bb3fb4`: cloud artifact
+`11208766025`, firmware SHA-256
+`4856611cc492b3adb38a82078326c61e83ae0fbb2fc4672a383fccff5b0def71`,
+CAM MAC match, 24,191-byte private capture, app return zero, three Running
+heartbeats, and exact baseline restoration. GitHub status
+`CAM hardware / trusted owner SHA` was posted success on that head, status ID
+`55423906955`. A new PR head requires its own cloud build and natural
+hardware pass. No self-hosted runner, repository security setting or required
+check has been configured. The installed controller is pinned to an exact
+reviewed commit. Its setup and operating requirements are:
 
 1. Create one **fine-grained** GitHub credential owned by
    `michaelrolphone-cmyk` for **all repositories** in that personal account,
    as the owner approved for future projects: Actions **read**, Pull requests
    **read**, Commit statuses **write**, Metadata **read** (automatic). No other write
    scopes are needed. Only the Reader CAM job is configured in the local
-   controller allowlist; it is currently disabled. Future repositories need
+   controller allowlist; it is enabled. Future repositories need
    separate reviewed jobs.
    Store it privately in the Mac login Keychain as generic-password service
    `riscrte-cam-ci`, account `michaelrolphone-cmyk` using secure local entry.
@@ -99,9 +103,8 @@ exact trusted commit. Activation uses these operations:
    environment (`esptool==4.5.1`, `pyserial==3.5`). The controller and device
    scripts must not auto-update from a PR checkout. Point `--evidence-root` to
    a private local directory outside the repository.
-3. Enable the installed user-scoped 60-second launchd timer only after the
-   Documents access decision, private Reader job binding and successful
-   exact-SHA source artifact are verified. Its launcher invokes the pinned
+3. Keep the installed user-scoped 60-second launchd timer bound to the
+   reviewed source, private Reader job and physically mapped CAM. Its launcher invokes the pinned
    `trusted_controller.py --scan` with a private evidence root and CAM binding.
    The timer will poll owner PRs, wait
    for their completed exact-SHA cloud build, then post a commit status under
@@ -115,11 +118,10 @@ candidate discovery is retried on a later pass without finalizing a hardware
 result for that SHA.
 
 The credential persists in Keychain with all-personal-repository scope, while
-the job allowlist permits only Reader CAM execution. The disabled user launchd
-configuration persists until removed. Once successfully activated, the Mac
+the job allowlist permits only Reader CAM execution. The enabled user launchd
+configuration persists until removed. The Mac
 will automatically flash eligible owner-PR firmware to the CAM and save private
-backup/result files. These are the material activation risks. After one
-complete request-to-status pilot is verified, a repository ruleset may require
+backup/result files. These are the material activation risks. A repository ruleset may require
 `CAM hardware / trusted owner SHA`
 for merges, but that separate security-setting change needs owner approval.
 Until then the status is advisory. GitHub permits commit statuses to be

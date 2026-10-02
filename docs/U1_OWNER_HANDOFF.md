@@ -1,15 +1,17 @@
 # U1 software candidate and one owner hardware session
 
 This is the handoff for the existing PR #96 candidate that integrates master
-`91f3768ebb402c218aff64d41cfcef689d743b2e`, including Springboard #349,
-Wi-Fi #345 and Status Bar #346 as well as earlier Text Editor/display merges.
-The configured firmware candidate is **1.3.56**, above master's **1.3.55**;
+`ca66db298c2e735f45e5029083a9bfbd7b6740bd`, including Hollow Trail #352,
+Springboard #349, Wi-Fi #345 and Status Bar #346 as well as earlier Text Editor/display merges.
+The configured firmware candidate is **1.3.61**, above master's **1.3.57** and
+other open firmware reservations through **1.3.60**. Hollow Trail ZIP **1.1.44**
+exceeds master's published **1.1.43**;
 Status Bar's cumulative U1 ZIP is **1.0.3** above published loose 1.0.2.
 Verify PR #96's current head and use only Actions artifacts whose `head_sha`
 exactly matches it. Older artifacts in the ledger are historical and are not
 install/flash inputs for this candidate.
 
-## October 1 master-integration checkpoint
+## Earlier Springboard master-integration checkpoint
 
 The owner requested merge preparation on the same `impl/u1-riscrte` branch.
 Merge commit `01aa397dae6b4092178135084cc965617dfbb5dd` retains both parents:
@@ -66,14 +68,14 @@ artifact groups are:
 | Driver/service/provider ZIPs and linked experimental ELFs | `usb-v2-elves-and-hid-packages-unqualified-for-board` |
 | Linked firmware and controller evidence | `u1-target-references-t5s3-pro`, `u1-target-references-lilygo-epd47-s3`, `u1-controller-references` |
 
-The configured firmware version is **1.3.56**. Important source package
+The configured firmware version is **1.3.61**. Important source package
 versions: `i2c-esp32s3-v2` 0.1.6, `board-power-t5s3-v2` 0.1.9,
 `usb-controller-esp32s3` 0.1.20, `usb-host-v2` 0.1.5, canonical
 `usb-cdc-acm` 0.1.8, `usb-cp210x-v2` 0.1.8, `usb-ch34x-v2` 0.1.7,
 `usb-serial-witness` 0.1.3, `display-epd-video` 0.1.4 and `archive-zip`
 0.1.0. App examples include Model Viewer 1.2.8, Risc Strike 1.0.4,
 Status Bar Settings 1.0.3, Text Editor 0.2.3, Timecard 1.0.3, Hollow Trail
-1.1.42 and LoRa 1.0.1. Use the manifests and ZIP catalog in the exact-head
+1.1.44 and LoRa 1.0.1. Use the manifests and ZIP catalog in the exact-head
 artifacts for the full inventory; do not combine them with older branch or
 published assets. An Actions artifact ZIP digest is not an individual firmware
 image or package SHA; verify extracted assets against their contained records.
