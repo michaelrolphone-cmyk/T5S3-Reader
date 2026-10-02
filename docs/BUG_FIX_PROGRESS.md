@@ -1,3 +1,12 @@
+## Active OTA version collision reconciliation — canonical bug #233
+
+- Owner claim `ota_version_collision_resolution`; original code PR [#351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351) was ready at head `46639d97677e99e5dde48c5a4c1af3a0ca022553`, with candidate1.3.57 and exact CI36953212934 green. Fresh conflict check found owner PR352 open/green on head `dbd17a326bb16686c105f8c068d5d226188c9522`, firmware1.3.57. Its owner candidate is preserved; PR352 is not modified.
+- Other fresh reservations: release-index/master1.3.55; U1 PR96 candidate1.3.56; ClockSync PR353 candidate1.3.58 (open/ready, exact CI36954342160 green). Older X4 PR348/350 are at1.3.53, CAM PR344 at1.3.49, lab PR338 at1.3.48.
+- PR351 has been returned to draft while its own firmware candidate is moved to **1.3.59**, the next unique patch above the preserved reservations. This changes only `platformio.ini`; source/tests unchanged. Exact-head CI must be refreshed on the new commit before PR351 can be marked ready again. Do not claim the prior green run applies to the new SHA.
+- No master/U1/PR352/PR353 code edits, merges, release/catalog publication, deployment or device operation.
+
+---
+
 ## Completed ClockSync RTC retry repair — PR353
 
 - Canonical report **69** is fixed in open, unmerged [PR353](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/353), branch `fix/clock-sync-rtc-retry`, exact remote head `533c50733a86b1ca6b356975c22a089b3b6049f8`, based on master `91f3768ebb402c218aff64d41cfcef689d743b2e`. PR remains draft until this terminal checkpoint; mergeability was true. Implementation claim released after exact-head CI.
