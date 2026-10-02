@@ -21,6 +21,9 @@ STATUS_CONTEXT = "X4 hardware / trusted owner SHA"
 SHA = cam.SHA
 MAX_ZIP = 10_000_000
 MAX_IMAGE = 0x640000
+# Earlier PR runs used this workflow name before it produced the app-only
+# artifact contract. They cannot be valid candidates for this controller.
+FIRST_CANDIDATE_RUN = 37076551142
 
 
 def require(ok, message):
@@ -46,7 +49,8 @@ def candidate(gh, number, sha):
     related = []
     for run in runs["workflow_runs"]:
         prs = run.get("pull_requests") or []
-        if (run["event"] == "pull_request" and run["head_sha"] == sha
+        if (run["id"] >= FIRST_CANDIDATE_RUN
+                and run["event"] == "pull_request" and run["head_sha"] == sha
                 and run["actor"]["login"] == OWNER
                 and any(p["number"] == number and p["head"]["sha"] == sha
                         and p["head"]["repo"]["id"] == p["base"]["repo"]["id"]

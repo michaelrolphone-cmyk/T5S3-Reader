@@ -11,7 +11,9 @@ reviewed and hash-pinned local controller polls GitHub every 60 seconds using
 the existing CAM scheduler and narrowly scoped status credential. It accepts
 only an open, owner-authored, same-repository PR with one successful exact-head
 X4 candidate run and a bounded matching artifact. External/fork PRs and
-ambiguous runs fail closed. It reads only the app image and manifest from the
+ambiguous runs fail closed. Runs predating the first app-only artifact contract
+are ignored; a current successful run without its artifact fails closed. It
+reads only the app image and manifest from the
 ZIP; repository Python and workflow edits do not execute on the Mac until a
 reviewed controller update is installed. The owner account and its repository
 branch remain the source trust boundary for firmware that runs on the X4.

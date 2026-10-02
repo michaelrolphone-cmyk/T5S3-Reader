@@ -28,11 +28,12 @@ class FakeGitHub:
         if path.startswith("/actions/workflows/"):
             run = {"event": "pull_request", "head_sha": SHA,
                    "actor": {"login": controller.OWNER}, "status": "completed",
-                   "conclusion": self.conclusion, "id": 7, "run_attempt": 1,
+                   "conclusion": self.conclusion, "id": controller.FIRST_CANDIDATE_RUN,
+                   "run_attempt": 1,
                    "pull_requests": [{"number": 350, "head": {"sha": SHA, "repo": {"id": 42}},
                                       "base": {"repo": {"id": 42}}}]}
             return {"total_count": 1, "workflow_runs": [run]}
-        if path == "/actions/runs/7/artifacts?per_page=100":
+        if path == f"/actions/runs/{controller.FIRST_CANDIDATE_RUN}/artifacts?per_page=100":
             return {"artifacts": [{"id": 8, "name": "x4-app-candidate-" + SHA,
                     "size_in_bytes": len(self.blob), "expired": False,
                     "digest": "sha256:" + hashlib.sha256(self.blob).hexdigest(),
@@ -47,7 +48,7 @@ class FakeGitHub:
 
 def archive(extra=False):
     manifest = {"schema": 1, "board": "xteink-x4-pro", "source_sha": SHA,
-                "run_id": 7, "run_attempt": 1,
+                "run_id": controller.FIRST_CANDIDATE_RUN, "run_attempt": 1,
                 "firmware": {"file": "firmware.bin", "offset": 0x10000,
                              "bytes": len(IMAGE), "sha256": hashlib.sha256(IMAGE).hexdigest()}}
     buf = io.BytesIO()
@@ -77,6 +78,19 @@ class X4ControllerTests(unittest.TestCase):
     def test_cloud_failure_cannot_be_success(self):
         with self.assertRaises(controller.cam.CloudBuildFailed):
             controller.candidate(FakeGitHub(archive(), conclusion="failure"), 350, SHA)
+
+    def test_legacy_run_without_artifact_is_outside_contract(self):
+        gh = FakeGitHub(archive())
+        original = gh.call
+
+        def legacy(path, method="GET", body=None, limit=1_000_000):
+            value = original(path, method, body, limit)
+            if path.startswith("/actions/workflows/"):
+                value["workflow_runs"][0]["id"] = controller.FIRST_CANDIDATE_RUN - 1
+            return value
+
+        gh.call = legacy
+        self.assertIsNone(controller.candidate(gh, 370, SHA))
 
     def test_status_requires_boot_and_preserved_regions(self):
         result = {"source_sha": SHA, "firmware_sha256": "b" * 64,
