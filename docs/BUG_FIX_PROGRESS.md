@@ -1,3 +1,12 @@
+## Settings bridge persistence repair — 2026-10-02 11:xx UTC
+
+- Owner claim `settings_bridge_persistence_20261002_1102` for canonical reports #26/#27 completed and released after terminal exact-head CI. No active run remains.
+- Ready-for-review [PR #361](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/361), branch `fix/settings-bridge-persistence-rollback`, exact head `ad4b72b7a1386f70e37be6dcb373066c47af9da8`, based on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. New coherent batch fixes Language reporting success after failed settings persistence and Time Zone retaining a changed live zone/clock after failed persistence. Failure-injection against unmodified master reproduces each (expected assertion exit 134); repaired failure/rollback/retry/success tests pass.
+- Exact-head focused regression workflow [37000061954](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37000061954) passed. Exact-head PlatformIO workflow [37000061758](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37000061758) passed host aggregate, package-source version check, headless core checkpoint, and both `t5s3-pro` / `lilygo-epd47-s3` builds. Local Language/Time Zone app tests, shell syntax, workflow YAML parse, and diff checks passed. Sanitizer run did not complete and is not claimed; no physical RTC/device verification or device I/O.
+- Firmware source version advanced 1.3.61 → 1.3.65 after checking published version and open reservations 1.3.62–1.3.64. No app source/version changes.
+- User handles merge. No master write, merge, release, deployment, flash, device I/O, cross-repository write, or architecture changes.
+- Claim released; next owner may select another non-overlapping report only after current ledger and active-claim recheck.
+
 ## Settings bridge persistence rollback — active PR checkpoint 2026-10-02 11:16 UTC
 
 - Owner `settings_bridge_persistence_20261002_1102`; canonical #26 and #27; claim remains active pending terminal target CI. Repair branch `fix/settings-bridge-persistence-rollback`; draft [PR #361](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/361), exact head `ad4b72b7a1386f70e37be6dcb373066c47af9da8`, based directly on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. No master merge/write.
