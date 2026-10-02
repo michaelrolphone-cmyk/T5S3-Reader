@@ -35,6 +35,8 @@ struct Operation {
   ExecutionContext* owner = nullptr;
   uint32_t invocation = 0;
   bool cancelRequested = false;
+  bool terminalFlashEndWait = false;
+  bool terminalFlashEndDisconnected = false;
   t5_program_esp_rom_status_v1 status{};
   uint32_t lastCallback = 0;
   // Firmware-owned buffers: no whole-image allocation or app task stack use.
@@ -78,6 +80,10 @@ struct Operation {
     return (!cancelRequested && owner && owner->running(invocation)) || cancel();
   }
   bool targetLost() {
+    if (terminalFlashEndWait) {
+      terminalFlashEndDisconnected = true;
+      return false;
+    }
     status.result = T5_PROGRAM_TARGET_LOST;
     std::snprintf(status.message, sizeof(status.message), "Programming target disconnected");
     return false;
@@ -220,14 +226,20 @@ struct Operation {
     }
     return false;
   }
-  bool command(uint8_t op, const uint8_t* data, size_t length, uint32_t check, uint32_t timeout) {
+  bool command(uint8_t op, const uint8_t* data, size_t length, uint32_t check,
+               uint32_t timeout, bool tolerateDisconnectAfterSend = false) {
     status.rom_command = op;
     status.rom_status = status.rom_error = 0xff;
     const size_t framedLength = EspRomProtocol::encode(op, data, length, check,
       raw, sizeof(raw), framed, sizeof(framed));
     if (!framedLength) return fail(T5_PROGRAM_INVALID, "ROM command exceeds bounded packet capacity");
     if (!writeAll(framed, framedLength, timeout)) return false;
-    return receive(op, timeout);
+    if (!tolerateDisconnectAfterSend) return receive(op, timeout);
+    terminalFlashEndDisconnected = false;
+    terminalFlashEndWait = true;
+    const bool received = receive(op, timeout);
+    terminalFlashEndWait = false;
+    return received || terminalFlashEndDisconnected;
   }
   bool hashSource() {
     if (streams->seek(firmware, 0) != T5_STREAM_OK)
@@ -381,7 +393,8 @@ struct Operation {
     if (!report(T5_PROGRAM_STAGE_RESET, 100, "Resetting target into flashed firmware")) return false;
     uint8_t end[4]{};
     // Some ROMs reset without acknowledging FLASH_END. Physical reset matters.
-    (void)command(kFlashEnd, end, sizeof(end), 0, 1000);
+    (void)command(kFlashEnd, end, sizeof(end), 0, 1000, true);
+    if (terminalFlashEndDisconnected) return true;
     if (status.result != T5_PROGRAM_OK) return false;
     if (!lines(false, true, 100)) return false;
     return lines(false, false, 50);
