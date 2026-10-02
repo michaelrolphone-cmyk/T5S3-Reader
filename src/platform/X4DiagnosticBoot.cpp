@@ -22,12 +22,18 @@
 #include <memory>
 #include <new>
 
+#include "MappedInputManager.h"
+#include "activities/ActivityManager.h"
+#include "activities/util/FullScreenMessageActivity.h"
 #include "runtime/drivers/ProviderModuleV2.h"
 
 extern EpdFont notoserif14RegularFont;
+extern EpdFontFamily ui10FontFamily;
 extern FontDecompressor fontDecompressor;
 extern GfxRenderer renderer;
 extern FontCacheManager fontCacheManager;
+extern MappedInputManager mappedInputManager;
+extern ActivityManager activityManager;
 
 namespace {
 RuntimeProviders::ModuleV2 clock_mod;
@@ -45,6 +51,8 @@ uint32_t last_buttons = 0;
 bool ready = false;
 bool shared_text_ready = false;
 const char *storage_status = "SD provider unavailable";
+bool storage_mounted = false;
+bool showing_storage_activity = false;
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
     LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
@@ -139,13 +147,13 @@ void x4DiagnosticSetup() {
         auto *volume = static_cast<const risc_storage_volume_api_v1 *>(sd_mod.capability());
         if (volume && volume->api_version == RISC_STORAGE_VOLUME_API_V1 &&
             volume->struct_size >= sizeof(*volume) && volume->ready) {
-            const bool mounted = volume->ready(volume->context);
+            storage_mounted = volume->ready(volume->context);
             char reason[80] = "none";
             if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
-            storage_status = mounted ? "SD files ready" :
+            storage_status = storage_mounted ? "SD files ready" :
                 (std::strcmp(reason, "card initialized; filesystem not mounted") == 0 ?
                  "SD card found; files unavailable" : "SD card not ready");
-            LOG_INF("X4", "storage.volume mounted=%d reason=%s", mounted ? 1 : 0, reason);
+            LOG_INF("X4", "storage.volume mounted=%d reason=%s", storage_mounted ? 1 : 0, reason);
         }
     }
     display_api = static_cast<const risc_display_output_api_v1 *>(panel_mod.capability());
@@ -180,13 +188,26 @@ void x4DiagnosticSetup() {
         fontCacheManager.setFontDecompressor(&fontDecompressor);
         renderer.setFontCacheManager(&fontCacheManager);
         renderer.insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
+        renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
     }
     LOG_INF("X4", "shared text ready=%d", shared_text_ready ? 1 : 0);
     char probe[160] = "unavailable";
     (void)panel_mod.copyProviderError(probe, sizeof(probe));
     LOG_INF("X4", "%s", probe);
-    paint(0);
-    ready = present();
+    if (!storage_mounted && shared_text_ready) {
+        // This existing Reader activity draws synchronously on entry. Do not
+        // start the normal render worker: X4 power/storage/input owners have
+        // not yet completed their provider cutover.
+        activityManager.replaceActivity(std::make_unique<FullScreenMessageActivity>(
+            renderer, mappedInputManager, storage_status, EpdFontFamily::REGULAR,
+            DisplayPresentMode::Clean));
+        showing_storage_activity = true;
+        ready = provider_surface->lastPresentSucceeded();
+        LOG_INF("X4", "storage activity present=%d", ready ? 1 : 0);
+    } else {
+        paint(0);
+        ready = present();
+    }
 }
 
 void x4DiagnosticLoop() {
@@ -205,7 +226,10 @@ void x4DiagnosticLoop() {
         delay(20);
         return;
     }
-    if (frame_in.pressed) {
+    if (frame_in.pressed && showing_storage_activity) {
+        LOG_INF("X4", "navigation edge=%lu while storage unavailable",
+                static_cast<unsigned long>(frame_in.pressed));
+    } else if (frame_in.pressed) {
         last_buttons = frame_in.pressed;
         ++sequence;
         paint(frame_in.pressed);
