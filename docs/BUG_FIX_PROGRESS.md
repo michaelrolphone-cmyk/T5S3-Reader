@@ -2,6 +2,16 @@
 
 - Firmware version reservations across concurrent open PRs now form a cascading patch chain; when one older PR merges, later branches can conflict or require another exact-head CI cycle. After PR351/PR353 current-master sync is complete, assess a less conflict-prone version-coordination/release workflow. This is a deferred process task only; do not redesign it during the current bug batch or write any release/catalog changes.
 
+
+## Current integration reconciliation — 2026-10-02
+
+- Current master is `f7f006f78bf1f83c28f3ce05728b8973e895956b`, firmware1.3.61. PR96 is closed/merged at this exact master commit; current master includes its Timecard1.0.3 and Image Viewer1.1.1 manifests. User reports post-merge CI and normal release passed.
+- PR351 remains open/ready at `b7ca0fc80aa7613813db1e5cf4f065814b6767c4`; PR353 remains open/ready at `36f80118d16c4291bc9a931cdb5d18b0ccbff674`; PR354 remains open/ready at `0e464a2a9558303d845f33d434e4bf6db262cd7d`. All are based on older master ancestry (ca66db or earlier), and GitHub currently reports each nonmergeable against f7f. Their last green exact-head CI runs passed on the old heads only; they do not certify a refreshed integration. None is merged or fixed on current master. Do not edit closed PRs; these are open, but this batch leaves their branch refresh and user merges to the existing owners.
+- PR332 remains the sole open draft ledger PR; it is not closed because these three code PRs remain unmerged. Current ledger branch/head before this reconciliation: `automation/bug-ledger` at `de8fa4b3b372bf513574af7b6e17f448d30963a9`.
+- PR344 and PR347 are open drafts and remain under the hardware-CI owner's exclusive board/merge sequence; PR350 remains open in the X4 chain. No edits or takeover on those branches. Version-coordination redesign remains deferred backlog only.
+- Current active version baseline is firmware1.3.61. The prior PR351/353/354 candidates1.3.59/1.3.58/1.3.60 are below this new master and require fresh lineage coordination before any merge; this ledger refresh does not reassign their versions.
+
+---
 ---
 
 ## Active merge-base refresh — PR351 and PR353
