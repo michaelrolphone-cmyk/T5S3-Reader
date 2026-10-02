@@ -9,12 +9,14 @@ extern uint8_t x4_card_sector[512];
 extern uint8_t x4_card_partition_boot[512];
 extern uint8_t x4_card_fat_sector[512], x4_card_root_sector[512];
 extern bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
+extern uint32_t x4_card_bad_crc_lba;
 extern unsigned x4_card_cmd17_count, x4_card_clock_count;
 
 static uint8_t command_bits[48], response_bits[136];
 static unsigned command_count, response_count, response_index, data_index;
 static bool response_active, data_active, data_pending;
 static const uint8_t *active_sector;
+static uint32_t active_lba;
 
 static inline void x4_fake_response(const uint8_t *bytes, unsigned count) {
     response_count = count * 8u;
@@ -65,6 +67,9 @@ static inline void x4pro_pin_release(uint32_t pin) {
     if (index == 17u) {
         uint32_t lba = 0;
         for (unsigned i = 8u; i < 40u; ++i) lba = (lba << 1) | command_bits[i];
+        if (lba != 0u && lba != 1u && lba != 32u && lba != 33u &&
+            lba != 2080u && lba != 2081u) x4_card_bad_pin = true;
+        active_lba = lba;
         active_sector = (lba == 1u) ? x4_card_partition_boot :
                         (lba == 32u || lba == 33u) ? x4_card_fat_sector :
                         (lba == 2080u || lba == 2081u) ? x4_card_root_sector :
@@ -84,7 +89,7 @@ static inline bool x4pro_pin_read(uint32_t pin) {
     if (bit < 4096u) return (active_sector[bit / 8u] >> (7u - bit % 8u)) & 1u;
     if (bit < 4112u) {
         const uint16_t crc = x4pro_sd_crc16(active_sector, 512u) ^
-                             (x4_card_bad_crc ? 1u : 0u);
+                             ((x4_card_bad_crc || active_lba == x4_card_bad_crc_lba) ? 1u : 0u);
         return (crc >> (15u - (bit - 4096u))) & 1u;
     }
     return true;

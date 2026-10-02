@@ -7,6 +7,7 @@ uint8_t x4_card_sector[512];
 uint8_t x4_card_partition_boot[512];
 uint8_t x4_card_fat_sector[512], x4_card_root_sector[512];
 bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
+uint32_t x4_card_bad_crc_lba = UINT32_MAX;
 unsigned x4_card_cmd17_count, x4_card_clock_count;
 static uint64_t now_ms;
 static uint64_t monotonic_ms(void *context) { (void)context; return now_ms; }
@@ -51,6 +52,18 @@ int main(void) {
                        "CRC-verified FAT32 root remains unmounted");
     failures += expect(!volume->ready(0), "readable sector is not a filesystem");
     failures += expect(x4_card_cmd17_count == 3u, "boot, FAT and root sectors read");
+
+    x4_card_bad_crc_lba = 32u;
+    failures += expect(volume->refresh(0), "bad FAT CRC refresh serviced");
+    failures += expect(volume->last_error(0, error, sizeof(error)) &&
+                       strcmp(error, "FAT32 table read failed") == 0,
+                       "bad FAT CRC closes mount");
+    x4_card_bad_crc_lba = 2080u;
+    failures += expect(volume->refresh(0), "bad root CRC refresh serviced");
+    failures += expect(volume->last_error(0, error, sizeof(error)) &&
+                       strcmp(error, "FAT32 root read failed") == 0,
+                       "bad root CRC closes mount");
+    x4_card_bad_crc_lba = UINT32_MAX;
 
     x4_card_bad_crc = true;
     failures += expect(volume->refresh(0), "CRC failure refresh serviced");
@@ -106,7 +119,7 @@ int main(void) {
                        strcmp(error, "FAT32 root read; filesystem not mounted") == 0,
                        "healthy retry restores root proof only");
     failures += expect(!volume->ready(0), "filesystem remains unavailable");
-    failures += expect(!x4_card_bad_pin && x4_card_clock_count < 400000u,
+    failures += expect(!x4_card_bad_pin && x4_card_clock_count < 450000u,
                        "bounded traffic on assigned pins");
     driver->stop();
     if (failures) return 1;
