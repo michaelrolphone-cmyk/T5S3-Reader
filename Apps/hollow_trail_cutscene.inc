@@ -546,16 +546,27 @@ static void ht_cutscene_draw_orchard_profile(const ht_cutscene_state *s,const ht
     ht_world_scale=256;
 }
 
-static void ht_cutscene_draw_arrival(const ht_cutscene_state *s) {
+static ht_game ht_cutscene_arrival_view(const ht_cutscene_state *s) {
     ht_game view=ht_cutscene_anchor;
-    view.camera+=ht_cutscene_camera_x(s)*256;
+    int shift=ht_cutscene_camera_x(s);
+    view.camera+=shift*256;
     if(s->id==HT_CUTSCENE_RAIN) {
-        view.camera_y-=ht_cutscene_camera_x(s)*60*256/85;
+        view.camera_y-=shift*60*256/85;
         view.ticks+=s->tick; /* Rain and signal animate, live gameplay stays frozen. */
+        /* Begin/end at the player's actual framing, not an assumed close zoom.
+         * The center hold uses the existing widest city framing. */
+        view.intimacy=(uint16_t)(view.intimacy*(85-shift)/85);
+        view.vista=(uint16_t)(view.vista+(256-view.vista)*shift/85);
+    } else {
+        int scale=ht_cutscene_scale(s);
+        view.intimacy=(uint16_t)ht_clamp((scale-256)*2,0,256);
+        view.vista=(uint16_t)(scale<256?(256-scale)*16/5:0);
     }
-    int scale=ht_cutscene_scale(s);
-    view.intimacy=(uint16_t)ht_clamp((scale-256)*2,0,256);
-    view.vista=(uint16_t)(scale<256?(256-scale)*16/5:0);view.sway_phase=0;view.rotation_phase=0;view.vx=0;
+    view.sway_phase=0;view.rotation_phase=0;view.vx=0;
+    return view;
+}
+static void ht_cutscene_draw_arrival(const ht_cutscene_state *s) {
+    ht_game view=ht_cutscene_arrival_view(s);
     ht_world_scale=ht_scene_scale(&view);
     ht_draw_traversal(&view);
     ht_character(view.x/256-view.camera/256,(view.y-view.camera_y)/256,&view);

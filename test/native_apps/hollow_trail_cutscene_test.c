@@ -147,6 +147,20 @@ int main(void) {
             assert(!memcmp(&ht,&retained,sizeof(ht)));
         }
     }
+    /* Different approach zooms must not snap to an assumed close framing. */
+    for(unsigned framing=0;framing<3;++framing) {
+        ht_cutscene_anchor.intimacy=(uint16_t)(framing*103);
+        ht_cutscene_anchor.vista=(uint16_t)(framing*79);
+        for(unsigned endpoint=0;endpoint<2;++endpoint) {
+            ht_cutscene.tick=endpoint?420:0;
+            ht_game view=ht_cutscene_arrival_view(&ht_cutscene);
+            assert(view.camera==ht_cutscene_anchor.camera && view.camera_y==ht_cutscene_anchor.camera_y);
+            assert(ht_scene_scale(&view)==ht_scene_scale(&ht_cutscene_anchor));
+        }
+        ht_cutscene.tick=170;ht_game view=ht_cutscene_arrival_view(&ht_cutscene);
+        assert(ht_scene_scale(&view)==176);
+    }
+    ht_cutscene_anchor=retained;
     unsigned pulses=0;bool was=false;
     for(unsigned tick=0;tick<144;++tick) {
         bool lit=ht_rain_window_lit(tick);if(lit && !was)++pulses;was=lit;
