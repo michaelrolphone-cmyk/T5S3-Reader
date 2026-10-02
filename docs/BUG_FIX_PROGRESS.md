@@ -1,4 +1,4 @@
-## Settings bridge persistence repair — 2026-10-02 11:xx UTC
+## Settings bridge persistence repair — 2026-10-02 11:23 UTC
 
 - Owner claim `settings_bridge_persistence_20261002_1102` for canonical reports #26/#27 completed and released after terminal exact-head CI. No active run remains.
 - Ready-for-review [PR #361](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/361), branch `fix/settings-bridge-persistence-rollback`, exact head `ad4b72b7a1386f70e37be6dcb373066c47af9da8`, based on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. New coherent batch fixes Language reporting success after failed settings persistence and Time Zone retaining a changed live zone/clock after failed persistence. Failure-injection against unmodified master reproduces each (expected assertion exit 134); repaired failure/rollback/retry/success tests pass.
