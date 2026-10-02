@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import ssl
 import subprocess
 import sys
 import urllib.request
@@ -34,6 +35,11 @@ class GitHub:
         if not token:
             raise RuntimeError("GH_TOKEN absent; controller remains inactive")
         self.token = token
+        # Python.org macOS builds may lack their bundled OpenSSL CA file.
+        # Keep certificate verification on using the Mac's system CA bundle.
+        system_ca = Path("/etc/ssl/cert.pem")
+        self.ssl_context = ssl.create_default_context(
+            cafile=str(system_ca) if system_ca.is_file() else None)
 
     def call(self, path, method="GET", body=None, limit=1_000_000):
         data = None if body is None else json.dumps(body).encode()
@@ -47,7 +53,9 @@ class GitHub:
                 def redirect_request(self, request, fp, code, msg, headers, newurl):
                     return None
             try:
-                urllib.request.build_opener(NoRedirect).open(req, timeout=20)
+                urllib.request.build_opener(
+                    NoRedirect, urllib.request.HTTPSHandler(context=self.ssl_context)
+                ).open(req, timeout=20)
             except urllib.error.HTTPError as redirect:
                 if redirect.code != 302:
                     raise
@@ -56,13 +64,15 @@ class GitHub:
                     raise ValueError("Artifact redirect is not HTTPS")
                 # Signed archive URL needs no GitHub credential. Never forward
                 # Authorization to the artifact storage host.
-                with urllib.request.urlopen(url, timeout=20) as response:
+                with urllib.request.urlopen(url, timeout=20,
+                                            context=self.ssl_context) as response:
                     raw = response.read(limit + 1)
                 if len(raw) > limit:
                     raise ValueError("Artifact ZIP exceeds bound")
                 return raw
             raise ValueError("Artifact endpoint did not redirect")
-        with urllib.request.urlopen(req, timeout=20) as response:
+        with urllib.request.urlopen(req, timeout=20,
+                                    context=self.ssl_context) as response:
             if int(response.headers.get("Content-Length", "0")) > limit:
                 raise ValueError("GitHub response exceeds bound")
             raw = response.read(limit + 1)

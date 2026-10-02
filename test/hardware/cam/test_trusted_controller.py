@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 import os
+import ssl
 import zipfile
 from pathlib import Path
 
@@ -29,6 +30,12 @@ class FakeGitHub:
 
 
 class ControllerTests(unittest.TestCase):
+    def test_https_uses_verified_system_ca_context(self):
+        gh = controller.GitHub("test-only-not-a-credential")
+        self.assertTrue(gh.ssl_context.check_hostname)
+        self.assertEqual(gh.ssl_context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertGreater(gh.ssl_context.cert_store_stats()["x509_ca"], 0)
+
     def test_private_cam_binding(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "cam.json"
