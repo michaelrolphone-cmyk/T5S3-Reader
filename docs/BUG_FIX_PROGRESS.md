@@ -1,3 +1,13 @@
+## Font catalog validation — PR checkpoint 2026-10-02 12:08:23 UTC
+
+- Active owner `font_catalog_validation_20261002_1125`; canonical #76/#174/#258/#259. Durable claim is published. No other current owner was found. Exact master base remains `82caa0997e913f01c1f5f9ab942d056bc9f04a82`.
+- Draft [PR #362](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/362), branch `fix/font-catalog-validation-atomicity`, exact remote head `25ca7b7d3da380ac2dac5e028e8be1bfce09132d`; ahead 1 / behind 0. Changed files are limited to `NativeFontBridge.cpp`, new validation helper/test/workflow, and `platformio.ini`.
+- Change validates the top-level family array, requires files arrays, stages candidate rows without mutating live state, rejects empty packages and duplicate case-insensitive SD identities, and swaps only after success. Earlier known-good rows remain available if parsing fails; explicit empty arrays are accepted. No app source/version changes.
+- Confirmed user path: installed Manage Fonts app (manifest v1.0.2) invokes the current firmware font API; catalog refresh downloads from the network and selected installs write through SD storage. Baseline source-contract test fails on the missing top-level array guard (exit 1); repaired focused C++ staged-catalog failure/retry/valid/empty/duplicate regression and source integration assertions pass. Shell syntax, workflow YAML parse, and diff checks pass.
+- Firmware candidate 1.3.66: current published release is 1.3.61; open version reservations checked at 1.3.62 (#355), 1.3.63 (#347), 1.3.64 (#354), 1.3.65 (#361).
+- Exact-head focused workflow [37004726706](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37004726706) and PlatformIO workflow [37004726659](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37004726659) are in progress. Claim remains active until exact-head checks reach a terminal result. No device/physical SD verification.
+- No U1–U4, X4, Hollow, performance/version-coordination architecture, release, catalog, deployment, flash, cross-repository, or master change.
+
 ## Font catalog validation — active claim 2026-10-02 11:59:36 UTC
 
 - Owner `font_catalog_validation_20261002_1125`; canonical reports #76, #174, #258, and #259. Baseline master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; current ledger parent `00c380515dbda94dd5cecffd3cf1776696774d4a`. New repair branch planned: `fix/font-catalog-validation-atomicity`. Phase: confirmed source paths; focused baseline reproduction and repair pending. No active owner was listed in the latest checkpoint; #361 remains open/ready with its claim released.
