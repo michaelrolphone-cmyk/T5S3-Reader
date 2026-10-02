@@ -90,6 +90,68 @@ static bool wait_idle(uint64_t deadline_ms) {
     }
     return sample_now(&busy_done_ms);
 }
+static char probe_text[96] = "probe=not-run";
+static bool append(char *destination, size_t capacity, size_t *used, const char *text);
+static bool append_u(char *destination, size_t capacity, size_t *used, uint64_t value);
+static void prepare_pins(void);
+static void clock_delay(void) {
+    for (volatile int i = 0; i < 32; ++i) (void)x4pro_pin_read(X4PRO_PIN_EPD_BUSY);
+}
+static uint8_t read_byte(void) {
+    uint8_t value = 0;
+    for (int bit = 0; bit < 8; ++bit) {
+        clock_delay();
+        value = (uint8_t)((value << 1) | (x4pro_pin_read(X4PRO_PIN_EPD_MOSI) ? 1u : 0u));
+        x4pro_pin_level(X4PRO_PIN_EPD_SCLK, true);
+        clock_delay();
+        x4pro_pin_level(X4PRO_PIN_EPD_SCLK, false);
+    }
+    return value;
+}
+static void read_cmd(uint8_t cmd, uint8_t *out, size_t len) {
+    x4pro_pin_output(X4PRO_PIN_EPD_MOSI, false);
+    x4pro_pin_level(X4PRO_PIN_EPD_DC, false);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
+    clock_delay();
+    spi_byte(cmd);
+    x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
+    x4pro_pin_input(X4PRO_PIN_EPD_MOSI, true);
+    clock_delay();
+    for (size_t i = 0; i < len; ++i) out[i] = read_byte();
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+    x4pro_pin_output(X4PRO_PIN_EPD_MOSI, false);
+}
+static void append_hex(char *destination, size_t capacity, size_t *used, uint8_t value) {
+    const char *digits = "0123456789abcdef";
+    if (*used + 2u < capacity) {
+        destination[(*used)++] = digits[value >> 4];
+        destination[(*used)++] = digits[value & 0x0f];
+        destination[*used] = 0;
+    }
+}
+static void probe_controller(void) {
+    uint8_t flg = 0;
+    uint8_t ver[5] = {0};
+    prepare_pins();
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
+    sleep_ms(1);
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
+    sleep_ms(30);
+    const uint8_t busy = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
+    read_cmd(0x71, &flg, 1);
+    read_cmd(0x70, ver, 5);
+    bool floating = true;
+    for (int i = 1; i < 5; ++i) if (ver[i] != ver[0]) floating = false;
+    const bool uc = flg != 0 && flg != 0xFF && (flg & 1u) == 1u && !floating;
+    size_t used = 0;
+    append(probe_text, sizeof(probe_text), &used, "probe flg=");
+    append_hex(probe_text, sizeof(probe_text), &used, flg);
+    append(probe_text, sizeof(probe_text), &used, " ver=");
+    for (int i = 0; i < 5; ++i) append_hex(probe_text, sizeof(probe_text), &used, ver[i]);
+    append(probe_text, sizeof(probe_text), &used, " busy=");
+    append_u(probe_text, sizeof(probe_text), &used, busy);
+    append(probe_text, sizeof(probe_text), &used, uc ? " verdict=uc81xx" : " verdict=ssd-assumed");
+}
 static void prepare_pins(void) {
     if (pins_ready) return;
     x4pro_pin_input(X4PRO_PIN_EPD_BUSY, false);
@@ -267,6 +329,7 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
         if (equal(dependencies[i].capability_id, "platform.clock") && dependencies[i].api_version == 1)
             clock_api = dependencies[i].api;
     if (!clock_api) { fail("platform.clock missing"); return false; }
+    probe_controller();
     for (size_t i = 0; i < sizeof(frame); ++i) frame[i] = 0;
     started = init_panel();
     return started;
@@ -291,7 +354,7 @@ static bool last_error(char *destination, size_t capacity) {
     uint64_t now = now_ms();
     size_t used = 0;
     destination[0] = 0;
-    append(destination, capacity, &used, "v=0.1.5 ctl=SSD1677 token=");
+    append(destination, capacity, &used, "v=0.1.6 ctl=SSD1677 token=");
     append_u(destination, capacity, &used, pending_token);
     append(destination, capacity, &used, " state=");
     append_u(destination, capacity, &used, present_state);
@@ -311,8 +374,8 @@ static bool last_error(char *destination, size_t capacity) {
     append_u(destination, capacity, &used, busy_before);
     append(destination, capacity, &used, " assert=");
     append_u(destination, capacity, &used, busy_assert_ms);
-    append(destination, capacity, &used, " done=");
-    append_u(destination, capacity, &used, busy_done_ms);
+    append(destination, capacity, &used, " ");
+    append(destination, capacity, &used, probe_text);
     return used > 0;
 }
 static const risc_driver_diagnostics_v2 driver = {

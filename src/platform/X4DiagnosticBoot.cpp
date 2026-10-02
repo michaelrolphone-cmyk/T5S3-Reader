@@ -129,6 +129,9 @@ void x4DiagnosticSetup() {
         return;
     }
     if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
+    char probe[160] = "unavailable";
+    (void)panel_mod.copyProviderError(probe, sizeof(probe));
+    LOG_INF("X4", "controller %s", probe);
     paint(0);
     ready = present();
 }
