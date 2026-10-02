@@ -315,3 +315,5 @@ static void ht_city_service_arrival(const ht_game *g) {
 }
 
 #include "hollow_trail_schoolroom.inc"
+
+#include "hollow_trail_rain_tank.inc"

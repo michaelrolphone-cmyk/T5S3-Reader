@@ -127,6 +127,36 @@ int main(void) {
     }
     ht_cutscene.tick=429;assert(ht_cutscene_step(&ht_cutscene));
     ht_cutscene_apply_handoff(&ht_cutscene);assert(!memcmp(&ht,&retained,sizeof(ht)));
+    /* Rain-tank tableau: only an actual forward grounded crossing earns it. */
+    ht_cutscene_seen=0;ht.level=1;ht_select_level(1);ht_spawn(true);
+    ht.x=HT_RAIN_TANK_X*256;ht.y=ht_rain_tank_floor()*256;ht.grounded=true;
+    ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;
+    before=ht;before.x-=256;assert(ht_cutscene_rain_arrival(&before,&ht));
+    before.x=ht.x+256;assert(!ht_cutscene_rain_arrival(&before,&ht));
+    before.x=ht.x-9*256;assert(!ht_cutscene_rain_arrival(&before,&ht));
+    before.x=ht.x-256;ht.grounded=false;assert(!ht_cutscene_rain_arrival(&before,&ht));
+    ht.grounded=true;ht.y-=30*256;assert(!ht_cutscene_rain_arrival(&before,&ht));
+    ht.y+=30*256;ht.traversal.mode=HT_LADDER;assert(!ht_cutscene_rain_arrival(&before,&ht));
+    ht.traversal.mode=HT_FREE;before.level=0;assert(!ht_cutscene_rain_arrival(&before,&ht));before.level=1;
+    retained=ht;ht_cutscene_begin(HT_CUTSCENE_RAIN);
+    assert(!ht_cutscene_rain_arrival(&before,&ht));
+    for(unsigned mode=0;mode<2;++mode) {
+        ht_camera_mode=mode?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;
+        for(unsigned tick=0;tick<420;tick+=37) {
+            ht_cutscene.tick=(uint16_t)tick;assert_prior_raster_independent(&ht_cutscene);
+            assert(!memcmp(&ht,&retained,sizeof(ht)));
+        }
+    }
+    unsigned pulses=0;bool was=false;
+    for(unsigned tick=0;tick<144;++tick) {
+        bool lit=ht_rain_window_lit(tick);if(lit && !was)++pulses;was=lit;
+        assert(lit==ht_rain_window_lit(tick+144));
+    }
+    assert(pulses==3 && !ht_rain_window_lit(54) && !ht_rain_window_lit(143));
+    assert(ht_rain_window_x()>ht_mechanics_by_level[1].ladders[2].x);
+    assert(ht_rain_window_x()<ht_level_land(1)[7].right);
+    ht_cutscene.tick=419;assert(ht_cutscene_step(&ht_cutscene));
+    ht_cutscene_apply_handoff(&ht_cutscene);assert(!memcmp(&ht,&retained,sizeof(ht)));
     /* Grass wind is continuous through its wrap in every depth plane. */
     for(unsigned tick=0;tick<1024;++tick)
         assert(ht_abs(ht_cut_grass_wind(tick+1,11)-ht_cut_grass_wind(tick,11))<=1);
@@ -163,5 +193,5 @@ int main(void) {
         }
     }
     free(memory);
-    puts("Hollow Trail cutscene: domestic/memory/latch beats, both rasters, continuous wind, one-shot mill/city tableaus, earned gate transition, preserved gameplay and handoff PASS");
+    puts("Hollow Trail cutscene: domestic/memory/latch beats, both rasters, continuous wind, one-shot mill/city/rain tableaus, earned gate transition, preserved gameplay and handoff PASS");
 }

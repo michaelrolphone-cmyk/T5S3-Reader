@@ -3,7 +3,7 @@
  * language, but a fixed 32 ms cue track owns camera, actor pose, depth and
  * scene progression. Forward-X tableaus look down world X: screen X is world Y,
  * screen Y is world Z and world X controls perspective, fog and occlusion. */
-enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO, HT_CUTSCENE_MILL, HT_CUTSCENE_CITY };
+enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO, HT_CUTSCENE_MILL, HT_CUTSCENE_CITY, HT_CUTSCENE_RAIN };
 enum { HT_CUT_KITCHEN, HT_CUT_GRASS, HT_CUT_DEPARTURE, HT_CUT_ORCHARD, HT_CUT_MILL };
 enum { HT_CUT_VIEW_PROFILE, HT_CUT_VIEW_FORWARD_X };
 enum { HT_CUT_FACE_FRONT, HT_CUT_FACE_BACK, HT_CUT_FACE_LEFT_3Q, HT_CUT_FACE_RIGHT_3Q };
@@ -61,11 +61,17 @@ static const ht_cutscene_cue ht_city_cues[]={
     {160,330,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,12,0,0,0,0,0,120,120,0,0,240,240},
     {330,430,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,120,0,0,0,240,384},
 };
+static const ht_cutscene_cue ht_rain_cues[]={
+    {0,160,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,13,0,0,0,0,0,0,85,0,0,384,176},
+    {160,340,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,14,0,0,0,0,0,85,85,0,0,176,176},
+    {340,420,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,85,0,0,0,176,384},
+};
 static const ht_cutscene_timeline ht_cutscene_tracks[]={
     {NULL,0,0,0},
     {ht_intro_cues,(uint8_t)(sizeof(ht_intro_cues)/sizeof(ht_intro_cues[0])),0,HT_INTRO_TICKS},
     {ht_mill_cues,3,0,340},
-    {ht_city_cues,3,1,430}
+    {ht_city_cues,3,1,430},
+    {ht_rain_cues,3,1,420}
 };
 static ht_cutscene_state ht_cutscene;
 static ht_game ht_cutscene_anchor;
@@ -79,6 +85,12 @@ static bool ht_cutscene_mill_arrival(const ht_game *before,const ht_game *after)
 static bool ht_cutscene_city_arrival(const ht_game *before,const ht_game *after) {
     return !(ht_cutscene_seen&2u) && before->level==0 && after->level==1 &&
         before->x>=(HT_GOAL-8)*256 && before->puzzle.solved && before->puzzle.opening==48;
+}
+static bool ht_cutscene_rain_arrival(const ht_game *before,const ht_game *after) {
+    return !(ht_cutscene_seen&4u) && before->level==1 && after->level==1 &&
+        before->x<HT_RAIN_TANK_X*256 && after->x>=HT_RAIN_TANK_X*256 &&
+        after->x-before->x<=8*256 && after->grounded &&
+        ht_abs(after->y/256-ht_rain_tank_floor())<=3 && after->traversal.mode==HT_FREE;
 }
 static const ht_cutscene_timeline *ht_cutscene_track(const ht_cutscene_state *s) {
     return s->id<sizeof(ht_cutscene_tracks)/sizeof(ht_cutscene_tracks[0])?
@@ -128,6 +140,7 @@ static void ht_cutscene_begin(unsigned id) {
     ht_cutscene_anchor=ht;
     if(id==HT_CUTSCENE_MILL)ht_cutscene_seen|=1u;
     if(id==HT_CUTSCENE_CITY)ht_cutscene_seen|=2u;
+    if(id==HT_CUTSCENE_RAIN)ht_cutscene_seen|=4u;
 }
 static bool ht_cutscene_step(ht_cutscene_state *s) {
     if(!s->active)return false;
@@ -401,6 +414,8 @@ static void ht_cutscene_caption(unsigned caption) {
         {"A BROKEN SHUTTER. A SLOPING DESK.","SEVEN NAMES IN THE WINDOW LIGHT."},
         {"UPPER FLOORS ROSE FROM THE FOG.","THE HILLS CONTINUED UNDER THE CITY."},
         {"THE CITY BEGAN OVERHEAD.","NO STREETS JOINED THESE ROOFS."},
+        {"I TOOK SHELTER BENEATH A WATER TANK.","ITS IRON BELLY HUNG OVER ME."},
+        {"THROUGH THE RAIN, A LIGHT.","THREE FLASHES. A PAUSE. THREE AGAIN."},
     };
     if(caption>=sizeof(lines)/sizeof(lines[0]))return;
     ht_narration_key=2166136261u;
@@ -534,6 +549,10 @@ static void ht_cutscene_draw_orchard_profile(const ht_cutscene_state *s,const ht
 static void ht_cutscene_draw_arrival(const ht_cutscene_state *s) {
     ht_game view=ht_cutscene_anchor;
     view.camera+=ht_cutscene_camera_x(s)*256;
+    if(s->id==HT_CUTSCENE_RAIN) {
+        view.camera_y-=ht_cutscene_camera_x(s)*60*256/85;
+        view.ticks+=s->tick; /* Rain and signal animate, live gameplay stays frozen. */
+    }
     int scale=ht_cutscene_scale(s);
     view.intimacy=(uint16_t)ht_clamp((scale-256)*2,0,256);
     view.vista=(uint16_t)(scale<256?(256-scale)*16/5:0);view.sway_phase=0;view.rotation_phase=0;view.vx=0;
@@ -578,7 +597,7 @@ static void ht_cutscene_render(const ht_cutscene_state *s) {
     ht_native_foreground_half_y=false;
     ht_scene=ht_native_active?ht_native_a:ht_scene_low;
     if(s->id==HT_CUTSCENE_INTRO && s->tick>=2020)ht_cutscene_draw_intro_arrival(s,cue);
-    else if(s->id==HT_CUTSCENE_MILL || s->id==HT_CUTSCENE_CITY)ht_cutscene_draw_arrival(s);
+    else if(s->id==HT_CUTSCENE_MILL || s->id==HT_CUTSCENE_CITY || s->id==HT_CUTSCENE_RAIN)ht_cutscene_draw_arrival(s);
     else if(cue->pose==HT_CUT_POSE_THREAD)ht_cutscene_draw_latch(s,cue);
     else if(cue->view==HT_CUT_VIEW_FORWARD_X) {
         if(cue->scene==HT_CUT_KITCHEN)ht_cutscene_draw_kitchen_forward(s,cue);

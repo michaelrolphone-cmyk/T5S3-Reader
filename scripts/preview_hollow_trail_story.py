@@ -34,7 +34,10 @@ shots = [('kitchen', 140, 'Cold cup, chipped sister cup, wall/rake/bucket'),
          ('handoff', 2280, 'Control returned on the same first-parcel raster'),
          ('schoolroom', 0, 'Playable roof-level schoolroom and weighted map'),
          ('study', 0, 'Trace the lowered-ladder sightline'),
-         ('study', 2, 'Trace the route toward the signal window')]
+         ('study', 2, 'Trace the route toward the signal window'),
+         ('refuge', 0, 'Playable shelter beneath the riveted tank'),
+         ('rain', 170, 'Earned view across the court toward three flashes'),
+         ('signal', 0, 'Signal window on the actual ladder roof')]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -47,7 +50,13 @@ int main(int argc,char **argv) {
  ht_bind(mem);ht_bind_native(mem);memset(&ht,0,sizeof(ht));ht.level=0;ht_spawn(true);
  ht_camera_mode=HT_CAMERA_NATIVE;
  bool gameplay=false;
- if(!strcmp(argv[1],"study")) {
+ if(!strcmp(argv[1],"refuge") || !strcmp(argv[1],"rain") || !strcmp(argv[1],"signal")) {
+  ht.level=1;ht_select_level(1);ht_spawn(true);
+  ht.x=(!strcmp(argv[1],"signal")?ht_rain_window_x():HT_RAIN_TANK_X)*256;
+  ht.y=ht_surface_at(&ht,!strcmp(argv[1],"signal")?7:6,ht.x/256)*256;
+  ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;ht.grounded=true;ht.ticks=0;
+  if(!strcmp(argv[1],"rain"))ht_cutscene_begin(HT_CUTSCENE_RAIN);else gameplay=true;
+ } else if(!strcmp(argv[1],"study")) {
   ht_schoolroom_study_render((unsigned)atoi(argv[2]));
  } else if(!strcmp(argv[1],"schoolroom")) {
   ht.level=1;ht_select_level(1);ht_spawn(true);ht.x=535*256;
@@ -91,9 +100,9 @@ with tempfile.TemporaryDirectory(prefix='hollow-preview-') as tmp:
     binary = pathlib.Path(tmp) / 'preview'
     src.write_text(source)
     subprocess.run(['cc', '-std=c11', '-O2', '-Wno-unused-function', '-I' + str(repo / 'lib/NativeApps/include'), str(src), '-o', str(binary)], check=True)
-    sheet = Image.new('RGB', (1440, 2100), '#e9e6df')
+    sheet = Image.new('RGB', (1440, 30 + ((len(shots)+2)//3)*295), '#e9e6df')
     draw = ImageDraw.Draw(sheet)
-    draw.text((16, 8), 'HOLLOW TRAIL 1.1.41 | Actual host-rendered scenes | Native raster reduced for contact sheet; no device qualification', fill='#252525')
+    draw.text((16, 8), 'HOLLOW TRAIL 1.1.45 | Actual host-rendered scenes | Native raster reduced for contact sheet; no device qualification', fill='#252525')
     for i, (name, tick, label) in enumerate(shots):
         stem = pathlib.Path(tmp) / name
         subprocess.run([str(binary), name, str(tick), str(stem)], check=True)
