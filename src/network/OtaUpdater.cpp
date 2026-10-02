@@ -44,6 +44,16 @@ const char* skipVersionPrefix(const char* version) {
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
+  // A check result describes only this attempt. The updater is process-static
+  // for native clients, so invalidate an earlier release before any early
+  // return (network failure, parse failure, or no matching firmware asset).
+  updateAvailable = false;
+  latestVersion.clear();
+  otaUrl.clear();
+  otaSize = 0;
+  processedSize = 0;
+  totalSize = 0;
+
   // A direct ELF launch does not pass through Settings' Wi-Fi picker. Do not
   // invoke ESP-IDF HTTP until an initialized interface has a usable IP; lwIP
   // otherwise can assert at tcpip_send_msg_wait_sem with "Invalid mbox".
