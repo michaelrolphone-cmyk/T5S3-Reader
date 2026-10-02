@@ -101,10 +101,8 @@ bool present() {
 }
 
 void x4DiagnosticSetup() {
-    Serial.begin(115200);
-    Serial.println("X4 diagnostic entered");
+    LOG_INF("X4", "diagnostic entered");
     const unsigned long start = millis();
-    while (!Serial && millis() - start < 200) delay(10);
     LOG_INF("X4", "diagnostic boot %s flash=16MB app0=0x10000", Board::firmwareMarker());
     const x4_embedded_provider *clock = x4_embedded_find("platform-clock-v1");
     const x4_embedded_provider *panel = x4_embedded_find("x4pro-panel");
