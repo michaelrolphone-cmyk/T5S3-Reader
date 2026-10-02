@@ -25,6 +25,7 @@
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
 #include "activities/util/FullScreenMessageActivity.h"
+#include "native/NativeNavigationInput.h"
 #include "runtime/drivers/ProviderModuleV2.h"
 
 extern EpdFont notoserif14RegularFont;
@@ -47,7 +48,6 @@ const risc_frontlight_api_v1 *light_api = nullptr;
 uint8_t surface[48000];
 std::unique_ptr<ProviderDisplaySurface> provider_surface;
 uint32_t sequence = 0;
-uint32_t last_buttons = 0;
 bool ready = false;
 bool shared_text_ready = false;
 const char *storage_status = "SD provider unavailable";
@@ -158,6 +158,10 @@ void x4DiagnosticSetup() {
     }
     display_api = static_cast<const risc_display_output_api_v1 *>(panel_mod.capability());
     nav_api = static_cast<const risc_input_navigation_api_v1 *>(buttons_mod.capability());
+    if (!nativeNavigationAttachBootstrap(nav_api)) {
+        LOG_ERR("X4", "input.navigation bootstrap handoff rejected");
+        nav_api = nullptr;
+    }
     light_api = static_cast<const risc_frontlight_api_v1 *>(light_mod.capability());
     risc_display_info_v1 info{};
     if (!display_api || !display_api->get_info(display_api->context, &info) ||
@@ -221,16 +225,12 @@ void x4DiagnosticLoop() {
         delay(200);
         return;
     }
-    risc_input_navigation_frame_v1 frame_in{};
-    if (!nav_api->poll(nav_api->context, &frame_in)) {
-        delay(20);
-        return;
-    }
+    nativeNavigationTick();
+    const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
     if (frame_in.pressed && showing_storage_activity) {
         LOG_INF("X4", "navigation edge=%lu while storage unavailable",
                 static_cast<unsigned long>(frame_in.pressed));
     } else if (frame_in.pressed) {
-        last_buttons = frame_in.pressed;
         ++sequence;
         paint(frame_in.pressed);
         if (!present()) ready = false;

@@ -87,5 +87,16 @@ int main() {
     assert(lease.grant.slot == 1); // quarantine retains exact ownership
     releaseOkay = true;
     assert(nativeNavigationSuspend() && !lease.grant.slot);
+    // A verified boot provider can feed the same UI frame consumer before SD
+    // inventory exists. Its module remains owned by the boot controller.
+    const unsigned acquiredBeforeBootstrap = acquisitions;
+    const unsigned releasedBeforeBootstrap = releases;
+    assert(nativeNavigationAttachBootstrap(&navigation));
+    assert(!nativeNavigationAttachBootstrap(&navigation));
+    nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();
+    assert(nativeNavigationFrame().pressed == RISC_NAV_CONFIRM);
+    assert(acquisitions == acquiredBeforeBootstrap && releases == releasedBeforeBootstrap);
+    assert(!nativeNavigationSuspend()); // Borrowed module is not quiesced for sleep.
+    assert(releases == releasedBeforeBootstrap);
     puts("Firmware navigation acquisition, retry, focus, polling and sleep lifetime: PASS");
 }

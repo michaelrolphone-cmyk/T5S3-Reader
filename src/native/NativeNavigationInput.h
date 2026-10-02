@@ -13,3 +13,6 @@ void nativeNavigationBoundary();
 bool nativeNavigationSuspend();
 void nativeNavigationResume();
 void nativeNavigationRetry();
+// Borrow a verified boot provider whose module owner outlives this consumer.
+// Used before removable storage can host the normal installed provider graph.
+bool nativeNavigationAttachBootstrap(const risc_input_navigation_api_v1* candidate);

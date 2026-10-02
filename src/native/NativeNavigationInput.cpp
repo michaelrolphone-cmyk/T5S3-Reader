@@ -12,6 +12,7 @@ const risc_input_navigation_api_v1* api = nullptr;
 risc_input_navigation_frame_v1 frame{};
 constexpr uint32_t kActivationRetryMs = 1000;
 bool configured = true, enabled = true, attempted = false, quarantined = false, usable = true;
+bool bootstrapAttached = false;
 uint32_t lastPoll = 0, heldSince = 0, lastAttemptMs = 0;
 
 void clearFrame() { frame = {}; heldSince = millis(); }
@@ -74,9 +75,28 @@ void nativeNavigationRetry() {
         lastAttemptMs = 0;
     }
 }
+bool nativeNavigationAttachBootstrap(const risc_input_navigation_api_v1* candidate) {
+    if (api || bootstrapAttached || quarantined || lease.grant.slot || !candidate ||
+        candidate->api_version != RISC_INPUT_NAVIGATION_API_V1 ||
+        candidate->struct_size < sizeof(*candidate) || !candidate->poll ||
+        !candidate->foreground || !candidate->reset) return false;
+    clearFrame();
+    if (!focus.apply(candidate) || !candidate->reset(candidate->context)) return false;
+    api = candidate;
+    bootstrapAttached = true;
+    usable = true;
+    enabled = configured;
+    attempted = false;
+    return true;
+}
 static bool releaseNavigation(bool requireGraphShutdown) {
     clearFrame();
     enabled = false;
+    if (bootstrapAttached) {
+        // The bootstrap module remains owned by its boot controller. Never
+        // claim sleep quiescence or release it through the installed graph.
+        return api && api->reset(api->context) && !requireGraphShutdown;
+    }
     if (!api) {
         if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) {
             quarantined = true;
