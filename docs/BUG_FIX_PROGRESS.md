@@ -1,3 +1,12 @@
+## Active repair claim — OTA check state reset
+
+- Owner: `fix_ota_check_state_batch`; implementation branch `fix/ota-check-state`; canonical report selected by behavior: **#233**, where a successful release lookup is followed in the same firmware session by a failed/no-update check and stale release metadata remains installable.
+- Current master baseline: `d2d5a9a132d747122b0f0b607f228132ba79e667` (includes merged PR345 and PR346); refreshed canonical ledger: `06f74b43e3550b9a456ec656f5d7c153b4233f9c`; PR332 remains the sole ledger PR. Current open PR review found no OTA updater overlap; related remote `fix/ota-download-performance` is a distinct old transfer-loop change, not this state defect. No competing claim is present in the latest progress head.
+- Claim time: 2026-10-02 01:06 UTC. Phase: revalidated on current master source; preparing original-failure regression before implementation. Suspect state is process-static through `NativeOtaBridge`; verify every terminal result and retry before marking confirmed.
+- Scope: only OTA discovery-state invalidation and focused regression/docs/version metadata if required. Do not change OTA transport architecture, U1/display/CI-owner paths, device behavior, master, release, or catalog. Candidate firmware version must be checked against published/current `1.3.53`; no version decision is final until source/build policy is checked.
+
+---
+
 ## Current capacity policy — 2026-10-01
 
 - The user removed the fixed two-open-bug-PR cap. There is no numerical limit on open bugfix PRs; select and sequence work by user priority, ownership, overlap, and evidence.
