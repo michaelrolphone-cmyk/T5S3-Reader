@@ -115,4 +115,5 @@ static constexpr uint16_t LogicalHeight = 800;
 static constexpr uint8_t PowerButton = 3;
 static constexpr uint8_t TouchInterrupt = 10;
 static constexpr uint8_t SdCs = 0xFF;
+static constexpr uint8_t RtcAddress = 0x51;
 }
