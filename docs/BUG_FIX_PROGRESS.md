@@ -1,3 +1,9 @@
+## Deferred backlog
+
+- Firmware version reservations across concurrent open PRs now form a cascading patch chain; when one older PR merges, later branches can conflict or require another exact-head CI cycle. After PR351/PR353 current-master sync is complete, assess a less conflict-prone version-coordination/release workflow. This is a deferred process task only; do not redesign it during the current bug batch or write any release/catalog changes.
+
+---
+
 ## Active merge-base refresh — PR351 and PR353
 
 - Current master `ca66db298c2e735f45e5029083a9bfbd7b6740bd`, firmware1.3.57. Both PR branches now contain proper two-parent merge commits with current master as first parent and their previous repair head as second parent. Their trees preserve their source fixes, tests, current-master changes and unique versions. GitHub reports both open PRs mergeable; both remain draft while new exact-head CI runs.
