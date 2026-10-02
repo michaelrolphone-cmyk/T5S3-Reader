@@ -82,7 +82,8 @@ physical mapping is a prerequisite.
 
 This PR only stages source. It does not create a GitHub credential, register a
 runner, configure launchd, change repository security settings or impose a
-required check. After reviewing and merging this PR, activation needs an
+required check. After reviewing and pinning the controller files at an exact
+trusted commit (which may be the reviewed pilot commit before merge), activation needs an
 explicit approval for these exact operations:
 
 1. Create one **fine-grained** GitHub credential for only
@@ -91,8 +92,8 @@ explicit approval for these exact operations:
    Store it privately in the Mac login Keychain as generic-password service
    `riscrte-cam-ci`, account `michaelrolphone-cmyk` using secure local entry.
    Never place it in a shell command argument, chat, repo, plist or log.
-2. Install a pinned copy of the two trusted Python files from the reviewed
-   master commit into an isolated local directory with a private Python
+2. Install a pinned copy of the two trusted Python files from that reviewed
+   trusted commit into an isolated local directory with a private Python
    environment (`esptool==4.5.1`, `pyserial==3.5`). The controller and device
    scripts must not be updated from a PR checkout. Point `--evidence-root` to
    a private local directory outside the repository.
