@@ -59,9 +59,9 @@ static bool command(uint8_t index, uint32_t arg, uint8_t *response, size_t lengt
 static bool init_card(void) {
     uint8_t response[6] = {0};
     x4pro_pin_output(X4PRO_PIN_SD_PWR, true);
-    if (clock_api) clock_api->sleep_ms(clock_api->context, 5);
+    if (clock_api) clock_api->sleep_ms(clock_api->context, 80);
     x4pro_pin_output(X4PRO_PIN_SD_PWR, false);
-    if (clock_api) clock_api->sleep_ms(clock_api->context, 20);
+    if (clock_api) clock_api->sleep_ms(clock_api->context, 120);
     x4pro_pin_release(X4PRO_PIN_SD_CMD);
     for (int i = 0; i < 80; ++i) tick();
     if (!command(0, 0, response, 0)) { fail("CMD0 send failed"); return false; }

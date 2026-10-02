@@ -31,7 +31,7 @@ int main(void) {
     failures += expect(!volume->ready(volume->context), "refresh does not fabricate media");
     failures += expect(volume->file_open_read(volume->context, "/book.epub", 0) ==
                        RISC_STORAGE_FILE_INVALID, "no file handle without filesystem");
-    failures += expect(slept_ms == 50, "bounded power settle sleeps");
+    failures += expect(slept_ms == 400, "bounded board-proven power settle sleeps");
     failures += expect(x4_sd_fake_ticks > 0 && x4_sd_fake_ticks < 1200, "bounded clock traffic");
     failures += expect(!x4_sd_fake_bad_pin, "SD provider owns only assigned pins");
     driver->stop();
