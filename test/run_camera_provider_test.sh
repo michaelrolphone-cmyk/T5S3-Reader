@@ -3,7 +3,7 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 sdk=${RISCRTE_PROVIDER_SDK_ROOT:-$root}
 if [ ! -f "$sdk/sdk/driver/RiscStreamProviderV1.h" ]; then
-  echo 'Requires pinned U1 provider SDK via RISCRTE_PROVIDER_SDK_ROOT' >&2; exit 1
+  echo 'Requires the U1 provider SDK' >&2; exit 1
 fi
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
