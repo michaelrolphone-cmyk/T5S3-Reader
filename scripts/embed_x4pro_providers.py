@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src/platform/x4pro_embedded.c"
-PACKAGES = ["platform-clock-v1", "x4pro-panel", "x4pro-buttons", "x4pro-frontlight"]
+PACKAGES = ["platform-clock-v1", "x4pro-panel", "x4pro-buttons", "x4pro-frontlight", "x4pro-sd"]
 
 def undefined_imports(elf):
     """Named undefined symbols only. Skip the unnamed null symbol at index 0."""

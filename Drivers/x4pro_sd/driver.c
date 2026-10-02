@@ -36,8 +36,13 @@ static bool command(uint8_t index, uint32_t arg, uint8_t *response, size_t lengt
     for (size_t byte = 0; byte < sizeof(frame); ++byte)
         for (int bit = 7; bit >= 0; --bit) cmd_bit((frame[byte] >> bit) & 1);
     x4pro_pin_release(X4PRO_PIN_SD_CMD);
+    /* CMD0 has no response on the native SD bus. */
+    if (!length) { for (int i = 0; i < 8; ++i) tick(); return true; }
     bool seen = false;
-    for (int i = 0; i < 64 && !seen; ++i) { seen = !x4pro_pin_read(X4PRO_PIN_SD_CMD); tick(); }
+    for (int i = 0; i < 64 && !seen; ++i) {
+        seen = !x4pro_pin_read(X4PRO_PIN_SD_CMD);
+        if (!seen) tick();
+    }
     if (!seen) return false;
     memset(response, 0, length);
     for (size_t byte = 0; byte < length; ++byte) {
@@ -59,10 +64,15 @@ static bool init_card(void) {
     if (clock_api) clock_api->sleep_ms(clock_api->context, 20);
     x4pro_pin_release(X4PRO_PIN_SD_CMD);
     for (int i = 0; i < 80; ++i) tick();
-    if (!command(0, 0, response, 1)) { fail("CMD0 no response"); return false; }
-    if (!command(8, 0x1AAu, response, 5)) { fail("CMD8 no response"); return false; }
+    if (!command(0, 0, response, 0)) { fail("CMD0 send failed"); return false; }
+    if (!command(8, 0x1AAu, response, 6)) { fail("CMD8 no response"); return false; }
+    if ((response[0] & 0x3fu) != 8u || response[3] != 1u || response[4] != 0xaau) {
+        fail("CMD8 response invalid"); return false;
+    }
     for (int i = 0; i < 200; ++i) {
-        if (!command(55, 0, response, 1) || !command(41, 0x40100000u, response, 5)) { fail("ACMD41 failed"); return false; }
+        if (!command(55, 0, response, 6) || !command(41, 0x40100000u, response, 6)) {
+            fail("ACMD41 failed"); return false;
+        }
         if (response[1] & 0x80u) { card_ready = true; return true; }
         if (clock_api) clock_api->sleep_ms(clock_api->context, 10);
     }
@@ -73,7 +83,9 @@ static bool refresh(void *context) {
     (void)context;
     card_ready = false;
     error[0] = 0;
-    return started && init_card();
+    if (!started) return false;
+    (void)init_card();
+    return true;
 }
 static bool ready(void *context) { (void)context; return started && card_ready; }
 static bool label(void *context, char *out, size_t capacity) {

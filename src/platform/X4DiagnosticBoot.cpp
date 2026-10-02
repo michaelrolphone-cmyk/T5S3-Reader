@@ -4,6 +4,7 @@
 #include "RiscFrontlightV1.h"
 #include "RiscInputNavigationV1.h"
 #include "RiscPlatformClockV1.h"
+#include "RiscStorageVolumeV1.h"
 #include "x4pro_embedded.h"
 #include "fontIds.h"
 #include "runtime/display/ProviderDisplaySurface.h"
@@ -31,6 +32,7 @@ RuntimeProviders::ModuleV2 clock_mod;
 RuntimeProviders::ModuleV2 panel_mod;
 RuntimeProviders::ModuleV2 buttons_mod;
 RuntimeProviders::ModuleV2 light_mod;
+RuntimeProviders::ModuleV2 sd_mod;
 const risc_display_output_api_v1 *display_api = nullptr;
 const risc_input_navigation_api_v1 *nav_api = nullptr;
 const risc_frontlight_api_v1 *light_api = nullptr;
@@ -40,6 +42,7 @@ uint32_t sequence = 0;
 uint32_t last_buttons = 0;
 bool ready = false;
 bool shared_text_ready = false;
+const char *storage_status = "SD provider unavailable";
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
     LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
@@ -91,6 +94,7 @@ void paint(uint32_t edge) {
     /* Exercise the same 0=black software raster and text renderer as Reader UI. */
     if (shared_text_ready) {
         renderer.drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
+        renderer.drawText(NOTOSERIF_14_FONT_ID, 48, 36, storage_status);
     }
 }
 bool present() {
@@ -119,6 +123,7 @@ void x4DiagnosticSetup() {
     const x4_embedded_provider *panel = x4_embedded_find("x4pro-panel");
     const x4_embedded_provider *buttons = x4_embedded_find("x4pro-buttons");
     const x4_embedded_provider *light = x4_embedded_find("x4pro-frontlight");
+    const x4_embedded_provider *sd = x4_embedded_find("x4pro-sd");
     if (!clock || !panel || !buttons || !light) {
         LOG_ERR("X4", "embedded provider missing");
         return;
@@ -128,6 +133,17 @@ void x4DiagnosticSetup() {
     if (!load_one(panel_mod, *panel, &dep, 1)) return;
     if (!load_one(buttons_mod, *buttons, nullptr, 0)) return;
     if (!load_one(light_mod, *light, nullptr, 0)) return;
+    if (sd && load_one(sd_mod, *sd, &dep, 1)) {
+        auto *volume = static_cast<const risc_storage_volume_api_v1 *>(sd_mod.capability());
+        if (volume && volume->api_version == RISC_STORAGE_VOLUME_API_V1 &&
+            volume->struct_size >= sizeof(*volume) && volume->ready) {
+            const bool card_ready = volume->ready(volume->context);
+            storage_status = card_ready ? "SD bus ready; files unavailable" : "SD card not ready";
+            char reason[80] = "none";
+            if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
+            LOG_INF("X4", "storage.volume ready=%d reason=%s", card_ready ? 1 : 0, reason);
+        }
+    }
     display_api = static_cast<const risc_display_output_api_v1 *>(panel_mod.capability());
     nav_api = static_cast<const risc_input_navigation_api_v1 *>(buttons_mod.capability());
     light_api = static_cast<const risc_frontlight_api_v1 *>(light_mod.capability());
