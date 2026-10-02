@@ -1,3 +1,11 @@
+## Saved-network fallback repair closeout — 2026-10-02 08:12 UTC
+
+- Canonical #70 is in open, ready-for-review, mergeable [PR #354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/354). Existing branch `fix/saved-network-fallback` has exact head `f874195992f2ef9830bc2eeebffb8c798c8260c9`, current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82` as first parent and old repair head `0e464a2a9558303d845f33d434e4bf6db262cd7d` second parent. Compare 2 ahead/0 behind, 11 intended files. No master write/merge.
+- Current helper regression failed on baseline (exit134), then passed preferred failure/alternate recovery, profile de-duplication, bounded total timeout, and later retry. OTA integration contract, runtime network-provider suite and diff check passed locally.
+- Firmware current/tag `firmware-v1.3.61` (master version1.3.61); PR3551.3.62 and blocked PR3471.3.63 preserved. This repair uniquely advances firmware source to1.3.64; no app/driver version changes.
+- Exact-head [focused saved-network run36982154677](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36982154677) passed. Exact-head [PlatformIO run36982154633](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36982154633) passed host aggregate, both board builds/app validation, package-version checks and headless core. No device/network I/O or physical Wi-Fi qualification.
+- Claim `saved_network_fallback_refresh_20261002_0801` released after terminal checks. User handles merge. PR347 approval boundary remains untouched.
+
 ## Saved-network fallback sync checkpoint — 2026-10-02 08:08 UTC
 
 - Existing PR354 is now a draft, open, mergeable and directly synchronized to current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. Branch `fix/saved-network-fallback`, exact remote head `f874195992f2ef9830bc2eeebffb8c798c8260c9`; tree has 11 intended files, compare 2 ahead/0 behind. The master first parent and old repair head `0e464a2a9558303d845f33d434e4bf6db262cd7d` second parent preserve both histories.
