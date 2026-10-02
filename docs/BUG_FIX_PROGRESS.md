@@ -20,7 +20,7 @@
 - PR355 is open/ready at `ab36b60c79376efc44a3bb09811e2dc697a6ebc4`, candidate firmware1.3.62; its exact-head BMP regression and PlatformIO CI passed. PR356 is open/ready at `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, Timecard app1.0.4; exact-head PlatformIO CI passed. Neither is merged.
 - PR351/353/354 remain open but stale/nonmergeable against82caa. PR350/#348 remain X4 work; main user priority is X4 after its baseline merges. No work on these scopes.
 - PR332 remains the sole coordination PR. No other active bug implementation claim found. T5S3 performance remains explicitly deferred until X4 works.
-- Selected independent File Browser bug#22 is claimed below. Current File Browser manifest1.3.2; candidate app version1.3.3, no firmware increment.
+- Selected independent File Browser bug#22 was revalidated and claimed, then checkpointed locally and released at the two-batch review cap (details above). Current File Browser manifest1.3.2; candidate app version1.3.3, no firmware increment.
 
 ## Active File Browser destination-picker bounds repair — canonical bug #22
 
