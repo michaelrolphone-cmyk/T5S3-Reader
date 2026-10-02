@@ -131,7 +131,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Do not advertise Reset/Cancel through `previous_label`/`next_label` unless the corresponding logical Left/Right inputs actually perform those actions. Either handle Left/Right as Reset/Cancel and provide a separate raw-front-button capture mechanism, or render explicit side-button instructions and leave the front-button hints blank while capturing raw physical front-button presses. Add a test that verifies every rendered control hint invokes the action named by that hint.
 ### 18. A malformed BMP width can overflow row-stride arithmetic and drive out-of-bounds pixel reads
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed on current master `f7f006f78bf1f83c28f3ce05728b8973e895956b`; claim `image_bmp_guard_20261002_0450` active on `fix/image-bmp-layout-overflow`. The production arithmetic accepts the preserved overflowing width/32bpp/tiny-file trigger; exact regression and current workflow evidence are being added. Not fixed on master.
 - **Sources:** [automation/bug-scan-20260926-2120](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2120/bugs.md)
 
 - **Affected code:** `src/native/NativeImageBridge.cpp`, `bmpInfo()`, `decodeBmp()`, and the BMP path in `renderFit()`; reachable through `Apps/image_viewer.c` for BMP files.
