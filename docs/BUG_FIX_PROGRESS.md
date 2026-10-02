@@ -1,8 +1,12 @@
-## File Browser repair resumed — 2026-10-02 07:08 UTC
+## File Browser repair closeout — 2026-10-02 07:20 UTC
 
-- User explicitly removed the two-pending-batch limit. This supersedes the previous local checkpoint's review-slot blocker; no review cap applies.
-- Repair branch `fix/file-browser-picker-bounds` now exists and PR [#357](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/357) is open as a draft. Exact head `8cb880a96c12cfa7536f9e1031d0f44a5d12f2e0`, directly based on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; compare is 1 ahead/0 behind, exactly four intended files.
-- Candidate remains File Browser1.3.3, no firmware increment. Exact-head PlatformIO run [36976929426](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36976929426) is in progress. PR mergeability is currently true. Keep the claim active until CI and exact-head verification complete; then mark PR ready and release it.
+- User explicitly removed the two-pending-batch limit. This supersedes the temporary local checkpoint below; PR publication proceeded.
+- Repair [PR #357](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/357) is open, ready for review, and mergeable. Branch `fix/file-browser-picker-bounds`, exact head `8cbb98340c77e14199666c75574f042bf3c43548`, directly based on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; compare is 2 ahead/0 behind, exactly five intended files. No master write or merge.
+- File Browser app version1.3.2→1.3.3; no firmware increment. Baseline production-source regression failed at the expected 97th-directory capacity assertion; repaired test covers 96/97/98/120 directories at offsets1 and2. Local Xtensa ELF/sidecar, shell syntax, and diff checks pass.
+- First exact-head run [36976929426](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36976929426) found duplicate `app_main` linking because `test/run_springboard_test.sh` separately compiled production source after the test began including it. Fixed that second call site in commit `8cbb98340c77e14199666c75574f042bf3c43548`.
+- Corrected exact-head [PlatformIO run 36977488799](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36977488799) passed: native host aggregate including both app test runners and ASan/UBSan File Browser test, t5s3-pro and lilygo-epd47-s3 builds/app validation, package-version validation, and headless core. No device verification.
+- Claim `file_picker_bounds_20261002_0655` released after exact-head verification. User handles Reader merge.
+
 
 ## File Browser picker repair checkpoint — 2026-10-02 07:01 UTC
 
@@ -11,7 +15,7 @@
 - Isolated local candidate at `/Users/micahelbyrns/Documents/Codex/2026-10-01/task-3/file-browser-picker-bounds` changes only `Apps/file_browser.c`, `Apps/file_browser.json`, `test/native_apps/file_browser_test.c`, and `test/run_native_app_test.sh`. Proposed File Browser version1.3.2→1.3.3; no firmware increment.
 - **Baseline regression:** production-source collector test failed at the expected capacity assertion on unmodified current-master source (exit134).
 - **Local PASS:** fixed production-source focused test covers 96/97/98/120 visible directories at root offset1 and non-root offset2; Xtensa File Browser ELF and 1.3.3 sidecar build; shell syntax and `git diff --check`.
-- **Not run / limitation:** local ASan/UBSan stalled in this Mac environment and was interrupted previously; this run does not claim sanitizer or full host aggregate. No device verification.
+- **Verification limit:** Local ASan/UBSan previously stalled on Mac; the corrected exact-head CI sanitizer-backed regression and complete host aggregate passed. No device verification.
 - The runner regression is configured for ASan/UBSan in the candidate, but no cloud job can run until a repair PR is opened. Recheck the review-slot limit before publishing. Do not publish a third code batch while #355/#356 remain outstanding. Candidate branch is reserved as `fix/file-browser-picker-bounds`; local edits remain available in the isolated workspace. Claim `file_picker_bounds_20261002_0655` released at this checkpoint; resume only after a code slot opens and after rechecking master, PRs, owner status, and ledger head.
 
 ## Deferred backlog
@@ -30,7 +34,7 @@
 
 ## Active File Browser destination-picker bounds repair — canonical bug #22
 
-- Owner `file_picker_bounds_20261002_0655`; phase: checkpointed locally, claim released because the two code-batch review slots are occupied by open ready PRs #355/#356. Repair branch reservation `fix/file-browser-picker-bounds`; no remote repair branch/PR created. Master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; `Apps/file_browser.c` blob `c7a4882d7abf12e8fb51627947cb645f296abf66`; app manifest1.3.2, candidate1.3.3.
+- Owner `file_picker_bounds_20261002_0655`; phase: terminal exact-head verification complete, claim released. Repair branch `fix/file-browser-picker-bounds`; PR #357 ready for review at exact head `8cbb98340c77e14199666c75574f042bf3c43548`. Master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; `Apps/file_browser.c` blob `c7a4882d7abf12e8fb51627947cb645f296abf66`; app manifest1.3.2, candidate1.3.3.
 - Revalidated production path: File Browser exposes Copy/Move, then `choose_destination()` opens the SD/USB root picker and calls `list_picker_directories()`. Root begins with one fixed action row, so at visible directory97 the current loop reaches count97 and stores into `picker_names[96]` although valid indices are0–95. Both SD and USB enumeration share the function.
 - Overlap/owner check: no open PR changes this picker. Historical PR224 is merged; its surviving `fix/file-browser-options-actions` branch only has stale Copy/Open-handler changes, while `fix/file-browser-oversize-usb-handle` has the same current source and no picker fix. Neither is an active owner claim. No PR will be edited.
 - Fix scope is bounds-safe enumeration for both root and non-root fixed-row offsets. The existing fixed directory window remains as designed; the batch targets the out-of-bounds write only. Local production-source regression covers 96/97/98/120 directories at root offset1 and non-root offset2. Unmodified baseline failed the capacity assertion; repaired test passes.
