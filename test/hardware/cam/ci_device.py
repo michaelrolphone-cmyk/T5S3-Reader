@@ -16,8 +16,6 @@ import sys
 import time
 from pathlib import Path
 
-PORT = "/dev/cu.usbserial-2340"
-LOCATION = "2-3.4"
 MAC = "28:84:85:4b:57:98"
 BASELINE_SHA = "e208d9baafc1f8bd9d18eb4b659648e082b44381978d178cc8a44be189515e6d"
 BASELINE_LENGTH = 541328
@@ -32,13 +30,14 @@ def require(ok, why):
 
 class DeviceLocks:
     """Same lock keys and directory as the proven CAM lab scripts."""
-    def __init__(self):
+    def __init__(self, port):
+        self.port = port
         self.handles = []
 
     def __enter__(self):
         LOCK_DIR.mkdir(parents=True, exist_ok=True)
         try:
-            for key in sorted(("port:" + PORT, "mac:" + MAC)):
+            for key in sorted(("port:" + self.port, "mac:" + MAC)):
                 path = LOCK_DIR / (hashlib.sha256(key.encode()).hexdigest() + ".lock")
                 handle = path.open("a+")
                 try:
@@ -90,8 +89,8 @@ def partition(table, image_size):
     return apps[0][1]
 
 
-def write_flash(esptool, esp, image_path):
-    esptool.main(["--chip", "esp32s3", "--port", PORT, "--baud", "115200",
+def write_flash(esptool, esp, image_path, port):
+    esptool.main(["--chip", "esp32s3", "--port", port, "--baud", "115200",
         "--no-stub", "--after", "no_reset_stub", "write_flash", "--compress",
         "--flash_mode", "keep", "--flash_freq", "keep", "--flash_size", "keep",
         "0x10000", str(image_path)], esp=esp)
@@ -145,7 +144,16 @@ def main():
     parser.add_argument("--image", type=Path, required=True)
     parser.add_argument("--sha256", required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--port", required=True)
+    parser.add_argument("--location", required=True)
     args = parser.parse_args()
+    # A CH340/CH341 USB bridge does not expose the ESP MAC. Bind the current
+    # cable location privately after physical mapping, then verify the chip
+    # MAC and exact installed firmware before any candidate write.
+    require(re.fullmatch(r"/dev/cu\.usbserial-[0-9]+", args.port) is not None,
+            "CAM pilot requires an explicitly mapped USB-UART port")
+    require(re.fullmatch(r"[0-9]+-[0-9]+(?:\.[0-9]+)*", args.location) is not None,
+            "Invalid CAM USB topology location")
     require(not args.out.exists(), "Evidence directory already exists")
     image = args.image.read_bytes()
     require(re.fullmatch(r"[0-9a-f]{64}", args.sha256) is not None
@@ -157,12 +165,13 @@ def main():
     esp = None
     backup = None
     try:
-        with DeviceLocks():
+        with DeviceLocks(args.port):
             before = inventory()
-            require(before.count((PORT, LOCATION, 0x1a86, 0x7523)) == 1, "CAM USB identity mismatch")
+            require(before.count((args.port, args.location, 0x1a86, 0x7523)) == 1,
+                    "CAM USB identity mismatch")
             import serial
             import esptool
-            port = serial.Serial(PORT, 115200, timeout=1, exclusive=True)
+            port = serial.Serial(args.port, 115200, timeout=1, exclusive=True)
             try:
                 esp = esptool.detect_chip(port, 115200, connect_attempts=1)
                 verify(esp)
@@ -184,7 +193,7 @@ def main():
                 require(inventory() == before, "CAM USB inventory changed before flash")
                 verify(esp)
                 try:
-                    write_flash(esptool, esp, args.image)
+                    write_flash(esptool, esp, args.image, args.port)
                     require(esp.read_flash(offset, len(image)) == image, "CAM candidate readback mismatch")
                     require(esp.read_flash(0x8000, 4096) == table, "CAM partition table changed")
                     require(hashlib.sha256(esp.read_flash(0x9000, 0x5000)).hexdigest() == nvs_digest,
@@ -198,12 +207,12 @@ def main():
                     # Restore the exact private prewrite bytes even after a test
                     # failure. A restoration failure invalidates the result.
                     port.close()
-                    with serial.Serial(PORT, 115200, timeout=1, exclusive=True) as restore_port:
+                    with serial.Serial(args.port, 115200, timeout=1, exclusive=True) as restore_port:
                         restore_esp = esptool.detect_chip(restore_port, 115200, connect_attempts=1)
                         verify(restore_esp)
                         restore_esp = restore_esp.run_stub()
                         restore_esp.flash_spi_attach(0)
-                        write_flash(esptool, restore_esp, private_backup)
+                        write_flash(esptool, restore_esp, private_backup, args.port)
                         require(restore_esp.read_flash(offset, BACKUP_LENGTH) == backup,
                                 "CAM baseline restoration readback failed")
                         require(restore_esp.read_flash(0x8000, 4096) == table,

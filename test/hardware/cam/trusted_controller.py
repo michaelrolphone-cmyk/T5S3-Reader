@@ -88,18 +88,18 @@ def approved_source(gh, number):
 
 
 def candidate(gh, number, sha):
+    runs = gh.call(f"/actions/workflows/{WORKFLOW}/runs?event=pull_request&head_sha={sha}&per_page=100")
+    if runs["total_count"] > 100:
+        raise ValueError("Exact-head workflow run history exceeds bound")
     related = []
-    # Bounded pagination handles a busy public repository while avoiding an
-    # unbounded scan through its history.
-    for page in range(1, 11):
-        runs = gh.call(f"/actions/workflows/{WORKFLOW}/runs?event=pull_request&per_page=100&page={page}")
-        for run in runs["workflow_runs"]:
-            prs = run.get("pull_requests") or []
-            if (run["event"] == "pull_request" and run["actor"]["login"] == OWNER
-                    and any(p["number"] == number and p["head"]["sha"] == sha for p in prs)):
-                related.append(run)
-        if len(runs["workflow_runs"]) < 100:
-            break
+    for run in runs["workflow_runs"]:
+        prs = run.get("pull_requests") or []
+        if (run["event"] == "pull_request" and run["head_sha"] == sha
+                and run["actor"]["login"] == OWNER
+                and any(p["number"] == number and p["head"]["sha"] == sha
+                        and p["head"]["repo"]["id"] == p["base"]["repo"]["id"]
+                        for p in prs)):
+            related.append(run)
     if not related or any(r["status"] != "completed" for r in related):
         return None  # Cloud build has not completed; do not post a premature failure.
     if len(related) != 1 or related[0]["conclusion"] != "success":
@@ -145,7 +145,23 @@ def post_check(gh, sha, conclusion, summary):
                    "summary": summary[:6000]}})
 
 
-def once(gh, number, evidence_root, python):
+def load_cam_binding(path):
+    if path.is_symlink() or path.stat().st_mode & 0o077:
+        raise ValueError("CAM binding must be a private non-symlink file")
+    if path.stat().st_size > 1024:
+        raise ValueError("CAM binding exceeds size bound")
+    binding = json.loads(path.read_text())
+    if (set(binding) != {"port", "location", "mac"}
+            or binding["mac"] != "28:84:85:4b:57:98"
+            or not isinstance(binding["port"], str)
+            or re.fullmatch(r"/dev/cu\.usbserial-[0-9]+", binding["port"]) is None
+            or not isinstance(binding["location"], str)
+            or re.fullmatch(r"[0-9]+-[0-9]+(?:\.[0-9]+)*", binding["location"]) is None):
+        raise ValueError("CAM binding identity or topology invalid")
+    return binding
+
+
+def once(gh, number, evidence_root, python, binding):
     sha = approved_source(gh, number)
     result_dir = evidence_root / sha
     if result_dir.exists():
@@ -185,7 +201,8 @@ def once(gh, number, evidence_root, python):
         device_dir = result_dir / "device"
         command = [str(python), str(Path(__file__).with_name("ci_device.py")),
                    "--image", str(artifact_dir / "firmware.bin"),
-                   "--sha256", digest, "--out", str(device_dir)]
+                   "--sha256", digest, "--out", str(device_dir),
+                   "--port", binding["port"], "--location", binding["location"]]
         child_env = os.environ.copy()
         child_env.pop("GH_TOKEN", None)
         completed = subprocess.run(command, timeout=600, capture_output=True, text=True,
@@ -215,6 +232,8 @@ def main():
     group.add_argument("--pr", type=int)
     group.add_argument("--scan", action="store_true")
     parser.add_argument("--evidence-root", type=Path, required=True)
+    parser.add_argument("--cam-binding", type=Path, required=True,
+                        help="Private, physically mapped CAM port/location/MAC JSON")
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
     args = parser.parse_args()
     token = os.environ.get("GH_TOKEN")
@@ -227,6 +246,7 @@ def main():
         if found.returncode == 0:
             token = found.stdout.strip()
     gh = GitHub(token)
+    binding = load_cam_binding(args.cam_binding)
     if args.scan:
         prs = gh.call("/pulls?state=open&per_page=100")
         if len(prs) == 100:
@@ -235,13 +255,13 @@ def main():
             if pr["user"]["login"] != OWNER or pr["head"]["repo"]["full_name"] != REPO:
                 continue
             try:
-                once(gh, pr["number"], args.evidence_root, args.python)
+                once(gh, pr["number"], args.evidence_root, args.python, binding)
             except ValueError as exc:
                 print(f"PR {pr['number']}: {exc}", file=sys.stderr)
     else:
         if not 0 < args.pr < 1_000_000:
             raise ValueError("Invalid PR number")
-        once(gh, args.pr, args.evidence_root, args.python)
+        once(gh, args.pr, args.evidence_root, args.python, binding)
 
 
 if __name__ == "__main__":

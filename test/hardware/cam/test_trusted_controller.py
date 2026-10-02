@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+import os
 import zipfile
 from pathlib import Path
 
@@ -28,6 +29,17 @@ class FakeGitHub:
 
 
 class ControllerTests(unittest.TestCase):
+    def test_private_cam_binding(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "cam.json"
+            path.write_text(json.dumps({"port": "/dev/cu.usbserial-2310",
+                "location": "2-3.1", "mac": "28:84:85:4b:57:98"}))
+            os.chmod(path, 0o600)
+            self.assertEqual(controller.load_cam_binding(path)["location"], "2-3.1")
+            os.chmod(path, 0o644)
+            with self.assertRaises(ValueError):
+                controller.load_cam_binding(path)
+
     def test_exact_head_attestation(self):
         self.assertEqual(controller.approved_source(FakeGitHub(), 123), SHA)
         with self.assertRaises(ValueError):

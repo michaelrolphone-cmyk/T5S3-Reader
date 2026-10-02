@@ -38,13 +38,21 @@ The cloud build uses PlatformIO 6.1.19 and the CAM port's declared platform.
 It requires CAM source plus the U1 package runtime in the PR checkout. This
 workflow will fail until those currently separate sources are integrated on
 the PR under review; it does not substitute a stale prebuilt firmware image.
+The first PR #347 run failed in `Verify CAM build inputs`: current master lacks
+`platformio.cam-runtime.ini`, `src/runtime/packages/PackageExecutableAdmission.cpp`,
+`Apps/camera_utility.c`, and `test/run_cam_headless_test.sh`. PR #96 supplies
+the U1 package runtime and is still open; PR #344 supplies the CAM port/app
+and is still draft. The shortest source path is for the owner to merge #96,
+then integrate/merge #344 against that base, then refresh this same CI PR
+against master and let its cloud build run. Do not construct a candidate by
+mixing unmerged PR heads while labelling it as this PR's exact source SHA.
 The artifact contains only `firmware.bin` and its manifest. The SHA in the
 manifest is the checked-out PR head, not GitHub's synthetic PR merge commit.
 
 The device suite uses the proven `camera-app-flash-2` boot/capture assertions:
 one camera utility output, bounded JPEG byte count, app return zero and steady
-heartbeats. It requires CAM USB VID:PID 1a86:7523 at location `2-3.4`, serial
-`/dev/cu.usbserial-2340`, MAC `28:84:85:4b:57:98`, 16 MiB flash, the known
+heartbeats. It requires CAM USB VID:PID 1a86:7523 at a *privately mapped*
+current location and serial port, MAC `28:84:85:4b:57:98`, 16 MiB flash, the known
 partition layout and the installed baseline firmware SHA-256
 `e208d9baafc1f8bd9d18eb4b659648e082b44381978d178cc8a44be189515e6d`.
 It shares the existing `.device-locks` keys with earlier CAM work. It backs up
@@ -54,6 +62,17 @@ baseline bytes with readback in `finally`. Failure to restore is a failure;
 the local backup must be kept for manual recovery. There is no relay or hub
 power action. USB disconnect, missing board, unexpected firmware or lock
 contention all fail before flash.
+
+The prior `2-3.4` / `/dev/cu.usbserial-2340` mapping is stale after USB
+reconfiguration. CH340 USB descriptors do not expose the chip MAC. Before
+activation, physically map the SD CAM cable and create a local mode-0600 JSON
+file such as `{"port":"/dev/cu.usbserial-2310","location":"2-3.1","mac":"28:84:85:4b:57:98"}`
+**only if that mapping is proven**. This example is syntax, not a claim that
+the current port belongs to the SD CAM. The controller rejects a symlink,
+world/group-readable binding, wrong MAC and unexpected port form. The device
+suite verifies chip MAC and installed baseline before writing; entering an
+incorrect USB-UART port can still reset that other board during chip ID, so
+physical mapping is a prerequisite.
 
 ## Activation boundary
 
@@ -74,7 +93,8 @@ explicit approval for these exact operations:
    scripts must not be updated from a PR checkout. Point `--evidence-root` to
    a private local directory outside the repository.
 3. Load a user-scoped launchd timer that invokes that exact local Python and
-   `trusted_controller.py --scan --evidence-root <private-directory>` at a
+   `trusted_controller.py --scan --evidence-root <private-directory>
+   --cam-binding <private-mapped-file>` at a
    bounded interval such as five minutes. The timer will poll owner PRs, wait
    for their exact approval and completed cloud build, then post a Checks API
    result on the exact head SHA. It must remain unloaded until credential and
