@@ -1,3 +1,11 @@
+## Ask response Unicode validation — claim 2026-10-02 09:55 UTC
+
+- Owner `llm_ask_unicode_validation_20261002_0955`; canonical #83; phase: claimed for correction of the report's original OOB hypothesis and repair of confirmed malformed-Unicode acceptance. Current master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; ledger branch `automation/bug-ledger` captured at `9ee95d9a0434f0dae00b29f59b885c0d1b00e039` before this claim.
+- Repair branch reserved: `fix/llm-ask-unpaired-surrogates`; target master. Current source `Apps/llm_ask.c` blob `40d2dcecbacce5600a2ca3a7f02f0c1c95f7cf02`; manifest `Apps/llm_ask.json` blob `43108d913a0ddba7520bb3d00475bf29d539edbb`, version1.0.1; published app tag `app-llm_ask-v1.0.1`. Candidate app version1.0.2; no firmware or driver change expected.
+- Production workflow is installed **Ask** app on its HTTPS LLM response path. The t5_network_api_v1 contract guarantees a NUL-terminated response, so truncated `\\u` escapes are rejected at the first NUL by the existing parse_hex4() loop; the historical OOB claim is not reproduced. A direct production-source probe does reproduce that unpaired `\\uD800` and `\\uDC00` are accepted and emitted as invalid UTF-8, because decode_json_string() combines a high/low pair only when present but otherwise accepts unpaired code units. Baseline assertion failed on the high-surrogate case (exit134).
+- Scope check: current open PR path scans (#359, #358, #357–#351, #350, #348, #347, #338, #332, #328, #194) show no llm_ask/Ask bridge overlap. Searches of relevant fix branches and all-state Ask/Unicode/JSON PRs found no active owner/fix. U1–U4, PR350 and Hollow Trail remain untouched.
+- Regression/repair work, app builder, exact-head host aggregate/target builds, branch and draft PR are pending. User handles merge; no master writes, release/catalog mutation, device I/O or cross-repository action.
+
 ## USB Debug same-model log collision closeout — 2026-10-02
 
 - Canonical report #30 is **Awaiting merge** in [PR #359](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/359). Branch `fix/usb-debug-unique-log-names`, final exact head `9f62fdfb0c7a92cfecd25cac36be071cee8a65cc`, based directly on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. PR is open, ready for review, mergeable, four commits and exactly three changed files. No merge or master write.
