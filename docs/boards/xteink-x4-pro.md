@@ -6,4 +6,6 @@ Pin and protocol facts are derived from CrossPoint/FreeInk app1 (`ESP32S3_X4_TL_
 
 Load order: `platform-clock-v1`, `x4pro-i2c`, `x4pro-panel`, `x4pro-gt911`, `x4pro-buttons`, `x4pro-frontlight`, `x4pro-battery`, `x4pro-sd`.
 
-`x4pro-sd` brings the card out of idle and then fails filesystem calls closed. It does not mount FAT. Frontlight is GPIO on/off, not PWM. None of these ELFs have been run on an X4 Pro.
+## Boot cut
+
+`env:xteink-x4-pro` skips the T5S3 bus, card, expander, charger, and i80 panel before any of them run. `x4BootToMainScreen()` uses the same SSD1677 sequence as `x4pro-panel` and draws the temporary main menu. HomeActivity is not on this path yet: it still targets the 960×540 renderer. This image has not been flashed.

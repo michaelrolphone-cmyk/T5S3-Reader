@@ -41,6 +41,7 @@
 #include "components/StartupScreen.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
+#include "platform/X4BootScreen.h"
 #include "util/ScreenshotUtil.h"
 
 MappedInputManager mappedInputManager(gpio);
@@ -427,6 +428,12 @@ void setup() {
   RuntimeNetwork::enablePsramTlsAllocations();
 
   HalSystem::begin();
+#ifdef BOARD_XTEINK_X4_PRO
+  // T5S3 Wire, SPI SD, PCA9535, TPS65185 and the i80 panel stay uncalled.
+  // The main screen is the X4 SSD1677 presenter until HomeActivity can target it.
+  x4BootToMainScreen();
+  return;
+#endif
   // Timer wakes never reach this point. A true value means the user explicitly
   // left retained desk-clock deep sleep and normal startup should resume
   // content/Home without replaying the cold-boot splash.
@@ -596,6 +603,10 @@ void setup() {
 }
 
 void loop() {
+#ifdef BOARD_XTEINK_X4_PRO
+  x4BootLoop();
+  return;
+#endif
   if (g_displayBootFailed) {
     // Do not touch ActivityManager/renderer after failed display bootstrap.
     // Leave the retained image or emergency failure pattern stable for diagnosis.
