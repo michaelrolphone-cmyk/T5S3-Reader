@@ -11,7 +11,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX_IMAGES 64u
+#define PAGE_IMAGES 64u
+#define MAX_DIRECTORY_ENTRIES 65536u
+#define DIRECTORY_SCAN_BUDGET_MS 30000u
+#define DIRECTORY_SCAN_YIELD_INTERVAL 64u
 #define PATH_CAP 512u
 #define STATUS_CAP 192u
 #define TOKEN_CAP 24u
@@ -37,15 +40,21 @@ static const t5_ui_api_v1 *ui;
 static const t5_stream_api_v1 *streams;
 static const t5_program_esp_rom_api_v1 *esp_programmer;
 static const t5_provider_capability_api_v1 *provider_caps;
-static char images[MAX_IMAGES][T5_APP_DIRENT_NAME_MAX];
-static uint32_t image_sizes[MAX_IMAGES];
-static uint8_t image_kinds[MAX_IMAGES];
+static char images[PAGE_IMAGES][T5_APP_DIRENT_NAME_MAX];
+static uint32_t image_sizes[PAGE_IMAGES];
+static uint8_t image_kinds[PAGE_IMAGES];
 static uint32_t image_count;
+static uint32_t image_offset;
+static bool has_previous_page;
+static bool has_next_page;
+static bool scan_failed;
+static bool scan_truncated;
 static int32_t selected;
 static char failure_text[STATUS_CAP];
 static uint8_t rendered_stage;
 static uint8_t rendered_percent;
 static char rendered_message[T5_PROGRAM_ESP_ROM_MESSAGE_MAX];
+static char list_status[STATUS_CAP];
 
 static bool suffix(const char *name, const char *ending) {
     const size_t n = name ? strlen(name) : 0u;
@@ -81,24 +90,112 @@ static bool cooperative_cancelled(void) {
 }
 
 static void render_list(void) {
-    t5_ui_list_row_t rows[MAX_IMAGES];
+    t5_ui_list_row_t rows[PAGE_IMAGES];
     for (uint32_t i = 0; i < image_count; ++i) {
         rows[i].title = images[i];
         rows[i].subtitle = kind_label(image_kinds[i]);
         rows[i].value = NULL;
         rows[i].flags = 0;
     }
+    if (scan_failed) {
+        snprintf(list_status, sizeof(list_status), "%s",
+                 failure_text[0] ? failure_text : "Could not read /sd; Confirm to retry");
+    } else if (scan_truncated) {
+        snprintf(list_status, sizeof(list_status), "Listing stopped at safety limit; later files may be hidden");
+    } else if (image_count) {
+        snprintf(list_status, sizeof(list_status), "Page %lu%s | Up/Down at edge changes page",
+                 (unsigned long)(image_offset / PAGE_IMAGES + 1u),
+                 has_next_page ? "+" : "");
+    } else {
+        snprintf(list_status, sizeof(list_status), "No .bin or TI-TXT .txt images found in /sd");
+    }
     const t5_ui_chrome_t chrome = {
         .title = "Firmware Flasher",
         .subtitle = "ESP via serial/FTDI | MSP430FR via MSP-FET",
-        .status = image_count ? "Confirm to flash selected image" :
-                                "No .bin or TI-TXT .txt images found in /sd",
+        .status = list_status,
         .back_label = "Back",
         .confirm_label = "Flash",
         .previous_label = "Up",
         .next_label = "Down",
     };
     ui->render_list(&chrome, rows, image_count, selected);
+}
+
+static bool scan_page(uint32_t offset) {
+    image_count = 0;
+    image_offset = offset;
+    selected = 0;
+    has_previous_page = offset > 0u;
+    has_next_page = false;
+    scan_failed = false;
+    scan_truncated = false;
+    failure_text[0] = 0;
+
+    if (!app->dir_open("/sd")) {
+        scan_failed = true;
+        snprintf(failure_text, sizeof(failure_text), "Cannot open /sd; Confirm to retry");
+        return false;
+    }
+
+    const uint32_t started = app->millis();
+    uint32_t visited = 0;
+    uint32_t qualifying = 0;
+    t5_app_dirent_t entry;
+    while (app->dir_next(&entry)) {
+        if (++visited > MAX_DIRECTORY_ENTRIES ||
+            (uint32_t)(app->millis() - started) >= DIRECTORY_SCAN_BUDGET_MS) {
+            scan_truncated = true;
+            break;
+        }
+        if ((visited % DIRECTORY_SCAN_YIELD_INTERVAL) == 0u) {
+            t5_app_input_t input = {0};
+            if (app->poll && app->poll(&input, 1u) &&
+                (input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK))) {
+                scan_failed = true;
+                snprintf(failure_text, sizeof(failure_text), "Listing cancelled; Confirm to retry");
+                break;
+            }
+        }
+
+        uint8_t kind = 0;
+        if (!entry.is_directory && suffix(entry.name, ".bin")) kind = IMAGE_ESP_BIN;
+        else if (!entry.is_directory && suffix(entry.name, ".txt")) kind = IMAGE_MSP_TITXT;
+        if (!kind) continue;
+        if (qualifying++ < offset) continue;
+        if (image_count == PAGE_IMAGES) {
+            has_next_page = true;
+            break;
+        }
+        strncpy(images[image_count], entry.name, sizeof(images[image_count]) - 1u);
+        images[image_count][sizeof(images[image_count]) - 1u] = 0;
+        image_sizes[image_count] = entry.size <= UINT32_MAX ? (uint32_t)entry.size : 0u;
+        image_kinds[image_count] = kind;
+        ++image_count;
+    }
+    app->dir_close();
+    return !scan_failed && (!scan_truncated || image_count > 0u);
+}
+
+static void move_next_image(void) {
+    if (scan_failed) {
+        (void)scan_page(image_offset);
+        return;
+    }
+    if (selected + 1 < (int32_t)image_count) {
+        ++selected;
+    } else if (has_next_page) {
+        (void)scan_page(image_offset + PAGE_IMAGES);
+    }
+}
+
+static void move_previous_image(void) {
+    if (selected > 0) {
+        --selected;
+    } else if (has_previous_page) {
+        const uint32_t previous = image_offset - PAGE_IMAGES;
+        if (scan_page(previous) && image_count)
+            selected = (int32_t)image_count - 1;
+    }
 }
 
 static void render_status(const char *subtitle, const char *value, const char *message) {
@@ -503,42 +600,27 @@ __attribute__((visibility("default"))) void app_main(void) {
         esp_programmer->struct_size < offsetof(t5_program_esp_rom_api_v1, program) + sizeof(esp_programmer->program) ||
         !esp_programmer->capability_id ||
         strcmp(esp_programmer->capability_id, T5_PROGRAM_ESP_ROM_CAPABILITY) != 0 ||
-        !app->set_back_exits_app || !app->poll || !app->dir_open || !app->dir_next || !app->dir_close ||
+        !app->set_back_exits_app || !app->poll || !app->millis || !app->dir_open || !app->dir_next || !app->dir_close ||
         !ui->render_list || !ui->poll_event || !ui->hit_test || !ui->next_index ||
         !ui->previous_index || !streams->open_file || !streams->read || !streams->seek ||
         !streams->close || !esp_programmer->program) return;
 
     app->set_back_exits_app(false);
-    image_count = 0;
-    selected = 0;
-    if (app->dir_open("/sd")) {
-        t5_app_dirent_t entry;
-        while (image_count < MAX_IMAGES && app->dir_next(&entry)) {
-            uint8_t kind = 0;
-            if (!entry.is_directory && suffix(entry.name, ".bin")) kind = IMAGE_ESP_BIN;
-            else if (!entry.is_directory && suffix(entry.name, ".txt")) kind = IMAGE_MSP_TITXT;
-            if (kind) {
-                strncpy(images[image_count], entry.name, sizeof(images[image_count]) - 1u);
-                images[image_count][sizeof(images[image_count]) - 1u] = 0;
-                image_sizes[image_count] = entry.size <= UINT32_MAX ? (uint32_t)entry.size : 0u;
-                image_kinds[image_count] = kind;
-                ++image_count;
-            }
-        }
-        app->dir_close();
-    }
+    (void)scan_page(0u);
 
     render_list();
     for (;;) {
         t5_ui_event_t event;
         if (!ui->poll_event(&event, 50u)) continue;
         if (event.type == T5_UI_EVENT_EXIT || event.type == T5_UI_EVENT_BACK) return;
-        if (!image_count) continue;
         if (event.type == T5_UI_EVENT_NEXT) {
-            selected = ui->next_index(selected, image_count);
+            move_next_image();
             render_list();
         } else if (event.type == T5_UI_EVENT_PREVIOUS) {
-            selected = ui->previous_index(selected, image_count);
+            move_previous_image();
+            render_list();
+        } else if (event.type == T5_UI_EVENT_CONFIRM && (!image_count || scan_failed)) {
+            (void)scan_page(image_offset);
             render_list();
         } else if (event.type == T5_UI_EVENT_TAP) {
             const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
@@ -546,7 +628,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 selected = hit;
                 render_list();
             }
-        } else if (event.type == T5_UI_EVENT_CONFIRM) {
+        } else if (event.type == T5_UI_EVENT_CONFIRM && image_count) {
             const bool msp = image_kinds[selected] == IMAGE_MSP_TITXT;
             const bool ok = msp ? flash_msp_selected() : flash_esp_selected();
             render_status(ok ? "Flash complete" : "Flash failed",
