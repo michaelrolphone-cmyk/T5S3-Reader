@@ -1,3 +1,14 @@
+## Active repair claim — Firmware Flasher image pagination, canonical #36 — 2026-10-02
+
+- Owner: `michaelrolphone-cmyk`; claim `firmware_flasher_image_pagination_20261002`; phase: claimed / implementation in progress.
+- Baseline: current master `3722a3f44a3294ba5e8adab830807a2523df3b03`. Repair branch `fix/firmware-flasher-image-pagination` was created from that exact master SHA; target master.
+- Revalidation: current `Apps/esp_rom_flasher.c` blob `19c8cb2a1918fb7b8453ea61802c25782c46a925` defines `MAX_IMAGES 64u` and uses the limit in the directory loop and row/inventory arrays. A 65th qualifying file cannot enter the selectable list; no continuation is rendered. Current app manifest is Firmware Flasher 1.1.1, min firmware 1.2.69; ESP ROM programmer is required by the app's startup ABI checks and `program.msp >=1` is optional. The fix is app-only; planned app version 1.1.2, no firmware/provider version change unless implementation proves otherwise.
+- Ownership/overlap check: no existing Firmware Flasher pagination branch or open/closed-unmerged pagination PR found; historical flasher PRs #41/#43/#149/#363 address other failure modes. Latest checkpoint above has released its claim. Fixed Timecard #14 / merged PR #341 is not being reopened.
+- Current observable failure is code-demonstrated at the 64-item inventory boundary. Physical SD/hardware behavior is not asserted. Reproduce with a directory listing containing more than 64 qualifying `.bin`/`.txt` entries; verify page 2 remains reachable and the 65th item can be selected, then verify flash cancellation/result returns to the selected page.
+- Next: add bounded paging and focused production-app regression, inspect app/version policy and supported workflow/provider availability, run focused/app/native and exact-head CI, open one draft PR, then release claim at a terminal checkpoint. No firmware flash or device I/O.
+
+---
+
 ## Native storage read completeness — review checkpoint 2026-10-02 19:13 UTC
 
 - Canonical #32 is ready for review in mergeable [PR #369](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/369), branch `fix/native-storage-read-complete`, exact head `ece6667b06d5f3d91ccce5dc0317a045c5ecd3af`, directly based on current master `3722a3f44a3294ba5e8adab830807a2523df3b03` (8 commits ahead / 0 behind). User handles Reader merge. Owner claim `native_storage_read_exact_20261002` is released after terminal exact-head checks.
