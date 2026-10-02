@@ -1,3 +1,13 @@
+## File Browser Open-with pagination — active claim 2026-10-02 17:25 UTC
+
+- Owner `file_browser_open_with_20261002`; canonical #23. Baseline master `3722a3f44a3294ba5e8adab830807a2523df3b03`; captured ledger PR #332 head `01b3f812bdfa335a48f3f83a135ceecf3df17d99`. Planned repair branch `fix/file-browser-open-with-pagination`. Phase: current-master trigger and supported route confirmed; baseline failure regression and focused repair pending.
+- Current production flow is installed File Browser app: select an associated file → `open_selected()` → `choose_handler()` → `open_with_handler()` → File Open API `open_request()`. At current master, `MAX_OPEN_HANDLERS == 8` truncates the provider-reported count before fetching handler indexes; the native association registry supports up to 128 total handlers. More than eight valid apps for one extension makes later handlers unreachable, with no warning or paging. Canonical report #23 and its original scan provenance remain unchanged.
+- Ownership/duplicate check at this checkpoint: no active ledger claim for #23, no open File Browser Open-with PR, and the only matching historical File Browser code PR #357 is merged and fixes destination picker bounds, not handler visibility. PR #366 is a separate OPDS code batch; no File Browser path overlap. No repair branch for Open-with found.
+- Planned focused fix: bounded eight-row pages across the reported handler count, with page navigation, selected-handler handoff, and cancellation/failure coverage. File Browser app manifest currently 1.3.3; candidate 1.3.4, above the published 1.3.3 package. App-only change: no firmware/driver version increment planned.
+- Do not mark ready until baseline regression fails on the original behavior, fixed failure/retry/cancel behavior and focused app build pass, and exact-head hosted checks are terminal green. No device verification, merge, release, catalog publication, deployment, flashing, or device I/O.
+
+---
+
 ## OPDS Add Server URL requirement — completed version-collision checkpoint 2026-10-02 16:39 UTC
 
 - Canonical #21; owner `opds_required_url_20261002`; claim released after terminal checks. Current master `3722a3f44a3294ba5e8adab830807a2523df3b03`, firmware source1.3.66. PR #194 merged at that master commit with firmware1.3.66; its reservation is preserved. [PR #366](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/366) is ready for review and mergeable, branch `fix/opds-server-url-required`, exact final head `4fc4d610a055a2c527c9076d5e6942753e6fd1e8), 3 commits ahead / 0 behind current master, firmware source1.3.67. Current PR diff has only the six intended OPDS/config/test files.
