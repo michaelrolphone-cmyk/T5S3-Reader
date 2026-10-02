@@ -91,6 +91,9 @@ int main() {
     // inventory exists. Its module remains owned by the boot controller.
     const unsigned acquiredBeforeBootstrap = acquisitions;
     const unsigned releasedBeforeBootstrap = releases;
+    sharedGrant = true;
+    assert(!nativeNavigationAttachBootstrap(&navigation));
+    sharedGrant = false;
     assert(nativeNavigationAttachBootstrap(&navigation));
     assert(!nativeNavigationAttachBootstrap(&navigation));
     nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();

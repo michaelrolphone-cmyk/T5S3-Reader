@@ -76,7 +76,8 @@ void nativeNavigationRetry() {
     }
 }
 bool nativeNavigationAttachBootstrap(const risc_input_navigation_api_v1* candidate) {
-    if (api || bootstrapAttached || quarantined || lease.grant.slot || !candidate ||
+    if (api || bootstrapAttached || quarantined || lease.grant.slot ||
+        RuntimeInstalledProviders::hasLiveGrants() || !candidate ||
         candidate->api_version != RISC_INPUT_NAVIGATION_API_V1 ||
         candidate->struct_size < sizeof(*candidate) || !candidate->poll ||
         !candidate->foreground || !candidate->reset) return false;
