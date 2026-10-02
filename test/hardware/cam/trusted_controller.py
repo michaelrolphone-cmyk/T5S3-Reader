@@ -24,10 +24,15 @@ WORKFLOW = "cam-hardware-build.yml"
 STATUS_CONTEXT = "CAM hardware / trusted owner SHA"
 API = "https://api.github.com/repos/" + REPO
 SHA = re.compile(r"[0-9a-f]{40}\Z")
+MAX_OWNER_PRS = 20
 
 
 class CloudBuildFailed(ValueError):
     """The exact-head cloud workflow completed without a usable success."""
+
+
+class RateLimited(RuntimeError):
+    """A GitHub rate limit is retryable and must not finalize a hardware SHA."""
 
 
 class GitHub:
@@ -57,6 +62,9 @@ class GitHub:
                     NoRedirect, urllib.request.HTTPSHandler(context=self.ssl_context)
                 ).open(req, timeout=20)
             except urllib.error.HTTPError as redirect:
+                if redirect.code in (403, 429) and (redirect.headers.get("Retry-After")
+                        or redirect.headers.get("X-RateLimit-Remaining") == "0"):
+                    raise RateLimited("GitHub API rate limited") from None
                 if redirect.code != 302:
                     raise
                 url = redirect.headers["Location"]
@@ -71,11 +79,17 @@ class GitHub:
                     raise ValueError("Artifact ZIP exceeds bound")
                 return raw
             raise ValueError("Artifact endpoint did not redirect")
-        with urllib.request.urlopen(req, timeout=20,
-                                    context=self.ssl_context) as response:
-            if int(response.headers.get("Content-Length", "0")) > limit:
-                raise ValueError("GitHub response exceeds bound")
-            raw = response.read(limit + 1)
+        try:
+            with urllib.request.urlopen(req, timeout=20,
+                                        context=self.ssl_context) as response:
+                if int(response.headers.get("Content-Length", "0")) > limit:
+                    raise ValueError("GitHub response exceeds bound")
+                raw = response.read(limit + 1)
+        except urllib.error.HTTPError as error:
+            if error.code in (403, 429) and (error.headers.get("Retry-After")
+                    or error.headers.get("X-RateLimit-Remaining") == "0"):
+                raise RateLimited("GitHub API rate limited") from None
+            raise
         if len(raw) > limit:
             raise ValueError("GitHub response exceeds bound")
         return json.loads(raw)
@@ -122,6 +136,14 @@ def candidate(gh, number, sha):
     if len(matching) != 1:
         raise ValueError("Expected one bounded exact-SHA CAM candidate artifact")
     return run, matching[0]
+
+
+def bounded_owner_prs(prs):
+    eligible = [pr for pr in prs if pr["user"]["login"] == OWNER
+                and (pr["head"].get("repo") or {}).get("full_name") == REPO]
+    if len(eligible) > MAX_OWNER_PRS:
+        raise RuntimeError("Owner PR scan exceeds one-minute API budget")
+    return eligible
 
 
 def unpack_candidate(gh, run, artifact, sha, folder):
@@ -227,6 +249,8 @@ def once(gh, number, evidence_root, python, binding):
         raise RuntimeError("Incomplete private CAM journal; manual recovery required")
     try:
         found = candidate(gh, number, sha)
+    except RateLimited:
+        raise
     except Exception as exc:
         result_dir.mkdir(mode=0o700, parents=True)
         failed = {"schema": 1, "pr": number, "source_sha": sha,
@@ -307,9 +331,7 @@ def main():
         prs = gh.call("/pulls?state=open&per_page=100")
         if len(prs) == 100:
             raise RuntimeError("Open PR scan exceeds one-page bound")
-        for pr in prs:
-            if pr["user"]["login"] != OWNER or pr["head"]["repo"]["full_name"] != REPO:
-                continue
+        for pr in bounded_owner_prs(prs):
             try:
                 once(gh, pr["number"], args.evidence_root, args.python, binding)
             except ValueError as exc:

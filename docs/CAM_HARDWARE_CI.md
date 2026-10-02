@@ -73,9 +73,12 @@ physical mapping is a prerequisite.
 ## Activation boundary
 
 This PR stages source. The owner approved a persistent credential and timer;
-the Mac timer is installed but disabled and unloaded pending a successful
-end-to-end CAM pilot. The credential, source and physical CAM preflights have
-passed. No runner, repository security setting or
+the Mac user LaunchAgent is configured for a 60-second interval. An exact-head
+CAM pilot passed with baseline restoration. The first natural timer tick then
+stalled before the controller started because macOS requested Documents Folder
+access for background Python. The agent and Reader job are disabled pending
+the owner's explicit macOS permission decision. The credential, source and
+physical CAM preflights passed. No runner, repository security setting or
 required check has been configured. The controller files are pinned at an
 exact trusted commit. Activation uses these operations:
 
@@ -84,32 +87,37 @@ exact trusted commit. Activation uses these operations:
    as the owner approved for future projects: Actions **read**, Pull requests
    **read**, Commit statuses **write**, Metadata **read** (automatic). No other write
    scopes are needed. Only the Reader CAM job is configured in the local
-   controller allowlist, currently disabled; future repositories need
+   controller allowlist; it is currently disabled. Future repositories need
    separate reviewed jobs.
    Store it privately in the Mac login Keychain as generic-password service
    `riscrte-cam-ci`, account `michaelrolphone-cmyk` using secure local entry.
    Never place it in a shell command argument, chat, repo, plist or log.
    The credential-only read and commit-status probe has passed; it is separate
    from the hardware result.
-2. Install a pinned copy of the two trusted Python files from that reviewed
-   trusted commit into an isolated local directory with a private Python
+2. Install a pinned copy of the two trusted Python files from a reviewed
+   exact commit into an isolated local directory with a private Python
    environment (`esptool==4.5.1`, `pyserial==3.5`). The controller and device
-   scripts must not be updated from a PR checkout. Point `--evidence-root` to
+   scripts must not auto-update from a PR checkout. Point `--evidence-root` to
    a private local directory outside the repository.
-3. Enable the installed user-scoped five-minute launchd timer only after the
-   private Reader job binding and successful exact-SHA source artifact are
-   verified. Its launcher invokes the pinned `trusted_controller.py --scan`
-   with a private evidence root and CAM binding. The timer will poll owner PRs, wait
+3. Enable the installed user-scoped 60-second launchd timer only after the
+   Documents access decision, private Reader job binding and successful
+   exact-SHA source artifact are verified. Its launcher invokes the pinned
+   `trusted_controller.py --scan` with a private evidence root and CAM binding.
+   The timer will poll owner PRs, wait
    for their completed exact-SHA cloud build, then post a commit status under
-   `CAM hardware / trusted owner SHA` on the exact head SHA. It must remain
-   unloaded until credential and
-   hardware preflight are approved. The Mac must stay awake and the CAM
+   `CAM hardware / trusted owner SHA` on the exact head SHA. The Mac must stay awake and the CAM
    connected for automatic execution.
 
+The one-minute scan admits at most 20 owner-authored PRs per pass. The
+scheduler lock prevents overlapping passes, and the exact-SHA evidence journal
+prevents repeat device tests for a completed head. A GitHub rate limit during
+candidate discovery is retried on a later pass without finalizing a hardware
+result for that SHA.
+
 The credential persists in Keychain with all-personal-repository scope, while
-the job allowlist permits only Reader CAM execution. The user launchd timer
-persists until removed. The Mac will
-automatically flash eligible owner-PR firmware to the CAM and save private
+the job allowlist permits only Reader CAM execution. The disabled user launchd
+configuration persists until removed. Once successfully activated, the Mac
+will automatically flash eligible owner-PR firmware to the CAM and save private
 backup/result files. These are the material activation risks. After one
 complete request-to-status pilot is verified, a repository ruleset may require
 `CAM hardware / trusted owner SHA`

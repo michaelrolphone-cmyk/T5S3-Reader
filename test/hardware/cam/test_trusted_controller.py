@@ -8,6 +8,7 @@ import ssl
 import struct
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 import trusted_controller as controller
 import ci_device as device
@@ -32,6 +33,18 @@ class FakeGitHub:
 
 
 class ControllerTests(unittest.TestCase):
+    def test_one_minute_scan_budget_and_retryable_rate_limit(self):
+        item = {"user": {"login": controller.OWNER},
+                "head": {"repo": {"full_name": controller.REPO}}}
+        self.assertEqual(len(controller.bounded_owner_prs([item] * 20)), 20)
+        with self.assertRaises(RuntimeError):
+            controller.bounded_owner_prs([item] * 21)
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(controller, "candidate", side_effect=controller.RateLimited("limit")):
+                with self.assertRaises(controller.RateLimited):
+                    controller.once(FakeGitHub(), 347, Path(temp), Path("/unused"), {})
+            self.assertFalse((Path(temp) / SHA).exists())
+
     def test_qualified_cam_has_two_ota_slots(self):
         table = bytearray(b"\xff" * 4096)
         entries = [(1, 2, 0x9000, 0x5000, b"nvs"),
