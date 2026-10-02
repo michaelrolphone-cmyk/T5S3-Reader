@@ -1,3 +1,9 @@
+## File Browser repair resumed — 2026-10-02 07:08 UTC
+
+- User explicitly removed the two-pending-batch limit. This supersedes the previous local checkpoint's review-slot blocker; no review cap applies.
+- Repair branch `fix/file-browser-picker-bounds` now exists and PR [#357](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/357) is open as a draft. Exact head `8cb880a96c12cfa7536f9e1031d0f44a5d12f2e0`, directly based on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; compare is 1 ahead/0 behind, exactly four intended files.
+- Candidate remains File Browser1.3.3, no firmware increment. Exact-head PlatformIO run [36976929426](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36976929426) is in progress. PR mergeability is currently true. Keep the claim active until CI and exact-head verification complete; then mark PR ready and release it.
+
 ## File Browser picker repair checkpoint — 2026-10-02 07:01 UTC
 
 - Reconciled current master and open code PRs: baseline remains `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; PR #355 and PR #356 are both open/ready for review. These occupy the two allowed outstanding code-batch slots. No third repair PR or remote repair branch was published.
