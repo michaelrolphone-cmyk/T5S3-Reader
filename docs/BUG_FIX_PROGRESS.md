@@ -1,3 +1,12 @@
+## Active versioned-head verification — OTA PR351
+
+- Owner claim `ota_check_state_version_validation` reopened after the user-required firmware version increment. PR351 branch `fix/ota-check-state`, canonical report233, exact remote head `46639d97677e99e5dde48c5a4c1af3a0ca022553`; base master `91f3768ebb402c218aff64d41cfcef689d743b2e`. The source repair is unchanged; only `platformio.ini` changed from candidate1.3.55 to1.3.57.
+- Fresh lineage: published release-index firmware1.3.55; current master1.3.55; active U1 PR96 candidate1.3.56 at `78266e9183d95ee7f9e9a68a555137cc1090842a`. Candidate1.3.57 is the next unique patch value. U1 branch is untouched; U1 owner has been told that if PR351 merges first its candidate must advance above1.3.57.
+- Exact-head CI run36953212934 is running all four host/Springboard, both board-build/app-validation and headless jobs. Prior source-head run36952301178 is not a pass for this versioned head. Keep claim until run36953212934 is terminal, update canonical status, and mark PR ready only if all checks pass.
+- No local toolchain changes, device I/O, release/catalog mutation, master write, merge or U1 edit. No additional source regression is inferred from a version-only change; existing source-level focused regression remains recorded below.
+
+---
+
 ## Completed OTA check-state repair checkpoint — PR351
 
 - Owner claim released after terminal exact-head verification. Canonical report **233** remains awaiting user review/merge in open draft [PR351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351), branch `fix/ota-check-state`, exact remote head `6b8c99c419c5fe9552aa3fac83de006a4207fc36`. Current master at verification: `91f3768ebb402c218aff64d41cfcef689d743b2e`; PR branch incorporates that master in its merge parent. PR remains draft and mergeable; no merge requested/performed.
