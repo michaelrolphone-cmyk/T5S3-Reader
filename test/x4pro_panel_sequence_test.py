@@ -12,7 +12,8 @@ class PanelSequence(unittest.TestCase):
         self.assertIn("data1(0xDF); data1(0x01);", TEXT)
         self.assertIn("spi_byte((uint8_t)~frame[i])", TEXT)
         self.assertIn("FRAME_BYTES", TEXT)
-        self.assertLess(TEXT.index("return true;\n}\nstatic bool transfer_frame"), TEXT.index("return wait_idle();"))
+        self.assertIn("timeout_ms > 0", TEXT)
+        self.assertIn("PRESENT_FAILED", TEXT)
 
 if __name__ == "__main__":
     unittest.main()
