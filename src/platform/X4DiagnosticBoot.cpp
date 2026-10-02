@@ -87,12 +87,15 @@ bool present() {
         return false;
     }
     risc_display_present_status_v1 status{};
-    if (!display_api->wait_present(display_api->context, token, 20000, &status) ||
-        status.state != RISC_DISPLAY_PRESENT_COMPLETE) {
-        LOG_ERR("X4", "present did not complete state=%u", status.state);
+    const unsigned long began = millis();
+    const bool waited = display_api->wait_present(display_api->context, token, 20000, &status);
+    char detail[160] = "unavailable";
+    (void)panel_mod.copyProviderError(detail, sizeof(detail));
+    if (!waited || status.state != RISC_DISPLAY_PRESENT_COMPLETE) {
+        LOG_ERR("X4", "present failed elapsed=%lu budget=20000 %s", millis() - began, detail);
         return false;
     }
-    LOG_INF("X4", "present complete sequence=%lu", static_cast<unsigned long>(sequence));
+    LOG_INF("X4", "present complete elapsed=%lu %s", millis() - began, detail);
     return true;
 }
 }

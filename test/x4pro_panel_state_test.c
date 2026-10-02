@@ -3,11 +3,25 @@
 #include "x4pro_pins.h"
 #include "x4pro_mmio.h"
 #include <stdio.h>
+#include <string.h>
 uint8_t x4_fake_busy;
 uint32_t x4_fake_refresh_count;
 uint32_t x4_fake_bytes;
 static uint64_t fake_now;
-static uint64_t fake_monotonic(void *context) { (void)context; return fake_now; }
+static uint32_t charge_ms;
+static uint32_t charge_every;
+static uint32_t level_count;
+static int fail_clock;
+void x4_fake_on_level(void) {
+    ++level_count;
+    if (charge_ms && (!charge_every || level_count % charge_every == 0)) fake_now += charge_ms;
+}
+static uint64_t fake_monotonic(void *context) {
+    (void)context;
+    if (fail_clock == 1) return UINT64_MAX;
+    if (fail_clock == 2) { fake_now -= 1; return fake_now; }
+    return fake_now;
+}
 static void fake_sleep(void *context, uint32_t ms) {
     (void)context;
     fake_now += ms;
@@ -50,6 +64,39 @@ int main(void) {
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit stuck");
     expect(api->wait_present(api->context, token, 5, &status), "stuck wait");
     expect(status.state == RISC_DISPLAY_PRESENT_FAILED, "stuck busy fails");
+    char detail[160];
+    const risc_driver_diagnostics_v2 *diag = (const risc_driver_diagnostics_v2 *)driver;
+    expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "busy completion timeout"), "stuck reason");
+    charge_ms = 1;
+    uint32_t before = x4_fake_refresh_count;
+    expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "acquire transfer deadline");
+    expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit transfer deadline");
+    expect(api->wait_present(api->context, token, 5, &status), "transfer deadline wait");
+    expect(status.state == RISC_DISPLAY_PRESENT_FAILED, "transfer deadline state");
+    expect(x4_fake_refresh_count == before, "no refresh after transfer deadline");
+    expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "transfer deadline"), "transfer reason");
+    expect(api->wait_present(api->context, token, 5, &status) && status.state == RISC_DISPLAY_PRESENT_FAILED, "deadline stays failed");
+    expect(x4_fake_refresh_count == before, "deadline does not retransmit");
+    charge_every = 200000;
+    level_count = 0;
+    before = x4_fake_refresh_count;
+    expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "acquire final chunk");
+    expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit final chunk");
+    expect(api->wait_present(api->context, token, 4, &status), "final chunk wait");
+    expect(status.state == RISC_DISPLAY_PRESENT_FAILED && x4_fake_refresh_count == before, "final chunk does not refresh");
+    expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "transfer deadline"), "final chunk reason");
+    charge_ms = 0;
+    charge_every = 0;
+    fail_clock = 1;
+    expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "acquire clock");
+    expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit clock");
+    expect(api->wait_present(api->context, token, 20, &status), "clock wait");
+    expect(status.state == RISC_DISPLAY_PRESENT_FAILED && diag->last_error(detail, sizeof(detail)) && strstr(detail, "clock failure"), "clock reason");
+    fail_clock = 2;
+    expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "acquire nonmonotonic");
+    expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit nonmonotonic");
+    expect(api->wait_present(api->context, token, 20, &status), "nonmonotonic wait");
+    expect(status.state == RISC_DISPLAY_PRESENT_FAILED && diag->last_error(detail, sizeof(detail)) && strstr(detail, "clock nonmonotonic"), "nonmonotonic reason");
     if (failures) return 1;
     puts("x4 panel states: PASS");
     return 0;

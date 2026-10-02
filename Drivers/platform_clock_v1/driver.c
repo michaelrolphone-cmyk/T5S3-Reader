@@ -27,10 +27,14 @@ static void sleep_ms(void *context, uint32_t milliseconds) {
     /* usleep is a real OS scheduling primitive, already exported by the
      * standard ELF libc table. Limit each invocation to a valid subsecond
      * interval; no busy-wait and no hardware timer implementation in core. */
+    /* ESP-IDF usleep shorter than the FreeRTOS tick can busy-wait. This
+     * firmware does not pin CONFIG_FREERTOS_HZ; 10 ms matches the common
+     * 100 Hz tick and is the smallest sleep this provider treats as a yield. */
     while (running && milliseconds) {
         uint32_t chunk = milliseconds > 999u ? 999u : milliseconds;
+        if (chunk < 10u) chunk = 10u;
         (void)usleep(chunk * 1000u);
-        milliseconds -= chunk;
+        milliseconds = milliseconds > chunk ? milliseconds - chunk : 0;
     }
 }
 

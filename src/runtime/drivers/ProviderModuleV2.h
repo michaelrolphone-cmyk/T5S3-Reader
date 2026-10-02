@@ -38,6 +38,7 @@ class ModuleV2 final {
   bool unload();
   const void* capability() const { return state_ == State::Active ? api_ : nullptr; }
   const char* lastError() const { return error_; }
+  bool copyProviderError(char* destination, size_t capacity) const;
   State state() const { return state_; }
   uint32_t consumers() const { return consumers_; }
  private:

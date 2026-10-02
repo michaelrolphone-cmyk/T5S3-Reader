@@ -47,10 +47,14 @@ static inline void x4pro_pin_prepare(uint32_t pin, bool pullup) {
     x4pro_reg_write(x4pro_iomux_reg(pin), mux);
     x4pro_reg_write(X4PRO_GPIO_MATRIX_BASE + pin * 4u, 0x100u);
 }
+static inline void x4pro_pin_level(uint32_t pin, bool level) {
+    if (!x4pro_pin_valid(pin)) return;
+    x4pro_reg_write(level ? x4pro_out_w1ts(pin) : x4pro_out_w1tc(pin), x4pro_pin_mask(pin));
+}
 static inline void x4pro_pin_output(uint32_t pin, bool level) {
     if (!x4pro_pin_valid(pin)) return;
     x4pro_pin_prepare(pin, false);
-    x4pro_reg_write(level ? x4pro_out_w1ts(pin) : x4pro_out_w1tc(pin), x4pro_pin_mask(pin));
+    x4pro_pin_level(pin, level);
     x4pro_reg_write(x4pro_enable_w1ts(pin), x4pro_pin_mask(pin));
 }
 static inline void x4pro_pin_input(uint32_t pin, bool pullup) {

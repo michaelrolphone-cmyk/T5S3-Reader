@@ -9,6 +9,7 @@
 #include "x4pro_pins.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #define FRAME_BYTES ((X4PRO_PANEL_WIDTH / 8u) * X4PRO_PANEL_HEIGHT)
 static const risc_platform_clock_api_v1 *clock_api;
@@ -35,41 +36,61 @@ static void sleep_ms(uint32_t ms) {
 }
 static void spi_byte(uint8_t value) {
     for (int bit = 7; bit >= 0; --bit) {
-        x4pro_pin_output(X4PRO_PIN_EPD_MOSI, (value >> bit) & 1);
-        x4pro_pin_output(X4PRO_PIN_EPD_SCLK, true);
-        x4pro_pin_output(X4PRO_PIN_EPD_SCLK, false);
+        x4pro_pin_level(X4PRO_PIN_EPD_MOSI, (value >> bit) & 1);
+        x4pro_pin_level(X4PRO_PIN_EPD_SCLK, true);
+        x4pro_pin_level(X4PRO_PIN_EPD_SCLK, false);
     }
 }
 static void command(uint8_t cmd) {
-    x4pro_pin_output(X4PRO_PIN_EPD_DC, false);
-    x4pro_pin_output(X4PRO_PIN_EPD_CS, false);
+    x4pro_pin_level(X4PRO_PIN_EPD_DC, false);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
     spi_byte(cmd);
-    x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
 }
 static void data1(uint8_t value) {
-    x4pro_pin_output(X4PRO_PIN_EPD_DC, true);
-    x4pro_pin_output(X4PRO_PIN_EPD_CS, false);
+    x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
     spi_byte(value);
-    x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
 }
 static uint64_t now_ms(void) {
     if (!clock_api || !clock_api->monotonic_ms) return UINT64_MAX;
     return clock_api->monotonic_ms(clock_api->context);
 }
+static char phase[160];
+static uint64_t transfer_start_ms, transfer_end_ms, refresh_ms, busy_assert_ms, busy_done_ms, wait_start_ms;
+static uint32_t bytes_sent, wait_budget_ms;
+static uint8_t busy_before;
+static const char *reason = "none";
+static void set_reason(const char *text) { reason = text; fail(text); }
+static bool sample_now(uint64_t *out) {
+    uint64_t now = now_ms();
+    if (now == UINT64_MAX) { set_reason("clock failure"); return false; }
+    if (wait_start_ms && now < wait_start_ms) { set_reason("clock nonmonotonic"); return false; }
+    *out = now;
+    return true;
+}
 static bool wait_idle(uint64_t deadline_ms) {
     bool saw_busy = false;
     while (!saw_busy) {
-        uint64_t now = now_ms();
-        if (now == UINT64_MAX || now >= deadline_ms) { fail("busy never asserted"); return false; }
+        uint64_t now = 0;
+        if (!sample_now(&now) || now >= deadline_ms) {
+            if (reason[0] == 'n') set_reason("busy never asserted");
+            return false;
+        }
         saw_busy = x4pro_pin_read(X4PRO_PIN_EPD_BUSY);
-        if (!saw_busy) sleep_ms(1);
+        if (saw_busy && !busy_assert_ms) busy_assert_ms = now;
+        if (!saw_busy) sleep_ms(10);
     }
     while (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
-        uint64_t now = now_ms();
-        if (now == UINT64_MAX || now >= deadline_ms) { fail("panel busy timeout"); return false; }
-        sleep_ms(1);
+        uint64_t now = 0;
+        if (!sample_now(&now) || now >= deadline_ms) {
+            if (reason[0] == 'n') set_reason("busy completion timeout");
+            return false;
+        }
+        sleep_ms(10);
     }
-    return true;
+    return sample_now(&busy_done_ms);
 }
 static void prepare_pins(void) {
     if (pins_ready) return;
@@ -113,23 +134,39 @@ static bool init_panel(void) {
     return true;
 }
 static bool transfer_frame(uint64_t deadline_ms) {
-    if (transfer_started) return false;
+    if (transfer_started) { set_reason("invalid state"); return false; }
     transfer_started = true;
+    if (!sample_now(&transfer_start_ms)) return false;
     set_cursor();
     command(0x24);
-    x4pro_pin_output(X4PRO_PIN_EPD_DC, true);
-    x4pro_pin_output(X4PRO_PIN_EPD_CS, false);
+    x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
     for (size_t i = 0; i < FRAME_BYTES; ++i) {
         spi_byte((uint8_t)~frame[i]);
-        if ((i & 0x3ffu) == 0 && now_ms() >= deadline_ms) {
-            x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
-            fail("transfer exceeded deadline");
-            return false;
+        bytes_sent = (uint32_t)(i + 1u);
+        if ((i & 0x3ffu) == 0x3ffu || i + 1u == FRAME_BYTES) {
+            uint64_t now = 0;
+            if (!sample_now(&now) || now >= deadline_ms) {
+                x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+                transfer_end_ms = now;
+                set_reason("transfer deadline");
+                return false;
+            }
         }
     }
-    x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+    if (!sample_now(&transfer_end_ms) || transfer_end_ms >= deadline_ms) {
+        set_reason("transfer deadline");
+        return false;
+    }
+    busy_before = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
     command(0x21); data1(0x00);
-    command(0x22); data1(0xF7); command(0x20);
+    command(0x22); data1(0xF7);
+    if (!sample_now(&refresh_ms) || refresh_ms >= deadline_ms) {
+        set_reason("transfer deadline");
+        return false;
+    }
+    command(0x20);
     return wait_idle(deadline_ms);
 }
 static bool get_info(void *context, risc_display_info_v1 *out) {
@@ -189,13 +226,30 @@ static bool wait_present(void *context, risc_display_present_token_v1 token, uin
                          risc_display_present_status_v1 *out) {
     if (token != pending_token) return false;
     if (present_state == PRESENT_QUEUED && timeout_ms > 0 && !transfer_started) {
-        uint64_t now = now_ms();
+        uint64_t now = 0;
+        wait_budget_ms = timeout_ms;
+        bytes_sent = 0;
+        refresh_ms = busy_assert_ms = busy_done_ms = transfer_start_ms = transfer_end_ms = 0;
+        reason = "none";
+        if (!sample_now(&now)) {
+            present_state = PRESENT_FAILED;
+            held = false;
+            return present_status(context, token, out);
+        }
+        wait_start_ms = now;
+        if (timeout_ms > UINT64_MAX - now) {
+            set_reason("clock overflow");
+            present_state = PRESENT_FAILED;
+            held = false;
+            return present_status(context, token, out);
+        }
         present_state = PRESENT_ACTIVE;
-        if (now == UINT64_MAX || !transfer_frame(now + timeout_ms)) {
+        if (!transfer_frame(now + timeout_ms)) {
             present_state = PRESENT_FAILED;
             held = false;
         } else {
             present_state = PRESENT_COMPLETE;
+            reason = "complete";
             held = false;
         }
     }
@@ -222,11 +276,19 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
 static void stop(void) { started = false; held = false; }
 static bool quiesce(void) { stop(); return true; }
 static bool last_error(char *destination, size_t capacity) {
-    if (!destination || !capacity || !last_error_text[0]) return false;
+    if (!destination || !capacity) return false;
+    uint64_t now = now_ms();
+    int wrote = snprintf(phase, sizeof(phase),
+        "v=0.1.5 ctl=SSD1677 token=%llu state=%u reason=%s budget=%u elapsed=%llu xfer=%u/%llums refresh=%llu busy0=%u assert=%llu done=%llu",
+        (unsigned long long)pending_token, present_state, reason, wait_budget_ms,
+        (unsigned long long)(now == UINT64_MAX || now < wait_start_ms ? 0 : now - wait_start_ms),
+        bytes_sent, (unsigned long long)(transfer_end_ms && transfer_end_ms >= transfer_start_ms ? transfer_end_ms - transfer_start_ms : 0),
+        (unsigned long long)refresh_ms, busy_before, (unsigned long long)busy_assert_ms, (unsigned long long)busy_done_ms);
+    if (wrote < 0) return false;
     size_t i = 0;
-    while (last_error_text[i] && i + 1u < capacity) { destination[i] = last_error_text[i]; ++i; }
+    while (phase[i] && i + 1u < capacity) { destination[i] = phase[i]; ++i; }
     destination[i] = 0;
-    return true;
+    return i > 0;
 }
 static const risc_driver_diagnostics_v2 driver = {
     { RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_diagnostics_v2), "x4pro-panel",

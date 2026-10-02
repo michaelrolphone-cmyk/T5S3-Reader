@@ -10,7 +10,7 @@ Load order: `platform-clock-v1`, `x4pro-i2c`, `x4pro-panel`, `x4pro-gt911`, `x4p
 
 `env:xteink-x4-pro` does not call `HalSystem::begin()`, so the desk-clock timer wake cannot start the legacy display. It loads embedded `platform-clock-v1`, `x4pro-panel`, `x4pro-buttons`, and `x4pro-frontlight` through `ProviderModuleV2::loadVerifiedBytes`. The first paint uses `display.output` only. Buttons are consumed through `input.navigation`. Power is mapped to Confirm. Frontlight stays off.
 
-This artifact is SSD1677-specific. UC8179 and UC8279 are unresolved. GPIO1 is the recovered peripheral-enable name and is not driven. Touch power and SD power are not activated.
+GPIO1 is the recovered peripheral-enable name from the pinned FreeInk X4 Pro notes. This diagnostic does not drive it, and it does not assert what that rail powers. Touch power GPIO2 and SD power GPIO5 stay untouched. The pinned FreeInk commit `111fdcc7f0176c3ee38391a160ee296bf492dbd8` uses a three-pulse reset, a 10 ms settle after software reset, then BUSY, and clears both RAM planes before the first frame. This diagnostic does not copy that extra RAM clear until a BUSY trace identifies the controller. The expected failure log is one line: `present failed elapsed=<ms> budget=20000 v=0.1.5 ctl=SSD1677 ... reason=<transfer deadline|busy never asserted|busy completion timeout|clock failure|clock nonmonotonic|clock overflow>`.
 
 Partition layout in this tree is app0 at `0x10000` size `0x640000` and app1 at `0x650000`. Stock CrossPoint layout compatibility is unverified. The intended artifact is the application image at `0x10000`, not a merged flash. No bootloader, partition table, OTA metadata, or NVS rewrite is part of this change.
 
