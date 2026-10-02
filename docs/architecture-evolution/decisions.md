@@ -72,3 +72,9 @@ Ownership was rechecked against PR #328, the task inventory and current U1 ledge
 The new counterexample is concrete: paper default-app launch retains earlier board/SD/display dependencies, while restoring firmware alone can leave incompatible SD packages. Reuse existing loader/manager/public ABIs and preserve a compatible firmware/package recovery baseline. X4's display/input/clock header blobs match master; an older base is not an ABI defect. Treat the reported minute-scale T5S3 slowdown as an urgent observed symptom with unverified cause, not evidence for a package, driver or PaperSpace rewrite.
 
 PR328 was open at `2f02e2c3`, with no competing claim in its comments and no intervening branch edit at the ownership check. This pass only maintains this documentation directory; PR347 merge/publication remains a separate explicit-approval boundary.
+
+## X4 physical display and shared UI continuation
+
+[E23](evidence.md#e23-x4-shared-renderer-reuse-and-the-unmounted-volume-boundary) strengthens retained compiled UI over premature extraction: X4 now has observed pattern/text and a source path through Reader's renderer/provider surface. Retire current “no X4 display proof” and “PR347 pending merge” assumptions, preserving their historical checkpoints. Keep filesystem mount/Home and latest-image input/sleep proof separate.
+
+Reject a root-sector-read-as-mount shortcut and a competing firmware SdFat fallback. Prefer completing the provider filesystem/Reader binding for the actual product flow. Refine “avoid copies”: X4's polarity/lifetime conversion has a concrete role; measure before removing it, and do not impose its synchronous MONO1 path on expressive T5S3 rendering. Ranking remains R1, R3, R4, R2; the execution-approval blocker does not reorder performance or diagnose hardware.
