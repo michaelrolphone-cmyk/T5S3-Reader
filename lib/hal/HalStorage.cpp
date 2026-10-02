@@ -155,6 +155,12 @@ class HalStorage::StorageLock {
 };
 
 bool HalStorage::begin() {
+#if defined(BOARD_XTEINK_X4_PRO)
+  // X4's slot is native one-bit SDMMC. The legacy SdFat SPI transport must
+  // never probe that bus or become an implicit fallback for storage.volume.
+  LOG_ERR("SD", "X4 storage.volume filesystem unavailable; SPI mount refused");
+  return false;
+#else
   if (risc_sd_spi_faulted()) return false;
   StorageLock lock;
   if (!storageGeneration.mountAttempt()) {
@@ -170,6 +176,7 @@ bool HalStorage::begin() {
     LOG_ERR("SD", "SD card not detected");
   }
   return initialized;
+#endif
 }
 
 bool HalStorage::ready() const {
