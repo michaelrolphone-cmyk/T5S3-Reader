@@ -5,7 +5,7 @@
 #include "runtime/packages/PackagePreflight.h"
 
 #include <AppManifestRules.h>
-#include <ArduinoJson.h>
+#include <Arduino.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <NativeAppLauncher.h>
@@ -59,14 +59,17 @@ bool existingRegularFile(const char* path) {
 }
 
 bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declaredSha,
-                 bool hasDigest) {
+                 bool verifyContents) {
+  constexpr uint32_t kVerifyBudgetMs = 30000;
+  const uint32_t started = millis();
+  uint32_t yieldedAt = started, reportedAt = started;
   HalFile elf = Storage.open(elfPath, O_RDONLY);
   if (!elf.isOpen() || elf.isDirectory()) return false;
   const uint64_t size = elf.fileSize64();
-  if (size < 52 || size > kMaxAppBytes || (hasDigest && size != declaredSize)) {
+  if (size < 52 || size > kMaxAppBytes || size != declaredSize) {
     LOG_ERR("APPSTORE", "Invalid ELF length for %s: actual=%llu declared=%llu limit=%llu",
             elfPath, static_cast<unsigned long long>(size),
-            static_cast<unsigned long long>(hasDigest ? declaredSize : 0),
+            static_cast<unsigned long long>(declaredSize),
             static_cast<unsigned long long>(kMaxAppBytes));
     elf.close();
     return false;
@@ -77,7 +80,7 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
       header[4] == 1 && header[5] == 1 && header[16] == 3 && header[17] == 0 &&
       header[18] == 94 && header[19] == 0;
   if (!validHeader) { elf.close(); return false; }
-  if (!hasDigest) { elf.close(); return true; } // Legacy consistency, NOT integrity or trust.
+  if (!verifyContents) return elf.close(); // Declared size/header only, not a content hash.
   if (!elf.seek64(0)) { elf.close(); return false; }
 
   mbedtls_sha256_context context;
@@ -87,23 +90,29 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
   uint8_t digest[32]{};
   uint64_t total = 0;
   while (good && total < size) {
+    if (millis() - started >= kVerifyBudgetMs) { good = false; break; }
     const size_t want = (size - total < sizeof(buffer)) ? static_cast<size_t>(size - total) : sizeof(buffer);
     const int count = elf.read(buffer, want);
     if (count != static_cast<int>(want)) { good = false; break; }
     good = mbedtls_sha256_update_ret(&context, buffer, want) == 0;
     total += want;
-    if ((total & 0x3fffu) == 0 || total == size) {
+    if ((total & 0x3fffu) == 0 || total == size || millis() - yieldedAt >= 8u) {
       // The TWDT also watches IDLE0. Resetting loopTask's watchdog alone does
       // not let IDLE0 run during a long run of synchronous SD reads + hashing.
       // The final-block case also covers batches of small (<16 KiB) apps.
       esp_task_wdt_reset();
       vTaskDelay(1);
+      yieldedAt = millis();
+    }
+    if (total == size || millis() - reportedAt >= 250u) {
+      LOG_DBG("APPSTORE", "Legacy integrity %u/%u bytes", static_cast<unsigned>(total), static_cast<unsigned>(size));
+      reportedAt = millis();
     }
   }
   if (good) good = total == size && mbedtls_sha256_finish_ret(&context, digest) == 0;
   mbedtls_sha256_free(&context);
-  elf.close();
-  if (!good) return false;
+  const bool closed = elf.close();
+  if (!good || !closed || millis() - started >= kVerifyBudgetMs) return false;
   constexpr char hex[] = "0123456789abcdef";
   unsigned mismatch = 0;
   for (unsigned i = 0; i < 32; ++i) {
@@ -116,17 +125,12 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
 bool verifyNamedPair(const char* elf, const char* manifest, const char* filename,
                      bool requireDigest, bool verifyContents = true) {
   if (!elf || !manifest || !validFilename(filename)) return false;
+  if (verifyContents) Storage.invalidateObservations();
   t5_app_manifest_t parsed{};
-  if (!readAppManifest(manifest, parsed) || std::strcmp(parsed.file_name, filename) != 0) return false;
-  // readAppManifest validates JSON, duplicate keys, length, digest spelling and
-  // size limits. Reparse the bounded sidecar to obtain its digest fields.
-  const String raw = Storage.readFile(manifest);
-  if (raw.length() == 0 || raw.length() > 2048) return false;
-  JsonDocument json;
-  if (deserializeJson(json, raw) || !json.is<JsonObjectConst>()) return false;
-  const JsonVariantConst declaredSize = json["size_bytes"];
-  const JsonVariantConst declaredSha = json["sha256"];
-  const bool hasDigest = declaredSize.is<unsigned>() && declaredSha.is<const char*>();
+  AppIntegrity integrity{};
+  if (!readAppManifest(manifest, parsed, nullptr, false, nullptr, nullptr, &integrity) ||
+      std::strcmp(parsed.file_name, filename) != 0) return false;
+  const bool hasDigest = integrity.present;
   if (requireDigest && !hasDigest) return false;
 
   // Manual/legacy installs intentionally predate the managed-package format.
@@ -135,9 +139,9 @@ bool verifyNamedPair(const char* elf, const char* manifest, const char* filename
   // to managed ELF-header rules. The ELF loader remains the compatibility
   // authority for these manually copied files. Staged/new installs and any
   // sidecar that declares integrity metadata continue through strict hashing.
-  if (!hasDigest || !verifyContents) return existingRegularFile(elf);
+  if (!hasDigest) return existingRegularFile(elf);
 
-  return verifyBytes(elf, declaredSize.as<unsigned>(), declaredSha.as<const char*>(), true);
+  return verifyBytes(elf, integrity.sizeBytes, integrity.sha256, verifyContents);
 }
 } // namespace
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Print.h>
+#include "StorageGeneration.h"
 #include <common/FsApiConstants.h>  // for oflag_t
 #include <freertos/semphr.h>
 
@@ -15,6 +16,22 @@ class HalStorage {
   HalStorage();
   bool begin();
   bool ready() const;
+  StorageGenerationStamp generation() const;
+  bool unchanged(const StorageGenerationStamp& stamp) const;
+  // Explicit integrity boundaries retire cached observations even when no
+  // managed write was observed. No media/reset/handle ownership change.
+  void invalidateObservations();
+  // Trusted compatibility boundary, not exported to applications. Actual raw
+  // storage imports hold an uncertainty window through module teardown.
+  void externalStorageBegin();
+  void externalStorageEnd(bool closed);
+  void externalStorageUncertain();
+  // Refresh SdFat after raw SDFS access; never closes live handles or clears
+  // failed/retained teardown uncertainty. A retained inventory may request it.
+  bool reconcileExternalStorage();
+  // Known media/power transitions mark unavailable without resetting
+  // an active filesystem or closing another owner's handles.
+  void markUnavailable();
   std::vector<String> listFiles(const char* path = "/", int maxFiles = 200);
   // Read the entire file at `path` into a String. Returns empty string on failure.
   String readFile(const char* path);
@@ -92,6 +109,8 @@ class HalFile : public Print {
   void rewindDirectory();
   bool close();
   HalFile openNextFile();
+  // SdFat directory read errors must not be mistaken for clean enumeration end.
+  uint8_t getError() const;
   bool isOpen() const;
   operator bool() const;
 };

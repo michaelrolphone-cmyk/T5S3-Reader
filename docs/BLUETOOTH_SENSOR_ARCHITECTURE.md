@@ -28,7 +28,7 @@ The Bluetooth sensor architecture SHALL:
 12. support multiple sensors concurrently within measured controller/memory/power limits;
 13. integrate pairing/bonding and authorization without attempting to bypass device security;
 14. isolate BLE transport ownership from sensor decoding;
-15. support independently installable signed providers for proprietary sensor protocols;
+15. support independently installable versioned providers for proprietary sensor protocols;
 16. integrate with RiscRTE services, events, memory management, power management, and security architecture.
 
 ---
@@ -764,7 +764,7 @@ Diagnostic discovery logs SHOULD have explicit retention policy.
 
 Production sensor-provider ELFs SHALL follow `SECURITY_ARCHITECTURE.md`.
 
-A signed provider proves authorized code identity; it does not automatically grant unrestricted Bluetooth or filesystem access.
+Provider metadata and content validation do not automatically grant Bluetooth or filesystem access; independent runtime policy and scoped leases remain mandatory.
 
 Provider capabilities SHOULD be narrowly scoped, for example:
 

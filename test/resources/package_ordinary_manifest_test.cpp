@@ -47,16 +47,25 @@ int main() {
     assert(plan.entries[0].sizeBytes == 96 && plan.entries[0].executable);
     assert(plan.entries[1].sizeBytes == 16 && !plan.entries[1].executable);
     // Parsing declarations never grants dependencies: real preflight refuses.
-    const PackageRuntimePolicy runtime{"xtensa-esp32s3", 2, 0, 1024, 4096};
+    const PackageRuntimePolicy runtime{"xtensa-esp32s3", 2, 1024, 4096};
     assert(preflightOrdinaryPackage(plan, runtime,
                [](const char*) -> uint32_t { return 0; }) ==
            PreflightResult::UnavailableCapability);
   }
   OrdinaryPackagePlan plan{};
   std::string bytes = manifest();
+  const std::string nested = replace(replace(bytes, "\"schema\":1", "\"schema\":2"), "readme.txt", "assets/text/readme.txt");
+  assert(accepted(nested, plan) && plan.schemaVersion == 2);
+  reject(replace(nested, "\"schema\":2", "\"schema\":1"));
+  for (const char* path : {"../escape.txt", "assets/../escape.txt", "assets//x.txt",
+      "assets./x.txt", "Assets/x.txt", "assets/.x", "a/b/c/d/e/f/g/h/i.txt",
+      "driver.elf/data.txt", "assets/data.elf"})
+    reject(replace(nested, "assets/text/readme.txt", path));
   reject("");
   reject(bytes + "garbage");
-  reject(replace(bytes, "\"schema\":1", "\"schema\":2"));
+  reject(replace(bytes, "\"schema\":1", "\"schema\":1,\"security_version\":9"));
+  reject(replace(bytes, "\"schema\":1", "\"schema\":1,\"signer_key_id\":7"));
+  reject(replace(bytes, "\"schema\":1", "\"schema\":3"));
   reject(replace(bytes, "\"kind\":\"driver\"", "\"kind\":\"unknown\""));
   reject(replace(bytes, "\"id\":\"sample-module\"", "\"id\":\"../escape\""));
   reject(replace(bytes, "\"version\":\"1.2.3\"", "\"version\":\"01.2.3\""));

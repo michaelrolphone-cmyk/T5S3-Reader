@@ -11,7 +11,8 @@ prefix=r'''
 #include <cassert>
 #include <cstdio>
 #include <T5AppApi.h>
-static unsigned boundaries=0, taps=1;
+static unsigned boundaries=0, taps=1, ownerTicks=0;
+void nativeProviderOwnerTick(){++ownerTicks;}
 void nativeTouchDiscardGestures(){++boundaries;taps=0;}
 void esp_task_wdt_reset(){}
 void delay(unsigned){}
@@ -35,6 +36,8 @@ int main(){
  for(unsigned i=0;i<20;++i){taps=1;assert(pollInput(&out,5,true));assert(out.tapped && out.touch_x==100);}
  assert(boundaries==1); // Never flush once per frame, which would lose real taps.
  active=Session{};taps=1;assert(pollInput(&out,0,false));assert(!out.tapped && boundaries==2);
+ assert(ownerTicks==22); // Generic progress remains once per successful input poll.
+ const unsigned before=ownerTicks;assert(!pollInput(nullptr,0,false));assert(ownerTicks==before);
  puts("native app first-input boundary drops prior-screen taps and preserves subsequent taps PASS");
 }
 '''

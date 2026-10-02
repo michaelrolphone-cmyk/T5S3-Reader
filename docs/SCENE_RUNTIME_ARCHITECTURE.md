@@ -771,7 +771,7 @@ Before a bundle becomes launchable, the framework SHALL validate at minimum:
 - declared module type
 - restoration/state schema metadata where required
 
-The runtime SHOULD additionally support package integrity hashes/signatures as distribution matures.
+The runtime SHOULD additionally support package integrity hashes and independent loader/capability authorization.
 
 A malformed graph SHALL fail installation/registration rather than fail during navigation whenever possible.
 

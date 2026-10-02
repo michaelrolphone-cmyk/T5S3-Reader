@@ -29,7 +29,7 @@ OrdinaryStageReview reviewOrdinaryStage(Ops& ops, Kind kind,
   OrdinaryStageReview review{};
   OrdinaryTransactionPaths paths{};
   if (!ordinaryTransactionPaths(kind, id, paths)) return review;
-  if (ops.exists(paths.backup) || ops.exists(paths.removing)) {
+  if (cdcLineageBlocked(ops, kind, id) || ops.exists(paths.backup) || ops.exists(paths.removing)) {
     review.state = OrdinaryStageState::RecoveryRequired;
     return review;
   }
@@ -110,7 +110,7 @@ OrdinaryStageDiscardResult discardOrdinaryStage(Ops& ops, Kind kind,
   if (!lease) return OrdinaryStageDiscardResult::InUse;
   // A power-cut replacement/uninstall must be recovered before altering its
   // stage. Never erase evidence while another generation is unresolved.
-  if (ops.exists(paths.backup) || ops.exists(paths.removing))
+  if (cdcLineageBlocked(ops, kind, id) || ops.exists(paths.backup) || ops.exists(paths.removing))
     return OrdinaryStageDiscardResult::RecoveryRequired;
   if (!ops.exists(paths.stage)) return OrdinaryStageDiscardResult::NoStage;
   if (!inspectKnownEntries(paths.stage))

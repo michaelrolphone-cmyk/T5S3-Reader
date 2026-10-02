@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build experimental CP210x hardware-owning class ELF, never publish to ABI-v1 firmware."""
+"""Build the U1 CP210x hardware-owning class ELF; hardware qualification pending."""
 import hashlib
 import json
 import os
@@ -20,10 +20,10 @@ def build(cc=None):
         "architecture": "xtensa-esp32s3", "file_name": "driver.elf",
         "requires": [{"capability": "usb.host", "api": 1}],
         "provides": [{"capability": "serial.port", "api": 1}],
-        "status": "experimental-unpublished",
+        "status": "u1-class-functional",
     }
     if any(manifest.get(k) != v for k, v in required.items()):
-        raise ValueError("Invalid experimental CP210x manifest")
+        raise ValueError("Invalid U1 CP210x manifest")
     cc = cc or os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
     if not cc:
         core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
@@ -51,7 +51,7 @@ def build(cc=None):
         raise ValueError("Invalid Xtensa CP210x ELF")
     manifest.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
     (OUTPUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"Unpublished CP210x ELF built: {elf}; ABI-v1 installation unsupported")
+    print(f"U1 CP210x class provider built: {elf}; hardware qualification pending")
     return elf
 
 
