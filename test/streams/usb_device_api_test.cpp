@@ -10,8 +10,6 @@
 #include "native/NativeDeviceConsent.h"
 #include "runtime/capabilities/DeviceEventSubscriptions.h"
 
-// This isolated observation-only host binary has no display. The v3 consent
-// interface must not be entered by v1 inventory and subscription calls.
 bool nativeDeviceConsentPrompt(const RuntimeDevices::DeviceInfo&, const char*, uint32_t) {
   assert(false && "observation must never request consent");
   return false;
@@ -77,8 +75,6 @@ int main() {
          devices[0].handle == event.device);
   assert(api->poll(sub, &event, &missed) == T5_DEVICE_EMPTY);
 
-  // Overwrite the bounded journal without polling, then require an atomic
-  // inventory resnapshot. A too-small buffer cannot silently clear GAP.
   for (int i = 0; i < 16; ++i) {
     nativeUsbProviderDetach();
     nativeDeviceDiscoveryTick();
@@ -94,20 +90,30 @@ int main() {
   assert(api->poll(sub, &event, &missed) == T5_DEVICE_STALE);
   assert(subscriptions.count() == 0);
 
+  // Context ownership ends, but the provider's physical device continues to
+  // exist. An ended app must not synthesize a detach or reset its generation.
+  const auto present = devices[0].handle;
   t5_device_subscription_t abandoned = 0;
   assert(api->subscribe(&abandoned) == T5_DEVICE_OK && abandoned != sub);
   nativeSerialPortsEnd();
   context.end();
   assert(!t5_device_get_api(T5_DEVICE_API_VERSION) && subscriptions.count() == 0);
-  assert(registry.count() == 0 && registry.leaseCount() == 0);
+  assert(registry.count() == 1 && registry.leaseCount() == 0);
+  RuntimeDevices::DeviceInfo stillPresent{};
+  assert(registry.get(present, &stillPresent));
 
   RuntimeResources::ExecutionContext next;
   assert(next.begin());
   nativeSerialPortsBegin();
   api = t5_device_get_api(T5_DEVICE_API_VERSION);
   assert(api && api->poll(abandoned, &event, &missed) == T5_DEVICE_STALE);
+  assert(api->inventory(devices, 2, &count) == T5_DEVICE_OK && count == 1 &&
+         devices[0].handle == present);
+  nativeUsbProviderDetach();
+  nativeDeviceDiscoveryTick();
+  assert(registry.count() == 0 && registry.leaseCount() == 0);
   nativeSerialPortsEnd();
   next.end();
-  std::puts("Device ELF ABI authorization, inventory, gap and reconnect tests passed");
+  std::puts("Device ELF ABI authorization, inventory, context lifetime, gap and reconnect tests passed");
   return 0;
 }

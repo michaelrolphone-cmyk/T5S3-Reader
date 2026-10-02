@@ -190,7 +190,7 @@ inline bool install(const char* id, const char* version, const std::string& cata
             return false;
         }
     }
-    constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
+    constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2,
                                           8u * 1024u * 1024u, 16u * 1024u * 1024u};
     Identity observed{};
     emitProgress(progress, context, id, T5_DRIVER_INSTALL_VERIFYING);

@@ -1,0 +1,127 @@
+#pragma once
+
+#include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/PackageOnlineCatalog.h"
+#include "runtime/packages/PackageOrdinarySdZipAdapter.h"
+#include "runtime/packages/PackageRteZip.h"
+#include "network/HttpDownloader.h"
+
+#include <HalStorage.h>
+#include <Arduino.h>
+#include <esp_task_wdt.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <mbedtls/sha256.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <memory>
+#include <new>
+#include <string>
+
+namespace RuntimeOnlinePackages {
+namespace OrdinaryZip {
+constexpr uint32_t kArchiveDownloadTimeoutMs = 300000;
+constexpr uint32_t kArchiveVerifyTimeoutMs = 60000;
+
+// Only this exact published release may supply the archive. In particular, do
+// not use releases/latest/download after catalog selection: it can drift.
+inline bool archiveUrl(const RuntimePackages::CatalogPackage& package,
+                       const char* releaseTag, std::string& url) {
+  return RuntimePackages::onlineArchiveUrl(package, releaseTag, "xtensa-esp32s3", url);
+}
+
+inline bool ensureInbox() {
+  for (const char* folder : {"/Packages", "/Packages/Inbox"}) {
+    if (!Storage.exists(folder) && !Storage.mkdir(folder, false)) return false;
+    HalFile directory = Storage.open(folder, O_RDONLY);
+    const bool valid = directory.isOpen() && directory.isDirectory();
+    if (directory.isOpen() && !directory.close()) return false;
+    if (!valid) return false;
+  }
+  return true;
+}
+
+// Catalog SHA-256 is a transport-integrity pin for the selected artifact;
+// each file is independently rehashed against its retained manifest before
+// ordinary publication. No digest is treated as authority to activate code.
+inline bool archiveMatches(const char* path,
+                           const RuntimePackages::CatalogPackage& package) {
+  if (!path || !RuntimePackages::CatalogDetail::lowerSha256(package.sha256))
+    return false;
+  const uint32_t started = millis();
+  uint32_t checkpoint = started;
+  HalFile file = Storage.open(path, O_RDONLY);
+  if (!file.isOpen() || file.isDirectory()) {
+    if (file.isOpen()) (void)file.close();
+    return false;
+  }
+  if (file.fileSize64() != package.sizeBytes) { (void)file.close(); return false; }
+  std::unique_ptr<uint8_t[]> chunk(new (std::nothrow) uint8_t[1024]);
+  if (!chunk) { (void)file.close(); return false; }
+  mbedtls_sha256_context hash;
+  mbedtls_sha256_init(&hash);
+  bool good = mbedtls_sha256_starts_ret(&hash, 0) == 0;
+  uint64_t offset = 0;
+  while (good && offset < package.sizeBytes) {
+    if (millis() - started >= kArchiveVerifyTimeoutMs) { good = false; break; }
+    const size_t count = static_cast<size_t>(std::min<uint64_t>(1024, package.sizeBytes - offset));
+    good = file.read(chunk.get(), count) == static_cast<int>(count) &&
+           mbedtls_sha256_update_ret(&hash, chunk.get(), count) == 0;
+    offset += good ? count : 0;
+    if (good && (offset % 16384u == 0 || offset == package.sizeBytes || millis() - checkpoint >= 8u)) {
+      esp_task_wdt_reset();
+      vTaskDelay(1);
+      checkpoint = millis();
+    }
+  }
+  uint8_t digest[32]{};
+  if (good) good = mbedtls_sha256_finish_ret(&hash, digest) == 0;
+  mbedtls_sha256_free(&hash);
+  const bool closed = file.close();
+  if (!good || !closed || millis() - started >= kArchiveVerifyTimeoutMs) return false;
+  constexpr char hex[] = "0123456789abcdef";
+  unsigned mismatch = 0;
+  for (unsigned i = 0; i < 32; ++i) {
+    mismatch |= package.sha256[2u * i] != hex[digest[i] >> 4];
+    mismatch |= package.sha256[2u * i + 1u] != hex[digest[i] & 0x0fu];
+  }
+  return mismatch == 0;
+}
+
+// Progress callbacks are invocation-scoped, never retained beyond download.
+// Existing target ZIPs and interrupted .part files are preserved, not
+// unconditionally removed. A successful verified download remains in Inbox
+// for offline reinstalls. Manager callers serialize mutations and check that
+// the selected version may replace any currently installed generation.
+inline bool install(const RuntimePackages::CatalogPackage& package,
+                    const char* releaseTag,
+                    HttpDownloader::ProgressCallback progress = nullptr) {
+  if (!Storage.ready()) return false;
+  std::string url;
+  if (!archiveUrl(package, releaseTag, url) || !ensureInbox()) return false;
+  const std::string archive = std::string("/Packages/Inbox/") + package.archive;
+  const std::string part = archive + ".part";
+  if (archive.size() >= RuntimePackages::kOnlineArchivePathBytes ||
+      part.size() >= RuntimePackages::kOnlineArchivePathBytes) return false;
+  if (Storage.exists(archive.c_str())) {
+    if (!archiveMatches(archive.c_str(), package)) return false;
+  } else {
+    // Unknown or interrupted file requires explicit recovery, never overwrite.
+    if (Storage.exists(part.c_str()) ||
+        HttpDownloader::downloadToFileBounded(url, part, package.sizeBytes, kArchiveDownloadTimeoutMs, progress) != HttpDownloader::OK)
+      return false;
+    if (!archiveMatches(part.c_str(), package) ||
+        !Storage.rename(part.c_str(), archive.c_str())) return false;
+  }
+  constexpr RuntimePackages::PackageRuntimePolicy policy{
+      "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+  const auto installed = RuntimePackages::installOrdinaryFromSdZip(
+      archive.c_str(), policy, RuntimePackages::installedCapabilityVersion,
+      &package.identity);
+  return installed.result == RuntimePackages::OrdinaryInstallResult::Installed;
+}
+
+} // namespace OrdinaryZip
+} // namespace RuntimeOnlinePackages

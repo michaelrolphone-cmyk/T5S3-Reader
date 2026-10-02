@@ -5,7 +5,8 @@
 #include <sys/types.h>
 #include "private/elf_types.h"
 
-#define MAX_IMAGE (8u * 1024u * 1024u)
+#include "private/esp_elf_data_layout.h"
+#define MAX_IMAGE ESP_ELF_MAX_IMAGE_BYTES
 static bool range(size_t length, uint32_t offset, uint64_t size) {
     return offset <= length && size <= length - offset;
 }

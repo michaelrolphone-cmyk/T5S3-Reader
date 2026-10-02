@@ -19,7 +19,7 @@
 namespace {
 constexpr size_t kMaxDirectoryEntries = 512;
 constexpr RuntimePackages::PackageRuntimePolicy kAppPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
 bool validManagedCandidate(const char* id, const char* artifact,
                            t5_app_manifest_t& manifest) {

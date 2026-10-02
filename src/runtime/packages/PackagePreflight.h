@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PackageIdentity.h"
+#include "PackageResourcePath.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -30,7 +31,6 @@ struct PackageEnvelopeView {
   Identity identity;
   const char* architecture;
   uint32_t minRuntimeApi;
-  uint32_t securityVersion;
   const PackageEntry* entries;
   size_t entryCount;
   const PackageRequirement* requirements;
@@ -40,10 +40,6 @@ struct PackageEnvelopeView {
 struct PackageRuntimePolicy {
   const char* architecture;
   uint32_t runtimeApi;
-  // Zero explicitly disables the optional experimental security-version
-  // policy for ORDINARY integrity-checked packages. A nonzero threshold keeps
-  // existing signed-package/rollback behavior unchanged.
-  uint32_t minimumSecurityVersion;
   uint64_t maxEntryBytes;
   uint64_t maxTotalBytes;
 };
@@ -53,7 +49,6 @@ enum class PreflightResult : uint8_t {
   InvalidIdentity,
   UnsupportedArchitecture,
   IncompatibleRuntime,
-  SecurityRollback,
   InvalidEntryList,
   InvalidEntry,
   DuplicateEntry,
@@ -112,7 +107,7 @@ inline bool validSha256Hex(const char* digest) {
 // imply SHA-256 was computed. A caller must independently hash the payloads
 // against declared digests, retain exact candidate bytes through staging, and
 // apply execution-context grants at LOAD time. An ordinary digest is NOT a
-// publisher signature. Optional signed packages may enforce additional trust.
+// publisher identity or authorization to execute privileged imports.
 template <typename Resolver>
 PreflightResult preflightPackage(const PackageEnvelopeView& package,
                                  const PackageRuntimePolicy& runtime,
@@ -122,17 +117,13 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
     default: return PreflightResult::InvalidIdentity;
   }
   Identity canonical{};
-  if (!makeIdentity(package.identity.kind, package.identity.id,
-                    package.identity.version, package.identity.artifact, false, &canonical) ||
+  if (!canonicalIdentity(package.identity, &canonical) ||
       package.identity.legacyVersion) return PreflightResult::InvalidIdentity;
   if (!package.architecture || !runtime.architecture ||
       std::strcmp(package.architecture, runtime.architecture) != 0)
     return PreflightResult::UnsupportedArchitecture;
   if (!package.minRuntimeApi || package.minRuntimeApi > runtime.runtimeApi)
     return PreflightResult::IncompatibleRuntime;
-  if (runtime.minimumSecurityVersion &&
-      (!package.securityVersion || package.securityVersion < runtime.minimumSecurityVersion))
-    return PreflightResult::SecurityRollback;
   if (!package.entries || !package.entryCount || package.entryCount > kMaxPackageEntries ||
       !runtime.maxEntryBytes || !runtime.maxTotalBytes)
     return PreflightResult::InvalidEntryList;
@@ -141,11 +132,14 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
   size_t executableCount = 0;
   for (size_t i = 0; i < package.entryCount; ++i) {
     const PackageEntry& entry = package.entries[i];
-    if (!safePackageEntryName(entry.name) || !validSha256Hex(entry.sha256) ||
+    if (!(entry.executable ? safePackageEntryName(entry.name) :
+          safePackageResourcePath(entry.name)) || !validSha256Hex(entry.sha256) ||
         !entry.sizeBytes || entry.sizeBytes > runtime.maxEntryBytes)
       return PreflightResult::InvalidEntry;
     for (size_t j = 0; j < i; ++j)
-      if (std::strcmp(package.entries[j].name, entry.name) == 0)
+      if (std::strcmp(package.entries[j].name, entry.name) == 0 ||
+          packagePathIsParent(package.entries[j].name, entry.name) ||
+          packagePathIsParent(entry.name, package.entries[j].name))
         return PreflightResult::DuplicateEntry;
     const size_t length = std::strlen(entry.name);
     const bool elfSuffix = length >= 4 && std::strcmp(entry.name + length - 4, ".elf") == 0;
@@ -161,8 +155,9 @@ PreflightResult preflightPackage(const PackageEnvelopeView& package,
       return PreflightResult::ResourceBudgetExceeded;
     total += entry.sizeBytes;
   }
-  if (executableCount != 1) return PreflightResult::MissingExecutable;
-  if (package.requirementCount > kMaxPackageRequirements ||
+  if (executableCount != (resourceOnly(package.identity) ? 0u : 1u)) return PreflightResult::MissingExecutable;
+  if ((resourceOnly(package.identity) && package.requirementCount) ||
+      package.requirementCount > kMaxPackageRequirements ||
       (package.requirementCount && !package.requirements))
     return PreflightResult::InvalidRequirement;
   // Validate *all* declarations before consulting the capability registry.
@@ -219,8 +214,7 @@ inline InstallDecision decidePackageVersion(const Identity& candidate,
                                              bool allowDowngrade = false) {
   Identity canonical{};
   if (candidate.legacyVersion ||
-      !makeIdentity(candidate.kind, candidate.id, candidate.version,
-                    candidate.artifact, false, &canonical))
+      !canonicalIdentity(candidate, &canonical))
     return InstallDecision::InvalidCandidate;
   if (!installed) return InstallDecision::FreshInstall;
   if (!samePackage(candidate, *installed)) return InstallDecision::IdentityConflict;
