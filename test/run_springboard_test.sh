@@ -87,8 +87,9 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/serial_monitor.c" \
   "$repo_dir/test/native_apps/serial_monitor_baud_test.c" -o "$binary"
 "$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
-  "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
