@@ -35,8 +35,13 @@ def build_one(name):
     output = ROOT / "dist" / "experimental" / manifest["id"]
     output.mkdir(parents=True, exist_ok=True)
     elf = output / "driver.elf"
+    # GNU ld 2.35.1 in the pinned Linux Xtensa toolchain aborts with a double
+    # free when linking the expanded FAT32 probe at -Os. Keep this source at
+    # -O1 until the toolchain is updated; other providers retain their flags.
+    optimization = "-O1" if name == "x4pro_sd" else "-Os"
     subprocess.run([
-        CC, "-std=c11", "-Os", "-fPIC", "-mtext-section-literals", "-mlongcalls",
+        CC, "-std=c11", optimization,
+        "-fPIC", "-mtext-section-literals", "-mlongcalls",
         "-fvisibility=hidden", "-fno-builtin", "-nostdlib", "-nostartfiles", "-shared",
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
         "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL",
