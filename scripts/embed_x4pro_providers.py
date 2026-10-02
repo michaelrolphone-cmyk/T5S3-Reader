@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -11,7 +12,12 @@ OUT = ROOT / "src/platform/x4pro_embedded.c"
 PACKAGES = ["platform-clock-v1", "x4pro-panel", "x4pro-buttons", "x4pro-frontlight"]
 
 def imports_for(elf):
-    readelf = os.environ.get("XTENSA_READELF", "xtensa-esp32s3-elf-readelf")
+    readelf = os.environ.get("XTENSA_READELF")
+    if not readelf:
+        readelf = shutil.which("xtensa-esp32s3-elf-readelf")
+    if not readelf:
+        core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
+        readelf = str(core / "packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-readelf")
     text = subprocess.check_output([readelf, "-sW", str(elf)], text=True)
     names = []
     for line in text.splitlines():

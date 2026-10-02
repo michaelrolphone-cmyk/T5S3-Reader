@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -11,7 +12,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from normalize_xtensa_relocations import normalize
 
-CC = os.environ.get("NATIVE_DRIVER_CC", "/tmp/xtensa/xtensa-esp32s3-elf/bin/xtensa-esp32s3-elf-gcc")
+def compiler():
+    env = os.environ.get("NATIVE_DRIVER_CC")
+    if env:
+        return env
+    found = shutil.which("xtensa-esp32s3-elf-gcc")
+    if found:
+        return found
+    core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
+    return str(core / "packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc")
+
+CC = compiler()
 PACKAGES = [
     "x4pro_i2c", "x4pro_panel", "x4pro_gt911", "x4pro_buttons",
     "x4pro_frontlight", "x4pro_battery", "x4pro_sd",
