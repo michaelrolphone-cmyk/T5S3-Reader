@@ -1,3 +1,12 @@
+## Reconciliation blocker — OPDS #21 and SD firmware handoff #25 — 2026-10-02 22:03 UTC
+
+- Both PRs #366 and #368 were moved back to draft while their old heads remain divergent/unmergeable. Existing fix code and focused tests were preserved; branches were not reset or otherwise changed.
+- Local focused OPDS regression passed. SD firmware bridge regression compiled and passed with strict C++17 warnings without sanitizers. The ASan/UBSan run stalled for 60 seconds and was stopped (exit 130), consistent with the earlier environment limitation. No current-master full build or exact-head CI was run.
+- Direct `git fetch origin master ...` from the approved checkout failed: `fatal: unable to access 'https://github.com/michaelrolphone-cmyk/T5S3-Reader.git/': Could not resolve host: github.com`. Connected GitHub tools confirmed master remains `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`, and both PRs are respectively 3/9 and 9/9 ahead/behind at merge base `3722a3f44a3294ba5e8adab830807a2523df3b03`.
+- Attempted authorized connected ref updates for `fix/opds-server-url-required` and `fix/sd-firmware-update-handoff-validation` with `force=true`, setting each to current master so preserved fixes could be reapplied with updated versions. Automatic approval review rejected both actions: it classified the force reset as discarding unmerged fix history and emptying the PR, and instructed not to bypass the rejection. Neither ref changed.
+- Resume blocker: explicit user approval is required for resetting/rebasing these existing branch refs after preserving their fix/test contents, or the platform must provide a non-destructive current-master branch-update path. Do not create duplicate PRs or use an indirect reset. Keep both reconciliation claims active until this blocker is resolved.
+
+---
 ## Active reconciliation — OPDS URL validation and SD firmware handoff — 2026-10-02 21:58 UTC
 
 - Coordinator `michaelrolphone-cmyk` owns the reconciliation of existing [PR #366](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/366), canonical #21, claim `opds_required_url_reconcile_20261002`, and [PR #368](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/368), canonical #25, claim `sd_firmware_handoff_reconcile_20261002`. This resumes their existing repair branches; no duplicate repair is being created. Baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; preserved PR heads are `4fc4d610a055a2c527c9076d5e6942753e6fd1e8` and `5721e255d7594faea453afb417afbbe5a352e4a6`.
