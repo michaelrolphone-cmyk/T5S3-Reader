@@ -226,9 +226,10 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Pass `path.c_str()` to `firmware_flash::validateImageFile()` and use the resolved path consistently throughout validation/install. Add an integration test that supplies the image only through `NativeFileOpenBridge::activeSourceStoragePath()` and verifies validation reaches the real file; the existing native-app test mocks `validate()` and does not exercise this bridge path.
 ### 26. Language selection reports success even when the settings file was not saved
 
-- **Status:** Confirmed / claimed on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; owner `settings_bridge_persistence_20261002_1102`; repair branch `fix/settings-bridge-persistence-rollback`.
+- **Status:** Repair in progress in draft [PR #361](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/361), branch `fix/settings-bridge-persistence-rollback`, exact head `ad4b72b7a1386f70e37be6dcb373066c47af9da8`; target-board CI pending.
 - **Sources:** [automation/bug-scan-20260927-0023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0023/bugs.md)
 - **Fresh revalidation (2026-10-02):** The installed Language app calls the current `t5_language_api_v1::select()` path. `NativeLanguageBridge.cpp::selectLanguage()` changes live `I18N` and `SETTINGS.language`, ignores `saveToFile()` failure, and returns true. Direct production-source failure-injection regression is being prepared against the exact baseline before repair.
+- **Baseline regression:** Production bridge failure-injection assertion fails on the unmodified master (exit 134). Repaired Language/Time Zone failure, rollback and retry/success cases pass locally.
 
 - **Affected code:** `src/native/NativeLanguageBridge.cpp`, `selectLanguage(uint8_t languageId)`; caller `Apps/language_settings.c::select_current()`.
 - **Trigger / reproduction:** Make settings persistence fail (for example, unavailable/unwritable settings storage), open Language, and select a different language.
@@ -238,9 +239,10 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Preserve the previous language, attempt persistence, and return success only after `saveToFile()` succeeds. On failure, restore both `SETTINGS.language` and the active `I18N` language before returning `false`. Add a regression test with a failing settings writer proving the API returns failure and leaves the previous language active.
 ### 27. A failed Time Zone save still changes the live timezone and system clock
 
-- **Status:** Confirmed / claimed on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; owner `settings_bridge_persistence_20261002_1102`; repair branch `fix/settings-bridge-persistence-rollback`.
+- **Status:** Repair in progress in draft [PR #361](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/361), branch `fix/settings-bridge-persistence-rollback`, exact head `ad4b72b7a1386f70e37be6dcb373066c47af9da8`; target-board CI pending.
 - **Sources:** [automation/bug-scan-20260927-0023](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0023/bugs.md)
 - **Fresh revalidation (2026-10-02):** The installed Time Zone app calls the current `t5_time_zone_api_v1::select_city()` path. `NativeTimeZoneBridge.cpp::selectCity()` mutates the saved zone, configures `halClock`, synchronizes system time and updates RTC mode before returning the `SETTINGS.saveToFile()` result; save failure returns false while leaving these live changes in place. Direct production-source failure-injection regression is being prepared against the exact baseline before repair.
+- **Baseline regression:** Production bridge failure-injection assertion fails on the unmodified master (exit 134). Repaired Language/Time Zone failure, rollback and retry/success cases pass locally.
 
 - **Affected code:** `src/native/NativeTimeZoneBridge.cpp`, `selectCity(uint32_t region, uint32_t city)`; caller `Apps/time_zone.c::activate()`.
 - **Trigger / reproduction:** Make settings persistence fail, then select a different city in Time Zone.

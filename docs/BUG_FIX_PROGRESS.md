@@ -1,10 +1,11 @@
-## Settings bridge persistence rollback — active claim 2026-10-02 11:02 UTC
+## Settings bridge persistence rollback — active PR checkpoint 2026-10-02 11:16 UTC
 
-- Owner `settings_bridge_persistence_20261002_1102`; canonical #26 and #27; phase: claimed, current-master reproduction and focused repair. Baseline master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; ledger branch `automation/bug-ledger` captured at `5cc3dfba3b9df94d5f8ed205154fe704eca41b1d` before this claim.
-- Repair branch `fix/settings-bridge-persistence-rollback`, target master. The batch is scoped to `src/native/NativeLanguageBridge.cpp::selectLanguage()` and `src/native/NativeTimeZoneBridge.cpp::selectCity()`: both mutate live preferences before persistence, but one falsely returns success and the other returns failure without restoring live state.
-- Current-master verification: installed Language and Time Zone apps call these versioned native APIs. Source revalidation confirms the save-failure behavior; direct failure-injection baseline regressions are being prepared. No open PR changes either bridge or the two apps; relevant existing app-store/repair branches and all-state PR searches show no matching repair/active owner. Active claims for #26/#27 were absent.
-- Firmware release lineage: master platformio version 1.3.61 and published `firmware-v1.3.61`. Current open reservations: PR #355 →1.3.62, PR #347 →1.3.63, PR #354 →1.3.64. Candidate firmware version is 1.3.65. App sources/manifests remain unchanged; no app version bump is needed.
-- No architecture, U1–U4, X4/performance, Hollow, hardware qualification, device I/O, flash, release, catalog, deployment, merge or cross-repository scope. User handles merge.
+- Owner `settings_bridge_persistence_20261002_1102`; canonical #26 and #27; claim remains active pending terminal target CI. Repair branch `fix/settings-bridge-persistence-rollback`; draft [PR #361](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/361), exact head `ad4b72b7a1386f70e37be6dcb373066c47af9da8`, based directly on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. No master merge/write.
+- Change: Language restores both active and stored language when save fails. Time Zone restores the old zone, RTC settings and live HalClock timezone/system-time state when save fails. Both APIs return failure; subsequent successful retry commits. No app binary source or manifest changed.
+- Firmware version 1.3.61 → 1.3.65. Latest published firmware tag/release is 1.3.61; PR #355 reserves 1.3.62, PR #347 1.3.63, and PR #354 1.3.64.
+- Original production-source baseline tests fail as expected for both Language and Time Zone (exit 134). Repaired direct bridge test passes both fail/rollback and retry/success. Existing Language and Time Zone app UI regressions also pass. Shell syntax, workflow YAML parse and intended-path diff check pass.
+- New targeted CI [run 37000061954](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37000061954) passed on this head. PlatformIO [run 37000061758](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37000061758) is still in progress; exact-head host aggregate, t5s3-pro/lilygo builds and headless core are pending or running.
+- No physical RTC/device verification or device I/O. User handles merge; no release, catalog, deployment, flashing, cross-repository or architectural work.
 
 ## Ask response Unicode validation — claim 2026-10-02 09:55 UTC
 
