@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 root = Path(__file__).resolve().parents[2]
 
@@ -106,10 +107,10 @@ for forbidden in (
 ):
     assert forbidden not in preflight_body, forbidden
 
-# Every direct DisplaySurface mutation/presentation path in GfxRenderer must
-# carry a validated-init gate. Per-pixel writes use initialized+framebuffer
-# because checking a virtual readiness method per pixel would destroy render
-# performance; bulk/backend calls must additionally check display.isReady().
+# Raster operations require validated initialization and valid target memory.
+# Backend delegation/presentation additionally requires display.isReady().
+# RAM clearing must remain available during UI-video takeover, when the
+# physical backend is suspended but the renderer's allocation remains valid.
 for function_name in (
     "drawImage", "drawIcon", "clearScreen", "displayBuffer",
     "copyGrayscaleLsbBuffers", "copyGrayscaleMsbBuffers",
@@ -168,3 +169,7 @@ for invariant in (
 
 assert "They are NOT the provider-ABI presentation intent ordinals" in surface
 print("display board-profile and ordinal tripwires: ok")
+
+# Compile and execute the production methods: declarations alone cannot catch
+# a software clear accidentally gated on physical display ownership.
+runpy.run_path(str(root / "test/native_apps/springboard_takeover_clear_test.py"), run_name="__main__")
