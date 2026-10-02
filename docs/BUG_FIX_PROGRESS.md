@@ -1,3 +1,11 @@
+## Font catalog validation — active claim 2026-10-02 11:59:36 UTC
+
+- Owner `font_catalog_validation_20261002_1125`; canonical reports #76, #174, #258, and #259. Baseline master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; current ledger parent `00c380515dbda94dd5cecffd3cf1776696774d4a`. New repair branch planned: `fix/font-catalog-validation-atomicity`. Phase: confirmed source paths; focused baseline reproduction and repair pending. No active owner was listed in the latest checkpoint; #361 remains open/ready with its claim released.
+- Revalidated installed workflow: current `Apps/font_manager.c` is the Manage Fonts UI (manifest 1.0.2), and current `NativeFontBridge.cpp::refreshCatalog()` downloads the versioned manifest through HttpDownloader, parses it, and publishes rows consumed by the app; `installFamily()` operates on selected rows and writes font files through storage. This reaches network and SD-backed functionality already in the product. Reported failures are triggerable by malformed but version-matching catalog content: valid prefix before invalid later family; absent/wrong-type families array; family with empty/missing files; duplicate family IDs that share one installation directory.
+- No open PR modifies font bridge/catalog files. Existing stale branches `fix/font-manager-confirm-edge`, `fix/font-selection-persistence`, and `fix/font-update-crc-detection` address other paths; none is an active catalog-validation owner. The closed-unmerged `fix/catalog-load-latency` branch changes App Store/network latency, not the font manifest path.
+- Candidate firmware version 1.3.66 pending final published-lineage and reservation recheck. No app source or app manifest change is currently planned.
+- Scope: validate the entire candidate catalog into temporary state, reject invalid/missing/wrong-type arrays, empty font packages and duplicate family identity, preserve prior good catalog on validation failure, and publish only after success. Focused regression must cover failure, retry, and valid install selection. No U1–U4, X4, Hollow, performance, or architecture changes.
+
 ## Settings bridge persistence repair — 2026-10-02 11:23 UTC
 
 - Owner claim `settings_bridge_persistence_20261002_1102` for canonical reports #26/#27 completed and released after terminal exact-head CI. No active run remains.
