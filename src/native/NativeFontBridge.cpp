@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "FontCatalogValidation.h"
 #include "FontCatalogConfig.h"
 #include "FontInstaller.h"
 #include "SdCardFontGlobals.h"
@@ -99,14 +100,17 @@ t5_font_result_t refreshCatalog() {
   file.close();
   Storage.remove(tempPath);
   if (err || (doc["version"] | 0) != FONTS_MANIFEST_VERSION) return T5_FONT_MANIFEST_ERROR;
-  baseUrl = doc["baseUrl"] | "";
-  families.clear();
+  const bool familiesFieldIsArray = doc["families"].is<JsonArray>();
+  if (!familiesFieldIsArray) return T5_FONT_MANIFEST_ERROR;
+  std::string candidateBaseUrl = doc["baseUrl"] | "";
+  std::vector<ManifestFamily> candidateFamilies;
   installer().refreshRegistry();
   for (JsonObject fObj : doc["families"].as<JsonArray>()) {
     ManifestFamily family;
     family.name = fObj["name"] | "";
     family.description = fObj["description"] | "";
     if (!FontInstaller::isValidFamilyName(family.name.c_str())) return T5_FONT_MANIFEST_ERROR;
+    if (!fObj["files"].is<JsonArray>()) return T5_FONT_MANIFEST_ERROR;
     for (JsonObject fileObj : fObj["files"].as<JsonArray>()) {
       ManifestFile entry;
       entry.name = fileObj["name"] | "";
@@ -133,8 +137,12 @@ t5_font_result_t refreshCatalog() {
         }
       }
     }
-    families.push_back(std::move(family));
+    candidateFamilies.push_back(std::move(family));
   }
+  if (!FontCatalogValidation::publish(families, candidateFamilies, familiesFieldIsArray)) {
+    return T5_FONT_MANIFEST_ERROR;
+  }
+  baseUrl.swap(candidateBaseUrl);
   return T5_FONT_OK;
 }
 
