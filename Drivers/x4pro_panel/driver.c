@@ -1,6 +1,5 @@
-/* X4 Pro 800x480 panel provider. This artifact is SSD1677-specific.
- * UC8179/UC8279 batches are an unresolved hardware prerequisite.
- * BUSY is active-high. There is no external display PMIC.
+/* X4 Pro 800x480 panel provider for gated SSD1677 and UC8279 variants.
+ * SSD BUSY is active-high; UC BUSY is active-low. No external display PMIC.
  * GPIO1 is the recovered peripheral-enable name and is not driven here.
  * Touch power GPIO2 and SD power GPIO5 stay untouched. */
 #include "RiscDisplayOutputV1.h"
@@ -16,6 +15,7 @@ static uint8_t frame[FRAME_BYTES];
 static uint8_t present_state;
 static bool transfer_started;
 static bool started, held, pins_ready;
+static int controller;
 enum { PRESENT_NONE = 0, PRESENT_QUEUED = 1, PRESENT_ACTIVE = 2, PRESENT_COMPLETE = 3, PRESENT_FAILED = 5 };
 static uint64_t frame_serial, token_serial, pending_token;
 static char last_error_text[64];
@@ -129,7 +129,7 @@ static void append_hex(char *destination, size_t capacity, size_t *used, uint8_t
         destination[*used] = 0;
     }
 }
-enum { PROBE_AMBIGUOUS = 0, PROBE_SSD = 1, PROBE_UC = 2, PROBE_DISABLED = 3 };
+enum { PROBE_AMBIGUOUS = 0, PROBE_SSD = 1, PROBE_UC8279 = 2, PROBE_DISABLED = 3 };
 __attribute__((weak)) int x4_test_probe_mode = 0;
 static int probe_controller(void) {
     uint8_t flg = 0;
@@ -146,7 +146,7 @@ static int probe_controller(void) {
     int verdict = PROBE_AMBIGUOUS;
     if (x4_test_probe_mode == 1) verdict = PROBE_DISABLED;
     else if (x4_test_probe_mode == 2) verdict = PROBE_AMBIGUOUS;
-    else if (x4_test_probe_mode == 3) verdict = PROBE_UC;
+    else if (x4_test_probe_mode == 3) { verdict = PROBE_UC8279; ver[2] = 0x68; flg = 0x13; }
     else if (x4_test_probe_mode == 4) verdict = PROBE_SSD;
     else {
         read_cmd(0x71, &flg, 1);
@@ -155,7 +155,15 @@ static int probe_controller(void) {
         for (int i = 0; i < 5; ++i) if (ver[i] != ver[0]) floating = false;
         const bool uc = flg != 0 && flg != 0xFF && (flg & 1u) == 1u && !floating;
         const bool ssd = floating && (flg == 0x00 || flg == 0xFF);
-        verdict = uc ? PROBE_UC : ssd ? PROBE_SSD : PROBE_AMBIGUOUS;
+        if (uc && ver[2] == 0x68) {
+            uint8_t confirm_flg = 0, confirm_ver[5] = {0};
+            sleep_ms(50);
+            read_cmd(0x71, &confirm_flg, 1);
+            read_cmd(0x70, confirm_ver, 5);
+            bool matches = confirm_flg == flg;
+            for (size_t i = 0; i < sizeof(ver); ++i) matches = matches && confirm_ver[i] == ver[i];
+            verdict = matches && busy ? PROBE_UC8279 : PROBE_AMBIGUOUS;
+        } else verdict = ssd ? PROBE_SSD : PROBE_AMBIGUOUS;
     }
     size_t used = 0;
     append(probe_text, sizeof(probe_text), &used, "probe flg=");
@@ -166,7 +174,7 @@ static int probe_controller(void) {
     append_u(probe_text, sizeof(probe_text), &used, busy_before_reset);
     append(probe_text, sizeof(probe_text), &used, " busy=");
     append_u(probe_text, sizeof(probe_text), &used, busy);
-    append(probe_text, sizeof(probe_text), &used, verdict == PROBE_SSD ? " verdict=ssd-assumed" : verdict == PROBE_UC ? " verdict=uc81xx" : verdict == PROBE_DISABLED ? " verdict=probe-disabled" : " verdict=ambiguous");
+    append(probe_text, sizeof(probe_text), &used, verdict == PROBE_SSD ? " verdict=ssd-assumed" : verdict == PROBE_UC8279 ? " verdict=uc8279-confirmed" : verdict == PROBE_DISABLED ? " verdict=probe-disabled" : " verdict=ambiguous");
     return verdict;
 }
 static void prepare_pins(void) {
@@ -193,6 +201,30 @@ static bool ready_for(const char *failure) {
         if (now_ms() >= deadline) { set_reason(failure); return false; }
         sleep_ms(10);
     }
+    return true;
+}
+static bool uc_ready_for(const char *failure, uint64_t deadline_ms) {
+    while (!x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
+        uint64_t now = 0;
+        if (!sample_now(&now) || now >= deadline_ms) { set_reason(failure); return false; }
+        sleep_ms(10);
+    }
+    return true;
+}
+static bool uc_init_panel(void) {
+    /* FreeInk UC8279 X4 Pro: use panel-programmed voltage and OTP waveform. */
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
+    sleep_ms(50);
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
+    sleep_ms(50);
+    uint64_t now = 0;
+    if (!sample_now(&now) || !uc_ready_for("uc reset busy timeout", now + 500u)) return false;
+    command(0x00); data1(0x37); data1(0x4D);
+    command(0x61); data1(0x03); data1(0x20); data1(0x02); data1(0x58);
+    command(0x65); data1(0); data1(0); data1(0); data1(0);
+    command(0x03); data1(0x20);
+    command(0x30); data1(0x0E);
+    command(0xE1); data1(0x02);
     return true;
 }
 static bool init_panel(void) {
@@ -248,6 +280,56 @@ static bool transfer_plane(uint8_t ram_command, uint64_t deadline_ms) {
         }
     }
     x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+    return true;
+}
+static bool uc_transfer_plane(uint8_t ram_command, bool white, uint64_t deadline_ms) {
+    command(ram_command);
+    x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
+    for (size_t row = 0; row < 600u; ++row) {
+        for (size_t col = 0; col < X4PRO_PANEL_WIDTH / 8u; ++col) {
+            uint8_t value = (white || row < 120u) ? 0xFFu : (uint8_t)~frame[(row - 120u) * (X4PRO_PANEL_WIDTH / 8u) + col];
+            spi_byte(value);
+            ++bytes_sent;
+        }
+        if ((row & 7u) == 7u || row == 599u) {
+            uint64_t now = 0;
+            if (!sample_now(&now) || now >= deadline_ms) {
+                x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+                transfer_end_ms = now;
+                set_reason("transfer deadline");
+                return false;
+            }
+        }
+    }
+    x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+    return true;
+}
+static bool uc_transfer_frame(uint64_t deadline_ms) {
+    if (transfer_started) { set_reason("invalid state"); return false; }
+    transfer_started = true;
+    if (!sample_now(&transfer_start_ms) || !uc_ready_for("uc pre-transfer busy", deadline_ms)) return false;
+    if (!uc_transfer_plane(0x13, false, deadline_ms) || !uc_transfer_plane(0x10, true, deadline_ms)) return false;
+    if (!sample_now(&transfer_end_ms) || transfer_end_ms >= deadline_ms) { set_reason("transfer deadline"); return false; }
+    command(0x50); data1(0x97);
+    command(0xE0); data1(0x02);
+    command(0xE5); data1(0x1E);
+    if (!sample_now(&refresh_ms) || refresh_ms >= deadline_ms) { set_reason("transfer deadline"); return false; }
+    command(0x04);
+    /* UC8279 PON may reload MTP settings. Select built-in OTP after PON. */
+    if (!uc_ready_for("uc power-on timeout", deadline_ms)) return false;
+    command(0x00); data1(0x17); data1(0x4D);
+    busy_before = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
+    if (!busy_before) { set_reason("busy already active"); return false; }
+    command(0x12);
+    while (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
+        uint64_t now = 0;
+        if (!sample_now(&now) || now >= deadline_ms) { set_reason("busy never asserted"); return false; }
+        sleep_ms(1);
+    }
+    if (!sample_now(&busy_assert_ms)) return false;
+    if (!uc_ready_for("busy completion timeout", deadline_ms)) return false;
+    if (!sample_now(&busy_done_ms)) return false;
     return true;
 }
 static bool transfer_frame(uint64_t deadline_ms) {
@@ -350,7 +432,7 @@ static bool wait_present(void *context, risc_display_present_token_v1 token, uin
             return present_status(context, token, out);
         }
         present_state = PRESENT_ACTIVE;
-        if (!transfer_frame(now + timeout_ms)) {
+        if (!(controller == PROBE_UC8279 ? uc_transfer_frame(now + timeout_ms) : transfer_frame(now + timeout_ms))) {
             present_state = PRESENT_FAILED;
             held = false;
         } else {
@@ -377,19 +459,20 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
     if (!clock_api) { fail("platform.clock missing"); return false; }
     prepare_pins();
     const int verdict = probe_controller();
-    if (verdict != PROBE_SSD) {
-        set_reason(verdict == PROBE_UC ? "unsupported-controller" : verdict == PROBE_DISABLED ? "probe-disabled" : "ambiguous-controller");
+    if (verdict != PROBE_SSD && verdict != PROBE_UC8279) {
+        set_reason(verdict == PROBE_DISABLED ? "probe-disabled" : "ambiguous-controller");
         return false;
     }
+    controller = verdict;
     for (size_t i = 0; i < sizeof(frame); ++i) frame[i] = 0;
-    started = init_panel();
+    started = controller == PROBE_UC8279 ? uc_init_panel() : init_panel();
     return started;
 }
 static void stop(void) { started = false; held = false; }
 static bool quiesce(void) {
     /* A timed-out refresh may still be driving the panel. Keep this provider
      * pinned until BUSY is observed idle; software state alone cannot prove it. */
-    if (present_state == PRESENT_ACTIVE || (pins_ready && x4pro_pin_read(X4PRO_PIN_EPD_BUSY)))
+    if (present_state == PRESENT_ACTIVE || (pins_ready && (controller == PROBE_UC8279 ? !x4pro_pin_read(X4PRO_PIN_EPD_BUSY) : x4pro_pin_read(X4PRO_PIN_EPD_BUSY))))
         return false;
     stop();
     return true;
@@ -413,7 +496,7 @@ static bool last_error(char *destination, size_t capacity) {
     size_t used = 0;
     destination[0] = 0;
     append(destination, capacity, &used, probe_text);
-    append(destination, capacity, &used, " v=0.1.10 token=");
+    append(destination, capacity, &used, " v=0.1.11 token=");
     append_u(destination, capacity, &used, pending_token);
     append(destination, capacity, &used, " state=");
     append_u(destination, capacity, &used, present_state);
