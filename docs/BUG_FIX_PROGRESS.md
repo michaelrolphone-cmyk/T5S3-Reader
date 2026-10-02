@@ -1,3 +1,10 @@
+## Owner CAM status follow-up — 2026-10-02
+
+- After the terminal PR checkpoint, the owner-authored `CAM hardware / trusted owner SHA` commit status changed from pending to **success**. Its description records firmware `f85f079226c4`, a 20,988-byte capture, and baseline boot verified.
+- This worker did not perform device I/O. The status does not verify Firmware Flasher directory paging, SD image selection, ESP flashing, or MSP programming; no flasher-specific device qualification is claimed. PR #371 remains ready/mergeable and user handles merge.
+
+---
+
 ## Terminal review checkpoint — Firmware Flasher pagination, canonical #36 — 2026-10-02
 
 - [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371) is **open, ready for review, and mergeable**, exact head `9c77ad8d396a7660ae97396c34683e6ea87f4b06`, directly based on current master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231). User handles merge. Claim `firmware_flasher_image_pagination_20261002` is released after terminal checks.
