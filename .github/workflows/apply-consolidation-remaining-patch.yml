@@ -1,0 +1,30 @@
+name: Apply consolidation remaining patch
+on:
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: consolidate/bugfixes-oct2
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply remaining three-file patch
+        run: |
+          set -euo pipefail
+          PATCH=".consolidation/remaining-three.patch"
+          test -f "$PATCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git apply "$PATCH"
+          rm -f "$PATCH"
+          rm -f .github/workflows/apply-consolidation-remaining-patch.yml
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git commit -m "Fold in Timecard, USB Debug, and ESP ROM FLASH_END disconnect fixes"
+          git push origin consolidate/bugfixes-oct2
