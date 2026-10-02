@@ -1,0 +1,70 @@
+import hashlib
+import io
+import json
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+import trusted_controller as controller
+
+
+SHA = "a" * 40
+
+
+class FakeGitHub:
+    def __init__(self, approved=True):
+        self.approved = approved
+
+    def call(self, path, method="GET", body=None, limit=1_000_000):
+        if path.startswith("/pulls/"):
+            repo = {"full_name": controller.REPO, "id": 42}
+            return {"state": "open", "head": {"sha": SHA, "repo": repo},
+                    "base": {"repo": repo}, "user": {"login": controller.OWNER}}
+        if path.startswith("/issues/"):
+            return [{"user": {"login": controller.OWNER},
+                     "body": "/cam-hardware approve " + (SHA if self.approved else "b" * 40)}]
+        raise AssertionError(path)
+
+
+class ControllerTests(unittest.TestCase):
+    def test_exact_head_attestation(self):
+        self.assertEqual(controller.approved_source(FakeGitHub(), 123), SHA)
+        with self.assertRaises(ValueError):
+            controller.approved_source(FakeGitHub(False), 123)
+
+    def test_artifact_hash_and_entry_boundary(self):
+        image = b"candidate-image"
+        manifest = {"schema": 1, "source_sha": SHA, "run_id": 7, "run_attempt": 1,
+                    "firmware": {"file": "firmware.bin", "bytes": len(image),
+                                 "sha256": hashlib.sha256(image).hexdigest()}}
+
+        def archive(extra=False):
+            data = io.BytesIO()
+            with zipfile.ZipFile(data, "w") as z:
+                z.writestr("firmware.bin", image)
+                z.writestr("manifest.json", json.dumps(manifest))
+                if extra:
+                    z.writestr("../../escape", "bad")
+            return data.getvalue()
+
+        class ArtifactGH:
+            def __init__(self, blob):
+                self.blob = blob
+
+            def call(self, *_args, **_kwargs):
+                return self.blob
+
+        run = {"id": 7, "run_attempt": 1}
+        artifact = {"id": 8}
+        with tempfile.TemporaryDirectory() as temp:
+            digest = controller.unpack_candidate(ArtifactGH(archive()), run, artifact,
+                                                 SHA, Path(temp) / "accepted")
+            self.assertEqual(digest, hashlib.sha256(image).hexdigest())
+            with self.assertRaises(ValueError):
+                controller.unpack_candidate(ArtifactGH(archive(True)), run, artifact,
+                                            SHA, Path(temp) / "rejected")
+
+
+if __name__ == "__main__":
+    unittest.main()

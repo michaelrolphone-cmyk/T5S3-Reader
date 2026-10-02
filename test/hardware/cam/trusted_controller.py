@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""Trusted, locally pinned controller. Never execute a PR checkout or artifact code on macOS.
+
+Requires a dedicated fine-grained GitHub credential supplied in GH_TOKEN after
+approval. The controller itself must be installed from a reviewed master SHA.
+"""
+import argparse
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+import zipfile
+
+REPO = "michaelrolphone-cmyk/T5S3-Reader"
+OWNER = "michaelrolphone-cmyk"
+WORKFLOW = "cam-hardware-build.yml"
+CHECK = "CAM hardware / reviewed SHA"
+API = "https://api.github.com/repos/" + REPO
+SHA = re.compile(r"[0-9a-f]{40}\Z")
+
+
+class GitHub:
+    def __init__(self, token):
+        if not token:
+            raise RuntimeError("GH_TOKEN absent; controller remains inactive")
+        self.token = token
+
+    def call(self, path, method="GET", body=None, limit=1_000_000):
+        data = None if body is None else json.dumps(body).encode()
+        req = urllib.request.Request(API + path, data=data, method=method,
+            headers={"Authorization": "Bearer " + self.token,
+                     "Accept": "application/vnd.github+json",
+                     "X-GitHub-Api-Version": "2022-11-28",
+                     "User-Agent": "riscrte-cam-trusted-controller"})
+        if path.endswith("/zip"):
+            class NoRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, request, fp, code, msg, headers, newurl):
+                    return None
+            try:
+                urllib.request.build_opener(NoRedirect).open(req, timeout=20)
+            except urllib.error.HTTPError as redirect:
+                if redirect.code != 302:
+                    raise
+                url = redirect.headers["Location"]
+                if not url.startswith("https://"):
+                    raise ValueError("Artifact redirect is not HTTPS")
+                # Signed archive URL needs no GitHub credential. Never forward
+                # Authorization to the artifact storage host.
+                with urllib.request.urlopen(url, timeout=20) as response:
+                    raw = response.read(limit + 1)
+                if len(raw) > limit:
+                    raise ValueError("Artifact ZIP exceeds bound")
+                return raw
+            raise ValueError("Artifact endpoint did not redirect")
+        with urllib.request.urlopen(req, timeout=20) as response:
+            if int(response.headers.get("Content-Length", "0")) > limit:
+                raise ValueError("GitHub response exceeds bound")
+            raw = response.read(limit + 1)
+        if len(raw) > limit:
+            raise ValueError("GitHub response exceeds bound")
+        return json.loads(raw)
+
+
+def approved_source(gh, number):
+    pr = gh.call(f"/pulls/{number}")
+    head = pr["head"]["sha"]
+    if (pr["state"] != "open" or pr["base"]["repo"]["full_name"] != REPO
+            or pr["head"]["repo"]["full_name"] != REPO
+            or pr["head"]["repo"]["id"] != pr["base"]["repo"]["id"]
+            or pr["user"]["login"] != OWNER or not SHA.fullmatch(head)):
+        raise ValueError("PR is not an open owner-authored same-repository exact head")
+    # GitHub does not permit a PR author to approve their own review. An exact
+    # commit comment from the repo owner is the explicit source attestation.
+    comments = gh.call(f"/issues/{number}/comments?per_page=100")
+    if len(comments) == 100:
+        raise ValueError("Comment history exceeds one-page safety bound")
+    marker = "/cam-hardware approve " + head
+    if not any(c["user"]["login"] == OWNER and c["body"].strip() == marker
+               for c in comments):
+        raise ValueError("Exact PR head lacks owner hardware approval comment")
+    return head
+
+
+def candidate(gh, number, sha):
+    related = []
+    # Bounded pagination handles a busy public repository while avoiding an
+    # unbounded scan through its history.
+    for page in range(1, 11):
+        runs = gh.call(f"/actions/workflows/{WORKFLOW}/runs?event=pull_request&per_page=100&page={page}")
+        for run in runs["workflow_runs"]:
+            prs = run.get("pull_requests") or []
+            if (run["event"] == "pull_request" and run["actor"]["login"] == OWNER
+                    and any(p["number"] == number and p["head"]["sha"] == sha for p in prs)):
+                related.append(run)
+        if len(runs["workflow_runs"]) < 100:
+            break
+    if not related or any(r["status"] != "completed" for r in related):
+        return None  # Cloud build has not completed; do not post a premature failure.
+    if len(related) != 1 or related[0]["conclusion"] != "success":
+        raise ValueError("Exact-head CAM cloud build failed or is ambiguous")
+    run = related[0]
+    artifacts = gh.call(f"/actions/runs/{run['id']}/artifacts?per_page=100")
+    matching = [a for a in artifacts["artifacts"] if a["name"] == "cam-candidate-" + sha
+                and not a["expired"] and a["size_in_bytes"] < 3_000_000]
+    if len(matching) != 1:
+        raise ValueError("Expected one bounded exact-SHA CAM candidate artifact")
+    return run, matching[0]
+
+
+def unpack_candidate(gh, run, artifact, sha, folder):
+    # The artifact endpoint redirects to a short-lived ZIP URL. urllib follows
+    # it; no PR-controlled filename is used as a path.
+    raw = gh.call(f"/actions/artifacts/{artifact['id']}/zip", limit=3_000_000)
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        if set(archive.namelist()) != {"firmware.bin", "manifest.json"}:
+            raise ValueError("Unexpected CAM artifact entries")
+        if any(x.file_size > 2_000_000 for x in archive.infolist()):
+            raise ValueError("CAM artifact entry exceeds bound")
+        manifest = json.loads(archive.read("manifest.json"))
+        image = archive.read("firmware.bin")
+    info = manifest["firmware"]
+    if (manifest["schema"] != 1 or manifest["source_sha"] != sha
+            or manifest["run_id"] != run["id"]
+            or manifest["run_attempt"] != run["run_attempt"]
+            or info["file"] != "firmware.bin" or info["bytes"] != len(image)
+            or not 0 < len(image) <= 2_000_000
+            or hashlib.sha256(image).hexdigest() != info["sha256"]):
+        raise ValueError("CAM artifact provenance or digest mismatch")
+    folder.mkdir(mode=0o700)
+    (folder / "firmware.bin").write_bytes(image)
+    (folder / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
+    return info["sha256"]
+
+
+def post_check(gh, sha, conclusion, summary):
+    return gh.call("/check-runs", "POST", {"name": CHECK, "head_sha": sha,
+        "status": "completed", "conclusion": conclusion,
+        "output": {"title": "CAM hardware " + conclusion,
+                   "summary": summary[:6000]}})
+
+
+def once(gh, number, evidence_root, python):
+    sha = approved_source(gh, number)
+    result_dir = evidence_root / sha
+    if result_dir.exists():
+        saved = result_dir / "result.json"
+        if saved.exists():
+            prior = json.loads(saved.read_text())
+            if prior.get("check_id"):
+                return
+            summary = json.dumps({k: prior[k] for k in ("source_sha", "run_id", "firmware_sha256", "result", "error") if k in prior})
+            check = post_check(gh, sha, "success" if prior["result"] == "pass" else "failure", summary)
+            prior["check_id"] = check["id"]
+            saved.write_text(json.dumps(prior, indent=2) + "\n")
+            return
+        raise RuntimeError("Incomplete private CAM journal; manual recovery required")
+    try:
+        found = candidate(gh, number, sha)
+    except Exception as exc:
+        result_dir.mkdir(mode=0o700, parents=True)
+        failed = {"schema": 1, "pr": number, "source_sha": sha,
+                  "result": "failed", "error": f"{type(exc).__name__}: {exc}"[:300]}
+        saved = result_dir / "result.json"
+        saved.write_text(json.dumps(failed, indent=2) + "\n")
+        check = post_check(gh, sha, "failure", json.dumps(failed))
+        failed["check_id"] = check["id"]
+        saved.write_text(json.dumps(failed, indent=2) + "\n")
+        return
+    if found is None:
+        return
+    result_dir.mkdir(mode=0o700, parents=True)
+    result = {"schema": 1, "pr": number, "source_sha": sha, "result": "failed"}
+    try:
+        run, artifact = found
+        result["run_id"] = run["id"]
+        artifact_dir = result_dir / "candidate"
+        digest = unpack_candidate(gh, run, artifact, sha, artifact_dir)
+        result["firmware_sha256"] = digest
+        device_dir = result_dir / "device"
+        command = [str(python), str(Path(__file__).with_name("ci_device.py")),
+                   "--image", str(artifact_dir / "firmware.bin"),
+                   "--sha256", digest, "--out", str(device_dir)]
+        child_env = os.environ.copy()
+        child_env.pop("GH_TOKEN", None)
+        completed = subprocess.run(command, timeout=600, capture_output=True, text=True,
+                                   env=child_env)
+        result["device_exit"] = completed.returncode
+        if (device_dir / "result.json").exists():
+            device = json.loads((device_dir / "result.json").read_text())
+            result["device"] = device
+        if completed.returncode != 0 or result.get("device", {}).get("result") != "pass":
+            raise RuntimeError("CAM device suite failed; inspect private local evidence")
+        result["result"] = "pass"
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"[:300]
+    finally:
+        # Check API errors remain visible; a missing final check is never success.
+        summary = json.dumps({k: result[k] for k in ("source_sha", "run_id", "firmware_sha256", "result", "error") if k in result})
+        saved = result_dir / "result.json"
+        saved.write_text(json.dumps(result, indent=2) + "\n")
+        check = post_check(gh, sha, "success" if result["result"] == "pass" else "failure", summary)
+        result["check_id"] = check["id"]
+        saved.write_text(json.dumps(result, indent=2) + "\n")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--pr", type=int)
+    group.add_argument("--scan", action="store_true")
+    parser.add_argument("--evidence-root", type=Path, required=True)
+    parser.add_argument("--python", type=Path, default=Path(sys.executable))
+    args = parser.parse_args()
+    token = os.environ.get("GH_TOKEN")
+    if token is None:
+        # Approval-time setup stores a narrowly scoped token in the login
+        # keychain. Its bytes stay in memory and are never printed or persisted.
+        found = subprocess.run(["/usr/bin/security", "find-generic-password", "-w",
+                                "-s", "riscrte-cam-ci", "-a", OWNER],
+                               capture_output=True, text=True, timeout=10)
+        if found.returncode == 0:
+            token = found.stdout.strip()
+    gh = GitHub(token)
+    if args.scan:
+        prs = gh.call("/pulls?state=open&per_page=100")
+        if len(prs) == 100:
+            raise RuntimeError("Open PR scan exceeds one-page bound")
+        for pr in prs:
+            if pr["user"]["login"] != OWNER or pr["head"]["repo"]["full_name"] != REPO:
+                continue
+            try:
+                once(gh, pr["number"], args.evidence_root, args.python)
+            except ValueError as exc:
+                print(f"PR {pr['number']}: {exc}", file=sys.stderr)
+    else:
+        if not 0 < args.pr < 1_000_000:
+            raise ValueError("Invalid PR number")
+        once(gh, args.pr, args.evidence_root, args.python)
+
+
+if __name__ == "__main__":
+    main()
