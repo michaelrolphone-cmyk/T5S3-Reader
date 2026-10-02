@@ -1,3 +1,13 @@
+## SD Firmware Update handoff validation — active claim 2026-10-02 18:08 UTC
+
+- Owner `sd_firmware_handoff_20261002`; canonical #25. Baseline master `3722a3f44a3294ba5e8adab830807a2523df3b03`; captured ledger PR #332 head `7c9846c19ff563e2997c0e1c8dbeb2da9a324bf2`; planned repair branch `fix/sd-firmware-update-handoff-validation`. Phase: current production trigger and bridge failure revalidated; production-path baseline regression pending.
+- Supported flow: installed File Browser advertises the `.bin` association to SD Firmware Update. Native File Open sets the active source path while launching the selected app; `NativeSdFirmwareBridge::resolveSelectedPath()` falls back to `NativeFileOpenBridge::activeSourceStoragePath()` when its legacy explicit path is empty. On current master `3722a3f`, `validateSelected()` successfully opens and sizes resolved local `path`, but then calls `firmware_flash::validateImageFile(selectedPath.c_str(), ...)`; `selectedPath` remains empty on the normal handoff, so the image validator receives an empty path and reports an open failure.
+- Ownership/duplicate check: no active #25 owner claim; branch searches for `sd-firmware` and `firmware-update` returned none. PR search found the historical merged [PR #236](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/236), which introduced the app handoff, and no open or closed-unmerged bridge repair. Open #366 changes OPDS and #367 changes File Browser; neither overlaps this bridge.
+- Version plan: platform source master1.3.66; open ready PR #366 reserves firmware1.3.67, so candidate is1.3.68. This bridge-only fix does not change an app or driver package; no app/driver version bump is planned. No release/catalog changes.
+- Planned regression compiles the production NativeSdFirmwareBridge against host fakes, drives its public API with only the active File Browser source path, and asserts the real validator receives the resolved path. It will also cover explicit-path precedence, missing source, file/partition failures, validator retry, and install-path forwarding. No actual install, restart, device access or flash.
+
+---
+
 ## File Browser Open-with pagination — ready-for-review checkpoint 2026-10-02 17:44 UTC
 
 - Owner `file_browser_open_with_20261002`; canonical #23; claim released after terminal exact-head verification. Baseline master `3722a3f44a3294ba5e8adab830807a2523df3b03`; repair branch `fix/file-browser-open-with-pagination`; ready for review in [PR #367](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/367), exact remote head `5b32f331c5b9f1905e905f1b517960b848513ced`, 4 ahead / 0 behind. The three-file diff contains only File Browser source, its manifest and its regression.
