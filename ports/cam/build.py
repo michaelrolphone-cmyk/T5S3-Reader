@@ -52,7 +52,7 @@ if env.subst("$PIOENV") == "cam-camera-experiment":
 
 if env.subst("$PIOENV") == "cam-camera-app-experiment":
     import zipfile
-    archive = root / "dist/release-app-packages/application-camera_utility-0.1.0-xtensa-esp32s3.rte.zip"
+    archive = root / "dist/release-app-packages/application-camera_utility-0.1.1-xtensa-esp32s3.rte.zip"
     with zipfile.ZipFile(archive) as package:
         if package.namelist().count(".package.json") != 1:
             raise RuntimeError("Expected one application package manifest")

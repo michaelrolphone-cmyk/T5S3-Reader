@@ -25,7 +25,7 @@ static bool tick(uint32_t started) {
 static bool save(uint32_t length) {
     // CREATE_NEW never replaces a prior image. Only a complete JPEG reaches
     // output; partial I/O failures remain visibly diagnosable by their log.
-    for(unsigned index=1;index<=16;index++){
+    for(unsigned index=1;index<=9999;index++){
         char path[48];
         snprintf(path,sizeof(path),"/sd/camera-utility-%04u.jpg",index);
         t5_stream_t output=0;

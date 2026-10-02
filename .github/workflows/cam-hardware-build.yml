@@ -1,0 +1,50 @@
+name: CAM hardware candidate
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cam-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify CAM build inputs
+        run: |
+          test -f platformio.cam-runtime.ini
+          test -f src/runtime/packages/PackageExecutableAdmission.cpp
+          test -f Apps/camera_utility.c
+          test -f test/run_cam_headless_test.sh
+      - name: Build exact CAM app candidate
+        env:
+          RISCRTE_ARDUINOJSON_INCLUDE: ${{ runner.temp }}/arduinojson/src
+        run: |
+          python -m pip install platformio==6.1.19
+          pio pkg install --global --tool 'espressif/toolchain-xtensa-esp32s3@8.4.0+2021r2-patch5'
+          git clone --depth=1 --branch v7.4.2 https://github.com/bblanchon/ArduinoJson.git "$RUNNER_TEMP/arduinojson"
+          python scripts/build_all_apps.py --id camera_utility
+          python3 test/hardware/cam/make_app_bundle.py
+          bash test/run_cam_headless_test.sh
+          pio run -c platformio.cam-runtime.ini -e cam-camera-app-experiment
+      - name: Freeze provenance and artifact hashes
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/cam-candidate"
+          cp .pio/build/cam-camera-app-experiment/firmware.bin "$RUNNER_TEMP/cam-candidate/firmware.bin"
+          python3 test/hardware/cam/make_manifest.py "$RUNNER_TEMP/cam-candidate" "$SOURCE_SHA" "$RUN_ID" "$RUN_ATTEMPT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cam-candidate-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/cam-candidate/
+          retention-days: 7
+          if-no-files-found: error
