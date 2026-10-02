@@ -1,12 +1,14 @@
-## Native storage read completeness — active claim 2026-10-02 19:08 UTC
+## Native storage read completeness — review checkpoint 2026-10-02 19:13 UTC
 
-- Owner `native_storage_read_exact_20261002`; canonical #32. Baseline master `3722a3f44a3294ba5e8adab830807a2523df3b03`; captured ledger PR #332 head `880ddc740cbfd14c79c05bd74f11d3a3a7cd095f`. Draft [PR #369](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/369), branch `fix/native-storage-read-complete`, exact remote head `ece6667b06d5f3d91ccce5dc0317a045c5ecd3af`, based directly on current master. Claim remains active pending exact-head CI terminal result.
+- Canonical #32 is ready for review in mergeable [PR #369](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/369), branch `fix/native-storage-read-complete`, exact head `ece6667b06d5f3d91ccce5dc0317a045c5ecd3af`, directly based on current master `3722a3f44a3294ba5e8adab830807a2523df3b03` (8 commits ahead / 0 behind). User handles Reader merge. Owner claim `native_storage_read_exact_20261002` is released after terminal exact-head checks.
 
-- The public native-storage API exports `read_file` to installed native apps. Current bridge routes it through `HalStorage::readFile()`, which still caps at 50,000 bytes. The bridge reports this shortened String length and returns success. Host regression against original production callback proves the size probe for 60,017 bytes reports 50,000; current focused production callback test passes after the fix.
+- Failure: native storage's exported `read_file` callback delegated to the 50,000-byte text helper, then reported the shortened contents length as authoritative and returned success. A deterministic 60,017-byte production-callback test failed at the original size-probe assertion (reported50,000). Repair opens via `HalFile`, gets exact `fileSize64()`, reports size for probes, rejects oversize buffers/size_t overflow, and loops through 512-byte chunks until complete or I/O/close failure. Cooperative yields occur at4KiB or50ms.
 
-- Strict C++17 host regression also verifies full data equality across short reads, 0-byte files, insufficient capacity, storage not ready, invalid/missing path, open/close/read error, retry after partial failure, and scheduler yields. Local `git diff --check` passes. Exact-head PlatformIO, BMP and CAM checks are pending.
+- Focused strict C++17 regression passes locally. It covers full byte equality across short reads, empty file, size probe, insufficient capacity, missing/invalid paths, storage not ready, open/close/read failures and retry after partial read failure. `git diff --check` passes; regression is integrated in `test/run_native_app_test.sh`. API has no cancel operation. No physical device or storage test/flash was performed.
 
-- Implementation uses bounded 512-byte reads and yields after 4 KiB or 50 ms; the existing storage API has no cancellation callback. API and apps are unchanged. Firmware source increments 1.3.66 →1.3.69 because open #366 reserves1.3.67 and #368 reserves1.3.68. #367 is app-only. No device I/O/flash.
+- Exact-head [PlatformIO run 37051971518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37051971518) passed host/native aggregate, Home regression, headless core, both supported firmware builds, released app/manifest validation and package-version checks. Matching [BMP 37051971586](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37051971586) and [CAM 37051971442](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37051971442) passed. PR remains open and ready; no merge/release.
+
+- Firmware source increments1.3.66→1.3.69 after open reservations #366=1.3.67 and #368=1.3.68; #367 app-only. No app manifest/API/driver/catalog change. Report source and scan provenance retained.
 
 
 ---
