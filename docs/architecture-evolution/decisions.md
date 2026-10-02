@@ -64,3 +64,11 @@ Ownership was rechecked against PR #328, the task inventory and current U1 ledge
 ## 2026-10-01 Retain CAM composite execution; narrow the remaining proof
 
 [E21](evidence.md#e21-cam-composite-execution-and-single-read-verification-delta) changes R1's starting point: installed clock/ZIP execution now passes through production graph and stream/resource lifecycle on CAM. Retire the blanket current claim that this integration is merely compile-linked; retain its exact scope and avoid repeating those stages as fresh research. The next discriminating result connects boot, ordinary install/update/recovery and exclusive handoff on one declared configuration. No ranking change or new package/stream subsystem is justified. U1's single-read/explicit-verification invalidation improvement supports reuse; shared SPI recovery remains an owner decision. Timecard integration does not replace daily-device qualification. Keep the remaining work coherent and bounded under the owner's reduced agentic budget.
+
+## 2026-10-02 Replace bootstrap speculation with actual board entry paths
+
+[E22](evidence.md#e22-integrated-bootstrap-is-a-firmware-and-package-contract-not-an-abi-rewrite) changes the active order to **R1, R3, R4, R2**, following baseline → actual X4 → T5S3 performance, then hardware cleanup and contingent extraction. Retire active “U1 still open,” “CAM only clock/ZIP,” and “shared-SPI policy undecided” claims; retain their dated evidence as history. U1/CAM merges do not establish all U3/U4 or physical acceptance.
+
+The new counterexample is concrete: paper default-app launch retains earlier board/SD/display dependencies, while restoring firmware alone can leave incompatible SD packages. Reuse existing loader/manager/public ABIs and preserve a compatible firmware/package recovery baseline. X4's display/input/clock header blobs match master; an older base is not an ABI defect. Treat the reported minute-scale T5S3 slowdown as an urgent observed symptom with unverified cause, not evidence for a package, driver or PaperSpace rewrite.
+
+PR328 was open at `2f02e2c3`, with no competing claim in its comments and no intervening branch edit at the ownership check. This pass only maintains this documentation directory; PR347 merge/publication remains a separate explicit-approval boundary.

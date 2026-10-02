@@ -1,6 +1,8 @@
 # Shared-bus fault recovery: decision for R1
 
-Analysis at Reader U1 `64d19d645720cba5c207f67c5d7fa1a031a07c0a`. This refines [R1](proposals.md#r1-prove-a-recoverable-boot-dependency-closure-and-exclusive-handoff), not U1–U4 requirements or implementation authorization. [E19–E20](evidence.md#e19-shared-spi-failure-boundary-and-current-u1-ownership) provide immutable source evidence and test limits.
+**October 2 disposition:** the [merged U1 handoff](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/82caa0997e913f01c1f5f9ab942d056bc9f04a82/docs/U1_OWNER_HANDOFF.md) records approval and implementation of manual-reboot retained-fault behavior. The decision request and alternatives below are **historical**, superseded by [E22](evidence.md#e22-integrated-bootstrap-is-a-firmware-and-package-contract-not-an-abi-rewrite). Do not ask the owner to select this policy again or edit closed PR96. Physical stall qualification remains separate, and retained failure may freeze the UI.
+
+Historical analysis at Reader U1 `64d19d645720cba5c207f67c5d7fa1a031a07c0a`. This refines [R1](proposals.md#r1-prove-a-recoverable-boot-dependency-closure-and-exclusive-handoff), not U1–U4 requirements or implementation authorization. [E19–E20](evidence.md#e19-shared-spi-failure-boundary-and-current-u1-ownership) provide immutable source evidence and test limits.
 
 ## Owner decision prepared for the next handoff
 

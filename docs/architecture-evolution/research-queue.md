@@ -1,41 +1,33 @@
 # Focused research queue
 
-These questions refine the existing roadmap; they do not authorize implementation, device operations or milestone advancement. IDs below refer to the stable R1–R4 recommendations, not goal weights.
+Analysis only, under the existing U1–U4 design and the owner's current order: baseline → actual X4 → T5S3 performance → hardware-specific cleanup and contingent driver/PaperSpace extraction. No new implementation, device operation or milestone acceptance is authorized.
 
-## 1 Close the actual bootstrap and resource contract — R1
+## 1 Actual board bootstrap and compatible recovery — R1
 
-First resolve the [shared-bus recovery decision](recovery-contract.md) with the sole U1 owner: accept bounded fail-closed SD/LoRa outage until reboot only if lower polling/locks, raw admission and retained task/resource lifetimes can be proven safe. Otherwise retain explicit limited guarantees or separately scope validated abort, filesystem/cache and radio reinitialization. An outer timeout, task deletion or storage-only flag is insufficient. The current receipt/inventory slices are progress, not proof of lower-media termination [E19].
+Reuse merged verified-byte loading, SD installed-app resolution and CAM headless runtime. For the actual X4, distinguish its embedded diagnostic entry from an ordinary installed app/device path. The current public display/input/clock headers match master; reconcile the older branch against the chosen baseline before calling anything an ABI defect. Verify actual controller/layout, first provider bytes, required storage and memory classes, physical owner and exclusive handoff. Do not create another loader, manager or permanent firmware hardware fallback [E22](evidence.md#e22-integrated-bootstrap-is-a-firmware-and-package-contract-not-an-abi-rewrite).
 
-Use the CAM composite witness as the retained execution baseline: installed clock/ZIP, production graph/stream/resource contexts, negative rights/backpressure and two clean release/reacquisition cycles now pass [E21](evidence.md#e21-cam-composite-execution-and-single-read-verification-delta). The useful next authorized evidence connects cold boot and first package bytes to ordinary install/update/recovery and exclusive handoff in one declared configuration. Do not repeat isolated provider execution, add a second host/manager, or infer the whole path from results at different revisions. Record exact mount/package generations, recoverable last-good state and behavior with removed/corrupt media. Coordinate its generation seam with the sole U1 receipt/inventory owner. Raw writable legacy SD/FS imports mean HalStorage-only invalidation is not enough; resolve ongoing/retained writer uncertainty while preserving compatibility.
+PR347's old-firmware/new-package restore failure makes the compatible **firmware + installed package/dependency generations + startup selection** the recovery baseline. Preserve existing files and prove the restored combination boots; firmware readback alone cannot establish that. Its later reported pass remains CAM-specific, and its merge/publication awaits explicit approval.
 
-Retain the common transaction engine in light of the 40-case pinned LittleFS host witness. Investigate the consumed-core-state/retained-VFS-descriptor close failure rather than retrying blindly; retire the 64-character-name objection for the tested configuration. Host fault coverage is neither a complete backend nor physical qualification, and CAM SDMMC evidence does not qualify T5S3 SPI [E20].
+The SD/shared-SPI manual-reboot retention policy is approved and implemented in merged U1. Retire the pending policy request; retain physical fault coverage and ownership limits as separate evidence. Do not edit closed PR96. No-SD and zero-PSRAM remain separately unproven, not automatic new scope. The LittleFS host result still supports reuse but does not close its failed-close/VFS or physical-backend questions.
 
-For the no-SD relay and zero-PSRAM Tracker, separately establish package-store population/recovery and executable mapping/peak memory-class feasibility before labeling package execution supported. Do not create a universal flash store or new U1 gate from diagnostic success. Preserve the clock's no-SD/no-full-UI wake path. PSRAM on the relay remains unknown.
+**Evidence that changes R1:** one declared actual-board path works and recovers with coherent firmware/packages and exclusive ownership; a named dependency, controller/layout or memory failure identifies the remaining gap. Repeating CAM's completed execution stages adds little.
 
-**Evidence that changes R1:** a real ordinary-package load/recovery/ownership witness, or a concrete cycle/capacity/memory-class failure that falsifies the retained SD or pre-staged-store alternative. No physical tests are requested by this review.
+## 2 Localize the reported T5S3 regression — R3
 
-## 2 One reproducible developer round trip — R4
+After baseline/X4, compare exact flashed image and installed package identities against the owner's working reference. Record cold boot-to-splash separately from Home/clock updates and retained timer wake. The approximately one-minute splash and three-minute clock update are owner reports; this review has no verified cause.
 
-Use an existing useful external app and actual provider dependencies with pinned runtime/SDK/toolchain/source. Capture clean build, exact imports/ABI, canonical ZIP identity/hash, ordinary install/launch, strictly newer update and failed-update recovery/relaunch preserving user data. Record storage generations and aggregate memory headroom. Retain current Reader sourcing as a baseline until independent source/package delivery is proven; build parity alone is insufficient. Distinguish software fixtures from physical evidence and respect deferred daily T5S3 testing.
+Paper default-app selection occurs after HalSystem, storage, settings/RTC, display and startup UI work. Identify time spent before first presentation versus admission/SD, rendering, queue wait and physical settling. Preserve accepted-flip semantics, owned buffers, overlap, no-copy opportunities, input response and scene quality. Do not prescribe removal of integrity checks, controller recovery, GUI extraction or PaperSpace as a diagnosed fix.
 
-**Evidence that changes R4:** another developer can reproduce the complete declared path without hidden checkout state or manual file replacement. A failure identifies the last proven stage; it does not justify a new manager. October 9 beta planning should be assessed against these explicit claims, not inferred from heartbeat counts.
+**Evidence that changes R3:** a reproducible stage accounts for the delay, and a scoped correction improves that path without losing ownership, visual behavior or daily app/clock/tool flows. CAM CI and host rendering throughput are not T5S3 timing evidence.
 
-## 3 Expressive rendering and daily-work budgets — R3
+## 3 Retained external developer round trip — R4
 
-Use current display `0987497c` and GameBoy `9610cb45` as updated source/CI baselines, retaining geometry/format limits. Separate buffer acquisition, accepted flip, optical settling and verified quiescence; do not turn optical settling into every-frame backpressure. Review the void-stop contract independently.
+Keep one clean build → canonical package → ordinary install/launch → newer update → failed-update recovery with exact toolchain/runtime/dependency/source identities. Reuse merged U1 machinery and completed CAM evidence. This remains useful for U2 independent delivery but does not outrank the owner's present device/performance sequence or justify a second installer.
 
-At an authorized qualification point, compare identical scenes/quality using render/pack/copy/wait/input and scan metrics; account for provider/candidate/relocation/frame/DMA/quarantine memory. Include serial/programmer use, game exit/Home restoration, reading-state resume and clock sleep/wake. Current daily-device physical testing is deferred, not passed. Host FPS and build success cannot settle latency, power or visual quality.
+## 4 Product boundary and CrossPoint behavior — R2
 
-## 4 Product boundary and selected CrossPoint target — R2
-
-Preserve the [pinned feature comparison](crosspoint-parity.md) while the intended revision/app build contract is selected. Trace book open/render/page/save/exit/resume plus representative transfer/settings and applicable parity gaps. A coherent product bundle with a small reusable interface remains the candidate; compiled-optional GUI stays the U3 baseline. Source/package migration does not prove product code left firmware.
-
-**Evidence that changes R2:** a thin reproducible adaptation preserves actual behavior and persistent state without adding feature-specific firmware calls. Full extraction is not required by U3/U4 or authorized by the beta label.
-
-## 5 Conditional questions only
-
-When a genuine second display target is selected, establish CPU/ABI, storage, memory classes, input, geometry/stride/format and refresh semantics against the existing SDK before extending it. Tracker TFT presence is not a provider witness or permission to migrate it. Reopen transaction/lifecycle rewrites only on concrete failures the existing machinery cannot handle. Verify current CDC compatibility at canonical 0.1.8 rather than treating the old 0.1.7 identity snapshot as current.
+Preserve the [pinned feature comparison](crosspoint-parity.md), reading state and actual book/render/page/save/exit/resume and transfer/settings flows. Keep U3 GUI compiled but optional; defer full driver/PaperSpace/product extraction to its contingent owner scope. A thin adaptation preserving behavior is preferable to an unsupported wholesale rewrite.
 
 ## Maintenance rule
 
-Read current source/ownership and PR state; preserve user edits and never edit a closed PR. Keep the ranked set at three to five ideas. Separate roadmap design, build/source checks, actual package/runtime results, physical qualification and owner acceptance. Only docs/architecture-evolution/ belongs to this task.
+Check live PR state and ownership before writing. Keep three to five ranked ideas, separate roadmap design, implemented source, exact-head build evidence, physical observations and owner acceptance. Historical entries remain dated. Only docs/architecture-evolution belongs to this task.
