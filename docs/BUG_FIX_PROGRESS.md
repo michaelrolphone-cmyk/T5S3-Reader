@@ -1,12 +1,10 @@
-## Completed OTA stale discovery-state repair — PR351
+## Active revalidation — OTA check-state PR351 after master advance
 
-- Coordinator/implementation owner: none after terminal exact-head CI and ledger checkpoint; canonical report **233** selected by live updater behavior and root cause. Original report body/provenance are preserved in `bugs.md`; status is awaiting user review/merge. Durable claim released at 2026-10-02 01:37:08 UTC.
-- Current master baseline `d2d5a9a132d747122b0f0b607f228132ba79e667` includes merged PR345 and PR346. No other active claim or matching OTA repair PR was found. The old `fix/ota-download-performance` branch changes the download loop and does not repair check-state invalidation.
-- Draft [PR351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351), branch `fix/ota-check-state`, exact head `43bf54aedff52a65b8065c0f8ee6fe325e221789`, parent master. It clears update availability, release version/URL/size and transfer progress at the start of each check so every result (success, failure or no update) represents only that attempt.
-- **Original failure independently reproduced:** On unchanged master, successful discovery followed by a network/HTTP failure left `isUpdateNewer()` true. **Focused PASS:** production-source regression covers discovered release/install, progress reset, HTTP and network failure, retry, missing board asset/`NO_UPDATE`, malformed index and release response, and refusal to install after a failed check. Existing OTA app regression passes.
-- **Exact-head CI PASS:** [run 36951233199](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36951233199) on `43bf54aedff52a65b8065c0f8ee6fe325e221789`: host/native/Springboard aggregates, t5s3-pro and lilygo-epd47-s3 firmware builds, all app/manifest validation, and headless core. First run36950761546 caught a test-only GCC designated-initializer warning/order issue; corrected before the successful exact-head run.
-- **Local limits:** local PlatformIO build was blocked by sandbox `PermissionError` on the existing `~/.platformio/platforms.lock`; no shared toolchain was altered. The macOS full Springboard aggregate stopped after about90 seconds and local sanitizer attempt after60 seconds without results; neither is a pass. Physical OTA/network/device behavior is unverified and no device I/O occurred.
-- Firmware candidate **1.3.55**, after current master and published release-index1.3.53 and U1 PR96's separate1.3.54 candidate. A coordination note was posted on PR96; no U1 source changed. No app/driver version changes. No master write, merge, release/catalog publication, deployment or hardware operation. PR351 stays draft for user review/merge.
+- Owner `fix_ota_check_state_batch`; implementation branch `fix/ota-check-state`; canonical report **233**. Previous terminal claim was released at 2026-10-02 01:37 UTC after PR351 head `43bf54aedff52a65b8065c0f8ee6fe325e221789` passed exact CI. Fresh master is now `91f3768ebb402c218aff64d41cfcef689d743b2e` after PR349 merged, so the claim is reopened to refresh/revalidate; latest ledger before this claim is recorded by this update. Timestamp 2026-10-02 01:39:56 UTC.
+- Master delta from `d2d5a9a132d747122b0f0b607f228132ba79e667` is limited to `lib/GfxRenderer/GfxRenderer.cpp`, `platformio.ini`, `test/native_apps/display_abstraction_contract_test.py`, and new `test/native_apps/springboard_takeover_clear_test.py`. No OTA source, OTA test runner, or repair path overlaps. No display code will be modified by this batch.
+- PR351 remains open/draft. Plan: integrate current master into its branch without changing the OTA patch, verify PR diff is limited to `src/network/OtaUpdater.cpp` and focused tests (master now already carries firmware version1.3.55), then rerun exact-head CI. Previous run36951233199 passed all host/Springboard/board/headless jobs on prior head; it is not a pass for the refreshed head.
+- Published release-index firmware remains1.3.53. Current master firmware candidate1.3.55 came from merged PR349; use that cumulative unreleased version without another bump. U1 PR96 still owns its branch and source; previous coordination note recorded the version relationship. No U1 changes.
+- Prior source-level root-cause reproduction and focused regression remain valid because PR349 did not touch OTA source. No master write, merge, deployment, release/catalog change, display source edit or device I/O. Keep claim active until refreshed exact-head CI and final ledger checkpoint.
 
 ---
 
@@ -14,7 +12,7 @@
 
 - The user removed the fixed two-open-bug-PR cap. There is no numerical limit on open bugfix PRs; select and sequence work by user priority, ownership, overlap, and evidence.
 - PRs #345 and #346 are merged. Older two-slot references below are historical snapshots, not current policy. PR344 remains a separately authorized camera/hardware milestone.
-- PR332 remains the canonical ledger PR. OTA state repair for canonical #233 is checkpointed in draft PR351 after exact-head CI; its claim is released and it awaits user review/merge. No new batch is started.
+- PR332 remains the canonical ledger PR. Master advanced through PR349 while OTA PR351 was under review; its owner reopened the claim to refresh the base and rerun exact-head CI. No new batch is started.
 
 ## Completed Status Bar held-confirm repair — PR346
 
