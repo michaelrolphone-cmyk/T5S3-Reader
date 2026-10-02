@@ -151,7 +151,7 @@ void x4DiagnosticSetup() {
             char reason[80] = "none";
             if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
             storage_status = storage_mounted ? "SD files ready" :
-                (std::strcmp(reason, "FAT32 boot verified; filesystem not mounted") == 0 ?
+                (std::strcmp(reason, "FAT32 root read; filesystem not mounted") == 0 ?
                  "SD card found; files unavailable" : "SD card not ready");
             LOG_INF("X4", "storage.volume mounted=%d reason=%s", storage_mounted ? 1 : 0, reason);
         }

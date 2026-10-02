@@ -1,7 +1,7 @@
 {
   "type": "driver",
   "id": "x4pro-sd",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "driver_abi": 2,
   "architecture": "xtensa-esp32s3",
   "file_name": "driver.elf",
@@ -19,6 +19,6 @@
     }
   ],
   "status": "experimental-unpublished",
-  "size_bytes": 23736,
-  "sha256": "11d886fad4cce7940e308c76f8d21ed7f3ab480f931bb6c2e43939f6f7e7bda9"
+  "size_bytes": 24148,
+  "sha256": "225d5a2f0f7bd1e3fdce00668b2b7b9aac92eff89ffbb38c5da856ed3ef3be94"
 }

@@ -104,8 +104,13 @@ static uint32_t le32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
            ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
+typedef struct {
+    uint32_t fat_lba, data_lba, clusters, root_cluster;
+    uint8_t sectors_per_cluster;
+} fat32_geometry;
 /* Parse only layout metadata. No mounted state or file access is granted here. */
-static bool fat32_layout(const uint8_t sector[512], uint32_t partition_sectors) {
+static bool fat32_layout(const uint8_t sector[512], uint32_t partition_lba,
+                         uint32_t partition_sectors, fat32_geometry *out) {
     if (sector[510] != 0x55u || sector[511] != 0xaau ||
         le16(sector + 11) != 512u || sector[16] < 1u || sector[16] > 2u ||
         le16(sector + 17) != 0u || le16(sector + 19) != 0u ||
@@ -115,25 +120,45 @@ static bool fat32_layout(const uint8_t sector[512], uint32_t partition_sectors) 
     const uint32_t fat_size = le32(sector + 36);
     const uint32_t total = le32(sector + 32);
     const uint64_t data_begin = (uint64_t)reserved + (uint64_t)sector[16] * fat_size;
-    if (!spc || spc > 128u || (spc & (spc - 1u)) || !reserved || !fat_size ||
+    if (!out || !spc || spc > 128u || (spc & (spc - 1u)) || !reserved || !fat_size ||
         total < 65525u || (partition_sectors && total > partition_sectors) ||
-        data_begin >= total || (total - data_begin) / spc < 65525u) return false;
+        data_begin >= total || (total - data_begin) / spc < 65525u ||
+        (uint64_t)partition_lba + total > UINT32_MAX) return false;
     const uint32_t clusters = (uint32_t)((total - data_begin) / spc);
     const uint32_t root = le32(sector + 44);
     /* The FAT must have one 32-bit entry per possible data cluster. */
-    return root >= 2u && root < clusters + 2u &&
-           (uint64_t)fat_size * 128u >= (uint64_t)clusters + 2u;
+    if (root < 2u || (uint64_t)root >= (uint64_t)clusters + 2u ||
+        (uint64_t)fat_size * 128u < (uint64_t)clusters + 2u) return false;
+    out->fat_lba = partition_lba + reserved;
+    out->data_lba = partition_lba + (uint32_t)data_begin;
+    out->clusters = clusters;
+    out->root_cluster = root;
+    out->sectors_per_cluster = (uint8_t)spc;
+    return true;
+}
+static bool probe_root(const fat32_geometry *geometry) {
+    uint8_t sector[512];
+    const uint32_t fat_sector = geometry->fat_lba + geometry->root_cluster / 128u;
+    if (!read_sector(fat_sector, sector)) { fail("FAT32 table read failed"); return false; }
+    const uint32_t next = le32(sector + (geometry->root_cluster % 128u) * 4u) & 0x0fffffffu;
+    if (next < 0x0ffffff8u && (next < 2u ||
+        (uint64_t)next >= (uint64_t)geometry->clusters + 2u)) {
+        fail("FAT32 root chain invalid"); return false;
+    }
+    const uint32_t root_sector = geometry->data_lba +
+        (geometry->root_cluster - 2u) * geometry->sectors_per_cluster;
+    if (!read_sector(root_sector, sector)) { fail("FAT32 root read failed"); return false; }
+    fail("FAT32 root read; filesystem not mounted");
+    return true;
 }
 static bool probe_fat32(void) {
     uint8_t sector[512];
+    fat32_geometry geometry;
     if (!read_sector(0, sector)) { fail("sector 0 read failed"); return false; }
     if (sector[510] != 0x55u || sector[511] != 0xaau) {
         fail("sector 0 signature invalid"); return false;
     }
-    if (fat32_layout(sector, 0)) {
-        fail("FAT32 boot verified; filesystem not mounted");
-        return true;
-    }
+    if (fat32_layout(sector, 0, 0, &geometry)) return probe_root(&geometry);
     /* Prefer one ordinary FAT32 MBR partition; never guess a non-FAT volume. */
     uint32_t first = 0, count = 0;
     for (unsigned i = 0; i < 4u; ++i) {
@@ -149,9 +174,10 @@ static bool probe_fat32(void) {
     }
     if (!first) { fail("FAT32 volume absent"); return false; }
     if (!read_sector(first, sector)) { fail("FAT32 boot read failed"); return false; }
-    if (!fat32_layout(sector, count)) { fail("FAT32 boot invalid"); return false; }
-    fail("FAT32 boot verified; filesystem not mounted");
-    return true;
+    if (!fat32_layout(sector, first, count, &geometry)) {
+        fail("FAT32 boot invalid"); return false;
+    }
+    return probe_root(&geometry);
 }
 static bool init_card(void) {
     uint8_t response[17] = {0};

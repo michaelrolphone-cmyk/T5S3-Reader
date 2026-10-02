@@ -5,6 +5,7 @@
 
 uint8_t x4_card_sector[512];
 uint8_t x4_card_partition_boot[512];
+uint8_t x4_card_fat_sector[512], x4_card_root_sector[512];
 bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
 unsigned x4_card_cmd17_count, x4_card_clock_count;
 static uint64_t now_ms;
@@ -41,13 +42,15 @@ int main(void) {
     };
     const risc_provider_dependency_v1 dependency = {"platform.clock", 1, &clock};
     fat32_boot(x4_card_sector);
+    put32(x4_card_fat_sector + 8, 0x0fffffffu); /* root cluster 2 ends here */
+    x4_card_root_sector[0] = 0u; /* empty root directory */
     failures += expect(driver->start(&dependency, 1), "provider start");
     char error[80] = {0};
     failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 boot verified; filesystem not mounted") == 0,
-                       "CRC-verified FAT32 boot remains unmounted");
+                       strcmp(error, "FAT32 root read; filesystem not mounted") == 0,
+                       "CRC-verified FAT32 root remains unmounted");
     failures += expect(!volume->ready(0), "readable sector is not a filesystem");
-    failures += expect(x4_card_cmd17_count == 1u, "one sector read");
+    failures += expect(x4_card_cmd17_count == 3u, "boot, FAT and root sectors read");
 
     x4_card_bad_crc = true;
     failures += expect(volume->refresh(0), "CRC failure refresh serviced");
@@ -67,6 +70,12 @@ int main(void) {
                        strcmp(error, "FAT32 volume absent") == 0,
                        "invalid FAT32 layout closes mount");
     x4_card_sector[13] = 1u;
+    put32(x4_card_fat_sector + 8, 1u);
+    failures += expect(volume->refresh(0), "bad root chain refresh serviced");
+    failures += expect(volume->last_error(0, error, sizeof(error)) &&
+                       strcmp(error, "FAT32 root chain invalid") == 0,
+                       "bad FAT root chain closes mount");
+    put32(x4_card_fat_sector + 8, 0x0fffffffu);
     memset(x4_card_sector, 0, sizeof(x4_card_sector));
     x4_card_sector[446 + 4] = 0x0cu;
     put32(x4_card_sector + 446 + 8, 1);
@@ -75,9 +84,9 @@ int main(void) {
     fat32_boot(x4_card_partition_boot);
     failures += expect(volume->refresh(0), "MBR FAT32 refresh serviced");
     failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 boot verified; filesystem not mounted") == 0,
-                       "MBR partition boot verified without mount");
-    failures += expect(x4_card_cmd17_count >= 2u, "MBR reads both sectors");
+                       strcmp(error, "FAT32 root read; filesystem not mounted") == 0,
+                       "MBR FAT and root verified without mount");
+    failures += expect(x4_card_cmd17_count >= 7u, "MBR reads boot, FAT and root");
     x4_card_partition_boot[36] = 0;
     x4_card_partition_boot[37] = 0;
     failures += expect(volume->refresh(0), "invalid partition boot refresh serviced");
@@ -94,10 +103,10 @@ int main(void) {
     x4_card_no_data = false;
     failures += expect(volume->refresh(0), "healthy retry serviced");
     failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 boot verified; filesystem not mounted") == 0,
-                       "healthy retry restores metadata proof only");
+                       strcmp(error, "FAT32 root read; filesystem not mounted") == 0,
+                       "healthy retry restores root proof only");
     failures += expect(!volume->ready(0), "filesystem remains unavailable");
-    failures += expect(!x4_card_bad_pin && x4_card_clock_count < 300000u,
+    failures += expect(!x4_card_bad_pin && x4_card_clock_count < 400000u,
                        "bounded traffic on assigned pins");
     driver->stop();
     if (failures) return 1;

@@ -7,6 +7,7 @@
 
 extern uint8_t x4_card_sector[512];
 extern uint8_t x4_card_partition_boot[512];
+extern uint8_t x4_card_fat_sector[512], x4_card_root_sector[512];
 extern bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
 extern unsigned x4_card_cmd17_count, x4_card_clock_count;
 
@@ -64,7 +65,10 @@ static inline void x4pro_pin_release(uint32_t pin) {
     if (index == 17u) {
         uint32_t lba = 0;
         for (unsigned i = 8u; i < 40u; ++i) lba = (lba << 1) | command_bits[i];
-        active_sector = lba == 1u ? x4_card_partition_boot : x4_card_sector;
+        active_sector = (lba == 1u) ? x4_card_partition_boot :
+                        (lba == 32u || lba == 33u) ? x4_card_fat_sector :
+                        (lba == 2080u || lba == 2081u) ? x4_card_root_sector :
+                        x4_card_sector;
         ++x4_card_cmd17_count;
         data_pending = true;
     }
