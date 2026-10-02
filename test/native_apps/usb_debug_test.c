@@ -12,6 +12,7 @@ static uint64_t last_claim_device;
 static uint8_t last_claim_interface;
 static unsigned release_count;
 static bool fail_device_descriptor;
+static bool missing_serial;
 static uint8_t current_configuration_value = 1;
 
 static const uint8_t device_descriptor[] = {
@@ -43,7 +44,8 @@ static int32_t mock_control(void *context, uint64_t device,
                             uint8_t *payload, uint16_t length,
                             uint32_t timeout_ms) {
     (void)context;
-    assert(device == 0x1122334455667788ULL);
+    assert(device == 0x1122334455667788ULL ||
+           device == 0x8877665544332211ULL);
     assert(payload);
     assert(timeout_ms == USB_DEBUG_CONTROL_TIMEOUT_MS);
     if (request == USB_REQ_GET_STATUS && request_type == 0x80u &&
@@ -79,6 +81,7 @@ static int32_t mock_control(void *context, uint64_t device,
         source = product_descriptor; source_length = sizeof(product_descriptor);
     } else if (type == USB_DESC_STRING && descriptor_index == 3 &&
                request_type == 0x80u) {
+        if (missing_serial) return -1;
         source = serial_descriptor; source_length = sizeof(serial_descriptor);
     } else if (type == USB_DESC_REPORT && descriptor_index == 0 &&
                request_type == 0x81u && index == 0) {
@@ -201,7 +204,31 @@ int main(void) {
     usb_debug_device_t fallback = {0};
     assert(!read_device_summary(0x1122334455667788ULL, &fallback));
     assert(fallback.vid == 0x1234 && fallback.pid == 0x5678);
-    assert(strcmp(fallback.identifier, "usb_1234_5678") == 0);
+    assert(strcmp(fallback.identifier, "usb_1234_5678_1122334455667788") == 0);
+    fail_device_descriptor = false;
+
+    /* Distinct active tokens for same-model devices without serial strings
+     * must yield distinct stable save paths. */
+    missing_serial = true;
+    usb_debug_device_t no_serial_a = {0}, no_serial_b = {0};
+    assert(read_device_summary(0x1122334455667788ULL, &no_serial_a));
+    assert(read_device_summary(0x8877665544332211ULL, &no_serial_b));
+    assert(no_serial_a.vid == no_serial_b.vid && no_serial_a.pid == no_serial_b.pid);
+    assert(no_serial_a.serial[0] == '\0' && no_serial_b.serial[0] == '\0');
+    assert(strcmp(no_serial_a.identifier, no_serial_b.identifier) != 0);
+    assert(build_report(&no_serial_a));
+    assert(save_report(&no_serial_a));
+    char first_path[sizeof(saved_path)];
+    snprintf(first_path, sizeof(first_path), "%s", saved_path);
+    assert(strcmp(first_path, "/sd/usb-debug/usb_1234_5678_1122334455667788.txt") == 0);
+    assert(build_report(&no_serial_b));
+    assert(save_report(&no_serial_b));
+    assert(strcmp(saved_path, first_path) != 0);
+    assert(strcmp(saved_path, "/sd/usb-debug/usb_1234_5678_8877665544332211.txt") == 0);
+    assert(build_report(&no_serial_a));
+    assert(save_report(&no_serial_a));
+    assert(strcmp(saved_path, first_path) == 0);
+    missing_serial = false;
     fail_device_descriptor = false;
 
     /* Never claim an interface from a configuration that is not active. */
