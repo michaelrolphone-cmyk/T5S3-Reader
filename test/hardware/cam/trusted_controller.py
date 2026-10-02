@@ -178,8 +178,8 @@ def describe(result):
     device = result.get("device", {})
     if "image_bytes" in device:
         parts.append("capture " + str(device["image_bytes"]) + " B")
-    if device.get("baseline_restored"):
-        parts.append("baseline restored")
+    if device.get("baseline_boot_pass"):
+        parts.append("baseline boot verified")
     return "; ".join(parts)[:140]
 
 
@@ -189,6 +189,7 @@ def safe_success(result):
             and device.get("result") == "pass"
             and device.get("candidate_readback_equal") is True
             and device.get("baseline_restored") is True
+            and device.get("baseline_boot_pass") is True
             and SHA.fullmatch(result.get("source_sha", "")) is not None
             and re.fullmatch(r"[0-9a-f]{64}", result.get("firmware_sha256", "")) is not None)
 
@@ -292,7 +293,7 @@ def once(gh, number, evidence_root, python, binding):
             raise RuntimeError("CAM device suite failed; inspect private local evidence")
         result["result"] = "pass"
         if not safe_success(result):
-            raise RuntimeError("CAM success lacks verified baseline restoration")
+            raise RuntimeError("CAM success lacks verified baseline restoration and boot")
         result["status_state"] = terminal_state(result)
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"[:300]

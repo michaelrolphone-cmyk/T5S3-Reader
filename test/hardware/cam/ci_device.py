@@ -17,8 +17,8 @@ import time
 from pathlib import Path
 
 MAC = "28:84:85:4b:57:98"
-BASELINE_SHA = "e208d9baafc1f8bd9d18eb4b659648e082b44381978d178cc8a44be189515e6d"
-BASELINE_LENGTH = 541328
+BASELINE_SHA = "f85f079226c46208403c454123bdb85c470b4185939f2dd08952624366766b5a"
+BASELINE_LENGTH = 540400
 BACKUP_LENGTH = 561152
 LOCK_DIR = Path("/Users/micahelbyrns/Documents/Codex/2026-09-30/task/.device-locks")
 
@@ -231,6 +231,9 @@ def main():
                                 "CAM OTA metadata changed on restore")
                         result["baseline_restored"] = True
                         restore_esp.hard_reset()
+                        baseline_lines = observe(restore_port, 180)
+                        result["baseline_boot"] = validate(baseline_lines)
+                        result["baseline_boot_pass"] = True
             finally:
                 if port.is_open:
                     port.close()

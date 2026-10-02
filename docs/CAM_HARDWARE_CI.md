@@ -46,11 +46,12 @@ heartbeats. It requires CAM USB VID:PID 1a86:7523 at a *privately mapped*
 current location and serial port, MAC `28:84:85:4b:57:98`, 16 MiB flash, the known
 two-slot OTA partition layout (app0 at `0x10000`, app1 at `0x310000`) and the
 installed baseline firmware SHA-256
-`e208d9baafc1f8bd9d18eb4b659648e082b44381978d178cc8a44be189515e6d`.
+`f85f079226c46208403c454123bdb85c470b4185939f2dd08952624366766b5a`.
 It shares the existing `.device-locks` keys with earlier CAM work. It backs up
 the prewrite app0 range to a private evidence directory, flashes and reads back
 the exact candidate, runs the bounded suite, then reconnects and restores the
-baseline bytes with readback in `finally`. Partition table, NVS and OTA
+baseline bytes with readback and a second bounded boot/app observation in
+`finally`. Partition table, NVS and OTA
 metadata are hash-checked across the transaction. The fixture reuses a
 verified, installed `camera_utility` 0.1.1 package when present and performs
 the ordinary managed package upgrade from 0.1.0 when needed. A changed
@@ -73,17 +74,24 @@ physical mapping is a prerequisite.
 The first reconciled head `f923a5eaac977d70d3abcc99a7e7d5dc5cf54dfa`
 correctly posted a **failure** after its utility found all 16 original
 create-new SD filenames occupied. Candidate readback and exact firmware
-restoration passed. The next head upgrades `camera_utility` to 0.1.1, with
+restoration passed. The next head upgraded `camera_utility` to 0.1.1, with
 bounded four-digit filenames through 9999 and a regression test proving it
-advances past the first 16 existing private images. Its ordinary package
-upgrade preserves existing captures; the new exact-head cloud and hardware
-result must be checked before treating that repair as qualified.
+advances past the first 16 existing private images. Head
+`25c63dd908e5d6f63124a2903cd6cf7e82fe604f` passed the candidate capture
+and firmware-byte restoration, but a separate postrestore boot observation
+found the old firmware could not start with the upgraded SD package. Its
+hardware check was corrected to **failure**. The Reader job was paused and
+the exact `25c63dd9` candidate was installed as the new operational CAM
+baseline; its readback, capture and steady boot passed. Existing images and
+the prior firmware backup remain private. A new head must verify both the
+candidate and restored baseline boot before automatic execution resumes.
 
 ## Activation boundary
 
 The owner approved the persistent credential and timer and granted the Mac's
-background Python Documents Folder access. The user LaunchAgent is active at
-a 60-second interval, and the Reader CAM job is enabled. A natural timer tick
+background Python Documents Folder access. The user LaunchAgent is loaded at
+a 60-second interval, but the Reader CAM job is **disabled** while the reviewed
+baseline and postrestore boot guard are repinned. An earlier natural timer tick
 ran the exact-head candidate for PR #347 head
 `b20965413378682599980b2ae5c4fc9752bb3fb4`: cloud artifact
 `11208766025`, firmware SHA-256
@@ -101,7 +109,7 @@ reviewed commit. Its setup and operating requirements are:
    as the owner approved for future projects: Actions **read**, Pull requests
    **read**, Commit statuses **write**, Metadata **read** (automatic). No other write
    scopes are needed. Only the Reader CAM job is configured in the local
-   controller allowlist; it is enabled. Future repositories need
+   controller allowlist; it is currently disabled. Future repositories need
    separate reviewed jobs.
    Store it privately in the Mac login Keychain as generic-password service
    `riscrte-cam-ci`, account `michaelrolphone-cmyk` using secure local entry.
@@ -128,8 +136,8 @@ candidate discovery is retried on a later pass without finalizing a hardware
 result for that SHA.
 
 The credential persists in Keychain with all-personal-repository scope, while
-the job allowlist permits only Reader CAM execution. The enabled user launchd
-configuration persists until removed. The Mac
+the job allowlist permits only Reader CAM execution. The loaded user launchd
+configuration persists until removed. When the Reader job is enabled, the Mac
 will automatically flash eligible owner-PR firmware to the CAM and save private
 backup/result files. These are the material activation risks. A repository ruleset may require
 `CAM hardware / trusted owner SHA`
@@ -141,7 +149,8 @@ repository writers may be able to post the same context. Review that source
 trust limitation before making it a merge gate.
 
 The controller posts `pending` only after verifying the exact cloud artifact,
-then `success` only after capture and baseline restoration, `failure` for a
+then `success` only after capture, baseline byte restoration and a working
+baseline boot, `failure` for a
 completed failed cloud/device test, or `error` for provenance, transport or
 restore uncertainty. A crash with incomplete private evidence leaves the
 status pending for manual recovery. The private journal retains exact hashes,

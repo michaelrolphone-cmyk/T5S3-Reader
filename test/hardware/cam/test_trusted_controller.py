@@ -142,6 +142,7 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(gh.posts, [])
             result["source_sha"] = SHA
             result["device"]["baseline_restored"] = True
+            result["device"]["baseline_boot_pass"] = True
             result["device"]["image_bytes"] = 24069
             saved.write_text(json.dumps(result))
             controller.once(gh, 123, root, Path("/unused"), {})
@@ -154,9 +155,9 @@ class ControllerTests(unittest.TestCase):
         base = {"source_sha": SHA, "firmware_sha256": "b" * 64,
                 "result": "pass", "device_exit": 0,
                 "device": {"result": "pass", "candidate_readback_equal": True,
-                           "baseline_restored": True}}
+                           "baseline_restored": True, "baseline_boot_pass": True}}
         self.assertEqual(controller.terminal_state(base), "success")
-        for field in ("baseline_restored", "candidate_readback_equal"):
+        for field in ("baseline_restored", "candidate_readback_equal", "baseline_boot_pass"):
             missing = json.loads(json.dumps(base))
             missing["device"][field] = False
             self.assertEqual(controller.terminal_state(missing), "error")
