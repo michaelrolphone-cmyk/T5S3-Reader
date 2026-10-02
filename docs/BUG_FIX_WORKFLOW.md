@@ -21,7 +21,7 @@ This document defines coordination and evidence rules for the existing bug scan/
 ## One run
 
 1. Resume recorded work first. Inspect the exact repair PR/head and pending checks; repair authorized failures or record a specific blocker. A closed-unmerged PR is unfinished work, not a merged fix.
-2. Reconcile new scan evidence by immutable source commit plus scan-local ID. Compare the affected function, trigger, failure, and repair. Attach duplicate provenance to the existing canonical report; assign a fresh ID only to a distinct failure. The next unused ID in this snapshot is 249.
+2. Reconcile new scan evidence by immutable source commit plus scan-local ID. Compare the affected function, trigger, failure, and repair. Attach duplicate provenance to the existing canonical report; assign a fresh ID only to a distinct failure. The latest reconciled inventory currently ends at canonical ID 260; assign a new canonical ID only after checking the current ledger head.
 3. Select a ready unclaimed report. Revalidate its trigger on current master and check merged/open/closed-unmerged PRs for overlap. Record the checked SHA, source locations, and actual reproduction/test outcome. Historical `Open` is not current confirmation.
 4. Claim the report durably before source changes. Reuse an existing authorized repair branch when recovering its unfinished work; otherwise branch from current master. Implementation PRs target master, never another repair PR.
 5. Implement a focused fix and regression that fails on the original behavior. Honor package version rules for every changed distributable. Check normal, error, retry, and cleanup paths relevant to the defect.
