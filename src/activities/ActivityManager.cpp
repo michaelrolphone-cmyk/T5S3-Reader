@@ -40,6 +40,11 @@ void ActivityManager::renderTaskLoop() {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     RenderLock lock;
     if (currentActivity) {
+#if defined(BOARD_XTEINK_X4_PRO)
+      // X4 first Home frame uses the already attached display provider. Its
+      // power module and T5S3 StartupScreen are not part of this bootstrap.
+      currentActivity->render(std::move(lock));
+#else
       HalPowerManager::Lock powerLock;
       // Readiness is the destination's first render after startup/onEnter.
       // Keep the loading worker alive throughout Home or reader preparation.
@@ -50,6 +55,7 @@ void ActivityManager::renderTaskLoop() {
       }
       currentActivity->render(std::move(lock));
       if (currentActivity->name != "Boot") StartupScreen::destinationReady();
+#endif
     }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&waitingTaskMux);

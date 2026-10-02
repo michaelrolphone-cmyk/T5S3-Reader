@@ -26,13 +26,17 @@
 #include <string>
 
 #include "MappedInputManager.h"
+#include "CrossPointSettings.h"
 #include "activities/ActivityManager.h"
 #include "activities/util/FullScreenMessageActivity.h"
+#include "components/UITheme.h"
 #include "native/NativeNavigationInput.h"
 #include "runtime/drivers/ProviderModuleV2.h"
 
 extern EpdFont notoserif14RegularFont;
 extern EpdFontFamily ui10FontFamily;
+extern EpdFontFamily ui12FontFamily;
+extern EpdFontFamily smallFontFamily;
 extern FontDecompressor fontDecompressor;
 extern GfxRenderer renderer;
 extern FontCacheManager fontCacheManager;
@@ -55,7 +59,7 @@ bool ready = false;
 bool shared_text_ready = false;
 const char *storage_status = "SD provider unavailable";
 bool storage_mounted = false;
-bool showing_storage_activity = false;
+bool showing_home = false;
 std::string storage_preview;
 std::unique_ptr<Txt> preview_text;
 std::string preview_name;
@@ -262,23 +266,23 @@ void x4DiagnosticSetup() {
         renderer.setFontCacheManager(&fontCacheManager);
         renderer.insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
         renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
+        renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
+        renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
     }
     LOG_INF("X4", "shared text ready=%d", shared_text_ready ? 1 : 0);
     char probe[160] = "unavailable";
     (void)panel_mod.copyProviderError(probe, sizeof(probe));
     LOG_INF("X4", "%s", probe);
     if (shared_text_ready) {
-        // This existing Reader activity draws synchronously on entry. Do not
-        // start the normal render worker: X4 power/storage/input owners have
-        // not yet completed their provider cutover.
-        activityManager.replaceActivity(std::make_unique<FullScreenMessageActivity>(
-            renderer, mappedInputManager,
-            storage_mounted ? storage_preview : std::string(storage_status),
-            EpdFontFamily::REGULAR,
-            DisplayPresentMode::Clean));
-        showing_storage_activity = true;
-        ready = provider_surface->lastPresentSucceeded();
-        LOG_INF("X4", "storage activity present=%d", ready ? 1 : 0);
+        // Render the real Reader Home with a safe fixed Classic/MONO1 frame.
+        // Other activities and device-dependent actions remain gated until
+        // their X4 power, storage-write and input lifecycles are cut over.
+        SETTINGS.uiTheme = CrossPointSettings::CLASSIC;
+        UITheme::getInstance().reload();
+        activityManager.begin();
+        activityManager.goHome();
+        showing_home = true;
+        LOG_INF("X4", "home activity scheduled=1");
     } else {
         paint(0);
         ready = present();
@@ -287,6 +291,10 @@ void x4DiagnosticSetup() {
 
 void x4DiagnosticLoop() {
     static unsigned long last = 0;
+    if (showing_home && !ready && provider_surface && provider_surface->lastPresentSucceeded()) {
+        ready = true;
+        LOG_INF("X4", "home present=1");
+    }
     const unsigned long now = millis();
     if (now - last >= 2000) {
         last = now;
@@ -298,13 +306,16 @@ void x4DiagnosticLoop() {
     }
     nativeNavigationTick();
     const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
-    if (frame_in.pressed && showing_storage_activity) {
-        if ((frame_in.pressed & RISC_NAV_RIGHT) && preview_text) {
-            advancePreview();
-            activityManager.replaceActivity(std::make_unique<FullScreenMessageActivity>(
-                renderer, mappedInputManager, storage_preview, EpdFontFamily::REGULAR,
-                DisplayPresentMode::Clean));
-            if (!provider_surface->lastPresentSucceeded()) ready = false;
+    if (showing_home) {
+        static uint32_t input_sequence = 0;
+        constexpr struct { uint32_t bit; const char *name; } events[] = {
+            {RISC_NAV_LEFT, "left"}, {RISC_NAV_RIGHT, "right"},
+            {RISC_NAV_CONFIRM, "confirm"}, {RISC_NAV_BACK, "back"}
+        };
+        for (const auto &event : events) {
+            if (frame_in.pressed & event.bit)
+                LOG_INF("X4", "input.navigation event=%s sequence=%lu", event.name,
+                        static_cast<unsigned long>(++input_sequence));
         }
     } else if (frame_in.pressed) {
         ++sequence;

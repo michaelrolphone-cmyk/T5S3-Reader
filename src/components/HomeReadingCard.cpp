@@ -148,6 +148,12 @@ void HomeReadingCard::draw(GfxRenderer& renderer, Rect rect, const std::vector<R
 }
 
 bool HomeReadingCard::present(GfxRenderer& renderer, Rect rect) {
+#if defined(BOARD_XTEINK_X4_PRO)
+  // The X4 panel provider currently publishes MONO1 only. Keep Home's first
+  // frame visible without starting a grayscale path that it cannot present.
+  renderer.displayBuffer();
+  return true;
+#endif
   const auto& metrics = UITheme::getInstance().getMetrics();
   const Box bounds = clippedBounds(renderer, rect);
   if (metrics.homeRecentBooksCount != 1 || bounds.width <= 0 || bounds.height <= 0) {

@@ -2,7 +2,9 @@
 #include "HalStorage.h"
 
 #include <Board.h>
+#if defined(BOARD_XTEINK_X4_PRO)
 #include <Arduino.h>
+#endif
 #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
 #include <Logging.h>
 #include <SdFat.h>
