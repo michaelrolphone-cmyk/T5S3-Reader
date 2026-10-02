@@ -1,10 +1,18 @@
-## Active revalidation — OTA check-state PR351 after master advance
+## Completed OTA check-state repair checkpoint — PR351
 
-- Owner `fix_ota_check_state_batch`; implementation branch `fix/ota-check-state`; canonical report **233**. Previous terminal claim was released at 2026-10-02 01:37 UTC after PR351 head `43bf54aedff52a65b8065c0f8ee6fe325e221789` passed exact CI. Fresh master is now `91f3768ebb402c218aff64d41cfcef689d743b2e` after PR349 merged, so the claim is reopened to refresh/revalidate; latest ledger before this claim is recorded by this update. Timestamp 2026-10-02 01:39:56 UTC.
-- Master delta from `d2d5a9a132d747122b0f0b607f228132ba79e667` is limited to `lib/GfxRenderer/GfxRenderer.cpp`, `platformio.ini`, `test/native_apps/display_abstraction_contract_test.py`, and new `test/native_apps/springboard_takeover_clear_test.py`. No OTA source, OTA test runner, or repair path overlaps. No display code will be modified by this batch.
-- PR351 remains open/draft. Plan: integrate current master into its branch without changing the OTA patch, verify PR diff is limited to `src/network/OtaUpdater.cpp` and focused tests (master now already carries firmware version1.3.55), then rerun exact-head CI. Previous run36951233199 passed all host/Springboard/board/headless jobs on prior head; it is not a pass for the refreshed head.
-- Published release-index firmware remains1.3.53. Current master firmware candidate1.3.55 came from merged PR349; use that cumulative unreleased version without another bump. U1 PR96 still owns its branch and source; previous coordination note recorded the version relationship. No U1 changes.
-- Prior source-level root-cause reproduction and focused regression remain valid because PR349 did not touch OTA source. No master write, merge, deployment, release/catalog change, display source edit or device I/O. Keep claim active until refreshed exact-head CI and final ledger checkpoint.
+- Owner claim released after terminal exact-head verification. Canonical report **233** remains awaiting user review/merge in open draft [PR351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351), branch `fix/ota-check-state`, exact remote head `6b8c99c419c5fe9552aa3fac83de006a4207fc36`. Current master at verification: `91f3768ebb402c218aff64d41cfcef689d743b2e`; PR branch incorporates that master in its merge parent. PR remains draft and mergeable; no merge requested/performed.
+- **Exact-head CI run36952301178 PASS** on `6b8c99c`: host/native/Springboard aggregate, both target firmware builds with all app/manifest validation, and headless core. All four jobs completed successfully. The earlier failed GCC-warning test-only run was corrected before this exact-head run.
+- Focused production-source regression passed success/install, progress reset, HTTP/network errors, retry, `NO_UPDATE`, malformed index/release, and install rejection after failed discovery. Existing OTA Update app test, shell syntax, and whitespace checks passed. Original source failed the stale-state regression.
+- User-visible failure: after a successful discovery, a later failed/no-update check could leave stale version/URL/size and update availability live in the process-static OTA bridge; callers could observe or try the stale release. Each check now resets that published state before discovery.
+- Firmware version: merged master already carries candidate **1.3.55** from PR349; this fix adds no further platformio version bump. Published release index remains **1.3.53**. No app/driver/firmware artifact was released.
+- Local limits: PlatformIO local attempt was blocked by existing `~/.platformio/platforms.lock`; no shared toolchain was modified. Local macOS Springboard aggregate and sanitizer attempts were interrupted without result and are not claimed. No device/network I/O or hardware behavior was verified.
+- PR diff is limited to OTA source and focused regression/runner/stubs. No display source, U1, hardware-CI-owner or architecture code changed. No master write, merge, deployment, release/catalog change or device operation.
+
+## Current capacity policy — 2026-10-02
+
+- The user removed the fixed two-open-bug-PR cap. There is no numerical limit on open bugfix PRs; select and sequence work by user priority, ownership, overlap, and evidence.
+- PRs #345 and #346 are merged. Older two-slot references below are historical snapshots, not current policy. PR344 remains a separately authorized camera/hardware milestone.
+- PR332 remains the canonical ledger PR. OTA report #233 is now awaiting user review/merge on PR351; its implementation claim is released. Recheck current master and owner status before selecting another batch.
 
 ---
 
