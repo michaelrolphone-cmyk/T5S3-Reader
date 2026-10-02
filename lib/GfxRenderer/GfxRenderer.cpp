@@ -40,7 +40,6 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
   // For SD card fonts, check if the glyph was loaded on demand into the overflow
   // buffer.  getOverflowBitmap() returns:
   //   - bitmap pointer for overflow glyphs with bitmap data
-  //   - nullptr for overflow glyphs without bitmap data (e.g. space: width=0, height=0)
   //   - nullptr for non-overflow glyphs (normal prewarmed path)
   // We distinguish overflow-with-no-bitmap from non-overflow by checking isOverflowGlyph().
   if (fontData->glyphMissCtx) {
@@ -69,10 +68,7 @@ void GfxRenderer::ensureSdCardFontReady(int fontId, const std::vector<std::strin
     // Augment the persistent advance-only table for layout measurement.
     // The table survives across paragraphs/sections (capped per font), so
     // repeated indexing of the same SD font amortizes glyph-metric SD reads.
-    int missed = it->second->buildAdvanceTable(words, includeHyphen, styleMask);
-    if (missed > 0) {
-      LOG_DBG("GFX", "ensureSdCardFontReady: %d glyph(s) not found", missed);
-    }
+    it->second->buildAdvanceTable(words, includeHyphen, styleMask);
   }
 }
 
@@ -214,6 +210,7 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
     // For Normal:  outer loop advances screenY, inner loop advances screenX
     // For Rotated: outer loop advances screenX, inner loop advances screenY (in reverse)
     int outerBase, innerBase;
+    int outerCoord, innerCoord;
     if constexpr (rotation == TextRotation::Rotated90CW) {
       outerBase = cursorX + fontData->ascender - top;  // screenX = outerBase + glyphY
       innerBase = cursorY - left;                      // screenY = innerBase - glyphX
@@ -410,9 +407,9 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     lastBaseWidth = glyph ? glyph->width : 0;
     lastBaseTop = glyph ? glyph->top : 0;
     prevAdvanceFP = glyph ? glyph->advanceX : 0;  // 12.4 fixed-point
+    prevCp = cp;
 
     renderCharImpl<TextRotation::None>(*this, renderMode, font, cp, lastBaseX, yPos, black, style);
-    prevCp = cp;
   }
 }
 
@@ -468,7 +465,7 @@ void GfxRenderer::drawRect(const int x, const int y, const int width, const int 
   drawLine(x, y, x + width - 1, y, state);
   drawLine(x + width - 1, y, x + width - 1, y + height - 1, state);
   drawLine(x + width - 1, y + height - 1, x, y + height - 1, state);
-  drawLine(x, y, x, y + height - 1, state);
+  drawLine(x, y + height - 1, x, y, state);
 }
 
 // Border is inside the rectangle
@@ -482,8 +479,8 @@ void GfxRenderer::drawRect(const int x, const int y, const int width, const int 
   }
 }
 
-void GfxRenderer::drawArc(const int maxRadius, const int cx, const int cy, const int xDir, const int yDir,
-                          const int lineWidth, const bool state) const {
+void GfxRenderer::drawArc(const int maxRadius, const int cx, const int cy, const int xDir,
+                          const int yDir, const int lineWidth, const bool state) const {
   const int stroke = std::min(lineWidth, maxRadius);
   const int innerRadius = std::max(maxRadius - stroke, 0);
   const int outerRadius = maxRadius;
@@ -498,7 +495,7 @@ void GfxRenderer::drawArc(const int maxRadius, const int cx, const int cy, const
   int xOuter = outerRadius;
   int xInner = innerRadius;
 
-  for (int dy = 0; dy <= outerRadius; ++dy) {
+  for (int dy = 0; dy <= maxRadius; dy++) {
     while (xOuter > 0 && (xOuter * xOuter + dy * dy) > outerRadiusSq) {
       --xOuter;
     }
@@ -1054,9 +1051,13 @@ void GfxRenderer::fillPolygon(const int* xPoints, const int* yPoints, int numPoi
 static unsigned long start_ms = 0;
 
 void GfxRenderer::clearScreen(const uint8_t color) const {
-  if (!initialized || !frameBuffer || !display.isReady()) return;
+  if (!initialized || !frameBuffer || frameBufferSize == 0) return;
   start_ms = millis();
-  display.clearScreen(color);
+  // Clearing is a RAM raster operation, not a physical display operation.
+  // UI-video takeover deliberately suspends the backend while retaining this
+  // buffer. Detached renderers must likewise clear their own target, not the
+  // font source's display. Presentation keeps its separate readiness gate.
+  std::memset(frameBuffer, color, frameBufferSize);
 }
 
 void GfxRenderer::invertScreen() const {
@@ -1101,7 +1102,6 @@ std::string GfxRenderer::truncatedText(const int fontId, const char* text, const
   const char* ellipsis = "\xe2\x80\xa6";
   int textWidth = getTextWidth(fontId, item.c_str(), style);
   if (textWidth <= maxWidth) {
-    // Text fits, return as is
     return item;
   }
 
@@ -1160,9 +1160,8 @@ std::vector<std::string> GfxRenderer::wrappedText(const int fontId, const char* 
           currentLine = word;
         }
       } else {
-        // Single word wider than maxWidth: truncate and stop to avoid complicated
-        // splitting rules (different between languages). Results in an aesthetically
-        // pleasing end.
+        // Single word wider than Max width, need to split in the middle of it
+        // For simplicity just truncate with an ellipsis and stop.
         lines.push_back(truncatedText(fontId, word.c_str(), maxWidth, style));
         return lines;
       }
@@ -1203,11 +1202,11 @@ int GfxRenderer::getScreenHeight() const {
   return visibleHeight;
 }
 
-int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style style) const {
+int GfxRenderer::getSpaceWidth(const int fontId) const {
   // Advance table fast-path for SD card fonts during layout
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
-    const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
+    const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, EpdFontFamily::REGULAR);
     return fp4::toPixel(sdIt->second->getAdvance(' ', resolvedStyle));
   }
 
@@ -1217,15 +1216,14 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
     return 0;
   }
 
-  const EpdGlyph* spaceGlyph = fontIt->second.getGlyph(' ', style);
-  return spaceGlyph ? fp4::toPixel(spaceGlyph->advanceX) : 0;  // snap 12.4 fixed-point to nearest pixel
+  const EpdGlyph* spaceGlyph = fontIt->second.getGlyph(' ', EpdFontFamily::REGULAR);
+  return spaceGlyph ? fp4::toPixel(spaceGlyph->advanceX) : 0;  // snap 12.4 fixed-point: nearest pixel
 }
 
-int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
-                                 const EpdFontFamily::Style style) const {
+int GfxRenderer::getSpaceAdvance(const int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const {
   // Advance table fast-path for SD card fonts during layout.
-  // Kern data is not loaded during layout (consistent with previous metadataOnly behavior),
-  // so we return just the space advance without kerning.
+  // No kerning/ligature lookup — consistent with previous metadataOnly behavior
+  // where kern/lig data was not loaded.
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
@@ -1234,22 +1232,28 @@ int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const 
 
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) return 0;
-  const auto& font = fontIt->second;
-  const EpdGlyph* spaceGlyph = font.getGlyph(' ', style);
-  const int32_t spaceAdvanceFP = spaceGlyph ? static_cast<int32_t>(spaceGlyph->advanceX) : 0;
+  const EpdGlyph* spaceGlyph = fontIt->second.getGlyph(' ', style);
+  const int32_t spaceAdvanceFP = spaceGlyph ? spaceGlyph->advanceX : 0;
+  const int kernFP = fontIt->second.getKerning(leftCp, rightCp, style);
   // Combine space advance + flanking kern into one fixed-point sum before snapping.
-  // Snapping the combined value avoids the +/-1 px error from snapping each component separately.
-  const int32_t kernFP = static_cast<int32_t>(font.getKerning(leftCp, ' ', style)) +
-                         static_cast<int32_t>(font.getKerning(' ', rightCp, style));
+  // This avoids the occasional +/-1px lost when each kern is independently rounded.
   return fp4::toPixel(spaceAdvanceFP + kernFP);
 }
 
 int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint32_t rightCp,
                             const EpdFontFamily::Style style) const {
+  // Advance table fast-path for SD card fonts during layout.
+  // No kerning/ligature lookup — consistent with previous metadataOnly behavior
+  // where kern/lig data was not loaded.
+  auto sdIt = sdCardFonts_.find(fontId);
+  if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
+    return 0;
+  }
+
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) return 0;
-  const int kernFP = fontIt->second.getKerning(leftCp, rightCp, style);  // 4.4 fixed-point
-  return fp4::toPixel(kernFP);                                           // snap 4.4 fixed-point to nearest pixel
+  const int kernFP = fontIt->second.getKerning(leftCp, rightCp, style);  // 4.4 fixed-point kern
+  return fp4::toPixel(kernFP);                                           // snap 4.4 fixed-point: nearest pixel
 }
 
 int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style) const {
@@ -1263,39 +1267,24 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
     while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
       widthFP += sdIt->second->getAdvance(cp, styleIdx);
     }
-    return fp4::toPixel(widthFP);
+    return fp4::toPixel(widthFP);                                        // 12.4 -> pixel
   }
 
   const auto fontIt = fontMap.find(fontId);
-  if (fontIt == fontMap.end()) {
-    LOG_ERR("GFX", "Font %d not found", fontId);
-    return 0;
-  }
+  if (fontIt == fontMap.end()) return 0;
 
   uint32_t cp;
   uint32_t prevCp = 0;
-  int widthPx = 0;
-  int32_t prevAdvanceFP = 0;  // 12.4 fixed-point: prev glyph's advance + next kern for snap
-  const auto& font = fontIt->second;
+  int32_t widthFP = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    if (utf8IsCombiningMark(cp)) {
-      continue;
-    }
-    cp = font.applyLigatures(cp, text, style);
-
-    // Differential rounding: snap (previous advance + current kern) together,
-    // matching drawText so measurement and rendering agree exactly.
-    if (prevCp != 0) {
-      const auto kernFP = font.getKerning(prevCp, cp, style);  // 4.4 fixed-point kern
-      widthPx += fp4::toPixel(prevAdvanceFP + kernFP);         // snap 12.4 fixed-point to nearest pixel
-    }
-
-    const EpdGlyph* glyph = font.getGlyph(cp, style);
-    prevAdvanceFP = glyph ? glyph->advanceX : 0;
+    if (utf8IsCombiningMark(cp)) continue;
+    cp = fontIt->second.applyLigatures(cp, text, style);
+    const EpdGlyph* glyph = fontIt->second.getGlyph(cp, style);
+    if (prevCp != 0) widthFP += fontIt->second.getKerning(prevCp, cp, style);
+    widthFP += glyph ? glyph->advanceX : 0;
     prevCp = cp;
   }
-  widthPx += fp4::toPixel(prevAdvanceFP);  // final glyph's advance
-  return widthPx;
+  return fp4::toPixel(widthFP);
 }
 
 int GfxRenderer::getFontAscenderSize(const int fontId) const {
@@ -1356,8 +1345,8 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
       if (!combiningGlyph) continue;
       const int raiseBy = combiningMark::raiseAboveBase(combiningGlyph->top, combiningGlyph->height, lastBaseTop);
       const int combiningX = x - raiseBy;
-      const int combiningY = combiningMark::centerOverRotated90CW(lastBaseY, lastBaseLeft, lastBaseWidth,
-                                                                  combiningGlyph->left, combiningGlyph->width);
+      const int combiningY = combiningMark::centerOverRotated90CW(lastBaseY, lastBaseLeft, lastBaseWidth, combiningGlyph->left,
+                                                                combiningGlyph->width);
       renderCharImpl<TextRotation::Rotated90CW>(*this, renderMode, font, cp, combiningX, combiningY, black, style);
       continue;
     }
@@ -1457,8 +1446,8 @@ bool GfxRenderer::storeBwBuffer() {
 
 /**
  * This can only be called if `storeBwBuffer` was called prior to the grayscale render.
- * It should be called to restore the BW buffer state after grayscale rendering is complete.
- * Uses chunked restoration to match chunked storage.
+ * This function must restore every byte of the saved framebuffer before freeing
+ * the snapshots. It is also called by grayscale UI composition.
  */
 void GfxRenderer::restoreBwBuffer() {
   if (!initialized || !frameBuffer || frameBufferSize == 0 || !display.isReady()) {
