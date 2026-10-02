@@ -1,3 +1,13 @@
+## File Browser picker repair checkpoint — 2026-10-02 07:01 UTC
+
+- Reconciled current master and open code PRs: baseline remains `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; PR #355 and PR #356 are both open/ready for review. These occupy the two allowed outstanding code-batch slots. No third repair PR or remote repair branch was published.
+- Canonical bug #22 is freshly confirmed against production path and source, with original report/provenance preserved. Copy/Move destination enumeration can write directory97 to `picker_names[96]` on root offset1; fixed arrays hold 96 names and 98 rows. Both SD and USB paths use the same collector.
+- Isolated local candidate at `/Users/micahelbyrns/Documents/Codex/2026-10-01/task-3/file-browser-picker-bounds` changes only `Apps/file_browser.c`, `Apps/file_browser.json`, `test/native_apps/file_browser_test.c`, and `test/run_native_app_test.sh`. Proposed File Browser version1.3.2→1.3.3; no firmware increment.
+- **Baseline regression:** production-source collector test failed at the expected capacity assertion on unmodified current-master source (exit134).
+- **Local PASS:** fixed production-source focused test covers 96/97/98/120 visible directories at root offset1 and non-root offset2; Xtensa File Browser ELF and 1.3.3 sidecar build; shell syntax and `git diff --check`.
+- **Not run / limitation:** local ASan/UBSan stalled in this Mac environment and was interrupted previously; this run does not claim sanitizer or full host aggregate. No device verification.
+- The runner regression is configured for ASan/UBSan in the candidate, but no cloud job can run until a repair PR is opened. Recheck the review-slot limit before publishing. Do not publish a third code batch while #355/#356 remain outstanding. Candidate branch is reserved as `fix/file-browser-picker-bounds`; local edits remain available in the isolated workspace. Claim `file_picker_bounds_20261002_0655` released at this checkpoint; resume only after a code slot opens and after rechecking master, PRs, owner status, and ledger head.
+
 ## Deferred backlog
 
 - Firmware version reservations across concurrent open PRs now form a cascading patch chain; when one older PR merges, later branches can conflict or require another exact-head CI cycle. After PR351/PR353 current-master sync is complete, assess a less conflict-prone version-coordination/release workflow. This is a deferred process task only; do not redesign it during the current bug batch or write any release/catalog changes.
