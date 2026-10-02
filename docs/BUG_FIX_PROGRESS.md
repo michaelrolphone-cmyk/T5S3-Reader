@@ -1,3 +1,11 @@
+## Current master sync — Firmware Flasher pagination, canonical #36 — 2026-10-02
+
+- Master advanced from the original base `3722a3f44a3294ba5e8adab830807a2523df3b03` to `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231` during CI. The intervening commits did not modify flasher source or manifest; they added five regression-runner lines, which were preserved.
+- PR #371's new exact head `9c77ad8d396a7660ae97396c34683e6ea87f4b06` now has current master as merge base (3 commits ahead / 0 behind), remains open/draft/mergeable, and changes only the flasher app/manifest and its regression test/runner.
+- Earlier `780b044` PlatformIO and CAM runs passed but are stale for current head. New exact-head PlatformIO [37059888056](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37059888056) and CAM candidate [37059888150](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37059888150) are queued. Keep claim `firmware_flasher_image_pagination_20261002` active until these runs are terminal and reviewed.
+
+---
+
 ## Superseding exact-head update — Firmware Flasher pagination, canonical #36 — 2026-10-02
 
 - Draft [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371) now has exact head `780b04407c9223f37fda9f89bf40a6b35e8652d2`, directly based on master `3722a3f44a3294ba5e8adab830807a2523df3b03). This adds the Retry label for empty/error lists. The earlier head's in-progress runs are stale and do not qualify the new head.
