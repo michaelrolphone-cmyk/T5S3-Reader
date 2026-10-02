@@ -195,7 +195,7 @@ def once(gh, number, evidence_root, python, binding, pause_file):
             "X4 app-only hardware boot check running; visual/buttons untested")["id"]
         save(journal, result)
         device_dir = folder / "device"
-        command = [str(python), str(Path(__file__).with_name("ci_device.py")),
+        command = [str(python), str(Path(__file__).with_name("x4_ci_device.py")),
                    "--image", str(folder / "candidate/firmware.bin"),
                    "--sha256", digest, "--out", str(device_dir),
                    "--location", binding["location"]]

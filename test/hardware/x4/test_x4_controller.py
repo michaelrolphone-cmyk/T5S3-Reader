@@ -12,7 +12,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "cam"))
 sys.path.insert(0, str(HERE))
 import x4_controller as controller
-import ci_device as device
+import x4_ci_device as device
 
 SHA = "a" * 40
 IMAGE = b"\xe9" + b"RISCRTE_BOARD_ID:xteink-x4-pro" + b"\x00" * 100
