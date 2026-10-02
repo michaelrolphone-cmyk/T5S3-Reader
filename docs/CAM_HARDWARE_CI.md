@@ -80,15 +80,19 @@ physical mapping is a prerequisite.
 
 ## Activation boundary
 
-This PR only stages source. It does not create a GitHub credential, register a
-runner, configure launchd, change repository security settings or impose a
-required check. After reviewing and pinning the controller files at an exact
-trusted commit (which may be the reviewed pilot commit before merge), activation needs an
-explicit approval for these exact operations:
+This PR stages source. The owner approved a persistent credential and timer;
+the Mac timer is installed but disabled and unloaded pending the credential,
+source and physical CAM gates. No runner, repository security setting or
+required check has been configured. The controller files are pinned at an
+exact trusted commit. Activation uses these operations:
 
-1. Create one **fine-grained** GitHub credential for only
-   `michaelrolphone-cmyk/T5S3-Reader`: Actions **read**, Pull requests **read**,
-   Checks **write**, Metadata **read**.
+1. Create one **fine-grained** GitHub credential owned by
+   `michaelrolphone-cmyk` for **all repositories** in that personal account,
+   as the owner approved for future projects: Actions **read**, Pull requests
+   **read**, Checks **write**, Metadata **read** (automatic). No other write
+   scopes are needed. Only the Reader CAM job is configured in the local
+   controller allowlist, currently disabled; future repositories need
+   separate reviewed jobs.
    Store it privately in the Mac login Keychain as generic-password service
    `riscrte-cam-ci`, account `michaelrolphone-cmyk` using secure local entry.
    Never place it in a shell command argument, chat, repo, plist or log.
@@ -97,23 +101,32 @@ explicit approval for these exact operations:
    environment (`esptool==4.5.1`, `pyserial==3.5`). The controller and device
    scripts must not be updated from a PR checkout. Point `--evidence-root` to
    a private local directory outside the repository.
-3. Load a user-scoped launchd timer that invokes that exact local Python and
-   `trusted_controller.py --scan --evidence-root <private-directory>
-   --cam-binding <private-mapped-file>` at a
-   bounded interval such as five minutes. The timer will poll owner PRs, wait
+3. Enable the installed user-scoped five-minute launchd timer only after the
+   private Reader job binding and successful exact-SHA source artifact are
+   verified. Its launcher invokes the pinned `trusted_controller.py --scan`
+   with a private evidence root and CAM binding. The timer will poll owner PRs, wait
    for their completed exact-SHA cloud build, then post a Checks API
    result on the exact head SHA. It must remain unloaded until credential and
    hardware preflight are approved. The Mac must stay awake and the CAM
    connected for automatic execution.
 
-The credential persists in Keychain and can create/update checks in this one
-repo; the user launchd timer persists until unloaded. The Mac will
+The credential persists in Keychain with all-personal-repository scope, while
+the job allowlist permits only Reader CAM execution. The user launchd timer
+persists until removed. The Mac will
 automatically flash eligible owner-PR firmware to the CAM and save private
 backup/result files. These are the material activation risks. After one
 complete request-to-check pilot is verified, a repository ruleset may require
 `CAM hardware / trusted owner SHA`
 for merges, but that separate security-setting change needs owner approval.
 Until then the check is advisory.
+
+GitHub's current check-run endpoint documentation explicitly lists fine-grained
+PATs with Checks write for create/update, but its general prose says only Apps
+can create checks and its PAT guide lists Checks API access as a limitation.
+The fine-grained PAT path is therefore documented at the endpoint but not yet
+verified with an actual token. If the token form does not offer Checks write,
+stop before creating it. Do not enable the scheduler until an exact-SHA check
+post succeeds in the pilot.
 
 Use the local `result.json` journal to diagnose failures. A result without
 `check_id` means the Checks API post needs retry; the controller retries that
