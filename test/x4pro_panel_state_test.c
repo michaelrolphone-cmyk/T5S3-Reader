@@ -15,6 +15,7 @@ uint8_t x4_fake_hold_busy;
 uint8_t x4_fake_uc_stage;
 uint32_t x4_fake_uc_cmd13;
 uint32_t x4_fake_uc_cmd10;
+uint32_t x4_fake_uc_pon_early;
 uint32_t x4_fake_output_mask;
 uint32_t x4_fake_level_before_config;
 int x4_test_probe_mode = 4;
@@ -137,6 +138,7 @@ int main(void) {
     expect(api->wait_present(api->context, token, 20000, &status), "uc wait");
     expect(status.state == RISC_DISPLAY_PRESENT_COMPLETE, "uc complete");
     expect(x4_fake_uc_cmd13 == 1 && x4_fake_uc_cmd10 == 1, "uc new and old planes");
+    expect(x4_fake_uc_pon_early == 0, "uc PON settled before PSR");
     expect(driver->quiesce(), "uc idle can quiesce");
     x4_test_probe_mode = 2;
     expect(!driver->start(&dep, 1), "ambiguous rejected");

@@ -317,6 +317,7 @@ static bool uc_transfer_frame(uint64_t deadline_ms) {
     if (!sample_now(&refresh_ms) || refresh_ms >= deadline_ms) { set_reason("transfer deadline"); return false; }
     command(0x04);
     /* UC8279 PON may reload MTP settings. Select built-in OTP after PON. */
+    sleep_ms(1); /* Give BUSY_N one controller tick to assert, as the pinned bus does. */
     if (!uc_ready_for("uc power-on timeout", deadline_ms)) return false;
     command(0x00); data1(0x17); data1(0x4D);
     busy_before = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
@@ -496,7 +497,7 @@ static bool last_error(char *destination, size_t capacity) {
     size_t used = 0;
     destination[0] = 0;
     append(destination, capacity, &used, probe_text);
-    append(destination, capacity, &used, " v=0.1.11 token=");
+    append(destination, capacity, &used, " v=0.1.12 token=");
     append_u(destination, capacity, &used, pending_token);
     append(destination, capacity, &used, " state=");
     append_u(destination, capacity, &used, present_state);
