@@ -1,0 +1,24 @@
+{
+  "type": "driver",
+  "id": "x4pro-battery",
+  "version": "0.1.0",
+  "driver_abi": 2,
+  "architecture": "xtensa-esp32s3",
+  "file_name": "driver.elf",
+  "board": "xteink-x4-pro",
+  "requires": [
+    {
+      "capability": "i2c.bus",
+      "api": 1
+    }
+  ],
+  "provides": [
+    {
+      "capability": "board.battery",
+      "api": 1
+    }
+  ],
+  "status": "experimental-unpublished",
+  "size_bytes": 3824,
+  "sha256": "36332256271aea9bcb04caf32e9fbce9aeee3c7cf19e59ebaef9e0522539d71c"
+}

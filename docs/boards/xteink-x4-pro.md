@@ -6,4 +6,4 @@ Pin and protocol facts are derived from CrossPoint/FreeInk app1 (`ESP32S3_X4_TL_
 
 Load order: `platform-clock-v1`, `x4pro-i2c`, `x4pro-panel`, `x4pro-gt911`, `x4pro-buttons`, `x4pro-frontlight`, `x4pro-battery`, `x4pro-sd`.
 
-`i2c-esp32s3-v2` stays the T5S3 bus. X4 Pro I2C is a separate provider on GPIO 39/38.
+`x4pro-sd` brings the card out of idle and then fails filesystem calls closed. It does not mount FAT. Frontlight is GPIO on/off, not PWM. None of these ELFs have been run on an X4 Pro.
