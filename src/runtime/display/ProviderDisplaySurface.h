@@ -41,6 +41,8 @@ class ProviderDisplaySurface final : public DisplaySurface {
   uint8_t* getFrameBuffer() const override { return ready_ ? raster_ : nullptr; }
   bool lastPresentSucceeded() const { return lastPresentSucceeded_; }
   uint8_t lastPresentState() const { return lastPresentState_; }
+  // A boot splash must not be mistaken for the subsequent Home present.
+  void clearPresentStatus() { lastPresentSucceeded_ = false; lastPresentState_ = 0; }
 
   void clearScreen(uint8_t color = 0xFF) const override {
     if (ready_) std::memset(raster_, color, rasterSize_);

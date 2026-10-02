@@ -64,9 +64,12 @@ int main() {
     surface.requestNextRefresh(DisplayPresentMode::Clean);
     surface.displayBuffer(DisplayPresentMode::LowLatency);
     assert(surface.lastPresentSucceeded() && surface.lastPresentState() == RISC_DISPLAY_PRESENT_COMPLETE);
+    surface.clearPresentStatus();
+    assert(!surface.lastPresentSucceeded() && surface.lastPresentState() == 0);
     assert(fake.pixels[0] == 0x80 && fake.pixels[1] == 0);
     assert(fake.intent == RISC_DISPLAY_PRESENT_CLEAN && fake.timeout == 1234 && fake.releaseCount == 0);
     surface.displayBuffer(DisplayPresentMode::LowLatency);
+    assert(surface.lastPresentSucceeded());
     assert(fake.intent == RISC_DISPLAY_PRESENT_LOW_LATENCY && fake.submitCount == 2);
     fake.wrongSurface = true;
     surface.displayBuffer();

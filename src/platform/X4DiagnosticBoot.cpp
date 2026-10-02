@@ -258,7 +258,14 @@ void x4DiagnosticSetup() {
         LOG_ERR("X4", "shared renderer surface rejected");
         return;
     }
-    renderer.setOrientation(GfxRenderer::LandscapeCounterClockwise);
+    // Reader's four button hints are laid out in portrait coordinates. The
+    // physical X4 is portrait when held with its controls upright; landscape
+    // left the Classic Home menu with a negative usable height.
+    renderer.setOrientation(GfxRenderer::Portrait);
+    if (renderer.getScreenWidth() != 480 || renderer.getScreenHeight() != 800) {
+        LOG_ERR("X4", "Reader portrait geometry rejected");
+        return;
+    }
     if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
     shared_text_ready = fontDecompressor.init();
     if (shared_text_ready) {
@@ -274,11 +281,32 @@ void x4DiagnosticSetup() {
     (void)panel_mod.copyProviderError(probe, sizeof(probe));
     LOG_INF("X4", "%s", probe);
     if (shared_text_ready) {
+        // E-paper retains its previous frame across reset. Present a brief
+        // startup frame so a fresh boot is visible before an identical Home
+        // image is drawn. This is X4-only and adds no NVS or storage write.
+        renderer.clearScreen();
+        renderer.drawCenteredText(UI_12_FONT_ID, 72, "Starting Reader");
+        renderer.drawCenteredText(UI_10_FONT_ID, 116, "X4 Pro");
+        renderer.displayBuffer(DisplayPresentMode::Clean);
+        LOG_INF("X4", "boot splash present=%d", provider_surface->lastPresentSucceeded() ? 1 : 0);
+        provider_surface->clearPresentStatus();
         // Render the real Reader Home with a safe fixed Classic/MONO1 frame.
         // Other activities and device-dependent actions remain gated until
         // their X4 power, storage-write and input lifecycles are cut over.
         SETTINGS.uiTheme = CrossPointSettings::CLASSIC;
         UITheme::getInstance().reload();
+        const auto &home = UITheme::getInstance().getMetrics();
+        const int menu_height = renderer.getScreenHeight() -
+            (home.homeTopPadding + home.homeCoverTileHeight + home.homeMenuTopOffset +
+             home.buttonHintsHeight);
+        const int required_menu_height = 3 * home.menuRowHeight + 2 * home.menuSpacing;
+        if (menu_height < required_menu_height) {
+            LOG_ERR("X4", "Home menu geometry rejected height=%d required=%d",
+                    menu_height, required_menu_height);
+            return;
+        }
+        LOG_INF("X4", "home geometry width=%d height=%d menu_height=%d",
+                renderer.getScreenWidth(), renderer.getScreenHeight(), menu_height);
         activityManager.begin();
         activityManager.goHome();
         // HomeActivity::onEnter queues a deferred update. X4 does not run the
