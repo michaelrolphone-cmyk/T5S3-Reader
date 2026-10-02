@@ -53,7 +53,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 
 ### 5. Time Card can overwrite valid history after a store-load failure
 
-- **Status:** Confirmed on current master fa517fea3a882505f10bb432c0c08864b73516c8; claimed for the held-Confirm source path. Repair is in progress on fix/status-bar-confirm-edge.
+- **Status:** Revalidated on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`: `load_store()` clears live history before read/parse, callers ignore failure, and a later punch can overwrite the persisted history. Claimed by `timecard_load_guard_20261002_0555` on `fix/timecard-load-failure`; implementation not started. Timecard1.0.3 → candidate1.0.4. No device test yet.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/timecard.c`, `load_store()`, `consume_keyboard()`, `app_main()`, and write paths through `set_punch()` / `save_store()`.
