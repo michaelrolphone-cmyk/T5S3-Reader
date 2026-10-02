@@ -193,7 +193,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Bound directory enumeration by `count - offset < PICKER_ENTRIES`, or make the row/name capacities explicitly consistent. Prefer pagination so every destination remains reachable. Add guarded or sanitizer-backed tests for 96, 97, and more than 98 root directories, plus a non-root picker containing the `..` row.
 ### 23. File Browser silently hides registered Open-with handlers after the first eight
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed on current master `3722a3f44a3294ba5e8adab830807a2523df3b03`; claimed by `file_browser_open_with_20261002` for focused repair on `fix/file-browser-open-with-pagination`. Current source still limits the Open-with chooser to eight even though the native registry supports 128 handlers. Baseline failure regression pending.
 - **Sources:** [automation/bug-scan-20260926-2324-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2324-findings/bugs.md)
 
 - **Affected code:** `Apps/file_browser.c`, `MAX_OPEN_HANDLERS` and `choose_handler()`; `src/native/NativeFileOpenBridge.cpp`, `handlerCount()` and `handlerGet()`; `src/native/FileAssociationRegistry.h` and `src/native/FileAssociationRegistry.cpp`.
