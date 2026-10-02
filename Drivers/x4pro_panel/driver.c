@@ -354,7 +354,8 @@ static bool last_error(char *destination, size_t capacity) {
     uint64_t now = now_ms();
     size_t used = 0;
     destination[0] = 0;
-    append(destination, capacity, &used, "v=0.1.6 ctl=SSD1677 token=");
+    append(destination, capacity, &used, probe_text);
+    append(destination, capacity, &used, " v=0.1.7 token=");
     append_u(destination, capacity, &used, pending_token);
     append(destination, capacity, &used, " state=");
     append_u(destination, capacity, &used, present_state);

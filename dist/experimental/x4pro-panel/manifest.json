@@ -1,7 +1,7 @@
 {
   "type": "driver",
   "id": "x4pro-panel",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "driver_abi": 2,
   "architecture": "xtensa-esp32s3",
   "file_name": "driver.elf",
@@ -20,5 +20,5 @@
   ],
   "status": "experimental-unpublished",
   "size_bytes": 28020,
-  "sha256": "88a3181aad2e827ba675951abb6072bac2f2446a5b4d4267d0c5ab507d607c58"
+  "sha256": "8292616ad556035f0c97795b0dd19f7a137b80cd460a8a121376dc9fb11f4ee3"
 }
