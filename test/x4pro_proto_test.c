@@ -22,6 +22,8 @@ int main(void) {
     uint8_t frame[6];
     x4pro_sd_command(0, 0, frame);
     expect(frame[0] == 0x40 && (frame[5] & 1u), "cmd0 host direction");
+    static const uint8_t crc_sample[] = "123456789";
+    expect(x4pro_sd_crc16(crc_sample, 9u) == 0x31c3u, "native SD data CRC16");
     if (failures) return 1;
     puts("x4pro protocol: PASS");
     return 0;

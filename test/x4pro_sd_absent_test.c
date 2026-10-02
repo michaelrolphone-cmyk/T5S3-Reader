@@ -7,6 +7,7 @@ unsigned x4_sd_fake_ticks;
 bool x4_sd_fake_bad_pin;
 static unsigned slept_ms;
 static void sleep_ms(void *context, uint32_t ms) { (void)context; slept_ms += ms; }
+static uint64_t monotonic_ms(void *context) { (void)context; return slept_ms; }
 static int expect(bool condition, const char *message) {
     if (condition) return 0;
     fprintf(stderr, "FAIL %s\n", message);
@@ -19,7 +20,7 @@ int main(void) {
     if (failures) return 1;
     const risc_storage_volume_api_v1 *volume = driver->capability;
     const risc_platform_clock_api_v1 clock = {
-        RISC_PLATFORM_CLOCK_API_V1, sizeof(clock), 0, 0, sleep_ms
+        RISC_PLATFORM_CLOCK_API_V1, sizeof(clock), 0, monotonic_ms, sleep_ms
     };
     const risc_provider_dependency_v1 dependency = {"platform.clock", 1, &clock};
     failures += expect(driver->start(&dependency, 1), "missing card keeps provider available");
