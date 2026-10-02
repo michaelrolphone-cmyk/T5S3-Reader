@@ -126,12 +126,12 @@ def observe(port, seconds):
 
 def validate(lines):
     require(any("mac=" + MAC + " " in x for x in lines), "CAM boot MAC absent")
+    require(not any("result=failed" in x or "Guru Meditation" in x or "Backtrace:" in x for x in lines),
+            "CAM runtime failure")
     require(sum("profile=cam-offline" in x for x in lines) == 1, "CAM unexpected reboot")
     require(sum("RUNTIME BOOT state=Running" in x for x in lines) == 1, "CAM boot not Running")
     require(any("RUNTIME APP default returned artifact=camera_utility.elf result=0" in x for x in lines),
             "CAM utility failed or did not return")
-    require(not any("result=failed" in x or "Guru Meditation" in x or "Backtrace:" in x for x in lines),
-            "CAM runtime failure")
     saved = [re.fullmatch(r"CAMERA_APP saved=/sd/camera-utility-\d{4}\.jpg bytes=(\d+)", x)
              for x in lines]
     sizes = [int(m[1]) for m in saved if m]
@@ -206,6 +206,9 @@ def main():
                     result["candidate_readback_equal"] = True
                     esp.hard_reset()
                     lines = observe(port, 180)
+                    # Only short, whitelisted runtime diagnostics; never raw
+                    # serial bytes or captured image contents.
+                    result["filtered_lines"] = lines
                     result.update(validate(lines))
                     result["result"] = "pass"
                 finally:

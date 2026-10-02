@@ -33,23 +33,11 @@ tests do not execute on the Mac until separately reviewed and installed.
 ## Candidate and physical transaction
 
 The cloud build uses PlatformIO 6.1.19 and the CAM port's declared platform.
-It requires CAM source plus the U1 package runtime in the PR checkout. This
-workflow will fail until those currently separate sources are integrated on
-the PR under review; it does not substitute a stale prebuilt firmware image.
-The first PR #347 run failed in `Verify CAM build inputs`: current master lacks
-`platformio.cam-runtime.ini`, `src/runtime/packages/PackageExecutableAdmission.cpp`,
-`Apps/camera_utility.c`, and `test/run_cam_headless_test.sh`. PR #96 supplies
-the U1 package runtime and is still open; PR #344 supplies the CAM port/app
-and is still draft. The shortest source path is for the owner to merge #96,
-then integrate/merge #344 against that base, then refresh this same CI PR
-against master and let its cloud build run. For an earlier exact-SHA pilot,
-the owner can instead integrate both source PRs into this same draft #347
-branch, resolving conflicts there. Its new actual PR head would contain U1,
-CAM and CI sources, so the workflow can build and label that exact SHA. This
-temporarily expands #347's review scope substantially and duplicates open PR
-work; do it only as an intentional integrated pilot, then reconcile the PR
-history after the source PRs merge. A detached local merge or prebuilt image
-cannot validate the exact-PR-SHA flow.
+PR #347 now includes merge commits from U1 PR #96 and CAM PR #344, plus the
+current master baseline. Thus its exact PR head contains the firmware, CAM
+app, host tests and this controller. Those source PRs remain open; Reader
+maintainers will reconcile merge order. A detached local merge or prebuilt
+image cannot validate the exact-PR-SHA flow.
 The artifact contains only `firmware.bin` and its manifest. The SHA in the
 manifest is the checked-out PR head, not GitHub's synthetic PR merge commit.
 
@@ -57,22 +45,26 @@ The device suite uses the proven `camera-app-flash-2` boot/capture assertions:
 one camera utility output, bounded JPEG byte count, app return zero and steady
 heartbeats. It requires CAM USB VID:PID 1a86:7523 at a *privately mapped*
 current location and serial port, MAC `28:84:85:4b:57:98`, 16 MiB flash, the known
-partition layout and the installed baseline firmware SHA-256
+two-slot OTA partition layout (app0 at `0x10000`, app1 at `0x310000`) and the
+installed baseline firmware SHA-256
 `e208d9baafc1f8bd9d18eb4b659648e082b44381978d178cc8a44be189515e6d`.
 It shares the existing `.device-locks` keys with earlier CAM work. It backs up
-the prewrite app range to a private evidence directory, flashes and reads back
+the prewrite app0 range to a private evidence directory, flashes and reads back
 the exact candidate, runs the bounded suite, then reconnects and restores the
-baseline bytes with readback in `finally`. Failure to restore is a failure;
+baseline bytes with readback in `finally`. Partition table, NVS and OTA
+metadata are hash-checked across the transaction. The fixture reuses a
+verified, installed `camera_utility` 0.1.0 package when present; a changed
+same-version archive is never used to replace an installed package. Failure to restore is a failure;
 the local backup must be kept for manual recovery. There is no relay or hub
 power action. USB disconnect, missing board, unexpected firmware or lock
 contention all fail before flash.
 
-The prior `2-3.4` / `/dev/cu.usbserial-2340` mapping is stale after USB
-reconfiguration. CH340 USB descriptors do not expose the chip MAC. Before
-activation, physically map the SD CAM cable and create a local mode-0600 JSON
-file such as `{"port":"/dev/cu.usbserial-2310","location":"2-3.1","mac":"28:84:85:4b:57:98"}`
-**only if that mapping is proven**. This example is syntax, not a claim that
-the current port belongs to the SD CAM. The controller rejects a symlink,
+The prior `2-3.4` / `/dev/cu.usbserial-2340` mapping became stale after USB
+reconfiguration. Physical unplug/replug comparison mapped this CAM to
+`/dev/cu.usbserial-2330` at `2-3.3`, and a locked read-only preflight verified
+its chip MAC and installed baseline. CH340 USB descriptors do not expose the
+chip MAC, so a future cabling change requires renewed physical mapping. The
+controller rejects a symlink,
 world/group-readable binding, wrong MAC and unexpected port form. The device
 suite verifies chip MAC and installed baseline before writing; entering an
 incorrect USB-UART port can still reset that other board during chip ID, so
@@ -81,8 +73,9 @@ physical mapping is a prerequisite.
 ## Activation boundary
 
 This PR stages source. The owner approved a persistent credential and timer;
-the Mac timer is installed but disabled and unloaded pending the credential,
-source and physical CAM gates. No runner, repository security setting or
+the Mac timer is installed but disabled and unloaded pending a successful
+end-to-end CAM pilot. The credential, source and physical CAM preflights have
+passed. No runner, repository security setting or
 required check has been configured. The controller files are pinned at an
 exact trusted commit. Activation uses these operations:
 
@@ -96,6 +89,8 @@ exact trusted commit. Activation uses these operations:
    Store it privately in the Mac login Keychain as generic-password service
    `riscrte-cam-ci`, account `michaelrolphone-cmyk` using secure local entry.
    Never place it in a shell command argument, chat, repo, plist or log.
+   The credential-only read and commit-status probe has passed; it is separate
+   from the hardware result.
 2. Install a pinned copy of the two trusted Python files from that reviewed
    trusted commit into an isolated local directory with a private Python
    environment (`esptool==4.5.1`, `pyserial==3.5`). The controller and device

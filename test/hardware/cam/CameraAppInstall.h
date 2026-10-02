@@ -19,28 +19,26 @@ inline bool installCameraAppExperiment(){
   constexpr P::PackageRuntimePolicy policy{"xtensa-esp32s3",2,8u*1024u*1024u,16u*1024u*1024u};
   constexpr const char* id="camera_utility";
   constexpr const char* path="/Inbox/camera-app-1/app.rte.zip";
-  if(!Storage.begin() || native_app_register_sd_vfs()!=ESP_OK)return false;
-  bool good=Storage.mkdir("/Inbox/camera-app-1",true);
+  const bool storageReady=Storage.begin();
+  const bool vfsReady=storageReady && native_app_register_sd_vfs()==ESP_OK;
+  if(!vfsReady){LOG_ERR("APP","prepare storage=%u vfs=%u",unsigned(storageReady),unsigned(vfsReady));return false;}
+  bool good=true;
   P::OrdinaryTransactionPaths transaction{};
   if(good)good=P::ordinaryTransactionPaths(P::Kind::Application,id,transaction);
-  bool identical=false;
+  bool installedValid=false;
   if(good && !Storage.exists(transaction.backup) && !Storage.exists(transaction.removing)){
-    auto installed=Storage.open("/Apps/camera_utility/.package.json",O_RDONLY);
-    identical=bool(installed) && installed.fileSize64()==sizeof(camAppManifest);
-    uint8_t bytes[sizeof(camAppManifest)]{};
-    if(identical)identical=installed.read(bytes,sizeof(bytes))==int(sizeof(bytes)) &&
-      !memcmp(bytes,camAppManifest,sizeof(bytes));
-    if(installed)identical=installed.close()&&identical;
-  }
-  if(good && identical){
     P::Identity observed{};
-    good=P::verifyManagedOrdinarySdDirectory("/Apps/camera_utility",P::Kind::Application,id,
-      policy,P::installedCapabilityVersion,observed) &&
+    installedValid=P::verifyManagedOrdinarySdDirectory("/Apps/camera_utility",
+      P::Kind::Application,id,policy,P::installedCapabilityVersion,observed) &&
       !strcmp(observed.version,"0.1.0") && !observed.legacyVersion;
-    LOG_INF("APP","reuse id=%s verified=%u",id,unsigned(good));
+  }
+  if(good && installedValid){
+    LOG_INF("APP","reuse id=%s verified=1",id);
   } else if(good){
+    LOG_INF("APP","reuse id=%s verified=0",id);
+    good=Storage.mkdir("/Inbox/camera-app-1",true);
     const size_t length=camAppEnd-camAppStart;
-    good=length>0 && length<=64*1024;
+    good=good && length>0 && length<=64*1024;
     const bool exists=Storage.exists(path);
     auto file=good?Storage.open(path,exists?O_RDONLY:O_WRONLY|O_CREAT|O_EXCL):HalFile{};
     good=good && bool(file) && (!exists || file.fileSize64()==length);
@@ -53,6 +51,7 @@ inline bool installCameraAppExperiment(){
       at+=n;delay(1);
     }
     if(file)good=file.close()&&good;
+    if(!good)LOG_ERR("APP","result=failed stage=inbox-archive");
     if(good){
       P::Identity expected{};
       good=P::makeIdentity(P::Kind::Application,id,"0.1.0","camera_utility.elf",false,&expected);

@@ -46,6 +46,12 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             device.partition(bytes(table), 541056)
 
+    def test_runtime_install_failure_surfaces_before_boot_state(self):
+        lines = ["RUNTIME BOOT mac=28:84:85:4b:57:98 app=0x10000",
+                 "RUNTIME APP result=failed stage=install"]
+        with self.assertRaisesRegex(RuntimeError, "CAM runtime failure"):
+            device.validate(lines)
+
     def test_https_uses_verified_system_ca_context(self):
         gh = controller.GitHub("test-only-not-a-credential")
         self.assertTrue(gh.ssl_context.check_hostname)
