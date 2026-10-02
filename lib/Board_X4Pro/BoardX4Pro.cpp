@@ -7,7 +7,7 @@ const BatteryProfile kProfile{};
 }
 const char* id() { return "xteink-x4-pro"; }
 const char* displayName() { return "Xteink X4 Pro"; }
-const char* firmwareMarker() { return "x4pro"; }
+const char* firmwareMarker() { return "RISCRTE_BOARD_ID:xteink-x4-pro"; }
 const BoardCapabilities& capabilities() { return kCaps; }
 void begin() {}
 void beginI2C() {}

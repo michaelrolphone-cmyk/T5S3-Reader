@@ -427,12 +427,12 @@ void setup() {
   }
   RuntimeNetwork::enablePsramTlsAllocations();
 
-  HalSystem::begin();
 #ifdef BOARD_XTEINK_X4_PRO
-  // No desk-clock resume, Wire, SPI card, expander, charger, i80 panel, or HomeActivity.
+  // Desk-clock resume is not used on this target.
   x4DiagnosticSetup();
   return;
 #endif
+  HalSystem::begin();
   // Timer wakes never reach this point. A true value means the user explicitly
   // left retained desk-clock deep sleep and normal startup should resume
   // content/Home without replaying the cold-boot splash.

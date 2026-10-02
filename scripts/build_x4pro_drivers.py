@@ -25,7 +25,7 @@ def build_one(name):
     elf = output / "driver.elf"
     subprocess.run([
         CC, "-std=c11", "-Os", "-fPIC", "-mtext-section-literals", "-mlongcalls",
-        "-fvisibility=hidden", "-nostdlib", "-nostartfiles", "-shared",
+        "-fvisibility=hidden", "-fno-builtin", "-nostdlib", "-nostartfiles", "-shared",
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
         "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL",
         str(source / "driver.c"), "-lgcc", "-o", str(elf),

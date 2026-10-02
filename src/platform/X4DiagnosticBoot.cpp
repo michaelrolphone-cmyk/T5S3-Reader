@@ -6,6 +6,7 @@
 #include "RiscPlatformClockV1.h"
 #include "x4pro_embedded.h"
 
+#include <Board.h>
 #include <Arduino.h>
 #include <Logging.h>
 #include <cstring>
@@ -46,14 +47,14 @@ void pixel(int x, int y, bool black) {
     if (x < 0 || y < 0 || x >= 800 || y >= 480) return;
     uint8_t &byte = surface[(size_t)y * 100u + (size_t)x / 8u];
     uint8_t mask = (uint8_t)(0x80u >> (x & 7));
-    if (black) byte &= (uint8_t)~mask;
-    else byte |= mask;
+    if (black) byte |= mask;
+    else byte &= (uint8_t)~mask;
 }
 void marker(int x, int y) {
     for (int i = 0; i < 24; ++i) { pixel(x + i, y, true); pixel(x, y + i, true); }
 }
 void paint(uint32_t edge) {
-    memset(surface, 0xFF, sizeof(surface));
+    memset(surface, 0x00, sizeof(surface));
     for (int i = 0; i < 800; ++i) { pixel(i, 0, true); pixel(i, 479, true); }
     for (int i = 0; i < 480; ++i) { pixel(0, i, true); pixel(799, i, true); }
     marker(8, 8);
@@ -72,7 +73,8 @@ bool present() {
         LOG_ERR("X4", "acquire failed");
         return false;
     }
-    if (out.width != 800 || out.height != 480 || out.stride_bytes != 100 || !out.pixels) {
+    if (out.width != 800 || out.height != 480 || out.stride_bytes != 100 ||
+        out.size_bytes != 48000 || out.pixel_format != RISC_DISPLAY_FORMAT_MONO1 || !out.pixels) {
         LOG_ERR("X4", "surface geometry rejected");
         display_api->release(display_api->context, out.frame);
         return false;
@@ -99,7 +101,7 @@ void x4DiagnosticSetup() {
     Serial.begin(115200);
     const unsigned long start = millis();
     while (!Serial && millis() - start < 200) delay(10);
-    LOG_INF("X4", "diagnostic boot board=xteink-x4-pro flash=16MB app0=0x10000");
+    LOG_INF("X4", "diagnostic boot %s flash=16MB app0=0x10000", Board::firmwareMarker());
     const x4_embedded_provider *clock = x4_embedded_find("platform-clock-v1");
     const x4_embedded_provider *panel = x4_embedded_find("x4pro-panel");
     const x4_embedded_provider *buttons = x4_embedded_find("x4pro-buttons");

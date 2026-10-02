@@ -9,7 +9,6 @@
 #include "x4pro_pins.h"
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
 #define FRAME_BYTES ((X4PRO_PANEL_WIDTH / 8u) * X4PRO_PANEL_HEIGHT)
 static const risc_platform_clock_api_v1 *clock_api;
@@ -72,11 +71,15 @@ static void prepare_pins(void) {
     x4pro_pin_output(X4PRO_PIN_EPD_DC, false);
     pins_ready = true;
 }
+static const uint8_t x_window[] = {0x00, 0x00, 0x1F, 0x03};
+static const uint8_t y_window[] = {0xDF, 0x01, 0x00, 0x00};
+static void set_cursor(void) {
+    command(0x4E); data1(0x00); data1(0x00);
+    command(0x4F); data1(0xDF); data1(0x01);
+}
 static bool init_panel(void) {
     static const uint8_t booster[] = {0xAE, 0xC7, 0xC3, 0xC0, 0x80};
     static const uint8_t gate[] = {0xDF, 0x01, 0x02};
-    static const uint8_t x_window[] = {0x00, 0x00, 0x63, 0x00};
-    static const uint8_t y_window[] = {0x00, 0x00, 0xDF, 0x01};
     prepare_pins();
     x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
     sleep_ms(10);
@@ -98,17 +101,15 @@ static bool init_panel(void) {
     for (size_t i = 0; i < sizeof(x_window); ++i) data1(x_window[i]);
     command(0x45);
     for (size_t i = 0; i < sizeof(y_window); ++i) data1(y_window[i]);
-    command(0x4E); data1(0x00); data1(0x00);
-    command(0x4F); data1(0x00); data1(0x00);
+    set_cursor();
     return true;
 }
-static bool present_frame(void) {
-    command(0x4E); data1(0x00); data1(0x00);
-    command(0x4F); data1(0x00); data1(0x00);
+static bool transfer_frame(void) {
+    set_cursor();
     command(0x24);
     x4pro_pin_output(X4PRO_PIN_EPD_DC, true);
     x4pro_pin_output(X4PRO_PIN_EPD_CS, false);
-    for (size_t i = 0; i < FRAME_BYTES; ++i) spi_byte(frame[i]);
+    for (size_t i = 0; i < FRAME_BYTES; ++i) spi_byte((uint8_t)~frame[i]);
     x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
     command(0x21); data1(0x00);
     command(0x22); data1(0xF7); command(0x20);
@@ -153,21 +154,23 @@ static bool submit(void *context, risc_display_frame_v1 frame_id, const risc_dis
     (void)context; (void)damage; (void)count; (void)options;
     if (!started || !held || frame_id != frame_serial) return false;
     held = false;
-    present_done = present_frame();
     if (++token_serial == 0) ++token_serial;
     pending_token = token_serial;
+    present_done = false;
     if (token_out) *token_out = pending_token;
-    return present_done;
+    return true;
 }
 static bool present_status(void *context, risc_display_present_token_v1 token, risc_display_present_status_v1 *out) {
     (void)context;
     if (!out || token != pending_token) return false;
-    out->state = present_done ? RISC_DISPLAY_PRESENT_COMPLETE : RISC_DISPLAY_PRESENT_FAILED;
+    out->state = present_done ? RISC_DISPLAY_PRESENT_COMPLETE : RISC_DISPLAY_PRESENT_QUEUED;
     return true;
 }
 static bool wait_present(void *context, risc_display_present_token_v1 token, uint32_t timeout_ms,
                          risc_display_present_status_v1 *out) {
     (void)timeout_ms;
+    if (token != pending_token) return false;
+    if (!present_done) present_done = transfer_frame();
     return present_status(context, token, out);
 }
 static bool set_brightness(void *context, uint16_t level, uint16_t maximum) {
@@ -184,7 +187,7 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
         if (equal(dependencies[i].capability_id, "platform.clock") && dependencies[i].api_version == 1)
             clock_api = dependencies[i].api;
     if (!clock_api) { fail("platform.clock missing"); return false; }
-    memset(frame, 0xFF, sizeof(frame));
+    for (size_t i = 0; i < sizeof(frame); ++i) frame[i] = 0;
     started = init_panel();
     return started;
 }

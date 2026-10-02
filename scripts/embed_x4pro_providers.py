@@ -2,27 +2,37 @@
 """Embed the built X4 provider ELFs for SD-independent first boot."""
 import hashlib
 import json
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src/platform/x4pro_embedded.c"
-PACKAGES = [
-    ("platform-clock-v1", ["clock_gettime", "usleep"]),
-    ("x4pro-panel", []),
-    ("x4pro-buttons", []),
-    ("x4pro-frontlight", []),
-]
+PACKAGES = ["platform-clock-v1", "x4pro-panel", "x4pro-buttons", "x4pro-frontlight"]
+
+def imports_for(elf):
+    readelf = os.environ.get("XTENSA_READELF", "xtensa-esp32s3-elf-readelf")
+    text = subprocess.check_output([readelf, "-sW", str(elf)], text=True)
+    names = []
+    for line in text.splitlines():
+        if "UND" not in line:
+            continue
+        name = line.split()[-1]
+        if name and name != "t5_driver_get" and name not in names:
+            names.append(name)
+    return names
 
 def main():
     parts = ['#include "x4pro_embedded.h"\n']
     providers = []
-    for package, imports in PACKAGES:
+    for package in PACKAGES:
         directory = ROOT / "dist/experimental" / package
         manifest = json.loads((directory / "manifest.json").read_text())
         payload = (directory / "driver.elf").read_bytes()
         digest = hashlib.sha256(payload).hexdigest()
         if manifest["sha256"] != digest:
             raise SystemExit(f"{package} hash mismatch")
+        imports = imports_for(directory / "driver.elf")
         symbol = package.replace("-", "_")
         parts.append(f"static const uint8_t {symbol}_elf[] = {{")
         parts.append(",".join(str(b) for b in payload))

@@ -5,7 +5,8 @@
 #include "x4pro_pins.h"
 #include <stddef.h>
 
-static uint32_t previous;
+static uint32_t previous, pending;
+static uint8_t stable_count;
 static bool started;
 static uint32_t sample(void) {
     uint32_t buttons = 0;
@@ -17,11 +18,18 @@ static uint32_t sample(void) {
 static bool poll(void *context, risc_input_navigation_frame_v1 *out) {
     (void)context;
     if (!started || !out) return false;
-    uint32_t buttons = sample();
-    out->buttons = buttons;
-    out->pressed = buttons & ~previous;
-    out->released = previous & ~buttons;
-    previous = buttons;
+    uint32_t raw = sample();
+    if (raw != pending) { pending = raw; stable_count = 0; }
+    else if (stable_count < 3u) ++stable_count;
+    uint32_t edges = 0, released = 0;
+    if (stable_count >= 3u && pending != previous) {
+        edges = pending & ~previous;
+        released = previous & ~pending;
+        previous = pending;
+    }
+    out->buttons = previous;
+    out->pressed = edges;
+    out->released = released;
     return true;
 }
 static bool foreground(void *context, const risc_input_foreground_v1 *claims, size_t count) {

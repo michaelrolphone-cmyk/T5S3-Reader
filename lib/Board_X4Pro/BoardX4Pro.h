@@ -36,12 +36,58 @@ struct BatteryProfile {
   uint16_t systemMinVoltageMv = 0;
   int16_t currentThresholdMa = 0;
 };
-enum class BatteryChargeStatus : uint8_t { NotCharging = 0, Unknown = 0xFF };
-enum class BatteryGaugeState : uint8_t { Unknown = 0xFF };
+enum class BatteryChargeStatus : uint8_t {
+  NotCharging = 0,
+  Precharge = 1,
+  FastCharge = 2,
+  Done = 3,
+  Unknown = 0xFF,
+};
+enum class BatteryGaugeState : uint8_t {
+  Sleep = 0,
+  Full = 1,
+  Charge = 2,
+  Discharge = 3,
+  Relax = 4,
+  Unknown = 0xFF,
+};
 struct BatteryState {
   bool chargerReady = false;
   bool gaugeReady = false;
+  bool chargerReadOk = false;
+  bool gaugeReadOk = false;
+  bool vbusConnected = false;
+  bool chargeEnabled = false;
   bool charging = false;
+  bool chargeDone = false;
+  bool gaugeBatteryFullFlag = false;
+  bool gaugeGaugingFullFlag = false;
+  bool gaugeTaperFlag = false;
+  bool gaugeChargeInhibit = false;
+  uint8_t chargerVbusStatus = 0;
+  BatteryChargeStatus chargerStatus = BatteryChargeStatus::Unknown;
+  BatteryGaugeState gaugeState = BatteryGaugeState::Unknown;
+  uint16_t inputLimitMa = 0;
+  uint16_t chargeCurrentMa = 0;
+  uint16_t prechargeCurrentMa = 0;
+  uint16_t terminationCurrentMa = 0;
+  uint16_t chargerAdcCurrentMa = 0;
+  uint16_t chargeVoltageMv = 0;
+  uint16_t systemVoltageMv = 0;
+  uint16_t batteryVoltageMv = 0;
+  uint16_t vbusVoltageMv = 0;
+  uint16_t gaugeVoltageMv = 0;
+  uint16_t gaugeChargeVoltageMv = 0;
+  uint16_t gaugeTaperCurrentMa = 0;
+  uint16_t socPercent = 0;
+  uint16_t sohPercent = 0;
+  uint16_t fullCapacityMah = 0;
+  uint16_t remainingCapacityMah = 0;
+  uint16_t temperatureDk = 0;
+  uint16_t batteryStatusRaw = 0;
+  uint16_t gaugingStatusRaw = 0;
+  int16_t currentMa = 0;
+  int16_t averageCurrentMa = 0;
 };
 const BatteryProfile& batteryProfile();
 bool beginBatteryManagement();
