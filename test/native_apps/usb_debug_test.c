@@ -13,6 +13,7 @@ static uint8_t last_claim_interface;
 static unsigned release_count;
 static bool fail_device_descriptor;
 static bool missing_serial;
+static bool fail_next_write;
 static uint8_t current_configuration_value = 1;
 
 static const uint8_t device_descriptor[] = {
@@ -131,6 +132,10 @@ static bool mock_write(const char *path, const void *data, size_t size) {
     assert(path && data && size);
     snprintf(saved_path, sizeof(saved_path), "%s", path);
     saved_size = size;
+    if (fail_next_write) {
+        fail_next_write = false;
+        return false;
+    }
     return true;
 }
 
@@ -218,9 +223,12 @@ int main(void) {
     assert(no_serial_a.serial[0] == '\0' && no_serial_b.serial[0] == '\0');
     assert(strcmp(no_serial_a.identifier, no_serial_b.identifier) != 0);
     assert(build_report(&no_serial_a));
-    assert(save_report(&no_serial_a));
+    fail_next_write = true;
+    assert(!save_report(&no_serial_a));
     char first_path[sizeof(saved_path)];
     snprintf(first_path, sizeof(first_path), "%s", saved_path);
+    assert(strcmp(first_path, "/sd/usb-debug/usb_1234_5678_1122334455667788.txt") == 0);
+    assert(save_report(&no_serial_a));
     assert(strcmp(first_path, "/sd/usb-debug/usb_1234_5678_1122334455667788.txt") == 0);
     assert(build_report(&no_serial_b));
     assert(save_report(&no_serial_b));
