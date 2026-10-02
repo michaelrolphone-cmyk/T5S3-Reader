@@ -1,3 +1,11 @@
+## Saved-network fallback repair resumed — 2026-10-02 08:01 UTC
+
+- Owner `saved_network_fallback_refresh_20261002_0801`; canonical report #70; active phase: fresh-master integration and exact-head revalidation. Claim recorded against ledger head `fa170c7051ab375c0016924d821032ef82ea7d73` before remote code writes.
+- Resume existing [PR #354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/354), branch `fix/saved-network-fallback`, old exact head `0e464a2a9558303d845f33d434e4bf6db262cd7d`, base `ca66db298c2e735f45e5029083a9bfbd7b6740bd`; currently open/ready but nonmergeable against current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. Prior claim `automatic_saved_network_fallback` was released after CI on the old head; this run has freshly claimed the integration refresh.
+- Current master revalidation: `ensureSavedConnection()` still tries only last-connected or first saved profile, then waits its total timeout. Native network requests, HTTP downloads and OTA bootstrap use this code path. Current master and former PR base have identical blobs for `SavedNetworkConnection.cpp/.h` and `NativeOtaBridge.cpp`; PR351 changes other OTA files/functions and not this helper or bridge. PR347 remains untouched.
+- Firmware master is1.3.61; released latest tag checked separately. Preserve reservations PR3551.3.62 and blocked PR3471.3.63; this branch's next unique candidate is1.3.64. No app/driver package increment. No merge/release/catalog/deployment/hardware/device/cross-repository work.
+- Preserve the prior local staging/worktree. Rebuild an integration commit with current master as first parent and existing repair head as second parent; rerun production failure/fallback/timeout/retry tests, OTA bridge contract, and exact-head CI before marking PR ready.
+
 ## File Browser repair closeout — 2026-10-02 07:20 UTC
 
 - User explicitly removed the two-pending-batch limit. This supersedes the temporary local checkpoint below; PR publication proceeded.
