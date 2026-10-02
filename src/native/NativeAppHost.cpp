@@ -47,6 +47,9 @@
 #include "MappedInputManager.h"
 #include "NativeSettingsBridge.h"
 #include "NativeSystemUiBridge.h"
+#include "CrossPointSettings.h"
+#include "activities/GlobalMenuActivity.h"
+#include "NativeHardwareTakeover.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
@@ -66,6 +69,7 @@ constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr size_t kMaxCatalogAssets = 128;
 constexpr size_t kMaxManifestBytes = 8 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
+constexpr unsigned long kNativeHomeDoubleClickWindowMs = 400;
 
 struct ReleaseCatalogAsset {
   std::string name;
@@ -114,6 +118,8 @@ struct Session {
   bool inputStarted = false;
   bool exiting = false;
   bool presenting = false;
+  bool pendingHomeSingle = false;
+  unsigned long lastHomeEventMs = 0;
 };
 Session* session = nullptr;
 bool returned = false;
@@ -309,11 +315,63 @@ bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   MappedInputManager::TouchPoint point{};
   out->tapped = s->input.wasTouchTapped(point, s->renderer);
   if (out->tapped) { out->touch_x = point.x; out->touch_y = point.y; }
-  if ((s->backExitsApp && s->input.isPressed(Button::Back)) || s->input.isPressed(Button::Power) ||
-      s->input.wasTouchHomeButtonPressed()) {
+
+  const bool powerPressed = s->input.isPressed(Button::Power);
+  if ((s->backExitsApp && s->input.isPressed(Button::Back)) || powerPressed) {
     s->exiting = true;
   }
-  if (s->input.isPressed(Button::Power) || s->input.wasTouchHomeButtonPressed()) homeRequested = true;
+  if (powerPressed) homeRequested = true;
+
+  unsigned long homeEventMs = 0;
+  // Drain captured presses before applying the single-click deadline. A busy
+  // ELF may deliver both taps only after the 400 ms window has elapsed.
+  // The touch queue holds 16 events, plus at most one navigation Home per update.
+  for (unsigned i = 0; i < 17 && !s->exiting &&
+                       s->input.takeTouchHomeButtonPress(homeEventMs); ++i) {
+    const bool allowOverlay =
+        SETTINGS.doubleClickHomeMenu && !nativeHardwareTakeoverDisplayActive();
+    if (!allowOverlay) {
+      s->pendingHomeSingle = false;
+      s->exiting = true;
+      homeRequested = true;
+    } else if (s->pendingHomeSingle) {
+      const unsigned long elapsed =
+          static_cast<unsigned long>(homeEventMs - s->lastHomeEventMs);
+      s->pendingHomeSingle = false;
+      if (elapsed <= kNativeHomeDoubleClickWindowMs) {
+        const auto modal = GlobalMenuActivity::runFirmwareModal(s->renderer, s->input);
+        *out = {};
+        if (modal == GlobalMenuActivity::ModalResult::ShutdownRequested) {
+          s->exiting = true;
+          // Unwind the synchronous Springboard/app loop so main can service
+          // requestShutdown(), instead of launching another ELF first.
+          homeRequested = true;
+        } else if (modal == GlobalMenuActivity::ModalResult::Unavailable) {
+          // A failed snapshot must not swallow the user's Home request.
+          s->exiting = true;
+          homeRequested = true;
+        }
+        out->exit_requested = s->exiting;
+        return true;
+      }
+      // The previous press was already a completed single-click by the time
+      // this later event occurred. Preserve existing single-home semantics.
+      s->exiting = true;
+      homeRequested = true;
+    } else {
+      s->pendingHomeSingle = true;
+      s->lastHomeEventMs = homeEventMs;
+    }
+  }
+
+  if (s->pendingHomeSingle &&
+      static_cast<unsigned long>(millis() - s->lastHomeEventMs) >
+          kNativeHomeDoubleClickWindowMs) {
+    s->pendingHomeSingle = false;
+    s->exiting = true;
+    homeRequested = true;
+  }
+
   out->exit_requested = s->exiting;
   return true;
 }

@@ -45,6 +45,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  global-home-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify captured Home timing and paused ELF overlay behavior
+        run: |
+          python3 test/native_apps/global_home_overlay_contract_test.py
+          python3 test/native_apps/global_home_overlay_behavior_test.py
+          python3 test/hal/touch_interrupt_capture_test.py
+          python3 test/hal/touch_capture_behavior_test.py
+
   package-source-versions:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
