@@ -17,12 +17,12 @@
 
 ## Active saved-network fallback repair — canonical bug #70
 
-- Owner claim `automatic_saved_network_fallback`; implementation branch planned `fix/saved-network-fallback`, current master baseline `ca66db298c2e735f45e5029083a9bfbd7b6740bd` after independently owned Hollow PR352 merge. Master firmware1.3.57; published release-index1.3.55.
-- Fresh source inspection confirms `RuntimeNetwork::ensureSavedConnection()` tries only the last-connected credential (or first saved profile) and returns false after its one timeout. OTA bridge and native network bridge both consume this helper, so the failure affects automatic OTA and native HTTP/network requests. Ordinary Wi-Fi picker remains user-directed and is out of scope.
-- Ownership check: open PR96 changed-file list has no saved-network helper overlap; PR351 touches OTA updater only, PR353 clock sync only. PR350 X4 and U1 remain owned elsewhere and untouched. PR352 is merged; no overlapping open fallback fix or active claim found.
-- Version reservations checked: master1.3.57, release-index1.3.55, PR3511.3.59, PR3531.3.58, U1 PR96 candidate1.3.56. Proposed firmware candidate1.3.60.
-- Next: fault/retry regression against production helper, preserving preferred-first/de-duplicated candidates and one total timeout; exact branch/PR and cloud CI. Claim remains active pending terminal verification. No master write/merge/release/catalog/device/architecture work.
-
+- Fresh run claim owner `network_fallback_20261002_0350`; durable bug claim `automatic_saved_network_fallback`; phase: implementation in progress. Exact current-master baseline `ca66db298c2e735f45e5029083a9bfbd7b6740bd` (firmware1.3.57). Canonical report #70 retains its original scan provenance.
+- PR351 and PR353 remain open, ready, exact-head CI green, and unmerged. PR332 remains the sole open draft ledger PR, now at its current ledger head; do not close it. PR96 remains active on its U1 branch. No overlapping open saved-network helper fix or active competing claim/branch work was found.
+- Current master `src/runtime/network/SavedNetworkConnection.cpp::ensureSavedConnection()` loads credentials, chooses only last-connected SSID or the first saved profile, performs one connection attempt within one timeout, and returns false on failure. The OTA and native HTTP/network callers share this helper. The observable failure is that a failing preferred stored network prevents trying a reachable alternate. Revalidation is software-path-only; no provider/board/device operation.
+- Preserved local production-source regression/WIP: `/Users/micahelbyrns/Documents/Codex/2026-10-01/task-3/saved-network-fallback-wip`. Remote `fix/saved-network-fallback` remains empty at current master; no PR exists. Work will reuse this branch and only these files; no broad scan.
+- Version check: master1.3.57; published release-index1.3.55; U1 PR96 candidate1.3.56; PR3531.3.58; PR3511.3.59; X4 PR3501.3.53; CAM hardware-CI PR3471.3.57. Firmware candidate1.3.60 is the next unused increment above current master and active higher reservations. Future coordination redesign remains deferred backlog only.
+- Next: integrate preferred-first de-duplicated fallback with one total timeout; verify failure/retry/cancel behavior using production helper tests, run applicable core/target builds without hardware work, publish exact-head CI and retain/update one draft PR. No master write, merge, release/catalog/dispatch/deployment/flash/device/cross-repository/architecture or hardware-owner work.
 ---
 
 ## Completed OTA version collision reconciliation — PR351
