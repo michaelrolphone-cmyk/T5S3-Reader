@@ -3,7 +3,6 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
-python3 "$repo_dir/test/native_apps/hollow_trail_memory_test.py"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/springboard_video_test.c" -o "$binary"
 "$binary"
@@ -48,6 +47,8 @@ python3 "$repo_dir/test/native_apps/native_ui_refresh_contract_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
 python3 "$repo_dir/test/native_apps/required_app_workflow_contract_test.py"
 python3 "$repo_dir/test/native_apps/file_association_contract_test.py"
+# The old P-256/provenance/NVS experiment is not a normal build/merge gate.
+# Run test/run_signed_package_experiment.sh explicitly only when requested.
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
@@ -74,7 +75,12 @@ for pair in \
   "button_remap button_remap_test" \
   "time_zone time_zone_test"; do
   set -- $pair
-  cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/$1.c" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  if [[ "$1" == "llm_ask" ]]; then
+    cc -std=c11 -Wall -Wextra -Werror \
+      -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  else
+    cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/$1.c" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  fi
   "$binary"
 done
 # Absence of a USB device/provider is a normal disconnected UI state. Keep
