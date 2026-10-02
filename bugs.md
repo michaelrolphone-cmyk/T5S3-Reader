@@ -272,9 +272,10 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Consolidation sources:** [automation/bug-scan-20260928-2354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/adbef888b66176c0dd8e859e91629a93c1ceda23/bugs.md); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 diff](https://docs.google.com/document/d/1Q0TY6FxGuO5mz5-eim6LjlhC5BL6u24Ibi5DKNFyUUs/edit?usp=drivesdk); [Drive: 2026-09-28 2354 automation-bug-scan-20260928-2354 instructions](https://docs.google.com/document/d/1tPJ5PE9mW3TkqebBAGNIijAyJCz0rCccHTRJ2e4Tr50/edit?usp=drivesdk)
 ### 30. USB Debug log filenames collide for distinct same-model devices that expose no serial number
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed / claimed on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; active repair PR #359.
 - **Sources:** [automation/bug-scan-20260927-0125](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0125/bugs.md)
 
+- **Current confirmation (2026-10-02):** Production source hash `76157ba88ca1851cd846cca49627e0aa535e6ff5` generates the same VID/PID-only identifier for both serialless same-model devices; `save_report()` derives its SD path from that identifier. The active optional `usb.host>=1` capability remains in USB Debug's installed manifest; controller tokens are generation-checked and change when a USB address is reused.
 - **Affected code:** `Apps/usb_debug.c`, `make_identifier()` and `save_report()`.
 - **Trigger / reproduction:** Attach two distinct USB devices with the same VID/PID and no USB serial string. Inspect each device and choose **Save Log**.
 - **Observed / logically demonstrated failure:** `make_identifier()` produces `usb_<VID>_<PID>_<serial>` only when a serial string is present; otherwise every device with that VID/PID receives exactly `usb_<VID>_<PID>`. `save_report()` then uses only that identifier in `/sd/usb-debug/<identifier>.txt`. Two simultaneously attached, physically distinct devices can therefore never receive distinct log paths: a later save targets the same file as the first, either replacing the earlier report under the storage implementation or making the second save fail if replacement is refused.
