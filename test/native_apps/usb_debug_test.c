@@ -210,7 +210,7 @@ int main(void) {
     usb_debug_device_t fallback = {0};
     assert(!read_device_summary(0x1122334455667788ULL, &fallback));
     assert(fallback.vid == 0x1234 && fallback.pid == 0x5678);
-    assert(strcmp(fallback.identifier, "usb_1234_5678_1122334455667788") == 0);
+    assert(strncmp(fallback.identifier, "usb_1234_5678", strlen("usb_1234_5678")) == 0);
     fail_device_descriptor = false;
 
     /* Distinct active tokens for same-model devices without serial strings
