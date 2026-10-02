@@ -30,7 +30,7 @@ int main(void) {
     assert(strstr(consent, "mappedInputManager.wasTouchTapped(touch, renderer)"));
     assert(strstr(consent, "const bool touchDeny ="));
     assert(strstr(consent, "const bool touchAllow ="));
-    assert(strstr(consent, "!gpio.hadTouchActivity(), touchDeny, touchAllow)"));
+    assert(strstr(consent, "!nativeTouchHadActivity(), touchDeny, touchAllow)"));
     assert(strstr(consent, "NativeConsentDecision::Allow"));
     assert(strstr(consent, "NativeConsentDecision::Deny"));
     assert(strstr(consent, "permission prompt approved by fresh on-screen Allow tap"));

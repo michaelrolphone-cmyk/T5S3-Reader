@@ -1,3 +1,8 @@
+#if defined(RISCRTE_PROFILE_HEADLESS)
+#include "runtime/boot/HeadlessRuntime.h"
+void setup() { RuntimeBoot::setup(); }
+void loop() { RuntimeBoot::loop(); }
+#else
 #include <Arduino.h>
 #include <Board.h>
 #include <Epub.h>
@@ -24,7 +29,13 @@
 #include "CrossPointState.h"
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
+#include "native/InstalledAppPath.h"
+#include "native/NativeStreamBridge.h"
+#include "runtime/boot/DefaultAppSelection.h"
 #include "native/NativeNavigationInput.h"
+#include "native/NativeTouchInput.h"
+#include "runtime/network/PsramTlsAllocator.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "MappedInputManager.h"
@@ -202,6 +213,30 @@ bool shouldSuppressDeepSleepForDebug() {
 #endif
 }
 
+bool suspendInputProvidersForSleep() {
+  // Touch and navigation share lower provider dependencies. Release the touch
+  // lease first so navigation can prove the entire graph quiescent before the
+  // board tears down SD/I2C/power for sleep.
+  if (!nativeTouchSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: touch provider has not quiesced");
+    (void)nativeTouchResume();
+    return false;
+  }
+  if (!nativeNavigationSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: navigation/provider graph has not quiesced");
+    nativeNavigationResume();
+    (void)nativeTouchResume();
+    return false;
+  }
+  return true;
+}
+
+void resumeInputProvidersAfterSleep() {
+  // Bootstrap/navigation first; touch can then join the already healthy graph.
+  nativeNavigationResume();
+  (void)nativeTouchResume();
+}
+
 // Enter deep sleep mode
 void enterDeepSleep() {
   const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
@@ -212,11 +247,7 @@ void enterDeepSleep() {
   }
 
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
-  if (!nativeNavigationSuspend()) {
-    LOG_ERR("INPUT", "Sleep refused: navigation provider has not quiesced");
-    nativeNavigationResume();
-    return;
-  }
+  if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -224,10 +255,10 @@ void enterDeepSleep() {
   Board::setBacklightLevel(0);
 
   if (deskClock) {
-    // SleepActivity has closed the reader and saved its position. Light sleep
-    // keeps the display/touch initialized and avoids a boot on every minute.
+    // SleepActivity has closed the reader and saved its position. The input
+    // provider graph stays quiesced while the retained clock owns sleep/wake.
     DeskClockSleep::run(renderer, gpio);
-    nativeNavigationResume();
+    resumeInputProvidersAfterSleep();
     Board::setBacklightLevel(SETTINGS.backlightLevel);
     renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
     if (SETTINGS.resumeReaderOnBoot && APP_STATE.lastSleepFromReader && !APP_STATE.openEpubPath.empty()) {
@@ -247,7 +278,7 @@ void enterDeepSleep() {
 
 void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
   HalPowerManager::Lock powerLock;
-  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
+  if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
   APP_STATE.saveToFile();
 
@@ -261,7 +292,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 
 void enterPowerOffKeepingScreen(const char* status) {
   (void)status;  // Status line intentionally not shown; the sleep screen setting is used instead.
-  if (!nativeNavigationSuspend()) { nativeNavigationResume(); return; }
+  if (!suspendInputProvidersForSleep()) return;
   {
     HalPowerManager::Lock powerLock;
     APP_STATE.lastSleepFromReader = activityManager.isReaderActivityInStack();
@@ -292,13 +323,31 @@ void enterPowerOffKeepingScreen(const char* status) {
 // power-off. Consumed at the top of loop() so the battery-cut runs in the main-loop
 // context rather than inside an activity's call stack.
 bool g_shutdownRequested = false;
+bool g_displayBootFailed = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
-void setupDisplayAndFonts() {
-  display.begin();
-  renderer.begin();
+bool setupDisplayAndFonts() {
+  // This runs before any display backend initialization. A bad width, stride,
+  // format or safe-area edit must be rejected before it can reconfigure the
+  // panel or disturb the retained e-paper image.
+  if (!renderer.preflightSurface()) {
+    LOG_ERR("MAIN", "Display metadata preflight failed; panel backend was not touched");
+    return false;
+  }
+
+  // Preserve the physical image while the already-validated backend starts.
+  display.begin(false);
+  if (!display.isReady()) {
+    LOG_ERR("MAIN", "Display backend initialization failed; retained panel image left untouched");
+    return false;
+  }
+  if (!renderer.begin()) {
+    LOG_ERR("MAIN", "Renderer initialization failed; showing emergency display code 0xD1");
+    (void)display.showEmergencyFailurePattern(0xD1);
+    return false;
+  }
   activityManager.begin();
-  LOG_DBG("MAIN", "Display initialized");
+  LOG_DBG("MAIN", "Display initialized and renderer surface validated");
 
   // Initialize font decompressor for compressed reader fonts
   if (!fontDecompressor.init()) {
@@ -325,8 +374,8 @@ void setupDisplayAndFonts() {
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
   renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
 
-  sdFontSystem.begin(renderer);
-  LOG_DBG("MAIN", "Fonts setup");
+  LOG_DBG("MAIN", "Built-in fonts setup");
+  return true;
 }
 
 void ensureSdFontLoaded() { sdFontSystem.ensureLoaded(renderer); }
@@ -348,6 +397,31 @@ bool shouldResumeReaderOnBoot() {
          !mappedInputManager.isPressed(MappedInputManager::Button::Back) && APP_STATE.readerActivityLoadCount == 0;
 }
 
+void logPlatformInputHealth() {
+  auto* snapshot = RuntimePackages::captureInstalledCapabilities();
+  if (!snapshot) {
+    LOG_ERR("INPUT", "Platform driver inventory unavailable; touch/controller capabilities cannot be verified");
+    return;
+  }
+  const uint32_t i2c = RuntimePackages::versionInInstalledSnapshot(snapshot, "i2c.bus");
+  const uint32_t clock = RuntimePackages::versionInInstalledSnapshot(snapshot, "platform.clock");
+  const uint32_t touch = RuntimePackages::versionInInstalledSnapshot(snapshot, "input.touch.raw");
+  const uint32_t navigation = RuntimePackages::versionInInstalledSnapshot(snapshot, "input.navigation");
+  RuntimePackages::releaseInstalledCapabilities(snapshot);
+  LOG_INF("INPUT", "Platform driver health: i2c.bus=%lu platform.clock=%lu touch=%lu navigation=%lu",
+          static_cast<unsigned long>(i2c), static_cast<unsigned long>(clock),
+          static_cast<unsigned long>(touch), static_cast<unsigned long>(navigation));
+  if (!i2c || !clock) {
+    LOG_ERR("INPUT",
+            "Foundational platform drivers incomplete: install i2c-esp32s3-v2 and platform-clock-v1; "
+            "touch and USB/controller providers may be unavailable");
+  } else {
+    if (!touch) LOG_ERR("INPUT", "Touch capability unavailable: install/repair gt911-touch");
+    if (SETTINGS.externalInputNavigation && !navigation)
+      LOG_ERR("INPUT", "Controller navigation capability unavailable: install/repair usb-ui-navigation dependency stack");
+  }
+}
+
 void setup() {
   t1 = millis();
 
@@ -358,6 +432,7 @@ void setup() {
   if (psramFound()) {
     heap_caps_malloc_extmem_enable(1024);
   }
+  RuntimeNetwork::enablePsramTlsAllocations();
 
   HalSystem::begin();
   // Timer wakes never reach this point. A true value means the user explicitly
@@ -378,13 +453,15 @@ void setup() {
 #endif
 
   LOG_INF("MAIN", "Hardware detect: %s", gpio.getDeviceName());
-  LOG_INF("MAIN", "Touch detect: %d", gpio.isTouchAvailable());
 
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
     LOG_ERR("MAIN", "SD card initialization failed");
-    setupDisplayAndFonts();
+    if (!setupDisplayAndFonts()) {
+      g_displayBootFailed = true;
+      return;
+    }
     activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
     return;
   }
@@ -407,8 +484,6 @@ void setup() {
     }
   }
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
-  KOREADER_STORE.loadFromFile();
-  OPDS_STORE.loadFromFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
@@ -457,18 +532,38 @@ void setup() {
   // First serial output only here to avoid timing inconsistencies for power button press duration verification
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
-  setupDisplayAndFonts();
+  const bool animateBoot = !recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake;
+  if (!setupDisplayAndFonts()) {
+    g_displayBootFailed = true;
+    return;
+  }
+  // Touch is an optional installed provider capability. Do not attempt to
+  // activate it during setup: input.navigation gets the first provider-graph
+  // opportunity from MappedInputManager::update(), so a missing touch package
+  // can never strand USB/controller navigation before Driver Manager is usable.
+  // nativeTouchTick() activates touch later in the normal input loop.
+  LOG_INF("MAIN", "Touch provider activation deferred to input loop");
   display.setFlipOutput(SETTINGS.flipUi != 0);
 
-  // Present before any activity or mapped-input update can activate installed
-  // ELF providers. Recovery and panic reports retain their direct boot paths.
-  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic() && !deskClockUserWake) {
+  // Start the independent animation before SD font discovery, state loading,
+  // provider admission and Home/reader preparation. Recovery bypasses it.
+  if (animateBoot) {
     RenderLock lock;
     StartupScreen::boot(renderer);
   }
 
+  sdFontSystem.begin(renderer);
+  KOREADER_STORE.loadFromFile();
+  OPDS_STORE.loadFromFile();
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
+  // Keep provider loading on the normal owner task. The video worker only
+  // submits pixels; it cannot contend with SD/module/renderer initialization.
+  if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) {
+    logPlatformInputHealth();
+    mappedInputManager.update();  // Navigation first, then optional touch.
+    LOG_INF("MAIN", "Startup services ready in %lu ms", static_cast<unsigned long>(millis() - t1));
+  }
   const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
   const auto prepareStartupRefresh = [](HalDisplay::RefreshMode refreshMode) {
     display.suppressInitialFullRefresh();
@@ -509,11 +604,44 @@ void setup() {
 }
 
 void loop() {
+  if (g_displayBootFailed) {
+    // Do not touch ActivityManager/renderer after failed display bootstrap.
+    // Leave the retained image or emergency failure pattern stable for diagnosis.
+    delay(250);
+    return;
+  }
+
+  // One normal app invocation per boot. A missing selector preserves the
+  // embedded paper UI; a damaged/unavailable app falls back without reboot or
+  // repeated hashing/launch attempts. The resolver verifies the installed
+  // package and sidecar before the existing native app host grants anything.
+  static bool defaultAppChecked = false;
+  if (!defaultAppChecked) {
+    defaultAppChecked = true;
+    char artifact[96]{};
+    const auto choice = RuntimeDefaultApp::read(artifact);
+    if (choice == RuntimeDefaultApp::Selection::Ready) {
+      std::string installed;
+      if (resolveInstalledAppPath(artifact, installed)) {
+        LOG_INF("APP", "default start artifact=%s", artifact);
+        const esp_err_t result = runNativeApp(installed.c_str(), renderer, mappedInputManager);
+        LOG_INF("APP", "default returned result=%d", static_cast<int>(result));
+      } else {
+        LOG_ERR("APP", "default unavailable artifact=%s", artifact);
+      }
+      activityManager.goHome();
+    } else if (choice == RuntimeDefaultApp::Selection::Invalid) {
+      LOG_ERR("APP", "default selector invalid; embedded GUI remains available");
+    }
+  }
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
 
   mappedInputManager.update();
+  // Generic installed-provider progress is independent of GUI/device polling.
+  // Foreground synchronous apps use the same owner-task hook in stream calls.
+  nativeProviderOwnerTick();
   // External power/connection changes allow a new bounded admission attempt.
   // No provider inventory scans on every frame after a failed/missing provider.
   if (gpio.wasUsbStateChanged()) nativeNavigationRetry();
@@ -554,7 +682,7 @@ void loop() {
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
-      nativeNavigationFrame().buttons || gpio.hadTouchActivity() || halTiltSensor.hadActivity() ||
+      nativeNavigationFrame().buttons || nativeTouchHadActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()
 #ifdef ENABLE_SERIAL_LOG
       || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)
@@ -706,3 +834,5 @@ void loop() {
     }
   }
 }
+
+#endif // RISCRTE_PROFILE_HEADLESS

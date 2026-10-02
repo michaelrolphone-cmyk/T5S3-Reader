@@ -71,7 +71,7 @@ void encodeUtf8(uint32_t cp, char utf8[5]) {
   }
 }
 
-bool drawGlyphBitmap(GfxRenderer& renderer, int x, int y, int cellSize, const EpdFontData* data,
+bool drawGlyphBitmap(const GfxRenderer& renderer, int x, int y, int cellSize, const EpdFontData* data,
                      const EpdGlyph* glyph, bool black) {
   if (!data || !glyph || glyph->width == 0 || glyph->height == 0 || glyph->dataLength == 0) return false;
   const uint8_t* bitmap = renderer.getGlyphBitmap(data, glyph);
@@ -106,7 +106,7 @@ bool drawGlyphBitmap(GfxRenderer& renderer, int x, int y, int cellSize, const Ep
   return true;
 }
 
-bool drawWithFamily(GfxRenderer& renderer, int x, int y, uint32_t cp, int size, bool regular, bool black) {
+bool drawWithFamily(const GfxRenderer& renderer, int x, int y, uint32_t cp, int size, bool regular, bool black) {
   if (!ensureFont(regular, size)) return false;
 
   Slot& slot = slots[regular ? 1 : 0];
@@ -133,7 +133,7 @@ bool drawWithFamily(GfxRenderer& renderer, int x, int y, uint32_t cp, int size, 
 }
 }  // namespace
 
-bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize, bool black) {
+bool draw(const GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize, bool black) {
   bool manifestRegular = false;
   uint32_t cp = 0;
   if (!t5_parse_icon(icon, &manifestRegular, &cp)) return false;
@@ -151,7 +151,7 @@ bool draw(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSi
   return false;
 }
 
-bool drawRegular(GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize, bool black) {
+bool drawRegular(const GfxRenderer& renderer, int x, int y, const char* icon, uint8_t pointSize, bool black) {
   bool ignoredManifestRegular = false;
   uint32_t cp = 0;
   if (!t5_parse_icon(icon, &ignoredManifestRegular, &cp)) return false;

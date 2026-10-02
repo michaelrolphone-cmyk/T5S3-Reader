@@ -5,12 +5,12 @@
 #include "CrossPointSettings.h"
 #include "GlobalMenuActivity.h"
 #include "OpdsServerStore.h"
+#include "components/StartupScreen.h"
 #include "native/NativeSerialPortBridge.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
 #include "home/CrashActivity.h"
-#include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
@@ -18,9 +18,10 @@
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/FullScreenMessageActivity.h"
+#include "util/InstalledAppActivity.h"
 
 namespace {
-constexpr HalDisplay::RefreshMode kUiPageTransitionRefreshMode = HalDisplay::HALF_REFRESH;
+constexpr DisplayPresentMode kUiPageTransitionRefreshMode = DisplayPresentMode::Quality;
 }  // namespace
 
 void ActivityManager::begin() {
@@ -40,7 +41,15 @@ void ActivityManager::renderTaskLoop() {
     RenderLock lock;
     if (currentActivity) {
       HalPowerManager::Lock powerLock;
+      // Readiness is the destination's first render after startup/onEnter.
+      // Keep the loading worker alive throughout Home or reader preparation.
+      if (currentActivity->name != "Boot" && !StartupScreen::finishBoot(renderer)) {
+        xTaskNotify(renderTaskHandle, 1, eIncrement);
+        delay(1);
+        continue;
+      }
       currentActivity->render(std::move(lock));
+      if (currentActivity->name != "Boot") StartupScreen::destinationReady();
     }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&waitingTaskMux);
@@ -58,7 +67,7 @@ void ActivityManager::loop() {
   // service immediately before this loop. Do not repeat provider/device work
   // before dispatching captured input.
   bool injectedTouchButtonTap = false;
-  if (currentActivity) {
+  if (currentActivity && !StartupScreen::isLoading()) {
     bool activityHandled = false;
     const bool globalMenuAllowed = currentActivity->supportsGlobalMenu();
 
@@ -148,7 +157,7 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
-        renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+        renderer.requestNextRefresh(DisplayPresentMode::Quality);
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
           auto handler = std::move(currentActivity->resultHandler);
@@ -176,10 +185,10 @@ void ActivityManager::loop() {
       const auto transitionAction = pendingAction;
       const auto replaceRefreshMode = pendingReplaceRefreshMode;
       pendingAction = PendingAction::None;
-      pendingReplaceRefreshMode = HalDisplay::FULL_REFRESH;
+      pendingReplaceRefreshMode = DisplayPresentMode::Clean;
       currentActivity = std::move(pendingActivity);
       renderer.requestNextRefresh(transitionAction == PendingAction::Replace ? replaceRefreshMode
-                                                                             : HalDisplay::HALF_REFRESH);
+                                                                             : DisplayPresentMode::Quality);
       lock.unlock();
       currentActivity->onEnter();
       continue;
@@ -202,11 +211,11 @@ void ActivityManager::exitActivity(const RenderLock& lock) {
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
-  replaceActivity(std::move(newActivity), HalDisplay::FULL_REFRESH);
+  replaceActivity(std::move(newActivity), DisplayPresentMode::Clean);
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity,
-                                      const HalDisplay::RefreshMode replaceRefreshMode) {
+                                      const DisplayPresentMode replaceRefreshMode) {
   pendingReplaceRefreshMode = replaceRefreshMode;
   if (currentActivity) {
     pendingActivity = std::move(newActivity);
@@ -225,9 +234,10 @@ void ActivityManager::goToSettings() {
   replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
 }
 
-void ActivityManager::goToFileBrowser(std::string path) {
-  replaceActivity(std::make_unique<FileBrowserActivity>(renderer, mappedInput, std::move(path)),
-                  kUiPageTransitionRefreshMode);
+void ActivityManager::goToInstalledApp(std::string artifact, std::string displayName) {
+  replaceActivity(std::make_unique<InstalledAppActivity>(
+      renderer, mappedInput, std::move(artifact), std::move(displayName)),
+      kUiPageTransitionRefreshMode);
 }
 
 void ActivityManager::goToRecentBooks() {
@@ -243,7 +253,7 @@ void ActivityManager::goToBrowser() {
   }
 }
 
-void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
+void ActivityManager::goToReader(std::string path, const DisplayPresentMode replaceRefreshMode) {
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
                   replaceRefreshMode);
 }

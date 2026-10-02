@@ -3,6 +3,13 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
+python3 "$repo_dir/test/native_apps/hollow_trail_memory_test.py"
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/springboard_video_test.c" -o "$binary"
+"$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/src" \
+  "$repo_dir/test/native_apps/springboard_composition_test.cpp" -o "$binary"
+"$binary"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/manifest_test.cpp" -o "$binary"
 "$binary"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/src" \
@@ -40,10 +47,14 @@ python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
 python3 "$repo_dir/test/native_apps/native_ui_refresh_contract_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
 python3 "$repo_dir/test/native_apps/global_home_overlay_contract_test.py"
+python3 "$repo_dir/test/native_apps/global_home_overlay_behavior_test.py"
 python3 "$repo_dir/test/native_apps/required_app_workflow_contract_test.py"
 python3 "$repo_dir/test/native_apps/file_association_contract_test.py"
-# The old P-256/provenance/NVS experiment is not a normal build/merge gate.
-# Run test/run_signed_package_experiment.sh explicitly only when requested.
+# OTA discovery state belongs to the latest check only, including early errors.
+c++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers \
+  -I"$repo_dir/test/network/ota_updater_stubs" -I"$repo_dir/src" \
+  "$repo_dir/test/network/ota_updater_state_test.cpp" -o "$binary"
+"$binary"
 for pair in \
   "springboard springboard_test" \
   "app_store app_store_test" \
@@ -70,7 +81,12 @@ for pair in \
   "button_remap button_remap_test" \
   "time_zone time_zone_test"; do
   set -- $pair
+  if [[ "$1" == "llm_ask" ]]; then
+    cc -std=c11 -Wall -Wextra -Werror \
+      -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  else
   cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/$1.c" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  fi
   "$binary"
 done
 # Absence of a USB device/provider is a normal disconnected UI state. Keep
@@ -83,7 +99,12 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/Apps/serial_monitor.c" \
   "$repo_dir/test/native_apps/serial_monitor_baud_test.c" -o "$binary"
 "$binary"
-cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/file_browser.c" "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
 "$binary"
 # Exercise actual Driver Manager and Package Manager app code, including
 # cancellation, offline recovery and independently confirmed uninstall.

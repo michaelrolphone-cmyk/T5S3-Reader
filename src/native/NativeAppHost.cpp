@@ -1,7 +1,14 @@
+#include <RuntimeFaultRetention.h>
+#include "NativeUiFrame.h"
+#include "NativeAppMemory.h"
 #include "NativeStreamBridge.h"
+#include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
+#include "ManagedAppAdmission.h"
+#include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
+#include "NativeTouchInput.h"
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
@@ -15,11 +22,13 @@
 #include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackagePreflight.h"
 #include "runtime/memory/PsramJson.h"
+#include "runtime/packages/PackageIndependentCatalog.h"
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include "components/FontAwesomeIcons.h"
 #include <Arduino.h>
 #include <GfxRenderer.h>
+#include <HalDisplay.h>
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <Logging.h>
@@ -58,7 +67,6 @@ constexpr const char* kReleaseIndexUrl =
 constexpr const char* kGameBoyRepository = "michaelrolphone-cmyk/T5S3-GameBoy";
 constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr size_t kMaxCatalogAssets = 128;
-constexpr size_t kMaxCatalogBytes = 64 * 1024;
 constexpr size_t kMaxManifestBytes = 8 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
 constexpr unsigned long kNativeHomeDoubleClickWindowMs = 400;
@@ -86,6 +94,15 @@ struct CatalogManifestAsset {
   std::string url;
 };
 
+struct ToneRectCommand {
+  int32_t x;
+  int32_t y;
+  int32_t w;
+  int32_t h;
+  int32_t radius;
+  uint8_t tone;
+};
+
 struct Session {
   GfxRenderer& renderer;
   MappedInputManager& input;
@@ -93,10 +110,12 @@ struct Session {
   HalFile directory;
   std::vector<CatalogAsset> catalog;
   std::vector<t5_app_manifest_t> installed;
+  std::vector<ToneRectCommand> toneRects;
   std::string launchPath;
   char catalogDownloadError[128]{};
   bool catalogNeedsRefresh = false;
   bool backExitsApp = true;
+  bool inputStarted = false;
   bool exiting = false;
   bool presenting = false;
   bool pendingHomeSingle = false;
@@ -109,49 +128,158 @@ std::string lastLaunchError;
 bool homeRequested = false;
 bool firmwareActionPending = false;
 Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
+void beginAppInput(Session& s) {
+  if (s.inputStarted) return;
+  nativeTouchDiscardGestures();
+  s.inputStarted = true;
+}
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
-void clear() { if (auto* s = current()) s->renderer.clearScreen(); }
+void clear() {
+  if (auto* s = current()) {
+    s->toneRects.clear();
+    s->renderer.clearScreen();
+  }
+}
 void text(int32_t x, int32_t y, const char* value) {
   if (auto* s = current(); s && value) s->renderer.drawText(UI_12_FONT_ID, x, y, value);
 }
 void rect(int32_t x, int32_t y, int32_t w, int32_t h, bool black) {
   if (auto* s = current(); s && w > 0 && h > 0) s->renderer.fillRect(x, y, w, h, black);
 }
+void replayTonePlane(Session& s, bool lsbPlane) {
+  // Plane buffers use 1 bits to request a gray component over black base pixels.
+  s.renderer.clearScreen(0x00);
+  for (const auto& command : s.toneRects) {
+    const bool set = lsbPlane ? command.tone == T5_APP_TONE_DARK_GRAY
+                              : command.tone == T5_APP_TONE_LIGHT_GRAY;
+    s.renderer.fillRoundedRect(command.x, command.y, command.w, command.h,
+                               command.radius, set ? Color::White : Color::Black);
+  }
+}
+
+bool presentToneFrame(Session& s, DisplayPresentMode mode) {
+  if (s.toneRects.empty()) {
+    s.renderer.displayBuffer(mode);
+    return true;
+  }
+
+  // Preserve the application's normal BW frame while using the same framebuffer
+  // as bounded scratch space for the two grayscale planes.
+  if (!s.renderer.storeBwBuffer()) {
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+  if (!s.renderer.captureGrayscaleBaseBuffer()) {
+    s.renderer.restoreBwBuffer();
+    s.renderer.displayBuffer(mode);
+    return false;
+  }
+
+  replayTonePlane(s, true);
+  s.renderer.copyGrayscaleLsbBuffers();
+  replayTonePlane(s, false);
+  s.renderer.copyGrayscaleMsbBuffers();
+  s.renderer.displayGrayBuffer(mode);
+  s.renderer.restoreBwBuffer();
+  return true;
+}
+
+bool copyUiFrame(uint8_t* destination, size_t capacity, t5_app_frame_t* frame) {
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
+  auto* s = current();
+  if (!s || !frame) return false;
+  constexpr size_t width = HalDisplay::DISPLAY_WIDTH, height = HalDisplay::DISPLAY_HEIGHT;
+  *frame = {width, height, width/4,
+      static_cast<uint8_t>((static_cast<unsigned>(s->renderer.getOrientation()) + (SETTINGS.flipUi ? 2u : 0u)) % 4u), 0};
+  if (!destination) return true;
+  if (capacity < width*height/4) return false;
+  auto* base = s->renderer.getFrameBuffer();
+  if (!base) return false;
+  constexpr size_t planeBytes=width*height/8;
+  auto* scratch = s->toneRects.empty() ? nullptr : static_cast<uint8_t*>(
+      heap_caps_malloc(planeBytes*2,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT));
+  if (!s->toneRects.empty() && !scratch) return false;
+  const uint8_t* saved = base;
+  const uint8_t* lsb = nullptr;
+  const uint8_t* msb = nullptr;
+  if (scratch) {
+    memcpy(scratch,base,planeBytes); saved=scratch;
+    replayTonePlane(*s,true); memcpy(scratch+planeBytes,base,planeBytes); lsb=scratch+planeBytes;
+    replayTonePlane(*s,false); msb=base;
+  }
+  for (size_t y=0;y<height;++y) {
+    const size_t from=SETTINGS.flipUi ? height-1-y : y;
+    nativeUiPackRow(destination+y*width/4,saved+from*width/8,
+        lsb ? lsb+from*width/8 : nullptr, msb ? msb+from*width/8 : nullptr,width,SETTINGS.flipUi);
+    if ((y&31u)==31u) { esp_task_wdt_reset(); vTaskDelay(1); }
+  }
+  if (scratch) { memcpy(base,scratch,planeBytes); heap_caps_free(scratch); }
+  return true;
+#else
+  (void)destination; (void)capacity; (void)frame;
+  return false;
+#endif
+}
+bool touchContact(t5_app_contact_t* out) {
+  auto* s=current();
+  if (!s || !out) return false;
+  beginAppInput(*s);
+  *out={};
+  MappedInputManager::TouchPoint point{};
+  out->down=s->input.getTouchContact(point,s->renderer);
+  if (out->down) { out->x=point.x; out->y=point.y; }
+  return true;
+}
+
 void present(bool full) {
   if (auto* s = current()) {
     esp_task_wdt_reset();
-    s->renderer.displayBuffer(full ? HalDisplay::FULL_REFRESH : HalDisplay::HALF_REFRESH);
+    (void)presentToneFrame(*s, full ? DisplayPresentMode::Clean : DisplayPresentMode::Quality);
     esp_task_wdt_reset();
   }
 }
 struct ServicedFrame {
   GfxRenderer* renderer;
-  HalDisplay::RefreshMode mode;
+  DisplayPresentMode mode;
   std::atomic<bool> done{false};
 };
-void renderServicedFrame(void* opaque) {
-  auto* frame = static_cast<ServicedFrame*>(opaque);
-  frame->renderer->displayBuffer(frame->mode);
-  frame->done.store(true, std::memory_order_release);
-  // No frame/session access after publication; this firmware task never runs ELF code.
-  vTaskDelete(nullptr);
+// A redraw used to allocate and delete an 8 KiB task stack each time. Under
+// network/USB memory pressure, creation failed after the catalog had loaded.
+// Reserve the renderer worker once in internal RAM so a redraw has no heap or
+// task-stack allocation. This worker never runs ELF code or retains a frame.
+alignas(16) StackType_t refreshStack[8192]{};
+StaticTask_t refreshTaskStorage{};
+TaskHandle_t refreshTask = nullptr;
+std::atomic<ServicedFrame*> pendingRefresh{nullptr};
+void renderServicedFrame(void*) {
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    auto* frame = pendingRefresh.load(std::memory_order_acquire);
+    if (!frame) continue;
+    frame->renderer->displayBuffer(frame->mode);
+    pendingRefresh.store(nullptr, std::memory_order_release);
+    // Publish completion last; do not touch the caller's stack frame again.
+    frame->done.store(true, std::memory_order_release);
+  }
 }
-bool presentServicedMode(HalDisplay::RefreshMode mode,
+bool presentServicedMode(DisplayPresentMode mode,
                          void (*service)(void*), void* context) {
   auto* s = current();
   if (!s || !service) return false;
   ServicedFrame frame{&s->renderer, mode};
-  s->presenting = true;
   // Panel_EPD pixel transfer can keep the calling loop task running long
   // enough to starve IDLE0. Put the blocking renderer work on the other core
   // while this owner task yields and services input/watchdog state.
-  const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
-  if (xTaskCreatePinnedToCore(renderServicedFrame, "app-refresh", 8192, &frame,
-                            1, nullptr, refreshCore) != pdPASS) {
-    s->presenting = false;
-    return false;
+  if (!refreshTask) {
+    const BaseType_t refreshCore = xPortGetCoreID() == 0 ? 1 : 0;
+    refreshTask = xTaskCreateStaticPinnedToCore(renderServicedFrame, "app-refresh",
+        sizeof(refreshStack), nullptr, 1, refreshStack, &refreshTaskStorage, refreshCore);
+    if (!refreshTask) return false;
   }
+  s->presenting = true;
+  pendingRefresh.store(&frame, std::memory_order_release);
+  xTaskNotifyGive(refreshTask);
   // Like present(), join the physical refresh before allowing framebuffer reuse
   // or app unload. Yield every pass; collect input on its authorized owner task.
   while (!frame.done.load(std::memory_order_acquire)) {
@@ -164,18 +292,20 @@ bool presentServicedMode(HalDisplay::RefreshMode mode,
 }
 void noRefreshService(void*) {}
 bool presentServiced(bool full, void (*service)(void*), void* context) {
-  return presentServicedMode(full ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH,
+  return presentServicedMode(full ? DisplayPresentMode::Clean : DisplayPresentMode::LowLatency,
                              service, context);
 }
 void setBackExitsApp(bool enabled) {
   if (auto* s = current()) s->backExitsApp = enabled;
 }
-bool poll(t5_app_input_t* out, uint32_t waitMs) {
+bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   auto* s = current();
   if (!s || !out) return false;
+  beginAppInput(*s);
   esp_task_wdt_reset();
-  delay(std::max(1u, std::min(waitMs, 50u)));
+  if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
+  nativeProviderOwnerTick();
   *out = {};
   using Button = MappedInputManager::Button;
   const Button buttons[] = {Button::Back, Button::Confirm, Button::Left, Button::Right, Button::Up, Button::Down};
@@ -192,8 +322,19 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   }
   if (powerPressed) homeRequested = true;
 
+  // Serviced refresh callbacks poll while another task owns the framebuffer.
+  // Leave captured Home events queued until that refresh has joined.
+  if (s->presenting) {
+    out->exit_requested = s->exiting;
+    return true;
+  }
+
   unsigned long homeEventMs = 0;
-  if (s->input.takeTouchHomeButtonPress(homeEventMs)) {
+  // Drain captured presses before applying the single-click deadline. A busy
+  // ELF may deliver both taps only after the 400 ms window has elapsed.
+  // The touch queue holds 16 events, plus at most one navigation Home per update.
+  for (unsigned i = 0; i < 17 && !s->exiting &&
+                       s->input.takeTouchHomeButtonPress(homeEventMs); ++i) {
     const bool allowOverlay =
         SETTINGS.doubleClickHomeMenu && !nativeHardwareTakeoverDisplayActive();
     if (!allowOverlay) {
@@ -207,8 +348,13 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
       if (elapsed <= kNativeHomeDoubleClickWindowMs) {
         const auto modal = GlobalMenuActivity::runFirmwareModal(s->renderer, s->input);
         *out = {};
-        if (modal == GlobalMenuActivity::ModalResult::ShutdownRequested)
+        if (modal == GlobalMenuActivity::ModalResult::ShutdownRequested) {
           s->exiting = true;
+        } else if (modal == GlobalMenuActivity::ModalResult::Unavailable) {
+          // A failed snapshot must not swallow the user's Home request.
+          s->exiting = true;
+          homeRequested = true;
+        }
         out->exit_requested = s->exiting;
         return true;
       }
@@ -233,14 +379,30 @@ bool poll(t5_app_input_t* out, uint32_t waitMs) {
   out->exit_requested = s->exiting;
   return true;
 }
+bool poll(t5_app_input_t* out, uint32_t waitMs) {
+  return pollInput(out, waitMs, true);
+}
+bool pollNowait(t5_app_input_t* out) {
+  return pollInput(out, 0, false);
+}
+bool takeTouchSwipe(t5_app_swipe_t* out) {
+  auto* s = current();
+  if (!s || !out || s->exiting) return false;
+  beginAppInput(*s);
+  MappedInputManager::TouchPoint start{}, end{};
+  if (!s->input.getTouchSwipe(start, end, s->renderer)) return false;
+  *out = {static_cast<int16_t>(start.x), static_cast<int16_t>(start.y),
+          static_cast<int16_t>(end.x), static_cast<int16_t>(end.y)};
+  return true;
+}
 uint32_t clockMs() { return ::millis(); }
 void* psramAlloc(size_t size) {
   if (!current() || !size) return nullptr;
-  return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  return native_app_psram_alloc(size);
 }
 void psramFree(void* ptr) {
   if (!current() || !ptr) return;
-  heap_caps_free(ptr);
+  native_app_memory_free(ptr);
 }
 
 const char* storagePath(const char* path) {
@@ -610,7 +772,7 @@ bool validThirdPartyReleaseTag(const char* tag) {
 }
 
 bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
-  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
+  RuntimeMemory::PsramGrowingTextStream json;
   esp_task_wdt_reset();
   if (!json.good() || !HttpDownloader::fetchUrl(kReleaseIndexUrl, json) ||
       !json.good() || json.empty()) return false;
@@ -626,6 +788,21 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
   indexed.reserve(entries.size());
   for (JsonVariantConst entry : entries) {
     esp_task_wdt_reset();
+    if (!entry["format"].isNull()) {
+      // Legacy ABI callers receive only historical loose applications. Current
+      // bundles belong to the common package API and must not become ELF URLs.
+      if (!entry["format"].is<const char*>() ||
+          std::strcmp(entry["format"].as<const char*>(), "rte.zip") ||
+          measureJson(entry) > 8192) return false;
+      std::string record;
+      serializeJson(entry, record);
+      RuntimePackages::IndependentAppRecord checked{};
+      std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> scratch(
+          new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+      if (!scratch || !RuntimePackages::parseIndependentAppRecord(
+          record.data(), record.size(), checked, *scratch) || !checked.bundled) return false;
+      continue;
+    }
     if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
         !entry["version"].is<const char*>() || !entry["tag"].is<const char*>() ||
         !entry["asset"].is<const char*>() || !entry["url"].is<const char*>() ||
@@ -837,7 +1014,7 @@ bool appCatalogVersionGet(uint32_t index, char* out, size_t capacity) {
 
 namespace {
 constexpr RuntimePackages::PackageRuntimePolicy kCanonicalAppPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
 bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
                         t5_app_manifest_t* manifest = nullptr) {
@@ -853,8 +1030,10 @@ bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
   const std::string json = elf.substr(0, elf.size() - 4) + ".json";
   if (!Storage.exists(elf.c_str()) || !Storage.exists(json.c_str())) return false;
   t5_app_manifest_t parsed{};
-  if (!readAppManifest(json.c_str(), parsed) ||
-      std::strcmp(parsed.file_name, identity.artifact)) return false;
+  std::string appVersion;
+  if (!readAppManifest(json.c_str(), parsed, &appVersion, true) ||
+      std::strcmp(parsed.file_name, identity.artifact) ||
+      appVersion != identity.version) return false;
   if (manifest) *manifest = parsed;
   return true;
 }
@@ -1085,6 +1264,27 @@ bool requestLaunch(uint32_t index) {
 bool drawIcon(int32_t x, int32_t y, const char* icon, uint8_t size, bool black) {
   auto* s = current(); return s && FontAwesomeIcons::draw(s->renderer, x, y, icon, size, black);
 }
+void fillRoundedRectTone(int32_t x, int32_t y, int32_t w, int32_t h,
+                         int32_t radius, uint8_t tone) {
+  auto* s = current();
+  if (!s || w <= 0 || h <= 0 || s->toneRects.size() >= 256) return;
+  if (tone > T5_APP_TONE_BLACK) tone = T5_APP_TONE_BLACK;
+  radius = std::max(0, std::min(radius, std::min(w, h) / 2));
+
+  s->toneRects.push_back(ToneRectCommand{x, y, w, h, radius, tone});
+
+  // Gray pixels need a black bit in the base plane. White stays white; black
+  // and both gray levels use black base and are differentiated at presentation.
+  const Color base = tone == T5_APP_TONE_WHITE ? Color::White : Color::Black;
+  s->renderer.fillRoundedRect(x, y, w, h, radius, base);
+}
+void logMessage(const char* message) {
+  if (!current() || !message) return;
+  LOG_INF("APP", "%s", message);
+}
+uint8_t backlightLevel() {
+  return current() ? SETTINGS.backlightLevel : 0U;
+}
 void drawLabel(int32_t x, int32_t y, int32_t w, const char* value) {
   auto* s = current();
   if (!s || !value || w <= 0) return;
@@ -1126,11 +1326,19 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            appCatalogDownloadLastError,
                            appCatalogDownloadWithProgress,
                            psramAlloc,
-                           psramFree};
+                           psramFree,
+                           logMessage,
+                           fillRoundedRectTone,
+                           backlightLevel,
+                           takeTouchSwipe,
+                           pollNowait,
+                           copyUiFrame,
+                           touchContact};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,
-                              std::string& failureDetail) {
+                              std::string& failureDetail,
+                              bool forceCatalogInstall) {
   displayName.clear();
   failureDetail.clear();
   if (!artifact || !t5_safe_elf_name(artifact) || !Storage.ready()) {
@@ -1140,7 +1348,8 @@ bool installRequiredNativeApp(const char* artifact, std::string& displayName,
 
   std::string installedPath;
   t5_app_manifest_t installedManifest{};
-  if (resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
+  if (!forceCatalogInstall &&
+      resolveInstalledAppPath(artifact, installedPath, &installedManifest)) {
     displayName = installedManifest.display_name;
     return true;
   }
@@ -1244,7 +1453,7 @@ bool presentNativeAppUiFrame() {
   // Native UI lists and tables use the reader-friendly balanced waveform.
   // Reuse the serviced refresh path so synchronous panel pixel transfer does
   // not starve the loop task's core idle watchdog.
-  const bool presented = presentServicedMode(HalDisplay::BALANCED_REFRESH,
+  const bool presented = presentServicedMode(DisplayPresentMode::Balanced,
                                               noRefreshService, nullptr);
   if (!presented) LOG_ERR("APPSTORE", "Could not start cooperative native UI refresh");
   return presented;
@@ -1254,8 +1463,19 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   return version == T5_APP_ABI_VERSION && current() ? &api : nullptr;
 }
 
+static bool validateLooseAdmissionSidecar(const std::string& json,const std::string& filename,
+                                         AppIntegrity& integrity) {
+  t5_app_manifest_t manifest{};
+  return parseAppManifest(json,manifest,nullptr,false,nullptr,nullptr,&integrity) &&
+      manifest.compatible && filename==manifest.file_name;
+}
+
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
   lastLaunchError.clear();
+  if (risc_runtime_retention_required()) {
+    lastLaunchError = "Storage unavailable; resources retained. Manual reboot required.";
+    return ESP_ERR_INVALID_STATE;
+  }
   if (session) {
     lastLaunchError = "Another native application is already running.";
     return ESP_ERR_INVALID_STATE;
@@ -1289,6 +1509,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     displayName = preview.display_name;
     icon = preview.icon;
   }
+  nativeTouchDiscardGestures();
   StartupScreen::app(renderer, displayName.c_str(), icon);
   // Keep the render lock through launch so an outstanding activity repaint
   // cannot overwrite this frame during package recovery or dependency loading.
@@ -1298,6 +1519,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   const size_t nestedSlash = elf.compare(0, 6, "/Apps/") == 0 ?
       elf.find('/', 6) : std::string::npos;
   std::string canonicalRoot;
+  RuntimePackages::Identity canonicalIdentity{};
   if (nestedSlash != std::string::npos) {
     const std::string id = elf.substr(6, nestedSlash - 6);
     RuntimePackages::Identity identity{};
@@ -1307,6 +1529,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       return ESP_ERR_NOT_SUPPORTED;
     }
     canonicalRoot = elf.substr(0, nestedSlash);
+    canonicalIdentity = identity;
   }
   // Managed /Apps updates recover before any sidecar/ELF can be loaded.
   if (elf.compare(0, 6, "/Apps/") == 0 &&
@@ -1354,6 +1577,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   input.update();
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
   session = &active;
+  nativeNetworkBegin();
   nativeSettingsBegin(renderer, input);
   nativeSystemUiBegin();
   esp_task_wdt_reset();
@@ -1361,9 +1585,16 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   // the ELF has returned and dlclose has succeeded. Failed unloads retain the
   // pin; replacement and uninstall must not race executable memory.
   nativeStreamsBegin();
-  const esp_err_t result = launch_elf_app(path);
+  const bool resourcesReady = canonicalRoot.empty() ||
+      nativeStreamsBindPackageResources(canonicalIdentity);
+  const bool admissionReady = resourcesReady && (canonicalRoot.empty()
+      ? RuntimePackages::beginLooseAppAdmission(path,validateLooseAdmissionSidecar)
+      : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
+  const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
+  if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
-  if (!canonicalRoot.empty() && result == ESP_OK)
+  nativeNetworkEnd();
+  if (!canonicalRoot.empty() && (result == ESP_OK || !admissionReady))
     (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
   // Clean up even when an app returns without calling its GPS stop callback.
   GpsDriverRuntime::stop();
@@ -1379,12 +1610,13 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
+  nativeTouchDiscardGestures();
   nativeNavigationBoundary();
   nativeNavigationRetry(); // An installer may have added the navigation provider.
   nativeSettingsEnd();
   renderer.setOrientation(orientation);
   renderer.setRenderMode(mode);
-  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  renderer.requestNextRefresh(DisplayPresentMode::Clean);
   unsigned long quiet = millis();
   do {
     input.update();
@@ -1396,6 +1628,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     delay(10);
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
+  nativeTouchDiscardGestures();
   firmwareActionPending = nativeSettingsDispatchPendingAction(renderer, input, path);
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
@@ -1406,7 +1639,6 @@ bool consumeNativeAppReturn() { const bool value = returned; returned = false; r
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
   if (resume && homeRequested) return false;
-  const char* springboard = "/sd/Apps/springboard.elf";
   auto showError = [&](const char* message) {
     RenderLock lock;
     renderer.clearScreen();
@@ -1416,29 +1648,29 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     renderer.drawText(UI_12_FONT_ID, 24, 100, msg.substr(0, split).c_str());
     if (split != std::string::npos) renderer.drawText(UI_12_FONT_ID, 24, 136, msg.substr(split + 1).c_str());
     renderer.drawText(UI_12_FONT_ID, 24, 200, "Tap or press Back to return.");
-    renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Clean);
     for (;;) {
       esp_task_wdt_reset(); delay(20); input.update();
       MappedInputManager::TouchPoint point{};
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
   };
-  // Recovery must run while no ELF is mapped, before checking for springboard
-  // files: a power cut can leave only springboard.elf.bak at this point.
-  if (Storage.exists("/Apps")) {
-    if (!RuntimePackages::recoverAppInventory())
-      LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
-    if (!RuntimePackages::recoverAppPair("springboard.elf")) {
-      showError("Springboard update cannot be safely recovered.");
+  // Recover canonical package transactions before resolving the launcher.
+  // resolveInstalledAppPath() prefers a verified /Apps/<id>/springboard.elf
+  // package and falls back to the legacy loose /Apps/springboard.elf pair.
+  if (Storage.exists("/Apps") && !RuntimePackages::recoverAppInventory())
+    LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
+
+  for (;;) {
+    // Resolve on every return to the Springboard. The App Store can migrate a
+    // bootstrapped loose Springboard into its canonical package while this Apps
+    // session is active, so caching the original path would immediately go stale.
+    std::string springboard;
+    if (!resolveInstalledAppPath("springboard.elf", springboard)) {
+      showError("Install Springboard or copy springboard.elf and .json to /Apps.");
       return false;
     }
-  }
-  if (!Storage.exists("/Apps/springboard.elf") || !Storage.exists("/Apps/springboard.json")) {
-    showError("Copy springboard.elf and .json to /Apps.");
-    return false;
-  }
-  for (;;) {
-    const auto result = runNativeApp(springboard, renderer, input);
+    const auto result = runNativeApp(springboard.c_str(), renderer, input);
     if (result != ESP_OK) {
       showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
       return false;

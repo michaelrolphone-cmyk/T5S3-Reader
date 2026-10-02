@@ -7,6 +7,8 @@
 #include "RiscBq25896ProfileV1.h"
 #include "RiscI2cBusV1.h"
 #include "RiscPlatformClockV1.h"
+#include "BqChargerProfile.h"
+#include "BqShutdownPolicy.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -36,6 +38,8 @@
 
 static risc_bq25896_profile_api_v1 profile;
 static uint8_t boost_settings;
+static bool external_allowed, external_lease, external_granted;
+static risc_usb_vbus_charger_api_v1 capability;
 
 /* Validate before any bus claim/write. No board-name checks or defaults.
  * TI SLUSC76C REG0A: exact voltage steps and seven non-reserved limits. */
@@ -56,6 +60,10 @@ static bool configure(const risc_bq25896_profile_api_v1 *p) {
             candidate.transient_stable_ms != 0u)) return false;
     for (size_t i = 0; i < sizeof(limits) / sizeof(limits[0]); ++i) {
         if (candidate.boost_limit_milliamps != limits[i]) continue;
+        external_allowed = p->struct_size >= sizeof(risc_bq25896_external_profile_v1) &&
+            (((const risc_bq25896_external_profile_v1 *)p)->flags & RISC_BQ25896_EXTERNAL_HOST);
+        capability.flags = RISC_USB_POWER_IDLE_PROBE_REQUIRED |
+            (external_allowed ? RISC_USB_POWER_EXTERNAL_HOST_SUPPORTED : 0u);
         profile = candidate;
         boost_settings = (uint8_t)(((candidate.boost_millivolts - 4550u) / 64u << 4) | i);
         return true;
@@ -67,7 +75,8 @@ static const risc_i2c_bus_api_v1 *bus;
 static const risc_platform_clock_api_v1 *clock_api;
 static uint64_t bus_claim, lease, sequence;
 static uint8_t saved_power, saved_boost, saved_adc;
-static bool started, saved, source_requested, faulted;
+static bool started, saved, source_requested, faulted, profile_uncertain;
+static bool shutdown_pending;
 static uint64_t input_observation_started;
 
 static bool equal(const char *a, const char *b) {
@@ -84,25 +93,99 @@ static bool write_reg(uint8_t reg, uint8_t value) {
     return bus && bus_claim && bus->transact(bus->context, bus_claim,
              command, 2u, NULL, 0u, BUS_TIMEOUT_MS);
 }
-/* TI SLUSC76C: the FIRST REG0C read returns faults latched since the last
- * read; the SECOND returns the live fault state. REG0C cannot be multi-read.
- * These must be distinct, consecutive single-register I2C transactions. */
+static bool charger_read(void *unused, uint8_t reg, uint8_t *out) {
+    (void)unused;
+    return read_reg(reg, out);
+}
+static bool charger_write(void *unused, uint8_t reg, uint8_t value) {
+    (void)unused;
+    return write_reg(reg, value);
+}
+/* A failed profile write may be partially applied on NACK. Retain the chip
+ * claim, block sourcing and unload until a full explicit profile retry. */
+static bool configure_charger(void *unused) {
+    (void)unused;
+    if (!started || !bus_claim || lease || source_requested || !bus ||
+        shutdown_pending) return false;
+    const risc_bq_charger_io io = {NULL, charger_read, charger_write};
+    bool uncertain = false;
+    if (!risc_bq_apply_charge_profile(&io, &uncertain)) {
+        if (uncertain) {
+            profile_uncertain = true;
+            faulted = true;
+            printf("BQREF failure=charger-profile-uncertain claim-retained=1\n");
+        }
+        return false;
+    }
+    profile_uncertain = false;
+    faulted = false; /* Every profile register passed fresh readback. */
+    return true;
+}
+/* One-way BATFET_DIS command: after any attempted BATFET write the PMIC may
+ * remove its own I2C power. Never probe, unmap, restore charger configuration
+ * or report verified power-off. Only a device reboot clears the latch. */
+static bool request_shutdown(void *unused) {
+    (void)unused;
+    if (!started || !bus_claim || !bus || lease || source_requested ||
+        faulted || profile_uncertain || shutdown_pending) return false;
+    const risc_bq_charger_io io = {NULL, charger_read, charger_write};
+    const risc_bq_shutdown_result result = risc_bq_request_shutdown(&io);
+    if (result == RISC_BQ_SHUTDOWN_REJECTED) return false;
+    if (result == RISC_BQ_SHUTDOWN_CHARGE_UNCERTAIN) {
+        profile_uncertain = true;
+        faulted = true;
+        printf("BQREF failure=shutdown-charge-uncertain claim-retained=1\n");
+        return false;
+    }
+    /* BATFET may have accepted the command even if the bus returned NACK. */
+    shutdown_pending = true;
+    faulted = true;
+    if (result != RISC_BQ_SHUTDOWN_COMMAND_ACCEPTED) {
+        printf("BQREF failure=shutdown-batfet-uncertain claim-retained=1\n");
+        return false;
+    }
+    printf("BQREF stage=shutdown-command-accepted power-off-unverified=1\n");
+    return true;
+}
+/* A battery consumer never independently claims 0x6B. ADC can be stale;
+ * REG0C is untouched because it clears latched fault history. */
+static bool read_charger(void *unused, risc_bq25896_charger_snapshot_v1 *out) {
+    (void)unused;
+    if (!out || !started || !bus_claim || faulted || shutdown_pending) return false;
+    risc_bq25896_charger_snapshot_v1 snapshot = {0};
+    if (!read_reg(0x00u, &snapshot.input_control) ||
+        !read_reg(REG_ADC_CONTROL, &snapshot.adc_control) ||
+        !read_reg(REG_POWER, &snapshot.power_control) ||
+        !read_reg(0x04u, &snapshot.charge_current) ||
+        !read_reg(0x05u, &snapshot.precharge_termination) ||
+        !read_reg(0x06u, &snapshot.charge_voltage) ||
+        !read_reg(0x07u, &snapshot.charge_timer) ||
+        !read_reg(REG_STATUS, &snapshot.system_status) ||
+        !read_reg(REG_BAT_ADC, &snapshot.battery_adc) ||
+        !read_reg(0x0fu, &snapshot.system_adc) ||
+        !read_reg(REG_VBUS_ADC, &snapshot.vbus_adc)) return false;
+    const uint8_t source = snapshot.system_status & VBUS_STATUS_MASK;
+    snapshot.external_power = !(snapshot.power_control & OTG_ENABLE) &&
+        source != VBUS_OTG && (source || (snapshot.system_status & POWER_GOOD) ||
+                               (snapshot.vbus_adc & VBUS_GOOD));
+    *out = snapshot;
+    return true;
+}
+/* First REG0C read returns latched faults, second live faults. */
 static bool read_fault_pair(uint8_t *latched, uint8_t *live) {
     return latched && live && read_reg(REG_FAULT, latched) &&
            read_reg(REG_FAULT, live);
 }
 static bool timed_out(uint64_t begun, uint32_t limit_ms) {
     uint64_t now = clock_api->monotonic_ms(clock_api->context);
-    /* platform.clock returns UINT64_MAX on OS clock failure. In particular,
-     * UINT64_MAX - UINT64_MAX == 0 MUST NOT become an infinite OTG loop. */
     return begun == UINT64_MAX || now == UINT64_MAX ||
            now < begun || now - begun >= limit_ms;
 }
 static void delay_ms(uint32_t milliseconds) {
     clock_api->sleep_ms(clock_api->context, milliseconds);
 }
-/* External power may appear during shutdown: only charger sourcing must be
- * proven OFF. A failed read is unknown, never evidence of safe shutdown. */
+/* External input may appear during shutdown: only sourced VBUS must be
+ * verified OFF; a failed read never establishes safe shutdown. */
 static bool wait_source_off(void) {
     uint64_t begun = clock_api->monotonic_ms(clock_api->context);
     if (begun == UINT64_MAX) return false;
@@ -117,8 +200,7 @@ static bool wait_source_off(void) {
     }
     return false; /* Also bounded if the clock stops advancing. */
 }
-/* Retain the lease on any uncertain write, failed source-off verification or
- * incomplete restoration; no unmapped callback may own this charger state. */
+/* On uncertain restoration keep the original lease and exact provider pin. */
 static bool disable_and_restore(void) {
     if (!saved || !write_reg(REG_POWER, saved_power & (uint8_t)~OTG_ENABLE))
         return false;
@@ -155,9 +237,6 @@ static bool preflight(void) {
                (unsigned)status, (unsigned)adc, (unsigned)power);
         return false;
     }
-    /* Clear historical faults BEFORE requesting OTG. A leftover fault from
-     * a previous attempt is not evidence of a new boost failure. Conversely,
-     * a live boost fault is not safe to ignore just because it was latched. */
     uint8_t latched = 0, live = 0;
     if (!read_fault_pair(&latched, &live)) {
         printf("VBUSREF failure=preflight-read reg=0x0c\n");
@@ -173,9 +252,8 @@ static bool preflight(void) {
                (unsigned)latched, (unsigned)live);
     return true;
 }
-/* A diagnostic is a raw register snapshot, NOT a claim that ADC=0 means 0V:
- * REG11 defaults to 2.6V and can stay stale until the first 1s conversion.
- * BAT_ADC also defaults to 2.304V and is not proof of battery voltage. */
+/* Raw register diagnostics: ADC=0 is NOT proof of zero volts until the
+ * REG11 conversion has completed; 2.6V is the ADC's nonzero baseline. */
 static void report_boost_failure(const char *reason, uint8_t power,
                                  uint8_t status, uint8_t adc,
                                  uint8_t latched, uint8_t live,
@@ -269,8 +347,8 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     (void)unused;
     if (out) *out = 0;
     if (!out || !started || !bus_claim || lease || faulted ||
-        !requested_ma || requested_ma > profile.max_host_milliamps || sequence == UINT64_MAX ||
-        !clock_api) {
+        shutdown_pending || !requested_ma || requested_ma > profile.max_host_milliamps ||
+        sequence == UINT64_MAX || !clock_api) {
         printf("VBUSREF failure=acquire-state started=%u claimed=%u leased=%u faulted=%u requested_ma=%u\n",
                (unsigned)started, (unsigned)(bus_claim != 0),
                (unsigned)(lease != 0), (unsigned)faulted, (unsigned)requested_ma);
@@ -288,7 +366,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
         return false;
     }
     saved = true;
-    lease = ++sequence; /* A partially applied write MUST pin the provider. */
+    lease = ++sequence; /* Partial writes must pin the provider. */
     const uint8_t boost = (uint8_t)((saved_boost & 0x08u) |
                                  boost_settings);
     bool ok = write_reg(REG_BOOST, boost);
@@ -300,7 +378,7 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
     if (ok) {
         const uint8_t value = (uint8_t)((saved_power &
                                  (uint8_t)~CHARGE_ENABLE) | OTG_ENABLE);
-        source_requested = true; /* Even a failed write may have applied. */
+        source_requested = true; /* Failed write may have applied. */
         ok = write_reg(REG_POWER, value);
         if (!ok) printf("VBUSREF failure=otg-enable-write\n");
     }
@@ -333,21 +411,66 @@ static bool acquire_host(void *unused, uint32_t requested_ma, uint64_t *out) {
            (unsigned)boost, (unsigned)profile.boost_limit_milliamps, (unsigned)requested_ma);
     return true;
 }
+/* USB must never boost into a Qi/PC source. ADC resolution is 100mV;
+ * admit 4.8–5.2V samples conservatively inside the nominal USB 5V range. */
+static bool external_voltage_valid(void) {
+    uint8_t power, status, adc, previous, live;
+    if (!read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
+        !read_reg(REG_VBUS_ADC, &adc) || !read_fault_pair(&previous, &live)) return false;
+    return !(power & OTG_ENABLE) && (status & VBUS_STATUS_MASK) != VBUS_OTG &&
+        (status & POWER_GOOD) && (adc & VBUS_GOOD) &&
+        (adc & 0x7fu) >= 22u && (adc & 0x7fu) <= 26u && !(live & 0x78u);
+}
+static bool external_host_valid(void *unused, uint64_t id) {
+    (void)unused;
+    return started && !faulted && external_lease && id && id==lease && external_voltage_valid();
+}
+static bool acquire_external_host(void *unused, uint32_t requested_ma, uint64_t *out) {
+    (void)unused;
+    if (out) *out=0;
+    if (!out || !started || !external_allowed || !bus_claim || lease || faulted ||
+        !requested_ma || requested_ma>profile.max_host_milliamps || sequence==UINT64_MAX) return false;
+    uint8_t status;
+    if (!read_reg(REG_POWER,&saved_power) || (saved_power & OTG_ENABLE) ||
+        !read_reg(REG_STATUS,&status) || (status & VBUS_STATUS_MASK)==VBUS_OTG ||
+        !(status & POWER_GOOD) || !read_reg(REG_BOOST,&saved_boost) ||
+        !read_reg(REG_ADC_CONTROL,&saved_adc)) return false;
+    const uint64_t begun=clock_api->monotonic_ms(clock_api->context);
+    if (begun==UINT64_MAX) return false;
+    saved=true; external_lease=true; lease=++sequence;
+    bool ok=write_reg(REG_ADC_CONTROL,saved_adc | ADC_CONTINUOUS);
+    // Force a fresh conversion interval; cooperate while the converter runs.
+    for (unsigned i=0; ok && i<20u; ++i) {
+        delay_ms(50u);
+        if (timed_out(begun,STARTUP_TIMEOUT_MS)) ok=false;
+    }
+    ok=ok && external_voltage_valid();
+    if (!ok) {
+        if (disable_and_restore()) {lease=0;saved=false;external_lease=false;}
+        else faulted=true;
+        return false;
+    }
+    external_granted=true;
+    *out=lease;
+    printf("VBUSREF stage=external-host-verified boost=off charging=preserved\n");
+    return true;
+}
 static bool release_host(void *unused, uint64_t id) {
     (void)unused;
     if (!started || !id || id != lease || !saved) return false;
-    /* Retry is allowed even after a prior failure; never issue a new lease. */
     if (!disable_and_restore()) { faulted = true; return false; }
     lease = 0;
     saved = false;
+    external_lease = external_granted = false;
     faulted = false;
     return true;
 }
-/* Driver quiescence must release the I2C claim HERE, not in stop(): module
- * loaders may unmap immediately after quiesce succeeds and stop returns. */
+/* Charger/BATFET uncertainty pins the ELF; a failed release_device() alone
+ * remains retryable because no other provider has acquired the address. */
 static bool quiesce(void *unused) {
     (void)unused;
-    if (lease || source_requested) return false;
+    if (lease || source_requested || profile_uncertain || shutdown_pending)
+        return false;
     if (bus_claim) {
         if (!bus || !bus->release_device(bus->context, bus_claim)) {
             faulted = true;
@@ -360,7 +483,8 @@ static bool quiesce(void *unused) {
 }
 static bool driver_quiesce(void) { return quiesce(NULL); }
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (started || bus_claim || lease || faulted || !deps || count != 3u) return false;
+    if (started || bus_claim || lease || faulted || profile_uncertain ||
+        shutdown_pending || !deps || count != 3u) return false;
     const risc_i2c_bus_api_v1 *b = NULL;
     const risc_platform_clock_api_v1 *t = NULL;
     const risc_bq25896_profile_api_v1 *p = NULL;
@@ -404,16 +528,28 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     return input_observation_started != UINT64_MAX;
 }
 static void stop(void) {
-    /* quiesce must have fully released both the VBUS and I2C leases. */
-    if (lease || bus_claim || source_requested || faulted) return;
+    if (lease || bus_claim || source_requested || faulted ||
+        profile_uncertain || shutdown_pending) return;
     bus = NULL; clock_api = NULL; started = false; saved = false;
 }
 static int32_t input_status(void *unused) {
     (void)unused;
+    // A failed external acquisition publishes no token. Retry its retained
+    // rollback during the controller's bounded cleanup polls; never recover a
+    // lease already granted to a live host behind that owner's back.
+    if (started && faulted && external_lease && !external_granted && lease) {
+        if (!disable_and_restore()) return RISC_USB_POWER_UNKNOWN;
+        lease=0; saved=false; faulted=false; external_lease=false;
+    }
     uint8_t status = 0, adc = 0, power = 0;
     if (!started || !bus_claim || faulted ||
         !read_reg(REG_POWER, &power) || !read_reg(REG_STATUS, &status) ||
         !read_reg(REG_VBUS_ADC, &adc)) return RISC_USB_POWER_UNKNOWN;
+    // A qualified input status can replace our boost while OTG_CONFIG still
+    // reads enabled. Tell the controller to drain before changing power modes.
+    const uint8_t kind=status & VBUS_STATUS_MASK;
+    if (lease && source_requested && kind && kind!=VBUS_OTG &&
+        (status & POWER_GOOD) && (adc & VBUS_GOOD)) return RISC_USB_POWER_EXTERNAL;
     /* Never mistake the OTG output for incoming USB power. Treat an
      * unowned source or incomplete source transition as unknown. */
     if ((power & OTG_ENABLE) || (status & VBUS_STATUS_MASK) == VBUS_OTG)
@@ -425,9 +561,12 @@ static int32_t input_status(void *unused) {
         return RISC_USB_POWER_EXTERNAL;
     return RISC_USB_POWER_ABSENT;
 }
-static const risc_usb_vbus_monitor_api_v1 capability = {
-    {RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_monitor_api_v1), NULL,
-     acquire_host, release_host, quiesce}, input_status, RISC_USB_POWER_IDLE_PROBE_REQUIRED
+static risc_usb_vbus_charger_api_v1 capability = {
+    {RISC_USB_VBUS_API_V1, sizeof(risc_usb_vbus_charger_api_v1), NULL,
+     acquire_host, release_host, quiesce},
+    input_status, RISC_USB_POWER_IDLE_PROBE_REQUIRED,
+    acquire_external_host, external_host_valid,
+    read_charger, configure_charger, request_shutdown
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),

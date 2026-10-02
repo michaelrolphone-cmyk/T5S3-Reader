@@ -24,7 +24,7 @@ constexpr const char* kManifest = "/System/Registry/FileAssociations.json";
 constexpr const char* kTemporary = "/System/Registry/FileAssociations.json.tmp";
 constexpr const char* kBackup = "/System/Registry/FileAssociations.json.bak";
 constexpr RuntimePackages::PackageRuntimePolicy kPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
 std::vector<Handler> handlers;
 bool loaded = false;

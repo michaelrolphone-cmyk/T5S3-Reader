@@ -1,18 +1,19 @@
 #include "runtime/drivers/ProviderGraphV2.h"
 #include <RiscUsbControllerV1.h>
 #include <cassert>
+#include "serial_prefix_stream_host.h"
 #include <cstdio>
 
 int main(int argc, char **argv) {
   assert(argc == 4);
   const RuntimeProviders::RequirementV2 needsController[] = {{"usb.controller", 1}};
   const RuntimeProviders::RequirementV2 needsHost[] = {{"usb.host", 1}};
-  RuntimeProviders::GraphV2 graph;
+  RuntimeProviders::GraphV2 graph(&streamHost);
   assert(graph.addVerified({"fixture-usb-controller", argv[1],
                             "usb.controller", 1, nullptr, 0}));
   assert(graph.addVerified({"usb-host-v2", argv[2], "usb.host", 1,
                             needsController, 1}));
-  assert(graph.addVerified({"usb-cdc-acm-v2", argv[3], "serial.port", 1,
+  assert(graph.addVerified({"usb-cdc-acm", argv[3], "serial.port", 1,
                             needsHost, 1}));
   auto hostGrant = graph.acquire("usb.host", 1);
   assert(hostGrant.slot);
@@ -52,7 +53,7 @@ int main(int argc, char **argv) {
   RuntimeProviders::GraphV2 absent;
   assert(absent.addVerified({"usb-host-v2", argv[2], "usb.host", 1,
                              needsController, 1}));
-  assert(absent.addVerified({"usb-cdc-acm-v2", argv[3], "serial.port", 1,
+  assert(absent.addVerified({"usb-cdc-acm", argv[3], "serial.port", 1,
                              needsHost, 1}));
   assert(!absent.acquire("serial.port", 1).slot && absent.shutdown());
   std::puts("Three ELFs: simulated controller -> host discovery -> CDC class PASS");

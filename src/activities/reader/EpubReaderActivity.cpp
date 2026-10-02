@@ -277,9 +277,9 @@ void EpubReaderActivity::loop() {
     }
   }
 
-  // Long press BACK (1s+) goes to file selection
+  // Long press BACK (1s+) leaves the reader and opens the installable File Browser.
   if (mappedInput.isPressed(MappedInputManager::Button::Back) && mappedInput.getHeldTime() >= ReaderUtils::GO_HOME_MS) {
-    activityManager.goToFileBrowser(epub ? epub->getPath() : "");
+    activityManager.goToInstalledApp("file_browser.elf", "File Browser");
     return;
   }
 
@@ -1039,14 +1039,14 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
     int16_t imgX, imgY, imgW, imgH;
     if (page->getImageBoundingBox(imgX, imgY, imgW, imgH)) {
       renderer.fillRect(imgX + orientedMarginLeft, imgY + orientedMarginTop, imgW, imgH, false);
-      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      renderer.displayBuffer(DisplayPresentMode::LowLatency);
 
       // Re-render page content to restore images into the blanked area
       // Status bar is not re-rendered here to avoid reading stale dynamic values (e.g. battery %)
       page->render(renderer, SETTINGS.getReaderFontId(), orientedMarginLeft, orientedMarginTop);
-      renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      renderer.displayBuffer(DisplayPresentMode::LowLatency);
     } else {
-      renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+      renderer.displayBuffer(DisplayPresentMode::Quality);
     }
     // Double FAST_REFRESH handles ghosting for image pages; don't count toward full refresh cadence
   } else {

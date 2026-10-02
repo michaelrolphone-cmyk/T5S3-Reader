@@ -46,7 +46,7 @@ bool modalShutdownConfirmed(GfxRenderer& renderer, MappedInputManager& input) {
   renderer.drawCenteredText(fontId, y, body.c_str(), true, EpdFontFamily::REGULAR);
   const auto labels = input.mapLabels("", "", I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
 
   for (;;) {
     esp_task_wdt_reset();
@@ -245,7 +245,7 @@ void GlobalMenuActivity::drawActionButton(int x, int y, int width, int height, b
   renderer.drawText(UI_10_FONT_ID, x + (width - labelWidth) / 2, textY, label.c_str(), textBlack);
 }
 
-void GlobalMenuActivity::renderOverlay(HalDisplay::RefreshMode refreshMode) {
+void GlobalMenuActivity::renderOverlay(DisplayPresentMode refreshMode) {
   // Top-only overlay: paint an opaque white band over just the top of the screen for
   // the panel, and leave everything below untouched so the previous content remains visible.
   int panelX, panelY, panelW, panelH;
@@ -285,12 +285,14 @@ GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal(
 
   auto redraw = [&] {
     esp_task_wdt_reset();
-    menu.renderOverlay(HalDisplay::HALF_REFRESH);
+    // Confirmation clears the whole frame; every overlay redraw starts from the paused app.
+    std::memcpy(renderer.getFrameBuffer(), snapshot.data(), renderer.getBufferSize());
+    menu.renderOverlay(DisplayPresentMode::Quality);
     esp_task_wdt_reset();
   };
   auto restoreApp = [&] {
     std::memcpy(renderer.getFrameBuffer(), snapshot.data(), renderer.getBufferSize());
-    renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Quality);
   };
   auto requestModalShutdown = [&]() -> bool {
     if (SETTINGS.confirmShutdown && !modalShutdownConfirmed(renderer, mappedInput)) {
@@ -392,5 +394,6 @@ GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal(
 }
 
 void GlobalMenuActivity::render(RenderLock&&) {
-  renderOverlay(overGrayscaleReader ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  renderOverlay(overGrayscaleReader ? DisplayPresentMode::Clean : DisplayPresentMode::LowLatency);
+
 }

@@ -29,6 +29,7 @@ void begin();
 void beginI2C();
 void initBacklight();
 void setBacklightLevel(uint8_t level);
+void restoreBacklightLevel(uint8_t level);
 void prepareSdBus();
 void disableGpsLora();
 void deinitForSleep();
@@ -119,28 +120,5 @@ bool readBatteryCurrentMa(int16_t* current);
 bool readBatteryAverageCurrentMa(int16_t* current);
 bool isUsbConnected();
 
-struct TouchPoint {
-  uint16_t x = 0;
-  uint16_t y = 0;
-};
-
-class GT911Touch {
- public:
-  bool begin();
-  // Consume one GT911 READY report. Returns true when a controller event was
-  // acknowledged, including a zero-contact release. contactActive distinguishes
-  // a coordinate sample from that release event.
-  bool readEvent(TouchPoint* point, bool* homeButtonPressed, bool* contactActive);
-  // Compatibility helper for callers interested only in active coordinates.
-  bool readPoint(TouchPoint* point, bool* homeButtonPressed = nullptr);
-  bool isAvailable() const { return available; }
-
- private:
-  uint8_t address = 0x5D;
-  bool probeAddress(uint8_t addr);
-  bool available = false;
-  bool writeReg8(uint16_t reg, uint8_t value);
-  bool readReg(uint16_t reg, uint8_t* data, size_t len);
-};
 
 }  // namespace BoardEPD47

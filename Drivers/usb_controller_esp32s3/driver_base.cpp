@@ -4,6 +4,7 @@
 #include "RiscUsbControllerV1.h"
 #include "RiscUsbVbusV1.h"
 #include "StartupDiagnostic.h"
+#include "ClaimReleasePolicy.h"
 #include "EnumerationDiagnostic.h"
 #include "RoleSwitch.h"
 #include <usb/usb_host.h>
@@ -31,6 +32,7 @@ struct Device {
 struct Claim {
     uint64_t token, physical_device;
     uint8_t number, alternate;
+    bool interfaceReleased;
 };
 struct Event {
     uint8_t kind, address;
@@ -50,6 +52,7 @@ static StartupDiagnostic startupError;
 static usb_host_client_handle_t client;
 static usb_transfer_t *transfer;
 static bool inFlight, completed;
+static bool noClientsObserved;
 static Event queue[kEvents];
 static size_t queueHead, queueTail, queueCount;
 static Device devices[RISC_USB_HOST_MAX_DEVICES];
@@ -75,6 +78,21 @@ Claim *claim(uint64_t id) {
 bool claimed(uint64_t id) {
     for (const auto &c : claims) if (c.token && c.physical_device == id) return true;
     return false;
+}
+bool otherClaims(uint64_t deviceId, uint64_t except) {
+    for (const auto &c : claims)
+        if (c.token && c.token != except && c.physical_device == deviceId)
+            return true;
+    return false;
+}
+/* Detached unclaimed handles are still owned. A failed close keeps the slot
+ * occupied and is retried by later bounded event polls, never reused early. */
+void reapDetachedUnclaimed() {
+    if (!client || inFlight) return;
+    for (auto &d : devices) {
+        if (!d.handle || d.attached || claimed(d.token)) continue;
+        if (usb_host_device_close(client, d.handle) == ESP_OK) d = {};
+    }
 }
 bool enqueue(uint8_t kind, uint8_t address, usb_device_handle_t handle) {
     if (queueCount == kEvents) { fault = true; return false; }
@@ -199,9 +217,27 @@ bool endpoint_mps(Device *d, uint8_t iface, uint8_t alt,
 int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
     if (!out || fault || role.state() == UsbRoleSwitch::State::Off) return -1;
     if (role.state() == UsbRoleSwitch::State::Failed) return 0;
+
+    // Cleanup can legitimately be partially complete: client may already be
+    // deregistered while the IDF host/PHY/VBUS are still retained. Retry that
+    // state before calling pump(), which requires a live client and would
+    // otherwise turn safe retained cleanup into a provider event fault.
+    if (role.state() == UsbRoleSwitch::State::Cleanup) {
+        service_role();
+        return 0;
+    }
+
+    // A parked provider may restart the physical host here. Do not require a
+    // client until the role transition has had a chance to create one.
+    if (role.state() == UsbRoleSwitch::State::Sense) {
+        service_role();
+        if (role.state() != UsbRoleSwitch::State::Host) return 0;
+    }
+
     if (installed && !pump(0)) return -1;
     service_role();
     if (role.state() != UsbRoleSwitch::State::Host) return 0;
+    reapDetachedUnclaimed();
     if (!queueCount) return 0;
     Event e = queue[queueHead];
     queueHead = (queueHead + 1) % kEvents;
@@ -230,6 +266,7 @@ int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
         if (!d.attached) { fault = true; return -1; }
         d.attached = false;
         *out = {2, d.token};
+        reapDetachedUnclaimed();
         return 1;
     }
     fault = true;
@@ -266,7 +303,7 @@ bool claim_interface(void *, uint64_t id, uint8_t iface, uint8_t alt,
         return false;
     uint64_t assigned = token();
     if (!assigned) { fault = true; return false; }
-    *slot = {assigned, id, iface, alt};
+    *slot = {assigned, id, iface, alt, false};
     *out = assigned;
     return true;
 }
@@ -283,8 +320,8 @@ bool release_interface(void *, uint64_t id) {
             d = &candidate; break;
         }
     if (!d) return false;
-    /* An idle USB-UART can have an unanswered bulk IN when its app exits.
-     * Drain ONLY the transfer belonging to this claimed interface. */
+    /* Do not strand an unanswered bulk IN when the serial app exits. Never
+     * drain another interface's transfer, nor an in-flight control request. */
     if (inFlight) {
         uint16_t mps = 0;
         if (!transfer || transfer->device_handle != d->handle ||
@@ -293,25 +330,19 @@ bool release_interface(void *, uint64_t id) {
                           transfer->bEndpointAddress, &mps) || !drain_bulk(false))
             return false;
     }
-    const esp_err_t released = usb_host_interface_release(client, d->handle, c->number);
-    if (released != ESP_OK) {
-        std::printf("USBCTRL cleanup-failed stage=interface-release rc=%d\n",
-                    static_cast<int>(released));
+    const bool detached = !d->attached;
+    const bool others = otherClaims(d->token, c->token);
+    /* The interface might have been released on an earlier attempt while
+     * device close failed. Keep this exact claim, retry only the unfinished
+     * stage, and never repeat an acknowledged interface release. */
+    if (!RiscUsbController::releaseClaim(
+            c->interfaceReleased, detached, others,
+            [&]() { return usb_host_interface_release(client, d->handle,
+                                                       c->number) == ESP_OK; },
+            [&]() { return usb_host_device_close(client, d->handle) == ESP_OK; }))
         return false;
-    }
+    if (detached && !others) *d = {};
     *c = {};
-    if (!d->attached && !claimed(d->token)) {
-        const esp_err_t closed = usb_host_device_close(client, d->handle);
-        if (closed != ESP_OK) {
-            /* Interface release has already succeeded. Returning failure
-             * here would make usb.host retain a claim that can NEVER be
-             * released again. Keep the device handle for verified quiesce. */
-            std::printf("USBCTRL stage=device-close-deferred rc=%d\n",
-                        static_cast<int>(closed));
-            return true;
-        }
-        *d = {};
-    }
     return true;
 }
 int32_t control(void *, uint64_t id, uint8_t type, uint8_t request,
@@ -350,7 +381,7 @@ int32_t bulk(void *, uint64_t id, uint8_t endpoint,
     Claim *c = claim(id);
     Device *d = c ? device(c->physical_device) : nullptr;
     uint16_t mps = 0;
-    if (!running || !d || !d->attached || !length ||
+    if (!running || !d || !d->attached || c->interfaceReleased || !length ||
         length > RISC_USB_CONFIG_LIMIT || !timeout ||
         (reading ? (!dst || !(endpoint & 0x80u)) : (!src || (endpoint & 0x80u))) ||
         !endpoint_mps(d, c->number, c->alternate, endpoint, &mps) ||
@@ -429,6 +460,33 @@ bool quiesce_host() {
         client = nullptr;
     }
     if (installed) {
+        /* IDF requires the last-client deregistration to be processed by the
+         * host-library event loop before device_free_all() is legal. Preserve
+         * the observation across cleanup retries because NO_CLIENTS is a
+         * one-shot event and the client handle has already been consumed. */
+        if (!noClientsObserved) {
+            const TickType_t begun = xTaskGetTickCount();
+            for (uint32_t i = 0; !noClientsObserved && i < kTeardownTicks; ++i) {
+                if (static_cast<TickType_t>(xTaskGetTickCount() - begun) >=
+                    pdMS_TO_TICKS(kTeardownTicks)) break;
+                uint32_t flags = 0;
+                const esp_err_t events = usb_host_lib_handle_events(1, &flags);
+                if (events != ESP_OK && events != ESP_ERR_TIMEOUT) {
+                    std::printf("USBCTRL cleanup-failed stage=no-clients-events rc=%d\n",
+                                static_cast<int>(events));
+                    return false;
+                }
+                if (flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS)
+                    noClientsObserved = true;
+                if (!noClientsObserved) vTaskDelay(1);
+            }
+            if (!noClientsObserved) {
+                std::printf("USBCTRL cleanup-failed stage=no-clients-timeout\n");
+                return false;
+            }
+            std::printf("USBCTRL stage=no-clients\n");
+        }
+
         esp_err_t rc = usb_host_device_free_all();
         if (rc != ESP_OK && rc != ESP_ERR_NOT_FINISHED) {
             std::printf("USBCTRL cleanup-failed stage=device-free-all rc=%d\n",
@@ -436,40 +494,26 @@ bool quiesce_host() {
             return false;
         }
         bool freed = rc == ESP_OK;
-        const TickType_t freeingBegan = xTaskGetTickCount();
-        for (uint32_t i = 0; !freed && i < kTeardownTicks; ++i) {
-            if (static_cast<TickType_t>(xTaskGetTickCount() - freeingBegan) >=
-                pdMS_TO_TICKS(kTeardownTicks)) break;
-            uint32_t flags = 0;
-            rc = usb_host_lib_handle_events(1, &flags);
-            if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
-                std::printf("USBCTRL cleanup-failed stage=device-free-events rc=%d\n",
-                            static_cast<int>(rc));
-                return false;
+        if (!freed) {
+            const TickType_t begun = xTaskGetTickCount();
+            for (uint32_t i = 0; !freed && i < kTeardownTicks; ++i) {
+                if (static_cast<TickType_t>(xTaskGetTickCount() - begun) >=
+                    pdMS_TO_TICKS(kTeardownTicks)) break;
+                uint32_t flags = 0;
+                rc = usb_host_lib_handle_events(1, &flags);
+                if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
+                    std::printf("USBCTRL cleanup-failed stage=device-free-events rc=%d\n",
+                                static_cast<int>(rc));
+                    return false;
+                }
+                if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) freed = true;
+                if (!freed) vTaskDelay(1);
             }
-            if (flags & USB_HOST_LIB_EVENT_FLAGS_ALL_FREE) freed = true;
-            // A ready event need not block. Yield even under an event flood.
-            if (!freed) vTaskDelay(1);
         }
         if (!freed) {
             std::printf("USBCTRL cleanup-failed stage=device-free-timeout\n");
             return false;
         }
-        /* IDF v4.4.7: deregistering the last client enqueues NO_CLIENTS and
-         * wakes the library handler. device_free_all() returns ESP_OK when
-         * no device ever attached, bypassing the loop above. Uninstall then
-         * fails ESP_ERR_INVALID_STATE unless its pending flags are consumed.
-         * Pump once on BOTH paths, including a retry after partial teardown;
-         * timeout means the event queue was already empty. */
-        uint32_t finalFlags = 0;
-        rc = usb_host_lib_handle_events(0, &finalFlags);
-        if (rc != ESP_OK && rc != ESP_ERR_TIMEOUT) {
-            std::printf("USBCTRL cleanup-failed stage=final-lib-events rc=%d\n",
-                        static_cast<int>(rc));
-            return false;
-        }
-        std::printf("USBCTRL stage=final-lib-events flags=%lu\n",
-                    static_cast<unsigned long>(finalFlags));
         rc = usb_host_uninstall();
         if (rc != ESP_OK) {
             std::printf("USBCTRL cleanup-failed stage=host-uninstall rc=%d\n",
@@ -477,6 +521,7 @@ bool quiesce_host() {
             return false;
         }
         installed = false;
+        noClientsObserved = false;
     }
     if (!release_host_phy()) return false;
     if (powerLease) {
@@ -561,6 +606,19 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
 struct RolePort {
     uint32_t now() const { return static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS); }
     int32_t input() const { return powerMonitor->input_status(power->context); }
+    bool external_supported() const {
+        if (power->struct_size < sizeof(risc_usb_vbus_external_api_v1) ||
+            !(powerMonitor->flags & RISC_USB_POWER_EXTERNAL_HOST_SUPPORTED)) return false;
+        const auto *extension=reinterpret_cast<const risc_usb_vbus_external_api_v1 *>(power);
+        return extension->acquire_external_host && extension->external_host_valid;
+    }
+    bool external_valid() const {
+        const auto *extension=reinterpret_cast<const risc_usb_vbus_external_api_v1 *>(power);
+        return external_supported() && extension->external_host_valid(power->context,powerLease);
+    }
+    bool disconnect_power_loss() const {
+        return phy && usb_phy_action(phy,USB_PHY_ACTION_HOST_FORCE_DISCONN)==ESP_OK;
+    }
     bool idle_probe_required() const {
         return (powerMonitor->flags & RISC_USB_POWER_IDLE_PROBE_REQUIRED) != 0;
     }
@@ -573,9 +631,14 @@ struct RolePort {
     bool park() const {
         return (!drainRoleInterrupts || drainRoleInterrupts()) && quiesce_host();
     }
-    bool start() const {
+    bool start_external() const {
+        return external_supported() && start(true);
+    }
+    bool start(bool external = false) const {
         startupError.clear(); enumerationDiagnostic.clear();
-        if (!start_host_controller()) return false;
+        noClientsObserved = false;
+        const auto *extension=reinterpret_cast<const risc_usb_vbus_external_api_v1 *>(power);
+        if (!start_host_controller(external ? extension->acquire_external_host : nullptr)) return false;
         running = true;
         return true;
     }

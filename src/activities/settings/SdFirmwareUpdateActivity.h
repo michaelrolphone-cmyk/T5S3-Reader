@@ -1,17 +1,19 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "activities/Activity.h"
+#include "util/ButtonNavigator.h"
 
 /**
- * Settings mode uses the native SD Firmware Update ELF after firmware-owned
- * .bin selection. Recovery mode intentionally remains fully firmware-native so
- * boot recovery never depends on an external app being present on the SD card.
+ * Normal Settings mode delegates browsing to the installable File Browser app.
+ * Recovery mode intentionally retains only a narrow firmware-owned .bin chooser
+ * so boot recovery does not depend on any external app being installed.
  */
 class SdFirmwareUpdateActivity : public Activity {
  public:
-  enum class State { PICKING, VALIDATING, CONFIRMING, UPDATING, SUCCESS, FAILED };
+  enum class State { OPENING_BROWSER, PICKING, VALIDATING, CONFIRMING, UPDATING, SUCCESS, FAILED };
 
   explicit SdFirmwareUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool recoveryMode = false)
       : Activity("SdFirmwareUpdate", renderer, mappedInput), recoveryMode(recoveryMode) {}
@@ -25,17 +27,30 @@ class SdFirmwareUpdateActivity : public Activity {
   bool supportsGlobalMenu() const override { return false; }
 
  private:
-  State state = State::PICKING;
+  State state = State::OPENING_BROWSER;
   bool recoveryMode = false;
   bool launchFailed = false;
+  bool installRetry = false;
+  bool browserPending = false;
+  bool browserFinished = false;
+  std::string browserPath;
+
+  ButtonNavigator buttonNavigator;
+  std::string pickerPath = "/";
+  std::vector<std::string> pickerEntries;
+  size_t pickerIndex = 0;
+
   std::string firmwarePath;
   size_t firmwareSize = 0;
   size_t writtenBytes = 0;
   unsigned int lastRenderedPercent = 101;
   std::string errorMessage;
 
-  void launchPicker();
-  void onPickerResult(const ActivityResult& result);
+  void launchFileBrowser();
+  void runFileBrowser();
+  void loadRecoveryEntries();
+  void openRecoveryEntry();
+  void goRecoveryUp();
   bool validateFirmware();
   void promptConfirmation();
   void onConfirmationResult(const ActivityResult& result);

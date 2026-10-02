@@ -3,7 +3,7 @@
 #include <cassert>
 class GfxRenderer {
  public:
-  int pixels = 0, placeholders = 0;
+  mutable int pixels = 0, placeholders = 0;
   const uint8_t* getGlyphBitmap(const EpdFontData* data, const EpdGlyph* glyph) const {
     assert(!data->groups);
     if (data->glyphMissCtx) {
@@ -12,6 +12,6 @@ class GfxRenderer {
     }
     return &data->bitmap[glyph->dataOffset];
   }
-  void drawPixel(int, int, bool) { ++pixels; }
-  void drawRect(int, int, int, int, bool) { ++placeholders; }
+  void drawPixel(int, int, bool) const { ++pixels; }
+  void drawRect(int, int, int, int, bool) const { ++placeholders; }
 };

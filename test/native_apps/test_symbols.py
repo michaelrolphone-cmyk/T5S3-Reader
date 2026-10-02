@@ -42,6 +42,10 @@ class ImportsTest(unittest.TestCase):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_file_open_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_file_open_get_api'})
 
+    def test_fast_video_api_export(self):
+        imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_video_get_api'
+        self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_video_get_api'})
+
     def test_device_observation_api_export(self):
         imports = '1: 00000000 0 NOTYPE GLOBAL DEFAULT UND t5_device_get_api'
         self.assertEqual(validate_imports(imports, firmware_exports(repo)), {'t5_device_get_api'})

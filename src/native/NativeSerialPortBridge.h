@@ -7,6 +7,9 @@
 
 void nativeSerialPortsBegin();
 void nativeSerialPortsEnd();
+// Owner-task shutdown: refuse while an app/session is active or quarantined;
+// withdraw published devices before releasing the inventory's graph pins.
+bool nativeSerialProviderInventoryStopChecked();
 
 // Trusted firmware only: never exported through the native app ELF ABI.
 // Called by the main owner-task loop and native app's owner-task input poll.
@@ -17,27 +20,18 @@ void nativeDeviceDiscoveryTick();
 
 // Register/unregister on the native app owner task while the selected provider
 // is idle. The callback code and context must outlive their registration.
-// USB is registered permanently as the default provider and resident fallback.
+// Production's built-in provider resolves installed semantic serial.port
+// devices; it does not contain a transport-specific fallback.
 bool nativeRegisterSerialProvider(const RuntimeSerial::Provider& provider);
 bool nativeUnregisterSerialProvider(const char* id);
 
-// Direct compatibility USB streams share the serial bridge's physical
-// serial.port capability lease and invocation identity. Call only on the
-// application owner task, outside the stream registry mutex. The epoch is
-// captured at stream open and prevents rebinding to a replacement device.
-bool nativeUsbDirectStreamClaim(uint32_t expectedEpoch);
-void nativeUsbDirectStreamRelease();
-
-// The claim hook succeeds during initial enumeration to reserve the session.
-// Data must NOT flow until its physical interface is actually in the common
-// registry and the claim hook has acquired its exclusive lease.
-inline bool nativeUsbDirectStreamBound() {
-  auto& registry = RuntimeDevices::systemRegistry();
-  RuntimeDevices::DeviceInfo info{};
-  for (size_t index = 0; index < RuntimeDevices::kMaxDevices; ++index) {
-    if (registry.at(index, &info) && info.transport == RuntimeDevices::Transport::Usb &&
-        std::strcmp(info.provider, "usb.serial") == 0 &&
-        info.state == RuntimeDevices::State::Available) return true;
-  }
-  return false;
-}
+// Transport-neutral stream shuttle hooks. The stream scheduler may call these
+// outside its registry mutex; provider selection/discovery remains owner-task
+// only. Epoch 0 means no usable session. No provider interface pointer or
+// physical device token is exposed to applications. I/O must supply the
+// captured epoch so replacement between a preflight check and pin acquisition
+// cannot redirect an old operation into a new session.
+bool nativeSerialProviderActive();
+uint32_t nativeSerialProviderEpoch();
+int32_t nativeSerialProviderRead(uint32_t expectedEpoch, uint8_t* dst, uint32_t capacity, uint32_t* out);
+int32_t nativeSerialProviderWrite(uint32_t expectedEpoch, const uint8_t* src, uint32_t length, uint32_t* out);

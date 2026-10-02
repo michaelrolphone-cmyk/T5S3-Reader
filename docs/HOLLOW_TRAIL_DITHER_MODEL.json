@@ -1,0 +1,13 @@
+{
+  "seed": 20260929,
+  "training_patches": 524288,
+  "validation_patches": 131072,
+  "teacher_sha256": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+  "model_bytes": 10848,
+  "validation_edge_dot_disagreement": 0.041148186087647705,
+  "method": "Per-bin maximum-likelihood binary labels, independently for each Bayer phase and missing physical sample. Source anchor remains exact. Smooth patches use the existing packed path.",
+  "data": "Random intensity bins, perturbed local slope extensions and independent neighbours; independent validation seed. No game scenes used for training.",
+  "expanded_model_bytes": 32768,
+  "distinct_patterns": 332,
+  "export_sha256": "ae56c4d743badb3a6d6ddb780bf6764a12e1714f2da650c6a09b49606d0b89b2"
+}

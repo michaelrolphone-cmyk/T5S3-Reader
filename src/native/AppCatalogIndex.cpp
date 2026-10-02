@@ -9,7 +9,6 @@
 #include "runtime/memory/PsramJson.h"
 
 namespace {
-constexpr size_t kMaxCatalogBytes = 64 * 1024;
 constexpr size_t kMaxCatalogEntries = 128;
 constexpr size_t kMaxManifestBytes = 2048;
 }
@@ -21,7 +20,7 @@ bool fetchAppCatalogIndex(const std::string& url, std::vector<std::string>& mani
     return false;
   }
 
-  RuntimeMemory::PsramTextStream json(kMaxCatalogBytes);
+  RuntimeMemory::PsramGrowingTextStream json;
   esp_task_wdt_reset();
   const bool fetched = json.good() && HttpDownloader::fetchUrl(url, json);
   // The native HTTP adapter completes on a short-lived worker. Yield once on

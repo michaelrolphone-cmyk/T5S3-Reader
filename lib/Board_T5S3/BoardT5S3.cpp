@@ -1,8 +1,9 @@
+#include <HalStorageLifecycle.h>
+#include <SdSpiFault.h>
 #include "BoardT5S3.h"
+#include "BoardPowerPort.h"
 
 #include <cassert>
-#include <bq25896.h>
-#include <bq25896_hal_esp_idf.h>
 #include <bq27220.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -40,22 +41,27 @@ constexpr BoardCapabilities kCapabilities = {
     .hasRtc = true,
 };
 
-bool batteryInitAttempted = false;
-bool bq25896Ready = false;
+bool gaugeInitAttempted = false;
+bool chargerConfigured = false;
 bool bq27220Ready = false;
-bq25896_hal_esp_idf_ctx_t bq25896HalCtx = {};
-bq25896_t bq25896 = {};
 BQ27220 bq27220;
 bool backlightInitialized = false;
 SemaphoreHandle_t i2cMutex = nullptr;
 
-constexpr uint16_t GT911_PRODUCT_ID_REG = 0x8140;
-constexpr uint16_t GT911_STATUS_REG = 0x814E;
-constexpr uint16_t GT911_POINT1_REG = 0x814F;
-constexpr uint8_t GT911_STATUS_READY = 0x80;
-constexpr uint8_t GT911_STATUS_HAVE_KEY = 0x10;
-constexpr uint8_t GT911_TOUCH_COUNT_MASK = 0x0F;
-constexpr uint8_t GT911_BACKUP_ADDR = 0x14;
+void prepareTouchControllerForProvider() {
+  // Board-only electrical bootstrap: GT911 samples INT while RESET rises.
+  // Runtime register access and READY acknowledgement belong exclusively to
+  // the installed input.touch.raw provider.
+  pinMode(T5S3_TOUCH_INT, OUTPUT);
+  digitalWrite(T5S3_TOUCH_INT, LOW);  // Select the board's documented 0x5D address.
+  pinMode(T5S3_TOUCH_RST, OUTPUT);
+  digitalWrite(T5S3_TOUCH_RST, LOW);
+  delay(20);
+  digitalWrite(T5S3_TOUCH_RST, HIGH);
+  delay(60);
+  pinMode(T5S3_TOUCH_INT, INPUT);
+  delay(5);
+}
 
 SemaphoreHandle_t ensureI2CMutex() {
   if (i2cMutex == nullptr) {
@@ -96,6 +102,10 @@ bool i2cReadReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
 }
 
 bool updatePca9535Bit(uint8_t baseReg, uint8_t pin, bool high) {
+  // PCA9535 bit writes are read-modify-write operations. Keep that pair
+  // atomic, but release the shared bus immediately afterwards so unrelated
+  // clients such as the GT911 touch provider are not starved by display work.
+  ScopedI2CLock lock;
   const uint8_t port = pin / 8;
   const uint8_t bit = pin % 8;
   uint8_t value = 0;
@@ -121,7 +131,6 @@ bool readReg16LE(uint8_t addr, uint8_t reg, uint16_t* value) {
 
 i2c_master_bus_handle_t i2cMasterBusHandle() { return reinterpret_cast<i2c_master_bus_handle_t>(&Wire); }
 
-bool applyBq25896Step(bq25896_err_t err) { return BQ25896_SUCCEEDED(err); }
 
 uint8_t backlightDutyForLevel(uint8_t level) {
   if (level == 0) {
@@ -134,56 +143,6 @@ uint8_t backlightDutyForLevel(uint8_t level) {
   const uint32_t levelSquared = static_cast<uint32_t>(level) * static_cast<uint32_t>(level);
   const uint32_t duty = (levelSquared * 255U + 50U) / 100U;
   return static_cast<uint8_t>(duty > 255U ? 255U : duty);
-}
-
-bool configureBq25896() {
-  bq25896_config_t config = {};
-  if (BQ25896_FAILED(bq25896_get_default_config(&config))) {
-    return false;
-  }
-
-  if (BQ25896_FAILED(bq25896_hal_esp_idf_get_default_ctx(&bq25896HalCtx))) {
-    return false;
-  }
-  bq25896HalCtx.scl_speed_hz = T5S3_I2C_FREQ;
-  bq25896HalCtx.timeout_ms = 100;
-
-  if (BQ25896_FAILED(bq25896_hal_esp_idf_ctx_init(&bq25896HalCtx, i2cMasterBusHandle(), T5S3_BQ25896_ADDR))) {
-    return false;
-  }
-
-  if (BQ25896_FAILED(bq25896_hal_esp_idf_make_hal(&bq25896HalCtx, &config.hal))) {
-    (void)bq25896_hal_esp_idf_ctx_deinit(&bq25896HalCtx);
-    return false;
-  }
-
-  config.i2c_addr_7bit = T5S3_BQ25896_ADDR;
-  config.reset_registers_on_init = true;
-  config.exit_hiz_on_init = true;
-  config.adc_mode = BQ25896_ADC_MODE_CONTINUOUS;
-  config.watchdog = BQ25896_WATCHDOG_DISABLED;
-
-  if (BQ25896_FAILED(bq25896_init(&bq25896, &config))) {
-    (void)bq25896_hal_esp_idf_ctx_deinit(&bq25896HalCtx);
-    return false;
-  }
-
-  const bool ok = applyBq25896Step(bq25896_disable_otg(&bq25896)) &&
-                  applyBq25896Step(bq25896_enable_battery_power_path(&bq25896)) &&
-                  applyBq25896Step(bq25896_set_input_limit_ma(&bq25896, kBatteryProfile.inputLimitMa)) &&
-                  applyBq25896Step(bq25896_set_charge_current_ma(&bq25896, kBatteryProfile.chargeCurrentMa)) &&
-                  applyBq25896Step(bq25896_set_precharge_current_ma(&bq25896, kBatteryProfile.prechargeCurrentMa)) &&
-                  applyBq25896Step(bq25896_set_termination_current_ma(&bq25896,
-                                                                       kBatteryProfile.terminationCurrentMa)) &&
-                  applyBq25896Step(bq25896_set_charge_voltage_mv(&bq25896, kBatteryProfile.chargeVoltageMv)) &&
-                  applyBq25896Step(bq25896_set_system_min_voltage_mv(&bq25896,
-                                                                      kBatteryProfile.systemMinVoltageMv)) &&
-                  applyBq25896Step(bq25896_enable_charge(&bq25896));
-  if (!ok) {
-    (void)bq25896_hal_esp_idf_ctx_deinit(&bq25896HalCtx);
-    bq25896 = {};
-  }
-  return ok;
 }
 
 bool configureBq27220() {
@@ -213,8 +172,13 @@ const char* firmwareMarker() { return "RISCRTE_BOARD_ID:t5s3-pro"; }
 const BoardCapabilities& capabilities() { return kCapabilities; }
 
 ScopedI2CLock::ScopedI2CLock() {
-  xSemaphoreTakeRecursive(ensureI2CMutex(), portMAX_DELAY);
-  locked_ = true;
+  locked_ = xSemaphoreTakeRecursive(ensureI2CMutex(), portMAX_DELAY) == pdTRUE;
+}
+
+ScopedI2CLock::ScopedI2CLock(uint32_t timeoutMs) {
+  TickType_t ticks = pdMS_TO_TICKS(timeoutMs);
+  if (timeoutMs && !ticks) ticks = 1;
+  locked_ = xSemaphoreTakeRecursive(ensureI2CMutex(), ticks) == pdTRUE;
 }
 
 ScopedI2CLock::~ScopedI2CLock() {
@@ -249,7 +213,16 @@ void setBacklightLevel(uint8_t level) {
   ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
 }
 
+void restoreBacklightLevel(uint8_t level) {
+  // The guest may have attached the same GPIO to another LEDC channel.
+  ledcSetup(kBacklightPwmChannel, kBacklightPwmFrequencyHz, kBacklightPwmResolutionBits);
+  ledcAttachPin(T5S3_BL_EN, kBacklightPwmChannel);
+  backlightInitialized = true;
+  ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
+}
+
 void prepareSdBus() {
+  risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
   pinMode(T5S3_LORA_CS, OUTPUT);
   digitalWrite(T5S3_LORA_CS, HIGH);
   pinMode(T5S3_SD_CS, OUTPUT);
@@ -258,6 +231,7 @@ void prepareSdBus() {
 }
 
 void disableGpsLora() {
+  risc_sd_spi_guard(); // Shared-radio reset/rail shutdown cannot bypass retention.
   pinMode(T5S3_LORA_CS, OUTPUT);
   digitalWrite(T5S3_LORA_CS, HIGH);
   pinMode(T5S3_LORA_RST, OUTPUT);
@@ -273,6 +247,7 @@ void disableGpsLora() {
 
 void begin() {
   beginI2C();
+  prepareTouchControllerForProvider();
   initBacklight();
   setBacklightLevel(0);
 
@@ -290,6 +265,10 @@ void begin() {
 }
 
 void deinitForSleep() {
+  risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
+  // Pin the installed owner while SD is still available.
+  (void)BoardPowerPort::prepareShutdown();
+  halStorageMediaUnavailable(); // Existing SD bus shutdown invalidates retained metadata.
   setBacklightLevel(0);
   pinMode(T5S3_BL_EN, OUTPUT);
   digitalWrite(T5S3_BL_EN, LOW);
@@ -302,82 +281,41 @@ void deinitForSleep() {
 const BatteryProfile& batteryProfile() { return kBatteryProfile; }
 
 bool beginBatteryManagement() {
-  if (batteryInitAttempted) {
-    return bq25896Ready || bq27220Ready;
+  // Gauge is a separate chip and remains accessible during early boot.
+  // A pre-mount call must not attempt to map an ELF or latch charger failure.
+  if (!gaugeInitAttempted) {
+    gaugeInitAttempted = true;
+    bq27220Ready = configureBq27220();
   }
-
-  batteryInitAttempted = true;
-  bq25896Ready = configureBq25896();
-  bq27220Ready = configureBq27220();
-  return bq25896Ready || bq27220Ready;
+  if (!chargerConfigured && BoardPowerPort::readyForActivation())
+    chargerConfigured = BoardPowerPort::configure();
+  return chargerConfigured || bq27220Ready;
 }
 
-bool isBatteryManagementReady() { return bq25896Ready || bq27220Ready; }
+bool isBatteryManagementReady() { return chargerConfigured || bq27220Ready; }
 
 bool shutdownBatteryPower() {
-  if (!beginBatteryManagement() || !bq25896Ready) {
-    return false;
-  }
-
-  bq25896_status_t chargerStatus = {};
-  const bq25896_err_t statusRc = bq25896_read_status(&bq25896, &chargerStatus);
-  if (BQ25896_FAILED(statusRc) || chargerStatus.vbus_good || chargerStatus.power_good) {
-    return false;
-  }
-
-  return BQ25896_SUCCEEDED(bq25896_shutdown(&bq25896));
+  // Installed owner always checks live input, OTG leases and uncertain writes.
+  // No BQ25896 register-level firmware fallback exists.
+  return BoardPowerPort::shutdown();
 }
 
 bool readBatteryState(BatteryState* state) {
-  if (state == nullptr) {
-    return false;
-  }
-
+  if (!state) return false;
   *state = {};
-  state->chargerReady = bq25896Ready;
   state->gaugeReady = bq27220Ready;
   state->gaugeChargeVoltageMv = kBatteryProfile.chargeVoltageMv;
   state->gaugeTaperCurrentMa = kBatteryProfile.terminationCurrentMa;
-
-  if (bq25896Ready) {
-    bq25896_status_t chargerStatus = {};
-    bq25896_adc_t chargerAdc = {};
-    bq25896_charge_config_t chargerConfig = {};
-    const bq25896_err_t statusRc = bq25896_read_status(&bq25896, &chargerStatus);
-    const bq25896_err_t adcRc = bq25896_read_adc(&bq25896, &chargerAdc);
-    const bq25896_err_t configRc = bq25896_read_charge_config(&bq25896, &chargerConfig);
-    state->chargerReadOk = BQ25896_SUCCEEDED(statusRc) && BQ25896_SUCCEEDED(adcRc) && BQ25896_SUCCEEDED(configRc);
-    if (state->chargerReadOk) {
-      state->vbusConnected = bq25896_has_external_input(
-          chargerConfig.raw_reg03, chargerStatus.raw_reg0b, chargerStatus.raw_reg11);
-      state->chargeEnabled = chargerConfig.charge_enabled;
-      state->chargerVbusStatus = static_cast<uint8_t>(chargerStatus.vbus_status);
-      state->chargerStatus = static_cast<BatteryChargeStatus>(chargerStatus.charge_status);
-      state->inputLimitMa = chargerStatus.input_limit_ma;
-      state->chargeCurrentMa = chargerConfig.charge_current_ma;
-      state->prechargeCurrentMa = chargerConfig.precharge_current_ma;
-      state->terminationCurrentMa = chargerConfig.termination_current_ma;
-      state->chargerAdcCurrentMa = chargerAdc.charge_current_ma;
-      state->chargeVoltageMv = chargerConfig.charge_voltage_mv;
-      state->systemVoltageMv = chargerAdc.system_voltage_mv;
-      state->batteryVoltageMv = chargerAdc.battery_voltage_mv;
-      state->vbusVoltageMv = chargerAdc.vbus_voltage_mv;
-      state->gaugeChargeVoltageMv = chargerConfig.charge_voltage_mv;
-      state->gaugeTaperCurrentMa = chargerConfig.termination_current_ma;
-      state->chargeDone = chargerStatus.charge_status == BQ25896_CHARGE_STATUS_TERMINATION_DONE;
-      state->charging = state->chargeEnabled &&
-                        (chargerStatus.charge_status == BQ25896_CHARGE_STATUS_PRECHARGE ||
-                         chargerStatus.charge_status == BQ25896_CHARGE_STATUS_FAST_CHARGE);
-    }
-  }
+  const bool chargerAvailable = BoardPowerPort::read(state);
+  state->chargerReady = chargerAvailable;
 
   if (bq27220Ready) {
     BQ27220Snapshot gauge = {};
     state->gaugeReadOk = bq27220.readSnapshot(&gauge);
     if (state->gaugeReadOk) {
       const bool inferredVbus = state->vbusConnected || gauge.charging;
-      state->gaugeState =
-          static_cast<BatteryGaugeState>(BQ27220::classifyState(&gauge, inferredVbus, kBatteryProfile.currentThresholdMa));
+      state->gaugeState = static_cast<BatteryGaugeState>(
+          BQ27220::classifyState(&gauge, inferredVbus, kBatteryProfile.currentThresholdMa));
       state->gaugeBatteryFullFlag = gauge.battery_status.reg.FC;
       state->gaugeGaugingFullFlag = gauge.gauging_status.reg.FC;
       state->gaugeTaperFlag = gauge.battery_status.reg.TCA;
@@ -394,12 +332,9 @@ bool readBatteryState(BatteryState* state) {
       state->gaugingStatusRaw = gauge.gauging_status.full;
       state->charging = state->charging || gauge.charging;
       state->chargeDone = state->chargeDone || gauge.full || gauge.battery_status.reg.TCA;
-      if (!state->chargerReadOk) {
-        state->vbusConnected = inferredVbus;
-      }
+      if (!state->chargerReadOk) state->vbusConnected = inferredVbus;
     }
   }
-
   return state->chargerReadOk || state->gaugeReadOk;
 }
 
@@ -445,11 +380,10 @@ bool readBQ27220Reg16(uint8_t reg, uint16_t* value) {
   return readReg16LE(T5S3_BQ27220_ADDR, reg, value);
 }
 
-bool readBQ25896Reg8(uint8_t reg, uint8_t* value) {
-  if (!value) {
-    return false;
-  }
-  return i2cReadReg(T5S3_BQ25896_ADDR, reg, value, 1);
+bool readBQ25896Reg8(uint8_t, uint8_t*) {
+  // Compatibility function intentionally fails closed. Raw BQ reads are no
+  // longer a firmware API, even for the former USB power-detection shortcut.
+  return false;
 }
 
 bool readBatteryStateOfCharge(uint16_t* soc) {
@@ -481,124 +415,32 @@ bool readBatteryAverageCurrentMa(int16_t* current) {
 }
 
 bool isUsbConnected() {
-  // Legacy UI telemetry, not the installed USB driver's role detector. Our
-  // own boost output used to look like a charger attachment here, causing a
-  // full UI redraw at each empty-host source-off observation. Keep one
-  // coherent, read-only snapshot and retain it through a failed transaction;
-  // an I2C failure or stale gauge current is not a cable edge.
-  ScopedI2CLock lock;
+  // GPIO polls this every loop. Avoid reloading the installed ELF and making
+  // eleven I2C reads on every button/touch scan; keep physical safety checks
+  // inside the ELF fresh (the shutdown path NEVER consumes this UI cache).
+  static bool sampled = false;
   static bool connected = false;
-  uint8_t power = 0, status = 0, vbus = 0;
-  if (readBQ25896Reg8(BQ25896_REG_03, &power) &&
-      readBQ25896Reg8(BQ25896_REG_0B, &status) &&
-      readBQ25896Reg8(BQ25896_REG_11, &vbus)) {
-    connected = bq25896_has_external_input(power, status, vbus);
+  static unsigned long lastSampleMs = 0;
+  static bool attemptedStartupCharge = false;
+  static unsigned long lastChargeAttemptMs = 0;
+  const unsigned long now = millis();
+  if (!chargerConfigured && BoardPowerPort::readyForActivation() &&
+      (!attemptedStartupCharge || now - lastChargeAttemptMs >= 30000UL)) {
+    attemptedStartupCharge = true;
+    lastChargeAttemptMs = now;
+    chargerConfigured = BoardPowerPort::configure();
   }
+  if (sampled && now - lastSampleMs < 1000UL) return connected;
+  bool external = false;
+  if (BoardPowerPort::externalPower(&external)) {
+    connected = external;
+  }
+  // A failed provider read or stale fuel-gauge current is not a cable edge.
+  // Retain the last observed state; missing ELF never enables a raw fallback.
+  lastSampleMs = now;
+  sampled = true;
   return connected;
 }
 
-bool GT911Touch::writeReg8(uint16_t reg, uint8_t value) {
-  ScopedI2CLock lock;
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<uint8_t>(reg >> 8));
-  Wire.write(static_cast<uint8_t>(reg & 0xFF));
-  Wire.write(value);
-  return Wire.endTransmission() == 0;
-}
-
-bool GT911Touch::readReg(uint16_t reg, uint8_t* data, size_t len) {
-  ScopedI2CLock lock;
-  Wire.beginTransmission(address);
-  Wire.write(static_cast<uint8_t>(reg >> 8));
-  Wire.write(static_cast<uint8_t>(reg & 0xFF));
-  if (Wire.endTransmission(false) != 0) {
-    return false;
-  }
-  const uint8_t requested = static_cast<uint8_t>(len);
-  if (Wire.requestFrom(address, requested) != requested) {
-    while (Wire.available()) {
-      Wire.read();
-    }
-    return false;
-  }
-  for (size_t i = 0; i < len; ++i) {
-    data[i] = Wire.read();
-  }
-  return true;
-}
-
-void GT911Touch::resetForAddress(uint8_t addr) {
-  // GT911 samples INT while RESET is released to select its I2C address.
-  // INT low selects 0x5D; INT high selects 0x14.
-  pinMode(T5S3_TOUCH_INT, OUTPUT);
-  digitalWrite(T5S3_TOUCH_INT, addr == T5S3_GT911_ADDR ? LOW : HIGH);
-  pinMode(T5S3_TOUCH_RST, OUTPUT);
-  digitalWrite(T5S3_TOUCH_RST, LOW);
-  delay(20);
-  digitalWrite(T5S3_TOUCH_RST, HIGH);
-  delay(60);
-  pinMode(T5S3_TOUCH_INT, INPUT);
-  delay(5);
-}
-
-bool GT911Touch::probeAddress(uint8_t addr) {
-  address = addr;
-  uint8_t productId[4] = {0, 0, 0, 0};
-  available = readReg(GT911_PRODUCT_ID_REG, productId, sizeof(productId));
-  if (available) {
-    writeReg8(GT911_STATUS_REG, 0);
-  }
-  return available;
-}
-
-bool GT911Touch::begin() {
-  resetForAddress(T5S3_GT911_ADDR);
-  if (probeAddress(T5S3_GT911_ADDR)) {
-    return true;
-  }
-
-  resetForAddress(GT911_BACKUP_ADDR);
-  if (probeAddress(GT911_BACKUP_ADDR)) {
-    return true;
-  }
-
-  address = T5S3_GT911_ADDR;
-  available = false;
-  return false;
-}
-
-bool GT911Touch::readEvent(TouchPoint* point, bool* homeButtonPressed, bool* contactActive) {
-  if (homeButtonPressed) *homeButtonPressed = false;
-  if (contactActive) *contactActive = false;
-  if (!available || point == nullptr || contactActive == nullptr) return false;
-
-  uint8_t status = 0;
-  if (!readReg(GT911_STATUS_REG, &status, 1) || (status & GT911_STATUS_READY) == 0)
-    return false;
-
-  if (homeButtonPressed)
-    *homeButtonPressed = (status & GT911_STATUS_HAVE_KEY) != 0;
-
-  const uint8_t touchCount = status & GT911_TOUCH_COUNT_MASK;
-  if (touchCount == 0) {
-    writeReg8(GT911_STATUS_REG, 0);
-    return true;
-  }
-
-  uint8_t data[8] = {0};
-  const bool ok = readReg(GT911_POINT1_REG, data, sizeof(data));
-  writeReg8(GT911_STATUS_REG, 0);
-  if (!ok) return false;
-
-  point->x = static_cast<uint16_t>(data[1]) | (static_cast<uint16_t>(data[2]) << 8);
-  point->y = static_cast<uint16_t>(data[3]) | (static_cast<uint16_t>(data[4]) << 8);
-  *contactActive = true;
-  return true;
-}
-
-bool GT911Touch::readPoint(TouchPoint* point, bool* homeButtonPressed) {
-  bool active = false;
-  return readEvent(point, homeButtonPressed, &active) && active;
-}
 
 }  // namespace BoardT5S3

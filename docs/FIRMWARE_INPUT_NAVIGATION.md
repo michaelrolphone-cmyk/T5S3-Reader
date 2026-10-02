@@ -5,11 +5,13 @@ Governed by the [Platform Specification](RISCRTE_PLATFORM_SPEC.md) and
 
 ## Installation and controls
 
-Install **usb-ui-navigation 0.1.0** and its declared dependencies alongside
+Install **usb-ui-navigation 0.1.2** and its declared dependencies alongside
 firmware containing this integration. It is a separate composite driver that
 provides `input.navigation@1`, built and exported through the existing driver
-package workflow. It requires the HID keyboard, HID gamepad and XInput gamepad
-providers; physical devices of all three kinds need not be connected. The
+package workflow. Keyboard text entry additionally uses
+**usb-hid-text-input 0.1.0**, which provides transport-neutral `input.text@1`
+from the HID keyboard provider. The navigation package depends on `input.text`
+plus HID and XInput gamepad providers; physical devices need not be connected. The
 existing controller/power drivers retain physical USB ownership and their
 host-role-before-VBUS startup sequence.
 
@@ -51,11 +53,15 @@ revoked by this setting. Failed cleanup still retains unsafe packages.
 | Page Up / Page Down | Previous/next reader page |
 | Home | Firmware Home gesture |
 | Gamepad D-pad or left stick | Move selection; turn reader pages |
-| HID Button 1 / Button 2 | Confirm / Back |
-| XInput A / B | Confirm / Back |
+| HID Button 1 / Button 3 (X) | Confirm / Back |
+| XInput A / X | Confirm / Back |
 | Gamepad shoulders (bits 4/5) | Previous/next reader page |
 
 HID button numbers are descriptor-defined, not universal face-button labels.
+Back uses X (HID mask 0x04; normalized XInput mask 0x08), with no A/B
+Back alias. Updating this driver changes Back throughout the OS and apps that
+consume semantic navigation; those apps do not need rebuilding. The 3D Model
+Viewer uses raw gamepad input and requires its separate 1.2.5 app update.
 This default matches the tested SNES-style numbering; a different controller
 may label the same buttons differently. Analog directions use a 16000 threshold
 on the normalized signed-16-bit axes. Physical buttons and touch remain usable.
@@ -69,11 +75,15 @@ polling for hotplug. An unsafe/quarantined generation is not silently restarted.
 
 ## Ownership and handoff
 
-The firmware consumes only the transport-neutral
-[`RiscInputNavigationV1.h`](../sdk/driver/RiscInputNavigationV1.h) interface.
-[`usb_ui_navigation/driver.c`](../Drivers/usb_ui_navigation/driver.c) implements
-USB input policy through class capabilities; no USB enumeration, descriptors,
-report decoder or rail control is added to the firmware navigation consumer.
+The firmware consumes transport-neutral
+[`RiscInputNavigationV1.h`](../sdk/driver/RiscInputNavigationV1.h) and
+[`RiscTextInputV1.h`](../sdk/driver/RiscTextInputV1.h) interfaces.
+[`usb_hid_text_input/driver.c`](../Drivers/usb_hid_text_input/driver.c)
+translates boot-keyboard HID usages into semantic text/key events, while
+[`usb_ui_navigation/driver.c`](../Drivers/usb_ui_navigation/driver.c)
+maps those semantic events plus gamepad state into navigation. No USB
+enumeration, descriptor parsing, report decoding or rail control is added to
+the firmware text/navigation consumers.
 
 1. The UI holds a navigation-provider grant. Its dependency grants keep the
    existing keyboard/gamepad/host/controller chain available.
@@ -107,16 +117,55 @@ UI adapter instance.
 
 Gamepads use bounded polling plus current snapshots, with no button-history
 FIFO. Keyboard navigation retains the order of key presses/releases, including
-quick taps. The UI cursor is independent of the app's keyboard cursor; focus
-handoff never flushes the app's buffered typing. Only navigation keys are mapped;
-text entry remains the keyboard consumer's responsibility.
+quick taps. The `input.text` provider publishes printable codepoints and
+semantic editing keys independently of USB. A firmware
+`KeyboardEntryActivity` temporarily claims `input.text`, suppressing only
+keyboard-derived navigation while the field is active; touch, hardware buttons
+and gamepads keep working. Enter completes the field, Escape cancels,
+Backspace/Delete edit, and Left/Right/Home/End move the text cursor. The
+semantic subscription and lease are released before keyboard navigation is
+rearmed.
 
-Each provider poll performs at most four ready reports per input class and
-consumes at most one keyboard navigation transition, scanning no more than the
-existing 32-event queue. The firmware polls at most once per 20 ms owner-loop
-interval and preserves held state between polls. Existing menu repeat logic
-uses that held state. Rendering/scheduling can make the interval longer; no
-separate worker calls provider interfaces concurrently.
+Each navigation-provider poll performs at most four ready reports per input
+class and consumes at most one keyboard navigation transition, scanning no more
+than the existing 32-event queue. Navigation remains owner-loop driven and
+preserves held state between polls.
+
+Touch capture is intentionally different. The firmware holds one
+`input.touch.raw@1` subscription and services that opaque provider from a
+dedicated 5 ms capture task. The capture task performs provider polling and
+drains DOWN/MOVE/UP events into firmware gesture queues; the UI/owner loop only
+consumes those queued gestures and observes activity state. A slow e-paper
+redraw or other owner-loop work therefore cannot make a short tap disappear
+between UI polls. The task is stopped and proven quiescent before the firmware
+unsubscribes/releases the touch provider for sleep, driver mutation, or app
+hardware takeover.
+
+E-paper rendering runs on its separate render task and must not hold a shared
+hardware-bus lock across panel power sequencing or waveform waits. Individual
+bus transactions and atomic read-modify-write operations remain serialized. The
+transitional installed `i2c.bus` provider queues concurrent callers instead of
+returning a synthetic busy failure, so normal overlap between touch capture,
+power telemetry and display control is not misreported as a device fault.
+`i2c-esp32s3-v2 0.1.5` supersedes the 0.1.3/0.1.4 relocatable-atomic design:
+provider-local state and complete synchronous transactions are serialized by an
+ordinary FreeRTOS mutex, while the existing firmware board mutex remains the
+physical Wire/I2C0 owner. Claim release waits for the provider mutex and
+therefore cannot report success while a transaction is still active. A single
+transient touch poll failure also keeps the in-flight DOWN gesture eligible;
+only repeated bounded failures or an explicit provider queue GAP trigger
+snapshot recovery. Already completed tap/swipe/Home events remain queued for
+delivery.
+
+The on-screen `KeyboardEntryActivity` has the same scheduling rule at the UI
+layer: input owns the mutable text/cursor/selection state. The render task takes
+one short protected snapshot only when it actually begins a render, then
+releases the state lock before font/layout/display work. Redraw requests may
+therefore coalesce without copying the whole entered string on every key press,
+and render never races the live `std::string` while input mutates it.
+Bottom-aligned keyboard hit-testing is performed before text wrapping/font
+measurement, keeping text layout work out of the key-press path even as the
+entered text grows.
 
 App entry/return, focus changes, input gaps and failures clear derived UI state.
 The returning source must become neutral before it can trigger navigation. This

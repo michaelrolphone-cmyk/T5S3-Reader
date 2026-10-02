@@ -723,6 +723,14 @@ The runtime maps these intents onto appropriate ESP-IDF memory capabilities and 
 
 Application ELFs SHOULD prefer T5 allocation APIs where resource accounting and future isolation are required.
 
+Current ESP32-S3 firmware installs an mbedTLS allocator at startup when PSRAM
+is available. Allocations of at least 4 KiB use PSRAM; smaller allocations use
+internal RAM so hardware crypto and control state retain
+internal-memory access. Large allocations fail without silently consuming
+internal RAM if PSRAM is exhausted. The bundled framework still has an internal
+memory mbedTLS default, so this runtime hook must be installed before network
+clients are created.
+
 ---
 
 ## 26. Virtualized UI collections

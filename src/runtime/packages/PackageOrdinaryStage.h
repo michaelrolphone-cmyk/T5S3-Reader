@@ -34,7 +34,13 @@ struct OrdinaryRequirement {
   char capability[64]{};
   uint32_t minApi = 0;
 };
+constexpr size_t kMaxResourceImports = 4;
+struct OrdinaryResourceImport {
+  char id[64]{};
+  char minVersion[32]{};
+};
 struct OrdinaryPackagePlan {
+  uint32_t schemaVersion = 1;
   Identity identity{};
   char architecture[32]{};
   uint32_t minRuntimeApi = 0;
@@ -42,6 +48,8 @@ struct OrdinaryPackagePlan {
   size_t entryCount = 0;
   OrdinaryRequirement requirements[kMaxPackageRequirements]{};
   size_t requirementCount = 0;
+  OrdinaryResourceImport resourceImports[kMaxResourceImports]{};
+  size_t resourceImportCount = 0;
 };
 
 // CPU0's idle task must run even during repeated synchronous SD operations.
@@ -82,15 +90,24 @@ inline bool ordinaryDigestEquals(const uint8_t actual[32], const char expected[6
   return difference == 0;
 }
 
-// Reuse the same bounds, identity, CPU ABI, version, entry and dependency
-// preflight as signed archives, but explicitly omit experimental signer and
-// NVS-floor policy. A zero floor does not silently install signing keys.
+// One generic bounds/identity/CPU/version/entry/dependency preflight. Content
+// consistency and runtime capability authorization remain separate checks.
 template <typename Resolver>
 PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
     const PackageRuntimePolicy& limits, Resolver resolver) {
-  if (plan.entryCount > kMaxPackageEntries ||
+  if ((plan.schemaVersion != 1 && plan.schemaVersion != 2 && plan.schemaVersion != 3) ||
+      plan.entryCount > kMaxPackageEntries ||
       plan.requirementCount > kMaxPackageRequirements ||
       !plan.architecture[0]) return PreflightResult::InvalidEntryList;
+  if ((resourceOnly(plan.identity) && (plan.schemaVersion != 3 || plan.resourceImportCount || plan.requirementCount)) ||
+      (plan.schemaVersion != 3 && plan.resourceImportCount) || plan.resourceImportCount > kMaxResourceImports)
+    return PreflightResult::InvalidIdentity;
+  for (size_t i = 0; i < plan.resourceImportCount; ++i) {
+    const auto& request = plan.resourceImports[i];
+    if (!safeId(request.id) || !safeVersion(request.minVersion)) return PreflightResult::InvalidRequirement;
+    for (size_t j = 0; j < i; ++j)
+      if (!std::strcmp(plan.resourceImports[j].id, request.id)) return PreflightResult::DuplicateRequirement;
+  }
   PackageEntry entries[kMaxPackageEntries]{};
   PackageRequirement needs[kMaxPackageRequirements]{};
   for (size_t i = 0; i < plan.entryCount; ++i) {
@@ -98,6 +115,7 @@ PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
     if (!std::memchr(src.name, 0, sizeof(src.name)) ||
         !std::memchr(src.sha256, 0, sizeof(src.sha256)) ||
         !std::strcmp(src.name, kOrdinaryManifestName) ||
+        (plan.schemaVersion == 1 && std::strchr(src.name, '/')) ||
         (src.executable && src.sizeBytes < 52))
       return PreflightResult::InvalidEntry;
     entries[i] = {src.name, src.sizeBytes, src.sha256, src.executable};
@@ -111,10 +129,8 @@ PreflightResult preflightOrdinaryPackage(const OrdinaryPackagePlan& plan,
   if (!std::memchr(plan.architecture, 0, sizeof(plan.architecture)))
     return PreflightResult::UnsupportedArchitecture;
   const PackageEnvelopeView envelope{plan.identity, plan.architecture,
-      plan.minRuntimeApi, 0, entries, plan.entryCount, needs, plan.requirementCount};
-  PackageRuntimePolicy ordinary = limits;
-  ordinary.minimumSecurityVersion = 0;
-  return preflightPackage(envelope, ordinary, resolver);
+      plan.minRuntimeApi, entries, plan.entryCount, needs, plan.requirementCount};
+  return preflightPackage(envelope, limits, resolver);
 }
 
 inline bool ordinaryElfHeader(const uint8_t* data, size_t size,

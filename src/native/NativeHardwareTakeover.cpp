@@ -1,5 +1,10 @@
 #include <HalDisplay.h>
 #include "NativeHardwareTakeover.h"
+#include "NativeTouchInput.h"
+#include "NativeAppMemory.h"
+#include "NativeVideoBridge.h"
+#include <Board.h>
+#include "CrossPointSettings.h"
 #include <T5HardwareTakeover.h>
 #include <esp_err.h>
 #include <esp_log.h>
@@ -8,6 +13,11 @@
 namespace {
 constexpr char kTag[] = "ELF_TAKEOVER";
 bool s_display_borrowed = false;
+bool s_touch_borrowed = false;
+}
+
+extern "C" bool native_hardware_display_is_borrowed(void) {
+  return s_display_borrowed;
 }
 
 // These hooks belong to the firmware loader; they are not imported by ELFs.
@@ -19,14 +29,28 @@ extern "C" esp_err_t native_hardware_takeover_begin(uint32_t requested) {
              static_cast<unsigned long>(requested));
     return ESP_ERR_NOT_SUPPORTED;
   }
+  if ((requested & T5_HARDWARE_TAKEOVER_UI_VIDEO) &&
+      !(requested & T5_HARDWARE_TAKEOVER_DISPLAY)) return ESP_ERR_NOT_SUPPORTED;
   if (s_display_borrowed) return ESP_ERR_INVALID_STATE;
   if ((requested & T5_HARDWARE_TAKEOVER_DISPLAY) != 0U) {
+    // Release the firmware's input.touch.raw subscription before a display-
+    // takeover app starts. Legacy GameBoy binaries may still access GT911
+    // directly; newer binaries can reacquire the same provider themselves.
+    s_touch_borrowed = !(requested & T5_HARDWARE_TAKEOVER_UI_VIDEO) && nativeTouchAvailable();
+    if (s_touch_borrowed && !nativeTouchSuspend()) {
+      s_touch_borrowed = false;
+      ESP_LOGE(kTag, "Touch provider could not quiesce; refusing ELF entry");
+      return ESP_ERR_INVALID_STATE;
+    }
     if (!display.suspendForExternalOwner()) {
+      if (s_touch_borrowed) (void)nativeTouchResume();
+      s_touch_borrowed = false;
       ESP_LOGE(kTag, "Display could not be relinquished; refusing ELF entry");
       return ESP_ERR_INVALID_STATE;
     }
     s_display_borrowed = true;
-    ESP_LOGI(kTag, "Exclusive display ownership transferred to ELF");
+    Board::restoreBacklightLevel(SETTINGS.backlightLevel);
+    ESP_LOGI(kTag, "Display ownership transferred (UI video preserves touch)");
   }
   return ESP_OK;
 }
@@ -35,15 +59,33 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
   if (requested == 0U) return ESP_OK;
   if ((requested & T5_HARDWARE_TAKEOVER_DISPLAY) != 0U) {
     if (!s_display_borrowed) return ESP_ERR_INVALID_STATE;
-    // app_main must already have terminated its scan task, DMA and callbacks.
-    // A return without relinquishing app-owned hardware is an app bug.
-    s_display_borrowed = false;
-    if (!display.resumeFromExternalOwner()) {
-      ESP_LOGE(kTag, "Failed to reinitialize the firmware display after ELF exit");
-      return ESP_FAIL;
+    // The ELF should stop its fast-video service itself. Force-stop the
+    // firmware-owned GameBoy-derived bridge as an unload guard before restoring
+    // the normal display. External ELFs such as GameBoy simply see a no-op.
+    if (!nativeVideoForceStop()) {
+      ESP_LOGE(kTag, "Video teardown incomplete; retaining display ownership");
+      return ESP_ERR_INVALID_STATE;
     }
-    display.requestNextRefresh(HalDisplay::FULL_REFRESH);
-    ESP_LOGI(kTag, "Exclusive display ownership restored to RiscRTE");
+    // App callbacks have returned and display DMA is stopped. Reclaim buffers
+    // before restoring the host display, which itself needs a large working set.
+    native_app_memory_end();
+    s_display_borrowed = false;
+    const bool displayRestored = display.resumeFromExternalOwner();
+    // A display owner can re-route the light GPIO to its own PWM channel or
+    // leave it low on exit. Reattach the firmware channel and its saved level.
+    Board::restoreBacklightLevel(SETTINGS.backlightLevel);
+    if (!displayRestored)
+      ESP_LOGE(kTag, "Failed to reinitialize the firmware display after ELF exit");
+
+    // Display resume may recreate shared board state, so reacquire the touch
+    // provider only after display ownership is back in firmware.
+    const bool touchRestored = !s_touch_borrowed || nativeTouchResume();
+    if (touchRestored) s_touch_borrowed = false;
+    else ESP_LOGE(kTag, "Failed to restore firmware touch capture after ELF exit");
+
+    if (!displayRestored || !touchRestored) return ESP_FAIL;
+    display.requestNextRefresh(DisplayPresentMode::Clean);
+    ESP_LOGI(kTag, "Display ownership and firmware touch subscription restored");
   }
   return ESP_OK;
 }

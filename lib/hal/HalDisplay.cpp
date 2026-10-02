@@ -172,9 +172,9 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   bool panelOutputSuppressed_ = false;
 
   bool preparePowerPins() {
-    // Keep the full expander setup sequence on the bus atomically. The render
-    // task can power-cycle EPD rails while the main loop is polling RTC/touch.
-    Board::ScopedI2CLock busLock;
+    // Each PCA9535 helper serializes its own atomic read-modify-write. Do not
+    // hold the board-wide I2C mutex across this whole sequence: touch input
+    // shares the bus and must remain pollable while the render task works.
     bool ok = true;
     ok &= Board::setPca9535PinMode(PCA9535_IO10_EP_OE, OUTPUT);
     ok &= Board::setPca9535PinMode(PCA9535_IO11_EP_MODE, OUTPUT);
@@ -193,9 +193,9 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   }
 
   bool powerOnSequence() {
-    // Hold the I2C bus for the whole EPD power-on sequence so RTC/touch reads
-    // cannot interleave with the PCA9535/TPS65185 transactions.
-    Board::ScopedI2CLock busLock;
+    // Serialize each PCA9535/TPS65185 transaction, not the whole power
+    // sequence. The waits below deliberately yield between transactions so
+    // the owner loop can keep polling GT911 while the e-paper refresh lags.
     const auto& cfg = config();
 
     lgfx::gpio_hi(cfg.pin_spv);
@@ -247,7 +247,8 @@ class T5S3BusEPD : public lgfx::Bus_EPD {
   }
 
   void powerOffSequence() {
-    Board::ScopedI2CLock busLock;
+    // As on power-up, keep bus ownership transaction-scoped so input polling
+    // can interleave with panel shutdown instead of waiting for the redraw.
     const auto& cfg = config();
 
     Board::writePca9535Pin(PCA9535_IO10_EP_OE, false);
@@ -340,11 +341,16 @@ class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
     setPanel(&panel_);
   }
 
-  ~T5S3M5GfxDisplay() { bus_.release(); }
+  ~T5S3M5GfxDisplay() {
+    // Join the panel worker before its bus or backing object disappears.
+    if (!panel_.shutdown()) abort();
+    bus_.release();
+  }
 
   // Releasability is checked before the host transfers ownership. Normal
   // RiscRTE display initialization and rendering remain unchanged.
   bool releaseHardware() {
+    if (!panel_.shutdown()) return false;
     bus_.release();
     return bus_.released();
   }
@@ -425,9 +431,11 @@ bool HalDisplay::suspendForExternalOwner() {
 bool HalDisplay::resumeFromExternalOwner() {
   if (!externalOwner) return false;
   externalOwner = false;
-  begin();
+  // Retain the outgoing image during init; the requested next refresh performs
+  // cleanup once. Boot can substitute FAST after settling its final white frame.
+  begin(false);
   if (!displayReady) {
-    LOG_ERR("DSP", "Could not restore display after ELF released hardware");
+    LOG_ERR("DSP", "Could not restore display after ELF released hardware; retained panel image preserved");
     return false;
   }
   requestNextRefresh(FULL_REFRESH);
@@ -693,9 +701,17 @@ void HalDisplay::pushPanelCanvas(const RefreshMode mode, const lgfx::epd_mode::e
 }
 
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen) {
-  if (!displayReady || !gfx || !panelCanvas) {
+  static bool warnedUnavailable = false;
+  if (!displayReady || !frameBuffer || !gfx || !panelCanvas) {
+    if (!warnedUnavailable) {
+      LOG_ERR("DSP", "Present rejected: ready=%d framebuffer=%p gfx=%p canvas=%p externalOwner=%d",
+              displayReady ? 1 : 0, static_cast<void*>(frameBuffer), static_cast<void*>(gfx),
+              static_cast<void*>(panelCanvas), externalOwner ? 1 : 0);
+      warnedUnavailable = true;
+    }
     return;
   }
+  warnedUnavailable = false;
   (void)turnOffScreen;
 
   renderBwToPanelCanvas();
@@ -936,9 +952,18 @@ void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
 }
 
 void HalDisplay::displayGrayBuffer(HalDisplay::RefreshMode mode) {
-  if (!displayReady || !gfx || !panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
+  static bool warnedGrayUnavailable = false;
+  if (!displayReady || !frameBuffer || !gfx || !panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
+    if (!warnedGrayUnavailable) {
+      LOG_ERR("DSP", "Gray present rejected: ready=%d framebuffer=%p gfx=%p canvas=%p lsb=%p msb=%p",
+              displayReady ? 1 : 0, static_cast<void*>(frameBuffer), static_cast<void*>(gfx),
+              static_cast<void*>(panelCanvas), static_cast<void*>(grayscaleLsbBuffer),
+              static_cast<void*>(grayscaleMsbBuffer));
+      warnedGrayUnavailable = true;
+    }
     return;
   }
+  warnedGrayUnavailable = false;
 
   if (!grayscaleBaseCaptured) {
     if (!captureGrayscaleBaseBuffer(frameBuffer)) {

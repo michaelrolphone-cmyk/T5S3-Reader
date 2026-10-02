@@ -30,6 +30,7 @@
 #include <utility>
 
 #include "MappedInputManager.h"
+#include "BmpLayout.h"
 #include "NativeAppHost.h"
 #include "NativeSystemUiBridge.h"
 #include "activities/Activity.h"
@@ -76,12 +77,7 @@ bool imageExtension(const char* path) {
   return endsWith(s, ".jpg") || endsWith(s, ".jpeg") || endsWith(s, ".png") || endsWith(s, ".bmp");
 }
 
-uint16_t le16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | (p[1] << 8)); }
-uint32_t le32(const uint8_t* p) {
-  return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-         (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-int32_t sle32(const uint8_t* p) { return static_cast<int32_t>(le32(p)); }
+uint16_t le16(const uint8_t* p) { return NativeImage::bmpLe16(p); }
 
 struct FileBuffer {
   uint8_t* data = nullptr;
@@ -116,14 +112,11 @@ t5_image_format_t sniff(const FileBuffer& file) {
 }
 
 bool bmpInfo(const FileBuffer& file, t5_image_info_t& out) {
-  if (file.size < 54 || sniff(file) != T5_IMAGE_FORMAT_BMP) return false;
-  const uint32_t dib = le32(file.data + 14);
-  if (dib < 40 || 14u + dib > file.size) return false;
-  const int32_t w = sle32(file.data + 18);
-  const int32_t h = sle32(file.data + 22);
-  if (w <= 0 || h == 0) return false;
-  out.width = static_cast<uint32_t>(w);
-  out.height = static_cast<uint32_t>(h < 0 ? -static_cast<int64_t>(h) : h);
+  NativeImage::BmpLayout layout;
+  if (sniff(file) != T5_IMAGE_FORMAT_BMP ||
+      !NativeImage::readBmpLayout(file.data, file.size, layout)) return false;
+  out.width = layout.width;
+  out.height = layout.height;
   out.format = T5_IMAGE_FORMAT_BMP;
   return out.width && out.height;
 }
@@ -210,41 +203,28 @@ int jpegDraw(JPEGDRAW* draw) {
 }
 
 bool decodeBmp(const FileBuffer& file, DecodeTarget& t) {
-  t5_image_info_t info{};
-  if (!bmpInfo(file, info)) return false;
-  const uint32_t dataOffset = le32(file.data + 10);
-  const uint32_t dib = le32(file.data + 14);
-  const int32_t signedHeight = sle32(file.data + 22);
-  const uint16_t planes = le16(file.data + 26);
-  const uint16_t bpp = le16(file.data + 28);
-  const uint32_t compression = le32(file.data + 30);
-  if (planes != 1 || dataOffset >= file.size || compression != 0 ||
-      (bpp != 1 && bpp != 4 && bpp != 8 && bpp != 16 && bpp != 24 && bpp != 32)) return false;
-  const bool topDown = signedHeight < 0;
-  const uint32_t rowBytes = ((info.width * bpp + 31u) / 32u) * 4u;
-  if (rowBytes == 0 || dataOffset + static_cast<uint64_t>(rowBytes) * info.height > file.size) return false;
-  const uint8_t* palette = file.data + 14 + dib;
-  const uint32_t paletteCount = bpp <= 8 ? (1u << bpp) : 0u;
-  if (paletteCount && palette + paletteCount * 4u > file.data + dataOffset) return false;
-  for (uint32_t sy = 0; sy < info.height; ++sy) {
-    const uint32_t fileY = topDown ? sy : info.height - 1u - sy;
-    const uint8_t* row = file.data + dataOffset + static_cast<size_t>(fileY) * rowBytes;
+  NativeImage::BmpLayout layout;
+  if (!NativeImage::readBmpLayout(file.data, file.size, layout)) return false;
+  const uint8_t* palette = file.data + layout.paletteOffset;
+  for (uint32_t sy = 0; sy < layout.height; ++sy) {
+    const uint32_t fileY = layout.topDown ? sy : layout.height - 1u - sy;
+    const uint8_t* row = file.data + layout.dataOffset + static_cast<size_t>(fileY) * layout.rowBytes;
     const int dy = static_cast<int>(sy) * t.dh / t.sh;
-    for (uint32_t sx = 0; sx < info.width; ++sx) {
+    for (uint32_t sx = 0; sx < layout.width; ++sx) {
       uint8_t r = 0, g = 0, b = 0;
-      if (bpp == 24) {
+      if (layout.bitsPerPixel == 24) {
         const uint8_t* p = row + sx * 3u; b = p[0]; g = p[1]; r = p[2];
-      } else if (bpp == 32) {
+      } else if (layout.bitsPerPixel == 32) {
         const uint8_t* p = row + sx * 4u; b = p[0]; g = p[1]; r = p[2];
-      } else if (bpp == 16) {
+      } else if (layout.bitsPerPixel == 16) {
         const uint16_t p = le16(row + sx * 2u);
         r = static_cast<uint8_t>(((p >> 10) & 31u) * 255u / 31u);
         g = static_cast<uint8_t>(((p >> 5) & 31u) * 255u / 31u);
         b = static_cast<uint8_t>((p & 31u) * 255u / 31u);
       } else {
         uint32_t idx = 0;
-        if (bpp == 8) idx = row[sx];
-        else if (bpp == 4) idx = (sx & 1u) ? (row[sx >> 1] & 0x0fu) : (row[sx >> 1] >> 4);
+        if (layout.bitsPerPixel == 8) idx = row[sx];
+        else if (layout.bitsPerPixel == 4) idx = (sx & 1u) ? (row[sx >> 1] & 0x0fu) : (row[sx >> 1] >> 4);
         else idx = (row[sx >> 3] >> (7u - (sx & 7u))) & 1u;
         const uint8_t* p = palette + idx * 4u; b = p[0]; g = p[1]; r = p[2];
       }

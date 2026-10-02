@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-**Normative USB provider specification.** Governed by [RISCRTE_PLATFORM_SPEC.md](RISCRTE_PLATFORM_SPEC.md), especially the mandatory [HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md](HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md). The earlier claim that the T5/RiscRTE framework owns a USB core, controller, role management, topology, transfers, endpoints or VBUS is **superseded**. Existing firmware code implementing these functions is **CURRENT/LEGACY, NONCOMPLIANT** and must migrate to installable ELF providers. This file describes how the USB provider ecosystem should work; it does not put USB awareness into RiscRTE.
+**Normative USB provider specification.** Governed by [RISCRTE_PLATFORM_SPEC.md](RISCRTE_PLATFORM_SPEC.md), especially the mandatory [HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md](HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md). Detailed external-hub, multi-device topology, transfer-concurrency, resource-accounting and power requirements are defined by [USB Hub and Multi-Device Host Support](USB_HUB_SUPPORT.md). USB Mass Storage Class, generic block-device, filesystem-volume, removal and write-safety requirements are defined by [USB Mass Storage and Generic Block/Volume Architecture](USB_MASS_STORAGE_SUPPORT.md). The earlier claim that the T5/RiscRTE framework owns a USB core, controller, role management, topology, transfers, endpoints or VBUS is **superseded**. Existing firmware code implementing these functions is **CURRENT/LEGACY, NONCOMPLIANT** and must migrate to installable ELF providers. This file describes how the USB provider ecosystem should work; it does not put USB awareness into RiscRTE.
 
 ## 1. Architectural invariant
 

@@ -1,6 +1,6 @@
 {
   "min_firmware_version": "1.1.14",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "display_name": "GPS",
   "file_name": "gps.elf",
   "icon": "solid:f3c5",

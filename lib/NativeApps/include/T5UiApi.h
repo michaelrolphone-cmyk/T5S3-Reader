@@ -11,6 +11,11 @@ extern "C" {
 #define T5_UI_HIT_NONE (-1)
 #define T5_UI_HIT_HEADER (-2)
 #define T5_UI_LIST_HIGHLIGHT_VALUE (1u << 0)
+#define T5_UI_LIST_ICON_DOWNLOAD (1u << 1)
+#define T5_UI_LIST_ICON_UPDATE (1u << 2)
+#define T5_UI_LIST_ICON_INSTALLED (1u << 3)
+#define T5_UI_LIST_ICON_COMPACT (1u << 4)
+#define T5_UI_LIST_ICON_MASK (T5_UI_LIST_ICON_DOWNLOAD | T5_UI_LIST_ICON_UPDATE | T5_UI_LIST_ICON_INSTALLED)
 #define T5_UI_TABLE_ROW_FULL_WIDTH (1u << 0)
 
 typedef enum {
@@ -28,6 +33,31 @@ typedef struct {
     int16_t touch_x;
     int16_t touch_y;
 } t5_ui_event_t;
+
+typedef enum {
+    T5_UI_ORIENTATION_PORTRAIT = 0,
+    T5_UI_ORIENTATION_LANDSCAPE = 1,
+} t5_ui_orientation_t;
+
+typedef enum {
+    T5_UI_SIZE_COMPACT = 0,
+    T5_UI_SIZE_REGULAR = 1,
+    T5_UI_SIZE_EXPANDED = 2,
+} t5_ui_size_class_t;
+
+typedef struct {
+    int32_t width;
+    int32_t height;
+    int16_t safe_top;
+    int16_t safe_right;
+    int16_t safe_bottom;
+    int16_t safe_left;
+    uint16_t content_padding;
+    uint16_t vertical_spacing;
+    uint8_t orientation;
+    uint8_t size_class;
+    uint16_t reserved;
+} t5_ui_viewport_t;
 
 typedef struct {
     const char *title;
@@ -99,6 +129,9 @@ typedef struct {
                              const char *text,
                              int32_t scroll_from_bottom,
                              t5_ui_text_view_result_t *result);
+
+    // Append-only runtime viewport/layout metrics. Apps must size-check before use.
+    bool (*get_viewport)(t5_ui_viewport_t *viewport);
 } t5_ui_api_v1;
 
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t api_version);

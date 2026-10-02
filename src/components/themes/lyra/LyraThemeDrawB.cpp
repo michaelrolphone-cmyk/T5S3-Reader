@@ -6,11 +6,13 @@
 #include <HalStorage.h>
 #include <I18n.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 #include "RecentBooksStore.h"
+#include "components/FontAwesomeIcons.h"
 #include "components/UITheme.h"
 #include "LyraIcons.h"
 #include "fontIds.h"
@@ -20,7 +22,9 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
                          const std::function<std::string(int index)>& rowSubtitle,
                          const std::function<UIIcon(int index)>& rowIcon,
                          const std::function<std::string(int index)>& rowValue, bool highlightValue,
-                         const TextRole textRole) const {
+                         const TextRole textRole,
+                         const std::function<const char*(int index)>& rowFontAwesomeIcon,
+                         int rowFontAwesomeIconSize) const {
   int rowHeight =
       (rowSubtitle != nullptr) ? LyraMetrics::values.listWithSubtitleRowHeight : LyraMetrics::values.listRowHeight;
   int pageItems = rect.height / rowHeight;
@@ -49,11 +53,17 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
 
   int textX = rect.x + LyraMetrics::values.contentSidePadding + hPaddingInSelection;
   int textWidth = contentWidth - LyraMetrics::values.contentSidePadding * 2 - hPaddingInSelection * 2;
-  int iconSize;
+  int iconSize = 0;
   if (rowIcon != nullptr) {
     iconSize = (rowSubtitle != nullptr) ? mainMenuIconSize : listIconSize;
     textX += iconSize + hPaddingInSelection;
     textWidth -= iconSize + hPaddingInSelection;
+  }
+  const int kStateIconSize = std::max(1, rowFontAwesomeIconSize);
+  constexpr int kStateIconGap = 12;
+  if (rowFontAwesomeIcon) {
+    textX += kStateIconSize + kStateIconGap;
+    textWidth -= kStateIconSize + kStateIconGap;
   }
 
   const auto pageStartIndex = selectedIndex / pageItems * pageItems;
@@ -75,12 +85,21 @@ void LyraTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
     auto item = truncatedTextForRole(renderer, UI_10_FONT_ID, textRole, itemName.c_str(), rowTextWidth);
     drawTextForRole(renderer, UI_10_FONT_ID, textRole, textX, itemY + 7, item.c_str(), true);
 
+    int leadingIconX = rect.x + LyraMetrics::values.contentSidePadding + hPaddingInSelection;
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);
       const uint8_t* iconBitmap = iconForName(icon, iconSize);
       if (iconBitmap != nullptr) {
-        renderer.drawIcon(iconBitmap, rect.x + LyraMetrics::values.contentSidePadding + hPaddingInSelection,
-                          itemY + iconY, iconSize, iconSize);
+        renderer.drawIcon(iconBitmap, leadingIconX, itemY + iconY, iconSize, iconSize);
+      }
+      leadingIconX += iconSize + hPaddingInSelection;
+    }
+    if (rowFontAwesomeIcon) {
+      const char* icon = rowFontAwesomeIcon(i);
+      if (icon && icon[0]) {
+        const int stateIconY = itemY + std::max(0, (rowHeight - kStateIconSize) / 2);
+        // Lyra selection is light gray, so state icons remain black.
+        (void)FontAwesomeIcons::draw(renderer, leadingIconX, stateIconY, icon, kStateIconSize, true);
       }
     }
 

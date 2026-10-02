@@ -41,6 +41,7 @@ struct WifiState {
 KeyboardState keyboardState;
 WifiState wifiState;
 NativeSystemUiNavigation navigation = NativeSystemUiNavigation::None;
+bool suppressHomeNavigation = false;
 
 bool validResumePath(const char* path) {
   return path && std::strncmp(path, "/sd/", 4) == 0 && path[4] != '\0';
@@ -130,7 +131,7 @@ class NativeKeyboardActivity final : public Activity {
     const auto& metrics = UITheme::getInstance().getMetrics();
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight},
                    title.c_str());
-    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Balanced);
   }
 };
 
@@ -186,7 +187,7 @@ class NativeWifiActivity final : public Activity {
     renderer.clearScreen();
     const auto& metrics = UITheme::getInstance().getMetrics();
     GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, "Wi-Fi");
-    renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+    renderer.displayBuffer(DisplayPresentMode::Balanced);
   }
 };
 
@@ -247,6 +248,7 @@ bool fileTransferRequest() {
 }
 
 void navigateHome() {
+  if (suppressHomeNavigation) return;
   navigation = NativeSystemUiNavigation::Home;
   activityManager.goHome();
 }
@@ -277,4 +279,8 @@ NativeSystemUiNavigation nativeSystemUiTakeNavigation() {
 
 void nativeSystemUiMarkActivityPending() {
   if (navigation == NativeSystemUiNavigation::None) navigation = NativeSystemUiNavigation::Keyboard;
+}
+
+void nativeSystemUiSetHomeNavigationSuppressed(bool suppressed) {
+  suppressHomeNavigation = suppressed;
 }

@@ -48,15 +48,14 @@ The authoritative implementation is
 `start_host_controller()`, and
 [`PhyRoute.h`](../Drivers/usb_controller_esp32s3/PhyRoute.h).
 
-Controller **0.1.15** adds automatic role selection in
-[`RoleSwitch.h`](../Drivers/usb_controller_esp32s3/RoleSwitch.h). Provider
-`start()` initially parks the host and polls the power-monitor extension.
-External input keeps our source off and the boot Serial/JTAG route available;
-settling or unknown readings never authorize sourcing. Only qualified absent
-input permits the physical startup sequence below. Active attachment,
-enumeration or claims prevent idle source-off probes. See
-[Firmware Input Navigation](FIRMWARE_INPUT_NAVIGATION.md) for role switching
-and UI/application handoff; handoff alone does not restart the physical host.
+Controller **0.1.19** adds [externally powered host operation](QI_USB_HOST.md)
+through a size-checked optional power-provider extension. Board profiles must
+explicitly opt into the topology. On valid external VBUS the controller makes
+one bounded host trial with boost off, then retains a detected peripheral or
+returns to USB serial if empty. Source acquisition remains forbidden on incoming
+power. Active power-mode changes disconnect and drain before switching leases.
+Legacy providers retain the original 0.1.15 role-selection behavior: external
+input parks the host, qualified absent input permits battery sourcing.
 
 | Order | Operation | Required result before advancing |
 | --- | --- | --- |
@@ -67,7 +66,7 @@ and UI/application handoff; handoff alone does not restart the physical host.
 | 5 | Install host with `skip_phy_setup=true` and `ESP_INTR_FLAG_LOWMED`. | The ELF retains explicit PHY ownership; the host does not create a second PHY owner. Do not share the interrupt to bypass contention. |
 | 6 | Register the asynchronous host client/callback and allocate control/bulk DMA workspace. | Event handling and transfer storage exist before a device can enumerate. Interrupt-IN storage is allocated later for claimed endpoints. |
 | 7 | `vTaskDelay(pdMS_TO_TICKS(20))`, with a minimum of one tick. | Bounded scheduler handoff settles the host-role transition while the receiver is still unpowered by this provider. |
-| 8 | `power->acquire_host(power->context, 500, &powerLease)`. | Require success **and a nonzero lease**. The argument is **500 milliamps, not a 500 ms timeout**. |
+| 8 | `power->acquire_host(power->context, 500, &powerLease)`, or the optional `acquire_external_host` for a qualified external session. | Require success **and a nonzero lease**. The argument is **500 milliamps, not a 500 ms timeout**. |
 | 9 | Apply `USB_PHY_ACTION_HOST_ALLOW_CONN`. | Restore real received line signals only after successful power acquisition. |
 | 10 | Mark running and service bounded provider polls. | Host library events and client callbacks progress through attachment and enumeration. |
 
@@ -106,7 +105,7 @@ listening only for subsequent arrival events misses already-enumerated devices.
 | Observation | What is established | Investigate next |
 | --- | --- | --- |
 | Grant/subscription succeeds; waiting for connection | Software provider access exists. | Physical controller startup and host snapshot. |
-| `EXTERNAL POWER; USB SERIAL AVAILABLE` | The provider reports incoming power and the host is parked. | Expected charging/computer mode; no host enumeration should be attempted. |
+| `EXTERNAL POWER; USB SERIAL AVAILABLE` | The provider reports incoming power and the host is parked. | Host parked after an empty external trial, or provider lacks external-host support. |
 | `SOURCE OFF; CHECKING USB INPUT POWER` | The host is waiting for qualified power observations. | Power-provider settling/status and continued owner polling. |
 | Startup fails at `vbus-acquire` | Host preparation reached power acquisition. | Board power diagnostic, return value and lease ownership; do not assume a timeout. |
 | `PORT OFF` | HPRT port-power bit is clear. | Controller lifecycle and power-provider state. This bit is not an external VBUS voltage measurement. |
@@ -187,19 +186,27 @@ The implementation is `quiesce_with_interrupt()` in
 and its physical `quiesce_host()` helper in
 [`driver_base.cpp`](../Drivers/usb_controller_esp32s3/driver_base.cpp). Idle
 role parking uses the same interrupt drain and physical helper while retaining
-provider APIs and lower dependencies for continued power observation.
+provider APIs and lower dependencies for continued power observation. If idle
+parking partially tears the host down and a later cleanup step fails, the
+controller enters a retained cleanup-pending state instead of a terminal role
+failure. Subsequent owner polls retry only the idempotent teardown path; they do
+not pump a deregistered client or restart the host until cleanup is complete.
 
 1. End consumer subscriptions/admission and release class claims. Drain/flush
    outstanding interrupt and control/bulk transfers with bounded event pumping.
    Callback completion must return DMA ownership before buffers can be freed.
    Outstanding claims or uncertain drains prevent controller unload.
 2. Close device handles, free transfer storage and deregister the client,
-   clearing each owned handle only after that operation succeeds.
-3. Request `usb_host_device_free_all()` and boundedly service library events
-   until all devices are free. **Always perform the final
-   `usb_host_lib_handle_events(0, ...)` before uninstall**, including when no
-   device ever attached and `device_free_all()` returned `ESP_OK`. IDF 4.4.7
-   still has the last client's `NO_CLIENTS` event to consume.
+   clearing each owned handle only after that operation succeeds. Boundedly
+   service `usb_host_lib_handle_events()` until
+   `USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS` has actually been observed. This
+   must happen **before** `usb_host_device_free_all()`; IDF rejects device
+   cleanup while client deregistration is still pending. Preserve that
+   one-shot observation across cleanup retries.
+3. After `NO_CLIENTS`, request `usb_host_device_free_all()`. An immediate
+   `ESP_OK` means there were no devices left to free. If it returns
+   `ESP_ERR_NOT_FINISHED`, boundedly service library events until
+   `USB_HOST_LIB_EVENT_FLAGS_ALL_FREE` is observed.
 4. Uninstall the host. Only then delete the explicitly owned PHY. Failed host
    uninstall or PHY deletion retains ownership and any controller-held VBUS lease.
 5. Release the controller's VBUS lease through the power provider. A failed

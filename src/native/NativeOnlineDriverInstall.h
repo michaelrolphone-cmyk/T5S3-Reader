@@ -68,17 +68,26 @@ inline bool install(const char* id, const char* version, const std::string& cata
                     t5_driver_install_progress_t progress = nullptr, void* context = nullptr) {
     using namespace RuntimePackages;
     if (!Storage.ready() || !safeId(id) || !safeVersion(version) ||
-        catalogEntry.empty() || catalogEntry.size() > 8192) return false;
+        catalogEntry.empty() || catalogEntry.size() > 8192) {
+        LOG_ERR("DRVMGR", "Canonical install preflight rejected id/version/catalog for %s", id ? id : "(null)");
+        return false;
+    }
     JsonDocument catalog;
     if (deserializeJson(catalog, catalogEntry) || !catalog.is<JsonObjectConst>() ||
         !catalog["id"].is<const char*>() || !catalog["version"].is<const char*>() ||
         !catalog["tag"].is<const char*>() ||
         std::strcmp(catalog["id"].as<const char*>(), id) ||
         std::strcmp(catalog["version"].as<const char*>(), version) ||
-        !catalog["files"].is<JsonArrayConst>()) return false;
+        !catalog["files"].is<JsonArrayConst>()) {
+        LOG_ERR("DRVMGR", "Canonical release metadata rejected for %s", id);
+        return false;
+    }
     const char* tag = catalog["tag"].as<const char*>();
     const std::string expectedTag = std::string("driver-") + id + "-v" + version;
-    if (std::strcmp(tag, expectedTag.c_str())) return false;
+    if (std::strcmp(tag, expectedTag.c_str())) {
+        LOG_ERR("DRVMGR", "Canonical release tag mismatch for %s", id);
+        return false;
+    }
     const JsonArrayConst files = catalog["files"].as<JsonArrayConst>();
     if (files.size() != 4) return false;
     const char* expectedSha[4]{};
@@ -103,9 +112,20 @@ inline bool install(const char* id, const char* version, const std::string& cata
     const std::string prefix = std::string(kReleaseBase) + tag + "/" + id + "--";
     std::string descriptor;
     emitProgress(progress, context, id, T5_DRIVER_INSTALL_METADATA, ".package.json");
-    if (!HttpDownloader::fetchUrl(prefix + "package.json", descriptor) ||
-        descriptor.size() != expectedSize[0] ||
-        !hashMatches(descriptor, expectedSha[0])) return false;
+    if (!HttpDownloader::fetchUrl(prefix + "package.json", descriptor)) {
+        LOG_ERR("DRVMGR", "Package descriptor download failed for %s", id);
+        return false;
+    }
+    if (descriptor.size() != expectedSize[0]) {
+        LOG_ERR("DRVMGR", "Package descriptor size mismatch for %s: got=%u expected=%llu",
+                id, static_cast<unsigned>(descriptor.size()),
+                static_cast<unsigned long long>(expectedSize[0]));
+        return false;
+    }
+    if (!hashMatches(descriptor, expectedSha[0])) {
+        LOG_ERR("DRVMGR", "Package descriptor SHA-256 mismatch for %s", id);
+        return false;
+    }
     // Retain the bounded package plan in heap memory: the dependency caller
     // must not keep a multi-kilobyte local alive throughout nested SD stages.
     std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
@@ -113,7 +133,10 @@ inline bool install(const char* id, const char* version, const std::string& cata
         plan->identity.kind != Kind::Driver || std::strcmp(plan->identity.id, id) ||
         std::strcmp(plan->identity.version, version) ||
         std::strcmp(plan->identity.artifact, "driver.elf") ||
-        plan->entryCount != 3) return false;
+        plan->entryCount != 3) {
+        LOG_ERR("DRVMGR", "Downloaded package descriptor rejected for %s", id);
+        return false;
+    }
     for (size_t i = 1; i < 4; ++i) {
         bool match = false;
         for (size_t j = 0; j < plan->entryCount; ++j) {
@@ -128,8 +151,10 @@ inline bool install(const char* id, const char* version, const std::string& cata
     }
     const std::string root = std::string("/Packages/Inbox/") + id;
     if ((!Storage.exists("/Packages") && !Storage.mkdir("/Packages", false)) ||
-        (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false)))
+        (!Storage.exists("/Packages/Inbox") && !Storage.mkdir("/Packages/Inbox", false))) {
+        LOG_ERR("DRVMGR", "Could not create package inbox for %s", id);
         return false;
+    }
     emitProgress(progress, context, id, T5_DRIVER_INSTALL_RECOVERY);
     if (Storage.exists(root.c_str())) {
         if (!Recovery::discardMatchingDriverInbox(root, descriptor, kNames, expectedSize)) {
@@ -139,29 +164,42 @@ inline bool install(const char* id, const char* version, const std::string& cata
         LOG_INF("DRVMGR", "Recovered matching interrupted driver download: %s", id);
     }
     if (!Storage.mkdir(root.c_str(), false) ||
-        !writeExclusive(root + "/.package.json", descriptor)) return false;
+        !writeExclusive(root + "/.package.json", descriptor)) {
+        LOG_ERR("DRVMGR", "Could not stage package descriptor for %s", id);
+        return false;
+    }
     for (size_t i = 1; i < 4; ++i) {
         const std::string target = root + "/" + kNames[i];
         const std::string stage = target + ".part";
         emitProgress(progress, context, id, T5_DRIVER_INSTALL_DOWNLOADING,
                      kNames[i], 0, expectedSize[i]);
-        if (HttpDownloader::downloadToFile(prefix + kNames[i], stage,
+        const auto download = HttpDownloader::downloadToFile(prefix + kNames[i], stage,
                 [progress, context, id, i, &expectedSize](size_t bytes, size_t) {
                     esp_task_wdt_reset();
                     emitProgress(progress, context, id, T5_DRIVER_INSTALL_DOWNLOADING,
                                  kNames[i], bytes, expectedSize[i]);
-                }) != HttpDownloader::OK ||
-            Storage.exists(target.c_str()) ||
-            !Storage.rename(stage.c_str(), target.c_str()))
+                });
+        if (download != HttpDownloader::OK) {
+            LOG_ERR("DRVMGR", "Package payload download failed for %s/%s: rc=%u",
+                    id, kNames[i], static_cast<unsigned>(download));
             return false;
+        }
+        if (Storage.exists(target.c_str()) || !Storage.rename(stage.c_str(), target.c_str())) {
+            LOG_ERR("DRVMGR", "Package payload publish-to-inbox failed for %s/%s",
+                    id, kNames[i]);
+            return false;
+        }
     }
-    constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
+    constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2,
                                           8u * 1024u * 1024u, 16u * 1024u * 1024u};
     Identity observed{};
     emitProgress(progress, context, id, T5_DRIVER_INSTALL_VERIFYING);
     if (!verifyOrdinarySdDirectory(root.c_str(), policy,
                                    installedCapabilityVersion, observed) ||
-        observed.kind != Kind::Driver || std::strcmp(observed.id, id)) return false;
+        observed.kind != Kind::Driver || std::strcmp(observed.id, id)) {
+        LOG_ERR("DRVMGR", "Downloaded package verification/dependency preflight failed for %s", id);
+        return false;
+    }
     if (!Recovery::discardMatchingStage(root, *plan, policy, installedCapabilityVersion)) {
         LOG_ERR("DRVMGR", "Unknown interrupted driver stage preserved: %s", id);
         return false;

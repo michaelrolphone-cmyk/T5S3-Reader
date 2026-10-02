@@ -3,17 +3,28 @@ name: Experimental USB ELF Provider v2
 on:
   pull_request:
     paths:
+      - "Services/**"
+      - "Providers/**"
+      - "Drivers/**"
+      - "scripts/build_*.py"
+      - "scripts/*release*.py"
+      - "scripts/publish_updated_packages.py"
+      - "test/resources/**"
+      - "sdk/driver/RiscArchiveZipV1.h"
+      - "scripts/build_archive_zip.py"
+      - "test/services/**"
+      - "test/run_archive_zip_service_test.sh"
+      - "Drivers/common/**"
       - "Drivers/usb_cdc_v2/**"
       - "Drivers/usb_cp210x_v2/**"
       - "Drivers/usb_ch34x_v2/**"
-      - "Drivers/usb_ftdi/**"
-      - "Drivers/usb_stlink/**"
-      - "Drivers/usb_msp/**"
-      - "Drivers/program_msp/**"
+      - "Drivers/usb_serial_witness_v2/**"
       - "Drivers/usb_host_v2/**"
+      - "Drivers/usb_mass_storage/**"
       - "Drivers/usb_controller_esp32s3/**"
       - "Drivers/usb_hid/**"
       - "Drivers/usb_hid_keyboard/**"
+      - "Drivers/usb_hid_text_input/**"
       - "Drivers/usb_hid_gamepad/**"
       - "Drivers/usb_xinput_gamepad/**"
       - "Drivers/usb_ui_navigation/**"
@@ -21,14 +32,25 @@ on:
       - "Drivers/t5s3_usb_power_profile/**"
       - "Drivers/i2c_esp32s3_v2/**"
       - "Drivers/platform_clock_v1/**"
+      - "Drivers/gt911_touch/**"
+      - "Drivers/display_epd_video/**"
+      - "sdk/driver/RiscDisplayOutputV1.h"
+      - "lib/NativeApps/include/T5VideoApi.h"
+      - "src/native/NativeVideoBridge.cpp"
+      - "scripts/build_display_epd_video.py"
+      - "test/drivers/display_epd_video_test.c"
       - "sdk/driver/RiscProviderV2.h"
+      - "sdk/driver/RiscStreamProviderV1.h"
+      - "sdk/driver/RiscSerialPortV1.h"
       - "sdk/driver/RiscUsbProviderV1.h"
       - "sdk/driver/RiscUsbControllerV1.h"
+      - "sdk/driver/RiscStorageVolumeV1.h"
       - "sdk/driver/RiscStlinkV1.h"
       - "sdk/driver/RiscMspFetV1.h"
       - "sdk/driver/RiscProgramMspV1.h"
       - "sdk/driver/RiscUsbInterruptV1.h"
       - "sdk/driver/RiscUsbHidV1.h"
+      - "sdk/driver/RiscTextInputV1.h"
       - "sdk/driver/RiscUsbGamepadDiagnosticsV1.h"
       - "sdk/driver/RiscUsbDiscoveryDiagnosticsV1.h"
       - "sdk/driver/RiscUsbVbusV1.h"
@@ -36,11 +58,18 @@ on:
       - "sdk/driver/RiscI2cBusV1.h"
       - "sdk/driver/RiscFirmwareI2cCompatV1.h"
       - "sdk/driver/RiscPlatformClockV1.h"
+      - "sdk/driver/RiscTouchV1.h"
       - "lib/elf_loader/**"
       - "lib/NativeApps/src/NativeAppLauncher.c"
+      - "lib/NativeApps/include/T5SerialPortApi.h"
       - "src/runtime/drivers/**"
       - "src/runtime/packages/**"
+      - "src/runtime/capabilities/**"
       - "src/native/NativeUsbBridge.cpp"
+      - "src/native/NativeUsbClassBridge.*"
+      - "src/native/NativeSerialPortBridge*"
+      - "src/native/NativeStreamBridge*"
+      - "src/native/NativeUsbDeviceRegistry.h"
       - "src/native/FirmwareI2cCompat.cpp"
       - "scripts/native_app_symbols.py"
       - "scripts/generate_privileged_imports_v1.py"
@@ -49,22 +78,23 @@ on:
       - "scripts/build_usb_cdc_v2.py"
       - "scripts/build_usb_cp210x_v2.py"
       - "scripts/build_usb_ch34x_v2.py"
-      - "scripts/build_usb_ftdi.py"
-      - "scripts/build_usb_stlink.py"
-      - "scripts/build_usb_msp.py"
-      - "scripts/build_program_msp.py"
+      - "scripts/build_usb_serial_witness_v2.py"
       - "scripts/build_usb_host_v2.py"
+      - "scripts/build_usb_mass_storage.py"
       - "scripts/build_usb_hid*.py"
       - "scripts/build_usb_xinput_gamepad.py"
       - "scripts/build_usb_ui_navigation.py"
       - "src/runtime/input/**"
       - "src/native/NativeNavigationInput*"
+      - "src/native/NativeTextInput*"
       - "scripts/build_board_power_t5s3_v2.py"
       - "scripts/build_platform_clock_v1.py"
+      - "scripts/build_gt911_touch.py"
       - "scripts/probe_usb_controller_esp32s3.py"
       - "scripts/instrument_usb_enumeration.py"
       - "scripts/probe_i2c_esp32s3_v2.py"
       - "scripts/audit_usb_controller_elf.py"
+      - "scripts/report_u1_target_references.py"
       - "scripts/audit_i2c_esp32s3_elf.py"
       - "scripts/export_canonical_driver_release.py"
       - "test/drivers/usb_cdc_v2*.c"
@@ -75,17 +105,25 @@ on:
       - "test/drivers/usb_msp*.c"
       - "test/drivers/program_msp*.c"
       - "test/drivers/usb_host_v2*.c"
+      - "test/drivers/usb_host_class_integration_test.c"
+      - "test/drivers/usb_controller_bulk_drain_source_test.py"
+      - "test/drivers/usb_mass_storage_test.c"
       - "test/drivers/usb_hid*.c"
       - "test/drivers/usb_xinput_gamepad_test.c"
       - "test/drivers/usb_ui_navigation_test.c"
+      - "test/drivers/usb_hid_text_input_test.c"
+      - "test/drivers/native_text_input_test.cpp"
       - "test/drivers/navigation_focus_test.cpp"
       - "test/drivers/native_navigation_input_test.cpp"
       - "test/drivers/controller_startup_diagnostic_test.cpp"
       - "test/drivers/controller_host_startup_test.cpp"
+      - "test/drivers/controller_quiesce_path_test.py"
       - "test/drivers/controller_role_switch_test.cpp"
       - "test/drivers/board_power_t5s3_v2_test.c"
       - "test/drivers/i2c_esp32s3_v2_test.c"
       - "test/drivers/platform_clock_v1_test.c"
+      - "test/drivers/gt911_touch_test.c"
+      - "test/run_gt911_touch_test.sh"
       - "test/drivers/privileged_*"
       - "test/drivers/provider_package_inputs_v1_test.py"
       - "test/drivers/installed_usb_stack_package_test.py"
@@ -94,6 +132,11 @@ on:
       - "test/drivers/mock_i2c_bus_elf_v2.c"
       - "test/drivers/vbus_provider_chain_v2_test.cpp"
       - "test/drivers/provider*.cpp"
+      - "test/drivers/provider_stream_fixture.*"
+      - "test/drivers/*witness*"
+      - "test/streams/**"
+      - "test/run_stream_test.sh"
+      - "test/run_provider_stream_context_test.sh"
       - "test/run_usb_cdc_v2_test.sh"
       - "test/run_usb_cp210x_v2_test.sh"
       - "test/run_usb_ch34x_v2_test.sh"
@@ -102,8 +145,11 @@ on:
       - "test/run_usb_msp_test.sh"
       - "test/run_program_msp_test.sh"
       - "test/run_usb_host_v2_test.sh"
+      - "test/run_usb_mass_storage_test.sh"
       - "test/run_usb_hid_test.sh"
       - "test/run_board_power_t5s3_v2_test.sh"
+      - "test/run_board_power_port_test.sh"
+      - "test/hal/board_power*"
       - "test/run_i2c_esp32s3_v2_test.sh"
       - "test/run_platform_clock_v1_test.sh"
       - "test/run_privileged_os_cpu_v1_test.sh"
@@ -114,16 +160,23 @@ on:
       - ".github/workflows/usb-elf-provider-v2.yml"
   workflow_dispatch:
 
+concurrency:
+  group: riscrte-provider-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-experimental:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Exercise OS/CPU scope, native digest snapshot and provider graph
+      - name: Exercise production host/class and semantic serial lifecycle integration
         run: |
+          bash test/run_usb_host_v2_test.sh
+          bash test/run_stream_test.sh
           bash test/run_privileged_os_cpu_v1_test.sh
           bash test/run_privileged_elf_snapshot_v1_test.sh
           bash test/run_provider_graph_v2_test.sh
@@ -135,17 +188,30 @@ jobs:
           bash test/run_usb_msp_test.sh
           bash test/run_program_msp_test.sh
           bash test/run_usb_host_v2_test.sh
+          bash test/run_usb_mass_storage_test.sh
           bash test/run_usb_hid_test.sh
           bash test/run_board_power_t5s3_v2_test.sh
           bash test/run_i2c_esp32s3_v2_test.sh
           bash test/run_platform_clock_v1_test.sh
+          bash test/run_gt911_touch_test.sh
           bash test/run_vbus_provider_chain_v2_test.sh
+      - name: Run native app host regression suite once
+        timeout-minutes: 10
+        run: bash test/run_native_app_test.sh
       - name: Install PlatformIO and target toolchain
         run: |
           python -m pip install platformio==6.1.19 pyelftools
           pio pkg install -e t5s3-pro
       - name: Compile physical controller and link PIC IDF USB implementation into ELF
         run: python scripts/probe_usb_controller_esp32s3.py --link-experiment
+      - name: Record linked controller ownership references
+        run: python scripts/report_u1_target_references.py --profile controller --elf dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output dist/u1-controller-references.json
+      - name: Preserve compact controller ownership evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-controller-references
+          path: dist/u1-controller-references.json
+          if-no-files-found: error
       - name: Audit physical ELF imports and exact loader relocation support
         run: |
           python scripts/audit_usb_controller_elf.py --strict
@@ -158,25 +224,23 @@ jobs:
       - name: Build Xtensa provider ELFs
         run: |
           python scripts/build_usb_cdc_v2.py
-          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm-v2/driver.elf
+          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm/driver.elf
           python scripts/build_usb_cp210x_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-cp210x-v2/driver.elf
           python scripts/build_usb_ch34x_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-ch34x-v2/driver.elf
-          python scripts/build_usb_ftdi.py
-          bash test/run_native_app_test.sh dist/experimental/usb-ftdi/driver.elf
-          python scripts/build_usb_stlink.py
-          bash test/run_native_app_test.sh dist/experimental/usb-stlink/driver.elf
-          python scripts/build_usb_msp.py
-          bash test/run_native_app_test.sh dist/experimental/usb-msp/driver.elf
-          python scripts/build_program_msp.py
-          bash test/run_native_app_test.sh dist/experimental/program-msp/driver.elf
+          python scripts/build_usb_serial_witness_v2.py
+          bash test/run_native_app_test.sh dist/experimental/usb-serial-witness/driver.elf
           python scripts/build_usb_host_v2.py
           bash test/run_native_app_test.sh dist/experimental/usb-host-v2/driver.elf
+          python scripts/build_usb_mass_storage.py
+          bash test/run_native_app_test.sh dist/experimental/usb-mass-storage/driver.elf
           python scripts/build_usb_hid.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid/driver.elf
           python scripts/build_usb_hid_keyboard.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid-keyboard/driver.elf
+          python scripts/build_usb_hid_text_input.py
+          bash test/run_native_app_test.sh dist/experimental/usb-hid-text-input/driver.elf
           python scripts/build_usb_hid_gamepad.py
           bash test/run_native_app_test.sh dist/experimental/usb-hid-gamepad/driver.elf
           python scripts/build_usb_xinput_gamepad.py
@@ -189,6 +253,17 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/audit_usb_controller_elf.py dist/experimental/platform-clock-v1/driver.elf --strict
           bash test/run_native_app_test.sh dist/experimental/platform-clock-v1/driver.elf
+          python scripts/build_archive_zip.py
+          bash test/run_native_app_test.sh dist/experimental/archive-zip/driver.elf
+          python test/native_apps/elf_section_layout_test.py dist/experimental/platform-clock-v1/driver.elf dist/experimental/archive-zip/driver.elf
+          python scripts/build_gt911_touch.py
+          bash test/run_native_app_test.sh dist/experimental/gt911-touch/driver.elf
+          python scripts/build_display_epd_video.py
+          bash test/run_native_app_test.sh dist/experimental/display-epd-video/driver.elf
+          cc -std=c11 -Wall -Wextra -Werror -Isdk/driver -Ilib/NativeApps/include \
+            Drivers/display_epd_video/driver.c test/drivers/display_epd_video_test.c \
+            -o /tmp/display-epd-test
+          /tmp/display-epd-test
       - name: Validate board-private C ABI and exact import matcher against linked ELFs
         run: |
           cc -std=gnu11 -O2 -Wall -Wextra -Werror -DBOARD_T5S3_PRO \
@@ -203,11 +278,13 @@ jobs:
           /tmp/riscrte-privileged-imports-ci \
             dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
             dist/experimental/i2c-esp32s3-v2/driver.elf \
-            dist/experimental/platform-clock-v1/driver.elf
+            dist/experimental/platform-clock-v1/driver.elf \
+            dist/experimental/archive-zip/driver.elf
           for elf in \
             dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf \
             dist/experimental/i2c-esp32s3-v2/driver.elf \
-            dist/experimental/platform-clock-v1/driver.elf; do
+            dist/experimental/platform-clock-v1/driver.elf \
+            dist/experimental/archive-zip/driver.elf; do
             python scripts/generate_privileged_imports_v1.py "$elf"
             /tmp/riscrte-exact-imports-ci "$elf" "$(dirname "$elf")/privileged-imports.v1"
           done
@@ -222,6 +299,7 @@ jobs:
           python scripts/build_installed_usb_stack.py
           python test/drivers/installed_usb_stack_package_test.py
           python scripts/export_canonical_driver_release.py
+          python test/resources/independent_module_artifact_test.py
       - name: Preserve installable unsigned package directories and experimental binaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -231,6 +309,12 @@ jobs:
             dist/experimental/usb-*/
             dist/experimental/i2c-*/
             dist/experimental/platform-clock-v1/
+            dist/experimental/gt911-touch/
+            dist/experimental/archive-zip/
+            dist/experimental/display-epd-video/
             dist/packages/
             dist/release-packages/
+            dist/release-service-packages/
+            dist/release-provider-packages/
+            dist/independent-module-record-report.json
           if-no-files-found: warn

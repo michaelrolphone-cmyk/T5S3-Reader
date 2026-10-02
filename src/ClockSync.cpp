@@ -57,13 +57,15 @@ bool commitCurrentSystemTime(const char* sourceTag) {
     return false;
   }
 
-  hasNetworkSync = true;
-  lastNetworkSyncEpoch = now;
-
   if (!halClock.syncRtcFromSystemTime()) {
     LOG_ERR("CLK", "%s time commit failed: RTC write-back failed", sourceTag != nullptr ? sourceTag : "System");
     return false;
   }
+
+  // Only throttle future network syncs after the RTC accepted this time.
+  // Otherwise a failed write can suppress the retry for the full resync interval.
+  hasNetworkSync = true;
+  lastNetworkSyncEpoch = now;
 
   bool needsSave = false;
   if (SETTINGS.rtcStoresUtc == 0) {

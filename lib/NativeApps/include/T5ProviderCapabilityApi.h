@@ -13,7 +13,8 @@ typedef uint32_t t5_provider_capability_lease_t;
  * operations are interpreted by this API. Returned interfaces are borrowed:
  * valid only on the owning app task until release or application termination.
  * The app's validated manifest must explicitly declare the capability in its
- * optional list. An optional declaration does not automatically grant access.
+ * requires or optional list. A declaration does not automatically grant access;
+ * requires additionally participates in mandatory launch gating.
  * This development ABI is not a substitute for future signed app admission. */
 typedef struct {
     uint32_t api_version;

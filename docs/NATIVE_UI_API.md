@@ -20,7 +20,7 @@ The application owns application data, persistence, business logic, screen state
 
 ### Current surfaces
 
-`t5_ui_chrome_t` supplies logical title, subtitle, status and button labels. List rows supply title/subtitle/value data and are rendered using the active firmware theme. Tables use weighted columns instead of device pixel coordinates. `render_text_view()` supplies a wrapped document/chat/log viewport using the firmware's user-content font policy and returns line/scroll metadata.
+`t5_ui_chrome_t` supplies logical title, subtitle, status and button labels. List rows supply title/subtitle/value data and are rendered using the active firmware theme. The existing row `flags` byte also carries ABI-compatible semantic state hints: `T5_UI_LIST_ICON_DOWNLOAD`, `T5_UI_LIST_ICON_UPDATE`, and `T5_UI_LIST_ICON_INSTALLED`. The firmware renders those states with the shared Font Awesome faces while preserving the row layout and existing highlight flag. Tables use weighted columns instead of device pixel coordinates. `render_text_view()` supplies a wrapped document/chat/log viewport using the firmware's user-content font policy and returns line/scroll metadata.
 
 `poll_event()` is the standard compatibility navigation path. It returns semantic PREVIOUS, NEXT, CONFIRM, BACK, TAP and EXIT events rather than requiring applications to interpret raw physical buttons. `hit_test()` applies to the most recently rendered list or table. Physical button remapping remains firmware-owned.
 
@@ -31,3 +31,16 @@ The application owns application data, persistence, business logic, screen state
 ## Migration rule
 
 Keep `T5UiApi`, `t5_ui_get_api`, `T5_UI_*`, current source paths and firmware class names in documentation whenever they identify deployed code. New specifications and conceptual discussion use **RiscRTE UI Host API**, **RiscRTE UI service**, application, scene, capability and framework terminology. An eventual ABI rename requires an explicit compatibility/migration plan; documentation alone must not break existing ELF applications.
+
+## Runtime viewport extension (firmware 1.3.12)
+
+The append-only `get_viewport()` member reports the active logical screen size,
+orientation, safe insets, content padding, vertical spacing and compact/regular/
+expanded size class. Applications must check `struct_size` before dereferencing
+the member. New custom UI code should derive geometry from this viewport rather
+than assuming the current e-paper resolution.
+
+The firmware list/table/text implementations now derive their usable header,
+content, status and footer regions from the same runtime viewport. This is the
+first adaptive-layout migration step; theme-specific decorative metrics remain
+theme-owned and may evolve independently.

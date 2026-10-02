@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #define DAY_COUNT 7
 #define PUNCH_COUNT 4
@@ -40,7 +41,9 @@ static const t5_system_ui_api_v1 *system_ui;
 static const t5_ui_api_v1 *fwui;
 
 static tc_day_t days[MAX_DAYS];
+static tc_day_t loaded_days[MAX_DAYS];
 static int32_t day_count;
+static bool store_ready;
 static char json[JSON_CAPACITY];
 static uint8_t screen_id;
 static int32_t week_offset;
@@ -184,12 +187,6 @@ static int32_t today(void) {
     return make_ymd(now.year, now.month, now.day);
 }
 
-static int32_t now_minutes(void) {
-    t5_local_datetime_t now;
-    if (!system_api->local_datetime(&now)) return 0;
-    return (int32_t)now.hour * 60 + now.minute;
-}
-
 static int32_t sunday(int32_t offset) {
     int32_t value = today();
     return add_days(value, -weekday(value) + offset * 7);
@@ -311,8 +308,12 @@ static bool int_field(const char *begin, const char *end, const char *key, int32
 
 static bool load_store(void) {
     size_t size = 0;
-    day_count = 0;
-    if (!storage->exists(STORE_PATH)) return true;
+    store_ready = false;
+    if (!storage->exists(STORE_PATH)) {
+        day_count = 0;
+        store_ready = true;
+        return true;
+    }
     if (!storage->read_file(STORE_PATH, json, sizeof(json) - 1, &size) || size >= sizeof(json)) return false;
     json[size] = 0;
 
@@ -323,9 +324,15 @@ static bool load_store(void) {
     if (p == end) return false;
     ++p;
 
-    while (p < end && *p != ']' && day_count < MAX_DAYS) {
+    int32_t loaded_count = 0;
+    bool array_closed = false;
+    while (p < end) {
         while (p < end && *p != '{' && *p != ']') ++p;
-        if (p >= end || *p == ']') break;
+        if (p >= end) break;
+        if (*p == ']') {
+            array_closed = true;
+            break;
+        }
         const char *close = close_brace(p, end);
         int32_t date = 0;
         if (!close || !int_field(p, close, "\"d\"", &date)) return false;
@@ -336,10 +343,24 @@ static bool load_store(void) {
             if (int_field(p, close, "\"ls\"", &value)) day.punches[1] = (int16_t)value;
             if (int_field(p, close, "\"le\"", &value)) day.punches[2] = (int16_t)value;
             if (int_field(p, close, "\"out\"", &value)) day.punches[3] = (int16_t)value;
-            days[day_count++] = day;
+            if (loaded_count >= MAX_DAYS) return false;
+            loaded_days[loaded_count++] = day;
         }
         p = close + 1;
     }
+    if (!array_closed) return false;
+
+    const char *document_end = p + 1;
+    while (document_end < end && (*document_end == ' ' || *document_end == '\n' ||
+                                  *document_end == '\r' || *document_end == '\t')) ++document_end;
+    if (document_end >= end || *document_end++ != '}') return false;
+    while (document_end < end && (*document_end == ' ' || *document_end == '\n' ||
+                                  *document_end == '\r' || *document_end == '\t')) ++document_end;
+    if (document_end != end) return false;
+
+    if (loaded_count) memcpy(days, loaded_days, (size_t)loaded_count * sizeof(days[0]));
+    day_count = loaded_count;
+    store_ready = true;
     return true;
 }
 
@@ -379,6 +400,7 @@ static bool json_int(size_t *used, int32_t value) {
 static bool save_store(void) {
     size_t used = 0;
     bool first = true;
+    if (!store_ready) return false;
     if (!json_text(&used, "{\"days\":[")) return false;
     for (int32_t i = 0; i < day_count; ++i) {
         tc_day_t *day = &days[i];
@@ -399,7 +421,7 @@ static bool save_store(void) {
 }
 
 static bool set_punch(int32_t date, uint8_t punch, int16_t minutes) {
-    if (date < 19700101 || punch >= PUNCH_COUNT) return false;
+    if (!store_ready || date < 19700101 || punch >= PUNCH_COUNT) return false;
     if (minutes > 1439) minutes = 1439;
     if (minutes < 0) minutes = -1;
     tc_day_t *day = ensure_day(date);
@@ -473,7 +495,13 @@ static int16_t worked(const tc_day_t *day) {
     if (!day || day->punches[0] < 0 || day->punches[3] < day->punches[0]) return -1;
     int16_t total = (int16_t)(day->punches[3] - day->punches[0]);
     if (day->punches[1] >= 0 && day->punches[2] >= day->punches[1]) {
-        total = (int16_t)(total - (day->punches[2] - day->punches[1]));
+        const int16_t lunch_start =
+            day->punches[1] > day->punches[0] ? day->punches[1] : day->punches[0];
+        const int16_t lunch_end =
+            day->punches[2] < day->punches[3] ? day->punches[2] : day->punches[3];
+        if (lunch_end > lunch_start) {
+            total = (int16_t)(total - (lunch_end - lunch_start));
+        }
     }
     return total < 0 ? 0 : total;
 }
@@ -649,8 +677,17 @@ static void open_day(int32_t date) {
 }
 
 static void punch_today(uint8_t punch) {
-    int32_t date = today();
-    int16_t minutes = (int16_t)now_minutes();
+    t5_local_datetime_t now;
+    if (!store_ready) {
+        set_status("History unavailable; read-only");
+        return;
+    }
+    if (!system_api->local_datetime(&now)) {
+        set_status("Clock unavailable");
+        return;
+    }
+    const int32_t date = make_ymd(now.year, now.month, now.day);
+    const int16_t minutes = (int16_t)((int32_t)now.hour * 60 + now.minute);
     if (!set_punch(date, punch, minutes)) {
         set_status("Could not save punch");
         return;
@@ -680,6 +717,10 @@ static bool decode_cookie(uint64_t value, int32_t *date, uint8_t *punch, int32_t
 
 static bool request_edit(void) {
     uint8_t punch = (uint8_t)selected;
+    if (!store_ready) {
+        set_status("History unavailable; read-only");
+        return false;
+    }
     if (screen_id != SCREEN_DAY || punch >= PUNCH_COUNT) return false;
     tc_day_t day = get_day(editing_ymd);
     char initial[24];
@@ -716,7 +757,14 @@ static bool consume_keyboard(void) {
         set_status("Keyboard result ignored");
         return true;
     }
-    load_store();
+    if (!load_store()) {
+        screen_id = SCREEN_WEEK_LIST;
+        week_offset = 0;
+        selected = 0;
+        editing_ymd = 0;
+        set_status("History unavailable; read-only");
+        return true;
+    }
     screen_id = SCREEN_DAY;
     week_offset = offset;
     selected = punch;
@@ -806,7 +854,9 @@ __attribute__((visibility("default"))) void app_main(void) {
         week_offset = 0;
         selected = 0;
         editing_ymd = 0;
-        set_status("Select a week");
+        set_status(store_ready ? "Select a week" : "History unavailable; read-only");
+    } else if (!store_ready) {
+        set_status("History unavailable; read-only");
     }
     render();
 

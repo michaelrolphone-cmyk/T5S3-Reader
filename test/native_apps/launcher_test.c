@@ -1,4 +1,5 @@
 #include "T5StreamApi.h"
+#include "T5PackageResourceApi.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -36,13 +37,17 @@
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
 #include "T5WebServerApi.h"
+#include "T5VideoApi.h"
+#include "T5MathApi.h"
 
+extern int test_compat_storage_uncertain;
 extern int test_capability_gate_allowed;
 extern int test_capability_bind_allowed;
 extern int test_capability_bind_calls;
 static int mode, opens, closes, calls, handle_storage;
 static const char *pending;
 static bool running;
+static bool memory_live, memory_resolving, retain_hardware;
 static bool takeover_exported;
 static bool takeover_active;
 static bool takeover_denied;
@@ -102,6 +107,7 @@ void *dlsym(void *handle, const char *name)
 int dlclose(void *handle)
 {
     assert(handle == &handle_storage && !running && !takeover_active);
+    assert(!memory_live && !memory_resolving);
     ++closes;
     if (mode == 4) { pending = "close failed"; return -1; }
     return 0;
@@ -122,7 +128,7 @@ esp_err_t native_hardware_takeover_end(uint32_t mask)
 {
     ++takeover_ends;
     assert(mask == T5_HARDWARE_TAKEOVER_DISPLAY && takeover_active && !running);
-    takeover_active = false;
+    takeover_active = retain_hardware;
     return restore_failed ? ESP_FAIL : ESP_OK;
 }
 
@@ -154,7 +160,9 @@ int main(void)
         for (mode = 0; mode < 6; ++mode) {
             opens = closes = calls = 0;
             pending = "stale error";
+            const int uncertain_before = test_compat_storage_uncertain;
             int rc = launch_elf_app("/sd/apps/game.elf");
+            assert(test_compat_storage_uncertain == uncertain_before + (mode == 4));
             assert(native_app_current_path() == NULL);
             assert(opens == 1);
             assert(closes == (mode == 1 ? 0 : 1));
@@ -241,6 +249,13 @@ int main(void)
     reset_takeover();
     assert(launch_elf_app("/sd/apps/game.elf") == ESP_OK);
     assert(calls == 1 && closes == 1 && takeover_begins == 0 && takeover_ends == 0);
+    reset_takeover(); takeover_exported=true; takeover_request=T5_HARDWARE_TAKEOVER_DISPLAY;
+    restore_failed=true; retain_hardware=true;
+    const int uncertain_before = test_compat_storage_uncertain;
+    assert(launch_elf_app("/sd/apps/game.elf")==ESP_FAIL);
+    assert(memory_live && closes==0);
+    assert(test_compat_storage_uncertain == uncertain_before + 1);
+    assert(launch_elf_app("/sd/apps/game.elf")==ESP_ERR_INVALID_STATE);
     return 0;
 }
 
@@ -295,4 +310,14 @@ const t5_time_zone_api_v1 *t5_time_zone_get_api(uint32_t version) { (void)versio
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_web_server_api_v1 *t5_web_server_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_video_api_v1 *t5_video_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_stream_api_v1 *t5_stream_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_package_resource_api_v1 *t5_package_resource_get_api(uint32_t version) { (void)version; return NULL; }
+
+const t5_math_api_v1 *t5_math_get_api(uint32_t version) { (void)version; return NULL; }
+
+// Memory lifetime starts before mapping/constructors and ends before unload.
+bool native_app_memory_begin(void) { assert(!memory_live); memory_live=true; return true; }
+void native_app_memory_relocation(bool active) { assert(memory_live); memory_resolving=active; }
+void native_app_memory_end(void) { assert(!memory_resolving); memory_live=false; }
+bool native_hardware_display_is_borrowed(void) { return takeover_active; }

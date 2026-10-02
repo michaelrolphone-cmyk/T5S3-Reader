@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "NativeAppHost.h"
+#include "NativeFileOpenBridge.h"
 #include "NativeSystemUiBridge.h"
 #include "activities/Activity.h"
 #include "activities/ActivityManager.h"
@@ -170,6 +171,15 @@ const t5_file_open_api_v1 api = {
 };
 
 }  // namespace
+
+namespace NativeFileOpenBridge {
+bool activeSourceStoragePath(std::string& out) {
+  out.clear();
+  if (activeSourcePath.size() <= 4 || activeSourcePath.rfind("/sd/", 0) != 0) return false;
+  out.assign(activeSourcePath.c_str() + 3);
+  return out.size() > 1 && out[0] == '/';
+}
+}  // namespace NativeFileOpenBridge
 
 extern "C" const t5_file_open_api_v1* t5_file_open_get_api(uint32_t version) {
   return version == T5_FILE_OPEN_API_VERSION && active() ? &api : nullptr;

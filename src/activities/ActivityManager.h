@@ -3,6 +3,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
+#include <HalDisplay.h>
 
 #include <cassert>
 #include <memory>
@@ -30,7 +31,7 @@ class ActivityManager {
   std::unique_ptr<Activity> pendingActivity;
   enum class PendingAction { None, Push, Pop, Replace };
   PendingAction pendingAction = PendingAction::None;
-  HalDisplay::RefreshMode pendingReplaceRefreshMode = HalDisplay::FULL_REFRESH;
+  DisplayPresentMode pendingReplaceRefreshMode = DisplayPresentMode::Clean;
 
   TaskHandle_t renderTaskHandle = nullptr;
   static void renderTaskTrampoline(void* param);
@@ -55,14 +56,14 @@ class ActivityManager {
   void loop();
 
   void replaceActivity(std::unique_ptr<Activity>&& newActivity);
-  void replaceActivity(std::unique_ptr<Activity>&& newActivity, HalDisplay::RefreshMode replaceRefreshMode);
+  void replaceActivity(std::unique_ptr<Activity>&& newActivity, DisplayPresentMode replaceRefreshMode);
 
   void goToFileTransfer();
   void goToSettings();
-  void goToFileBrowser(std::string path = {});
+  void goToInstalledApp(std::string artifact, std::string displayName);
   void goToRecentBooks();
   void goToBrowser();
-  void goToReader(std::string path, HalDisplay::RefreshMode replaceRefreshMode = HalDisplay::HALF_REFRESH);
+  void goToReader(std::string path, DisplayPresentMode replaceRefreshMode = DisplayPresentMode::Quality);
   void goToSleep(bool poweringOff = false);
   void goToBoot();
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);

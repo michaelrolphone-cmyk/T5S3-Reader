@@ -13,6 +13,7 @@ static int polls;
 static int installs;
 static int deletes;
 static int renders;
+static bool second_confirm;
 
 static bool app_poll(t5_app_input_t *input, uint32_t wait_ms) {
     assert(input && wait_ms == 50);
@@ -21,6 +22,13 @@ static bool app_poll(t5_app_input_t *input, uint32_t wait_ms) {
     if (polls == 1) input->buttons = T5_APP_BUTTON_CONFIRM;
     else if (polls == 2) input->buttons = T5_APP_BUTTON_DOWN;
     else if (polls == 3 || polls == 4) input->buttons = T5_APP_BUTTON_CONFIRM;
+    else if (polls == 5) {
+        // The preceding polls are one held press, not two confirmations.
+        assert(deletes == 0);
+        if (!second_confirm) input->buttons = T5_APP_BUTTON_BACK;
+        // Otherwise leave buttons clear for a full release before pressing again.
+    }
+    else if (polls == 6) input->buttons = T5_APP_BUTTON_CONFIRM;
     else input->buttons = T5_APP_BUTTON_BACK;
     return true;
 }
@@ -59,6 +67,7 @@ static t5_font_result_t install_family(uint32_t index, t5_font_progress_callback
 }
 static t5_font_result_t delete_family(uint32_t index) {
     assert(index == 1);
+    assert(second_confirm && polls == 6);
     ++deletes;
     return T5_FONT_OK;
 }
@@ -100,10 +109,18 @@ const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
 }
 
 int main(void) {
+    // Leaving while Confirm was held must not remove the installed family.
+    app_main();
+    assert(installs == 1);
+    assert(deletes == 0);
+    assert(polls == 5);
+
+    polls = installs = deletes = renders = 0;
+    second_confirm = true;
     app_main();
     assert(installs == 1);
     assert(deletes == 1);
-    assert(polls == 5);
+    assert(polls == 7);
     assert(renders >= 7);
     return 0;
 }

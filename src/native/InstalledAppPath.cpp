@@ -19,7 +19,7 @@
 namespace {
 constexpr size_t kMaxDirectoryEntries = 512;
 constexpr RuntimePackages::PackageRuntimePolicy kAppPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
 bool validManagedCandidate(const char* id, const char* artifact,
                            t5_app_manifest_t& manifest) {
@@ -46,8 +46,7 @@ bool resolveInstalledAppPath(const char* artifact, std::string& sdPath,
                              t5_app_manifest_t* manifest) {
   sdPath.clear();
   if (manifest) *manifest = {};
-  if (!Storage.ready() || !artifact || !t5_safe_elf_name(artifact) ||
-      !std::strcmp(artifact, "springboard.elf")) return false;
+  if (!Storage.ready() || !artifact || !t5_safe_elf_name(artifact)) return false;
 
   // Package IDs are not necessarily ELF basenames. Resolve by the verified
   // package inventory rather than synthesizing /Apps/<basename>/<basename>.elf.

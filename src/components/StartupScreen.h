@@ -5,13 +5,19 @@
 #include "FontAwesomeIcons.h"
 #include "fontIds.h"
 
-// Caller owns RenderLock. These frames are presented synchronously, before
-// entering work that can block the activity render task.
+// Caller owns RenderLock. boot() initializes the display, then animates on a
+// worker while the owner continues startup; the worker never uses the renderer.
 namespace StartupScreen {
-// The fade is armed only for a normal Home boot. Caller holds RenderLock.
+// boot() arms one fade for whichever normal startup destination renders first.
+// armBootFade() is idempotent and retained for Home's explicit handoff.
 void boot(GfxRenderer& renderer);
 void armBootFade();
-void finishBoot(GfxRenderer& renderer);
+// Input must not activate a destination before the loading-screen handoff.
+bool isLoading();
+// Call with RenderLock after the destination has presented its first frame.
+void destinationReady();
+// Called before the first destination render. False retains ownership for retry.
+bool finishBoot(GfxRenderer& renderer);
 
 inline void app(GfxRenderer& renderer, const char* name, const char* icon) {
   const auto mode = renderer.getRenderMode();
@@ -24,7 +30,7 @@ inline void app(GfxRenderer& renderer, const char* name, const char* icon) {
   const std::string message = std::string("Loading ") + name;
   const auto label = renderer.truncatedText(UI_12_FONT_ID, message.c_str(), renderer.getScreenWidth() - 48);
   renderer.drawCenteredText(UI_12_FONT_ID, centerY, label.c_str());
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
   renderer.setRenderMode(mode);
 }
 }  // namespace StartupScreen

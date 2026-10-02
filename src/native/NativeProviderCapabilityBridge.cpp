@@ -1,7 +1,9 @@
+#include "ManagedAppAdmission.h"
 #include <T5ProviderCapabilityApi.h>
 #include <T5AppApi.h>
 #include <NativeAppLauncher.h>
 #include "AppManifest.h"
+#include "NativeReaderTypography.h"
 #include "NativeNavigationInput.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include "runtime/resources/ExecutionContext.h"
@@ -20,6 +22,8 @@ struct Slot {
     Lease provider{};
     uint32_t owner = 0;
     uint32_t generation = 0;
+    bool typography=false;
+    risc_reader_typography_v1 reader{};
 };
 constexpr size_t kMaxActiveLeases = 4;
 Slot active[kMaxActiveLeases]{};
@@ -38,9 +42,23 @@ uint32_t owner() {
                ? context->id() : 0;
 }
 
+// A built-in software provider, leased with the same declaration/owner checks
+// as installed providers. It only rasterizes into caller-owned memory.
+bool readerPage(void *context,const risc_reader_page_request_v1 *q,risc_reader_page_result_v1 *out) {
+    const uint32_t token=static_cast<uint32_t>(reinterpret_cast<uintptr_t>(context));
+    const uint32_t invocation=owner();
+    for(const auto &slot:active)
+        if(invocation && slot.owner==invocation && slot.generation==token && slot.typography)
+            return nativeReaderPage(q,out);
+    return false;
+}
+
 // The validated sidecar acts as a bounded development-time allowlist. This is
 // not signed app admission, or a replacement for the future trusted picker.
-bool declaredOptional(const char* capability, uint32_t version) {
+// Both mandatory and optional capability declarations authorize requesting the
+// provider interface; the difference between them is launch gating, not access
+// to a different provider API.
+bool declaredCapability(const char* capability, uint32_t version) {
     const char* path = native_app_current_path();
     if (!path || std::strncmp(path, "/sd/", 4) != 0 || !capability || !version ||
         !RuntimeDevices::validCapabilityName(capability)) return false;
@@ -48,21 +66,41 @@ bool declaredOptional(const char* capability, uint32_t version) {
     if (filename.size() < 5 || filename.compare(filename.size() - 4, 4, ".elf")) return false;
     filename.replace(filename.size() - 4, 4, ".json");
     t5_app_manifest_t validated{};
-    if (!readAppManifest(filename.c_str(), validated) || !validated.compatible) return false;
+    std::shared_ptr<const std::string> captured;
+    RuntimePackages::Identity identity{};
+    const auto state=RuntimePackages::captureManagedAppSidecar(path,captured,&identity);
+    if(state==RuntimePackages::ManagedAppMetadata::Denied)return false;
+    std::string json;
+    if(state==RuntimePackages::ManagedAppMetadata::Captured || state==RuntimePackages::ManagedAppMetadata::CapturedLegacy){
+        std::string version;
+        const bool canonical=state==RuntimePackages::ManagedAppMetadata::Captured;
+        if(!parseAppManifest(*captured,validated,&version,canonical)||(canonical && version!=identity.version))return false;
+        json=*captured;
+    }else{
+        if(!readAppManifest(filename.c_str(),validated))return false;
+        const String bytes=Storage.readFile(filename.c_str());json.assign(bytes.c_str(),bytes.length());
+    }
+    if(!validated.compatible)return false;
     const std::string elf(path + 3);
     if (elf.substr(elf.find_last_of('/') + 1) != validated.file_name) return false;
-    const String json = Storage.readFile(filename.c_str());
-    if (!json.length() || json.length() > 2048) return false;
+    if (json.empty() || json.size() > 2048) return false;
     JsonDocument doc;
-    if (deserializeJson(doc, json) || !doc["optional"].is<JsonArray>()) return false;
-    for (JsonVariantConst item : doc["optional"].as<JsonArrayConst>()) {
-        if (!item.is<JsonObjectConst>() || !item["capability"].is<const char*>() ||
-            !item["api"].is<const char*>()) continue;
-        const char* name = item["capability"].as<const char*>();
-        uint16_t minimum = 0;
-        if (std::strcmp(name, capability) == 0 &&
-            RuntimeDevices::parseMinimumApi(item["api"].as<const char*>(), &minimum) &&
-            version >= minimum) return true;
+    if (deserializeJson(doc, json)) return false;
+
+    const char* keys[] = {"requires", "optional"};
+    for (const char* key : keys) {
+        const JsonVariantConst value = doc[key];
+        if (value.isNull()) continue;
+        if (!value.is<JsonArrayConst>()) return false;
+        for (JsonVariantConst item : value.as<JsonArrayConst>()) {
+            if (!item.is<JsonObjectConst>() || !item["capability"].is<const char*>() ||
+                !item["api"].is<const char*>()) continue;
+            const char* name = item["capability"].as<const char*>();
+            uint16_t minimum = 0;
+            if (std::strcmp(name, capability) == 0 &&
+                RuntimeDevices::parseMinimumApi(item["api"].as<const char*>(), &minimum) &&
+                version >= minimum) return true;
+        }
     }
     return false;
 }
@@ -130,24 +168,43 @@ bool acquire(const char* capability, uint32_t version,
     errorOwner = invocation;
     error[0] = 0;
     if (!token || !interface) return fail("Invalid capability request");
-    if (!declaredOptional(capability, version))
-        return fail("App JSON missing/invalid optional capability declaration");
+    if (!declaredCapability(capability, version))
+        return fail("App JSON missing/invalid capability declaration");
     Slot* available = nullptr;
     for (auto& slot : active) {
         if (!slot.owner && !available) available = &slot;
     }
     if (!available) return fail("Capability lease table full");
+    if(std::strcmp(capability,"reader.typography")==0) {
+        if(version!=RISC_READER_TYPOGRAPHY_V1) return fail("Unsupported typography API");
+        generation=generation>=UINT32_MAX-1u?1u:generation+1u;
+        available->owner=invocation; available->generation=generation; available->typography=true;
+        available->reader={RISC_READER_TYPOGRAPHY_V1,sizeof(risc_reader_typography_v1),
+            reinterpret_cast<void *>(static_cast<uintptr_t>(generation)),readerPage};
+        *token=generation; *interface=&available->reader; return true;
+    }
     char id[64]{};
     if (!findProvider(capability, version, id)) return false;
     Lease grant{};
     if (!RuntimeInstalledProviders::acquire(id, capability, version, &grant) ||
-        !grant.grant.slot || !grant.interface) return fail(RuntimeInstalledProviders::lastError());
-    generation = generation == UINT32_MAX ? 1u : generation + 1u;
+        !grant.grant.slot || !grant.interface) {
+        if (grant.grant.slot) {
+            available->provider = grant;
+            available->owner = invocation;
+        }
+        return fail(RuntimeInstalledProviders::lastError());
+    }
+    // UINT32_MAX is reserved for the firmware's semantic text-input focus.
+    generation = generation >= UINT32_MAX - 1u ? 1u : generation + 1u;
     if (!generation) generation = 1u;
     // The navigation provider interprets which sources overlap this opaque
     // capability. Yield them before the app can subscribe or poll its grant.
     if (!nativeNavigationClaim(generation, capability, version)) {
-        (void)RuntimeInstalledProviders::release(&grant);
+        if (!RuntimeInstalledProviders::release(&grant)) {
+            available->provider = grant;
+            available->owner = invocation;
+            available->generation = generation;
+        }
         return fail("Input ownership handoff failed");
     }
     available->provider = grant;
@@ -163,13 +220,12 @@ bool release(t5_provider_capability_lease_t token) {
     if (!token || !invocation) return false;
     for (auto& slot : active) {
         if (slot.owner != invocation || slot.generation != token) continue;
-        Lease grant = slot.provider;
+        if (slot.typography) { slot = {}; return true; }
+        // U1 release preserves the exact failed grant for checked retry.
+        if (!RuntimeInstalledProviders::release(&slot.provider)) return false;
         slot = {};
-        // A failed quiesce may consume the grant and quarantine an ELF. Never
-        // hand out a stale interface or retry a consumed generation.
-        const bool released = RuntimeInstalledProviders::release(&grant);
         nativeNavigationRelease(token);
-        return released;
+        return true;
     }
     return false;
 }
@@ -195,10 +251,10 @@ t5_provider_capability_get_api(uint32_t version) {
 extern "C" void native_app_provider_capabilities_release(void) {
     for (auto& slot : active) {
         if (!slot.owner) continue;
-        Lease grant = slot.provider;
+        if (slot.typography) { slot = {}; continue; }
         const uint32_t token = slot.generation;
+        if (!RuntimeInstalledProviders::release(&slot.provider)) continue;
         slot = {};
-        (void)RuntimeInstalledProviders::release(&grant);
         nativeNavigationRelease(token);
     }
 }

@@ -75,7 +75,7 @@ inline bool installApplication(const char* artifact, const char* version,
       static_cast<unsigned long long>(sidecarSize), jsonDigest);
   if (count <= 0 || count >= 4096)
     return fail("package descriptor rejected");
-  constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2, 0,
+  constexpr PackageRuntimePolicy policy{"xtensa-esp32s3", 2,
       kOrdinaryMaxEntryBytes, kOrdinaryMaxTotalBytes};
   const std::string root = "/Packages/Inbox/" + id;
   if (!Storage.ready() ||

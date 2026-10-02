@@ -1,4 +1,5 @@
 #include "NativeAppLauncher.h"
+#include "../../hal/RuntimeFaultRetention.h"
 
 #include <stdatomic.h>
 #include <stddef.h>
@@ -30,6 +31,7 @@
 #include "T5OpdsApi.h"
 #include "T5OtaApi.h"
 #include "T5PackageManagerApi.h"
+#include "T5PackageResourceApi.h"
 #include "T5ProgramEspRomApi.h"
 #include "T5ProviderCapabilityApi.h"
 #include "T5SdFirmwareApi.h"
@@ -42,6 +44,8 @@
 #include "T5TimeZoneApi.h"
 #include "T5UiApi.h"
 #include "T5UsbApi.h"
+#include "T5VideoApi.h"
+#include "T5MathApi.h"
 #include "T5WebServerApi.h"
 #include <errno.h>
 
@@ -50,6 +54,9 @@
 #endif
 
 // Firmware-only owner-task hooks; never exported to application ELFs.
+extern bool native_app_memory_begin(void);
+extern void native_app_memory_end(void);
+extern void native_app_memory_relocation(bool active);
 extern bool native_app_capabilities_ready(const char *sd_path);
 extern bool native_app_capabilities_bind(const char *sd_path);
 extern void native_app_capabilities_release(void);
@@ -58,10 +65,12 @@ extern void native_app_provider_capabilities_release(void);
 // RenderLock. Individual ELFs only declare their requested resource mask.
 extern esp_err_t native_hardware_takeover_begin(uint32_t requested);
 extern esp_err_t native_hardware_takeover_end(uint32_t requested);
+extern bool native_hardware_display_is_borrowed(void);
 // Temporary direct hardware import inventory, registered only for the
 // lifetime of the current ELF. Neither function is an ELF export.
 extern int native_hardware_compat_register(void);
 extern void native_hardware_compat_unregister(void);
+extern void native_hardware_compat_storage_uncertain(void);
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
@@ -75,6 +84,7 @@ const char *native_app_current_path(void)
 
 esp_err_t launch_elf_app(const char *sd_path)
 {
+    if (risc_runtime_retention_required()) return ESP_ERR_INVALID_STATE;
     if (sd_path == NULL || strncmp(sd_path, "/sd/", 4) != 0 || sd_path[4] == '\0') {
         ESP_LOGE(TAG, "Expected an absolute SD VFS file path");
         return ESP_ERR_INVALID_ARG;
@@ -84,7 +94,10 @@ esp_err_t launch_elf_app(const char *sd_path)
         return ESP_ERR_INVALID_STATE;
     }
     bool compat_registered = false;
+    bool unload_failed = false;
     bool module_initialized = false;
+    bool retain_module = false;
+    bool memory_active = false;
     bool takeover_active = false;
     elf_app_module_fini_t module_fini = NULL;
     esp_err_t result = native_app_register_sd_vfs();
@@ -98,6 +111,12 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto done;
     }
     static const struct esp_elfsym host_symbols[] = {
+#if defined(RISCRTE_PROFILE_HEADLESS)
+        ESP_ELFSYM_EXPORT(t5_app_get_api),
+        ESP_ELFSYM_EXPORT(t5_provider_capability_get_api),
+        ESP_ELFSYM_EXPORT(t5_stream_get_api),
+        ESP_ELFSYM_END
+#else
         ESP_ELFSYM_EXPORT(t5_app_get_api),
         ESP_ELFSYM_EXPORT(t5_archive_get_api),
         ESP_ELFSYM_EXPORT(t5_battery_get_api),
@@ -119,6 +138,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_status_bar_get_api),
         ESP_ELFSYM_EXPORT(t5_storage_get_api),
         ESP_ELFSYM_EXPORT(t5_stream_get_api),
+        ESP_ELFSYM_EXPORT(t5_package_resource_get_api),
         ESP_ELFSYM_EXPORT(t5_system_get_api),
         ESP_ELFSYM_EXPORT(t5_system_ui_get_api),
         ESP_ELFSYM_EXPORT(t5_time_zone_get_api),
@@ -131,7 +151,10 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_lora_get_api),
         ESP_ELFSYM_EXPORT(t5_web_server_get_api),
         ESP_ELFSYM_EXPORT(t5_usb_get_api),
+        ESP_ELFSYM_EXPORT(t5_video_get_api),
+        ESP_ELFSYM_EXPORT(t5_math_get_api),
         ESP_ELFSYM_END
+#endif
     };
     const int registered = esp_elf_register_symbol(host_symbols);
     if (registered != 0 && registered != -EEXIST) {
@@ -150,8 +173,15 @@ esp_err_t launch_elf_app(const char *sd_path)
     compat_registered = true;
     result = ESP_FAIL;
     (void)dlerror();
+    if (!native_app_memory_begin()) {
+        result = ESP_ERR_NO_MEM;
+        goto done;
+    }
+    memory_active = true;
     ESP_LOGI(TAG, "Loading %s", sd_path);
+    native_app_memory_relocation(true);
     void *handle = dlopen(sd_path, RTLD_NOW);
+    native_app_memory_relocation(false);
     if (handle == NULL) {
         const char *error = dlerror();
         ESP_LOGE(TAG, "dlopen(%s): %s", sd_path,
@@ -225,6 +255,7 @@ esp_err_t launch_elf_app(const char *sd_path)
     result = ESP_OK;
 
 close_module:
+    risc_runtime_retention_guard(); // Before module destructors, context or heap disposal.
     s_current_path = NULL;
     // Destructors may release app-owned peripherals and callbacks, so run them
     // while the module is mapped and before the host restores shared hardware.
@@ -244,22 +275,35 @@ close_module:
             ESP_LOGE(TAG, "Failed to restore host hardware for %s: %s",
                      sd_path, esp_err_to_name(restore));
             result = restore;
+            if (native_hardware_display_is_borrowed()) {
+                // A live hardware task/DMA can still reference this image or
+                // its heap. Fail closed; do not recycle it into the next app.
+                retain_module = true;
+                ESP_LOGE(TAG, "Live hardware retained; restart required before another app");
+                goto done;
+            }
         }
         takeover_active = false;
     }
     native_app_capabilities_release();
+    if (memory_active) { native_app_memory_end(); memory_active = false; }
     (void)dlerror();
     if (dlclose(handle) != 0) {
+        unload_failed = true;
         const char *close_error = dlerror();
         ESP_LOGE(TAG, "dlclose(%s): %s", sd_path,
                  close_error != NULL ? error : "unload failed without a diagnostic");
         result = ESP_FAIL;
     }
 done:
+    if (memory_active && !retain_module) native_app_memory_end();
     native_app_provider_capabilities_release();
-    if (compat_registered) native_hardware_compat_unregister();
+    if (compat_registered) {
+        if (retain_module || unload_failed) native_hardware_compat_storage_uncertain();
+        native_hardware_compat_unregister();
+    }
     native_app_capabilities_release();
     s_current_path = NULL;
-    atomic_flag_clear_explicit(&s_running, memory_order_release);
+    if (!retain_module) atomic_flag_clear_explicit(&s_running, memory_order_release);
     return result;
 }

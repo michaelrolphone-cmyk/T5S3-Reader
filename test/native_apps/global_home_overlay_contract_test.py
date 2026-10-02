@@ -7,12 +7,12 @@ HOST = (ROOT / "src/native/NativeAppHost.cpp").read_text(encoding="utf-8")
 MENU = (ROOT / "src/activities/GlobalMenuActivity.cpp").read_text(encoding="utf-8")
 MENU_H = (ROOT / "src/activities/GlobalMenuActivity.h").read_text(encoding="utf-8")
 TAKEOVER = (ROOT / "src/native/NativeHardwareTakeover.cpp").read_text(encoding="utf-8")
-HAL_H = (ROOT / "lib/hal/HalGPIO.h").read_text(encoding="utf-8")
-HAL_CPP = (ROOT / "lib/hal/HalGPIO.cpp").read_text(encoding="utf-8")
+HAL_H = (ROOT / "src/native/NativeTouchInput.h").read_text(encoding="utf-8")
+HAL_CPP = (ROOT / "src/native/NativeTouchInput.cpp").read_text(encoding="utf-8")
 MAPPED_H = (ROOT / "src/MappedInputManager.h").read_text(encoding="utf-8")
 MAPPED_CPP = (ROOT / "src/MappedInputManager.cpp").read_text(encoding="utf-8")
 
-poll_start = HOST.index("bool poll(t5_app_input_t* out, uint32_t waitMs)")
+poll_start = HOST.index("bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait)")
 poll_end = HOST.index("\nuint32_t clockMs()", poll_start)
 poll = HOST[poll_start:poll_end]
 
@@ -27,9 +27,10 @@ assert "s->exiting = true;" in poll
 assert "homeRequested = true;" in poll
 assert "ModalResult::ShutdownRequested" in poll
 
-assert "bool takeTouchHomeButtonPress(unsigned long& eventMs) const;" in HAL_H
-assert "sizeof(unsigned long)" in HAL_CPP
-assert "xQueueSend(touchHomeQueue, &eventMs, 0)" in HAL_CPP
+assert "bool nativeTouchTakeHomePress(unsigned long& eventMs);" in HAL_H
+assert "homeEvents[kHomeDepth]" in HAL_CPP
+assert "homeEvents[tail] = static_cast<uint32_t>(event.timestamp_ms);" in HAL_CPP
+assert "nativeTouchTakeHomePress(eventMs)" in MAPPED_CPP
 assert "bool MappedInputManager::takeTouchHomeButtonPress(unsigned long& eventMs) const" in MAPPED_CPP
 assert "bool takeTouchHomeButtonPress(unsigned long& eventMs) const;" in MAPPED_H
 

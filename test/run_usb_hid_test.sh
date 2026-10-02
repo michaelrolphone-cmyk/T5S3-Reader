@@ -3,7 +3,7 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build="$(mktemp -d)"
 trap 'rm -rf "$build"' EXIT
-for class in usb_hid usb_hid_keyboard usb_hid_gamepad usb_xinput_gamepad usb_ui_navigation; do
+for class in usb_hid usb_hid_keyboard usb_hid_text_input usb_hid_gamepad usb_xinput_gamepad usb_ui_navigation; do
   cc -std=c11 -Wall -Wextra -Werror -fPIC -fvisibility=hidden -shared \
     -I"$repo/sdk/driver" "$repo/Drivers/$class/driver.c" \
     -o "$build/$class.so"
@@ -26,6 +26,9 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_xinput_gamepad_test.c" -o "$build/xinput-test"
 "$build/xinput-test"
+cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  "$repo/test/drivers/usb_hid_text_input_test.c" -o "$build/text-input-driver-test"
+"$build/text-input-driver-test"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_hid_quiesce_test.c" -ldl -o "$build/hid-quiesce-test"
 "$build/hid-quiesce-test" "$build/usb_hid.so" \
@@ -57,3 +60,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
   -I"$repo/test/streams/stubs" -I"$repo/test/drivers/stubs" \
   "$repo/test/drivers/native_navigation_input_test.cpp" -o "$build/native-navigation-test"
 "$build/native-navigation-test"
+
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
+  "$repo/test/drivers/native_text_input_test.cpp" -o "$build/native-text-input-test"
+"$build/native-text-input-test"

@@ -1,4 +1,4 @@
-#include "runtime/drivers/UsbCdcDriverModule.h"
+#include "legacy_cdc/UsbCdcDriverModule.h"
 #include "runtime/packages/PackageUseGate.h"
 #include <cassert>
 #include <cstdint>

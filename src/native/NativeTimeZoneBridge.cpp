@@ -62,12 +62,28 @@ bool cityInfo(uint32_t region, uint32_t city, t5_time_zone_city_info_t* out) {
 bool selectCity(uint32_t region, uint32_t city) {
   t5_time_zone_city_info_t info{};
   if (!cityInfo(region, city, &info)) return false;
+  char previousTimeZoneId[sizeof(SETTINGS.timeZoneId)] = {};
+  std::strncpy(previousTimeZoneId, SETTINGS.timeZoneId, sizeof(previousTimeZoneId) - 1);
+  previousTimeZoneId[sizeof(previousTimeZoneId) - 1] = '\0';
+  const uint8_t previousRtcStoresUtc = SETTINGS.rtcStoresUtc;
+  const uint8_t previousRtcVariantHint = SETTINGS.rtcVariantHint;
+  const uint32_t previousRtcReferenceEpoch = SETTINGS.rtcReferenceEpoch;
+
   TimeZoneCatalog::copyId(SETTINGS.timeZoneId, sizeof(SETTINGS.timeZoneId), info.id);
   halClock.configure(SETTINGS.timeZoneId, SETTINGS.rtcStoresUtc != 0, SETTINGS.rtcVariantHint,
                      SETTINGS.rtcReferenceEpoch);
   (void)halClock.syncSystemTimeFromRtc();
   SETTINGS.rtcStoresUtc = halClock.getRtcStoresUtc() ? 1 : 0;
-  return SETTINGS.saveToFile();
+  if (SETTINGS.saveToFile()) return true;
+
+  TimeZoneCatalog::copyId(SETTINGS.timeZoneId, sizeof(SETTINGS.timeZoneId), previousTimeZoneId);
+  SETTINGS.rtcStoresUtc = previousRtcStoresUtc;
+  SETTINGS.rtcVariantHint = previousRtcVariantHint;
+  SETTINGS.rtcReferenceEpoch = previousRtcReferenceEpoch;
+  halClock.configure(previousTimeZoneId, SETTINGS.rtcStoresUtc != 0,
+                     SETTINGS.rtcVariantHint, SETTINGS.rtcReferenceEpoch);
+  (void)halClock.syncSystemTimeFromRtc();
+  return false;
 }
 
 const t5_time_zone_api_v1 api = {

@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HOST = (ROOT / 'src/native/NativeAppHost.cpp').read_text(encoding='utf-8')
+INSTALLED_PATH = (ROOT / 'src/native/InstalledAppPath.cpp').read_text(encoding='utf-8')
 ADAPTER = (ROOT / 'src/native/AppPackageInstaller.cpp').read_text(encoding='utf-8')
 INVENTORY = (ROOT / 'src/native/AppPackageRecoveryInventory.cpp').read_text(encoding='utf-8')
 ONLINE = (ROOT / 'src/native/NativeOnlineAppInstall.h').read_text(encoding='utf-8')
@@ -23,6 +24,18 @@ MAIN = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
 
 
 class LiveInstallContract(unittest.TestCase):
+    def test_canonical_launch_binds_owned_metadata_before_loader(self):
+        launch = HOST.split('esp_err_t runNativeApp(', 1)[1]
+        self.assertLess(launch.index('nativeStreamsBegin();'), launch.index('beginManagedAppAdmission('))
+        self.assertLess(launch.index('beginManagedAppAdmission('), launch.index('launch_elf_app(path)'))
+        self.assertLess(launch.index('launch_elf_app(path)'), launch.index('endManagedAppAdmission();'))
+        self.assertLess(launch.index('endManagedAppAdmission();'), launch.index('nativeStreamsEnd();'))
+        for filename in ('NativeCapabilityGate.cpp', 'NativeProviderCapabilityBridge.cpp'):
+            bridge = (ROOT / 'src/native' / filename).read_text()
+            self.assertIn('captureManagedAppSidecar(', bridge)
+            self.assertIn('ManagedAppMetadata::Denied', bridge)
+            self.assertIn('parseAppManifest(*captured', bridge)
+
     def test_live_installer_is_digest_verified_and_publishes_pair(self):
         start = HOST.index('bool appCatalogDownloadWithProgress(uint32_t index,')
         end = HOST.index('\nbool installedRefresh()', start)
@@ -131,7 +144,7 @@ class LiveInstallContract(unittest.TestCase):
         loader_start = HOST.index('bool loadIndependentAppIndex(')
         loader_end = HOST.index('\nbool loadAuthoritativeAppCatalog(', loader_start)
         loader = HOST[loader_start:loader_end]
-        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', loader)
+        self.assertIn('RuntimeMemory::PsramGrowingTextStream json', loader)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', loader)
         self.assertIn('JsonDocument document(&allocator)', loader)
 
@@ -148,7 +161,7 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('bool ensureSavedConnection(', saved_network)
         self.assertIn('RuntimeNetwork::ensureSavedConnection(kNetworkReadyTimeoutMs)', downloader)
 
-        self.assertIn('RuntimeMemory::PsramTextStream json(kMaxCatalogBytes)', CATALOG_INDEX)
+        self.assertIn('RuntimeMemory::PsramGrowingTextStream json', CATALOG_INDEX)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', CATALOG_INDEX)
         self.assertIn('RuntimeMemory::PsramJsonAllocator allocator', APP_MANIFEST)
         self.assertIn('JsonDocument doc(&allocator)', APP_MANIFEST)
@@ -169,11 +182,15 @@ class LiveInstallContract(unittest.TestCase):
     def test_real_adapter_checks_content_and_mapped_executable(self):
         for required in ('mbedtls_sha256_starts_ret', 'mbedtls_sha256_update_ret',
                          'mbedtls_sha256_finish_ret', 'declaredSha[2 * i]',
-                         'declaredSize.as<unsigned>()', 'native_app_current_path()',
+                         'integrity.sizeBytes, integrity.sha256', 'native_app_current_path()',
                          'recoverPairTransaction(', 'publishPairTransaction(',
                          '!safePackageEntryName(filename)',
                          'verifyNamedPair(paths.stageElf.c_str(), paths.stageManifest.c_str(), filename, true)'):
             self.assertIn(required, ADAPTER)
+        self.assertIn('readAppManifest(manifest, parsed, nullptr, false, nullptr, nullptr, &integrity)', ADAPTER)
+        self.assertNotIn('Storage.readFile(manifest)', ADAPTER)
+        self.assertIn('if (verifyContents) Storage.invalidateObservations();', ADAPTER)
+        self.assertIn('if (verifyContents) Storage.invalidateObservations();', SD_ADAPTER)
         self.assertLess(ADAPTER.index('native_app_current_path()'),
                         ADAPTER.index('publishPairTransaction('))
 
@@ -183,13 +200,20 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('Application metadata or executable is unavailable.', HOST)
         self.assertIn('Application update cannot be safely recovered.', HOST)
 
-    def test_recovery_runs_before_springboard_presence_and_inventory_open(self):
+    def test_recovery_runs_before_springboard_resolution_and_inventory_open(self):
         start = HOST.index('bool runNativeSpringboard(')
         boot = HOST[start:]
-        self.assertLess(boot.index('recoverAppInventory()'),
-                        boot.index('Storage.exists("/Apps/springboard.elf")'))
-        self.assertLess(boot.index('recoverAppPair("springboard.elf")'),
-                        boot.index('Storage.exists("/Apps/springboard.elf")'))
+        self.assertLess(
+            boot.index('recoverAppInventory()'),
+            boot.index('resolveInstalledAppPath("springboard.elf", springboard)'),
+        )
+        legacy = INSTALLED_PATH[INSTALLED_PATH.index(
+            '// Preserve legacy manually installed ELF/JSON pairs'
+        ):]
+        self.assertLess(
+            legacy.index('RuntimePackages::recoverAppPair(artifact)'),
+            legacy.index('Storage.exists(elf.c_str())'),
+        )
         installed = HOST[HOST.index('bool installedRefresh()'):HOST.index('\nuint32_t installedCount()')]
         self.assertLess(installed.index('recoverAppInventory()'),
                         installed.index('Storage.open("/Apps", O_RDONLY)'))

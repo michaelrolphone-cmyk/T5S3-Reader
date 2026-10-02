@@ -22,7 +22,7 @@ BRIDGE = 'risc_fw_i2c_transact_v1'
 def run():
     manifest = json.loads((SOURCE / 'manifest.json').read_text())
     if (manifest.get('id') != 'i2c-esp32s3-v2' or
-            manifest.get('version') != '0.1.2' or
+            manifest.get('version') != '0.1.6' or
             manifest.get('driver_abi') != 2 or manifest.get('requires') != [] or
             manifest.get('provides') != [{'capability': 'i2c.bus', 'api': 1}] or
             manifest.get('status') != 'experimental-unpublished' or
@@ -59,9 +59,31 @@ def run():
     forbidden = sorted(name for name in unresolved if
                        name.startswith(('i2c_', 'gpio_', 'rtc_gpio_', 'rtc_io_',
                                         'periph_module_', 't5_', 'usb_')))
-    if BRIDGE not in unresolved or forbidden:
-        raise RuntimeError('I2C adapter must import only the private firmware transport, '
-                           'not physical device routines: ' + repr(forbidden))
+    expected = {
+        BRIDGE,
+        'vQueueDelete',
+        'xQueueCreateMutex',
+        'xQueueGenericSend',
+        'xQueueSemaphoreTake',
+        'xTaskGetTickCount',
+    }
+    unexpected = sorted(unresolved - expected)
+    missing = sorted(expected - unresolved)
+    if forbidden or unexpected or missing:
+        raise RuntimeError('I2C adapter import set mismatch; '
+                           'forbidden=' + repr(forbidden) +
+                           ' unexpected=' + repr(unexpected) +
+                           ' missing=' + repr(missing))
+
+    # 0.1.3/0.1.4 used relocatable __atomic state and regressed on hardware.
+    # 0.1.5 deliberately has no atomic/runtime helper imports: provider-local
+    # coordination is an ordinary FreeRTOS mutex and physical bus access still
+    # goes through the one firmware transport bridge.
+    atomic_helpers = sorted(name for name in unresolved
+                            if name.startswith('__atomic') or name.startswith('__sync'))
+    if atomic_helpers:
+        raise RuntimeError('I2C provider must not import atomic helpers: ' +
+                           repr(atomic_helpers))
     symbols = subprocess.check_output([str(readelf), '--dyn-syms', '--wide',
                                        str(output)], text=True)
     exported = {p[7] for line in symbols.splitlines()
@@ -71,6 +93,7 @@ def run():
         raise RuntimeError('I2C ELF exports unexpected entry points: ' + repr(exported))
     print('Installable i2c.bus ELF delegates physical I2C0 to firmware: PASS', flush=True)
     print('Firmware bridge import: ' + BRIDGE, flush=True)
+    print('Provider-local serialization: FreeRTOS mutex; relocatable atomics: none', flush=True)
     print('Independent I2C/GPIO/HAL/ISR implementations: none', flush=True)
     print('Firmware bus arbitration and hardware USB connection still require validation.',
           flush=True)

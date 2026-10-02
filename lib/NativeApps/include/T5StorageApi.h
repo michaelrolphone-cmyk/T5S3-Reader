@@ -29,6 +29,14 @@ typedef struct {
 
     /* Append-only extension: atomic same-volume rename; destination must not exist. */
     bool (*rename_file)(const char *source_path, const char *destination_path);
+
+    /* Append-only extension: exclusive transactional streamed writes. The
+     * destination must not already exist. commit atomically renames the staged
+     * file into place; abort removes the stage. One writer may be open per app. */
+    t5_storage_stream_t (*write_stream_open)(const char *path);
+    size_t (*write_stream_write)(t5_storage_stream_t stream, const void *buffer, size_t size);
+    bool (*write_stream_commit)(t5_storage_stream_t stream);
+    void (*write_stream_abort)(t5_storage_stream_t stream);
 } t5_storage_api_v1;
 
 const t5_storage_api_v1 *t5_storage_get_api(uint32_t api_version);

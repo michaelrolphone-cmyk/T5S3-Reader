@@ -300,7 +300,7 @@ void RoundedRaffTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int butt
     int textX = rowX + kInteractiveInsetX;
     if (hasAppIcon) {
       const int iconY = rowY + (rowHeight - kAppIconSize) / 2;
-      (void)FontAwesomeIcons::drawRegular(renderer, textX, iconY, appIcon, kAppIconSize, !isSelected);
+      (void)FontAwesomeIcons::draw(renderer, textX, iconY, appIcon, kAppIconSize, !isSelected);
       textX += iconAreaWidth;
     }
     if (isSelected) {
@@ -318,7 +318,9 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
                                 const std::function<std::string(int index)>& rowSubtitle,
                                 const std::function<UIIcon(int index)>& rowIcon,
                                 const std::function<std::string(int index)>& rowValue, bool highlightValue,
-                                const TextRole textRole) const {
+                                const TextRole textRole,
+                                const std::function<const char*(int index)>& rowFontAwesomeIcon,
+                                int rowFontAwesomeIconSize) const {
   (void)rowIcon;
   (void)highlightValue;
   const bool hasSubtitle = static_cast<bool>(rowSubtitle);
@@ -345,7 +347,20 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
 
     constexpr int kMinTitleWidth = 40;
     constexpr int kMinValueGap = kInteractiveInsetX;
-    int textAreaWidth = rowWidth - kInteractiveInsetX * 2;
+    const int kStateIconSize = std::max(1, rowFontAwesomeIconSize);
+    constexpr int kStateIconGap = 12;
+    const int stateIconInset = rowFontAwesomeIcon ? kStateIconSize + kStateIconGap : 0;
+    int textAreaWidth = rowWidth - kInteractiveInsetX * 2 - stateIconInset;
+    const int textStartX = rowX + kInteractiveInsetX + stateIconInset;
+
+    if (rowFontAwesomeIcon) {
+      const char* icon = rowFontAwesomeIcon(i);
+      if (icon && icon[0]) {
+        const int iconY = rowY + std::max(0, (rowHeight - kStateIconSize) / 2);
+        (void)FontAwesomeIcons::draw(renderer, rowX + kInteractiveInsetX, iconY,
+                                     icon, kStateIconSize, !isSelected);
+      }
+    }
     if (rowValue) {
       std::string valueText = rowValue(i);
       if (!valueText.empty()) {
@@ -371,22 +386,22 @@ void RoundedRaffTheme::drawList(const GfxRenderer& renderer, Rect rect, int item
       if (subtitleRaw.empty()) {
         // If there is no subtitle/author, center title vertically in the full row.
         const int centeredTitleY = rowY + (rowHeight - titleLineHeight) / 2;
-        drawTextForRole(renderer, kTitleFontId, textRole, rowX + kInteractiveInsetX, centeredTitleY, title.c_str(),
+        drawTextForRole(renderer, kTitleFontId, textRole, textStartX, centeredTitleY, title.c_str(),
                         !isSelected, EpdFontFamily::BOLD);
       } else {
         const int titleY = rowY + subtitleTopPadding;
         const int subtitleY = titleY + titleLineHeight + subtitleInterLineGap;
         auto subtitle = truncatedTextForRole(renderer, kSubtitleFontId, textRole, subtitleRaw.c_str(), textAreaWidth,
                                              EpdFontFamily::REGULAR);
-        drawTextForRole(renderer, kTitleFontId, textRole, rowX + kInteractiveInsetX, titleY, title.c_str(),
+        drawTextForRole(renderer, kTitleFontId, textRole, textStartX, titleY, title.c_str(),
                         !isSelected, EpdFontFamily::BOLD);
-        drawTextForRole(renderer, kSubtitleFontId, textRole, rowX + kInteractiveInsetX, subtitleY, subtitle.c_str(),
+        drawTextForRole(renderer, kSubtitleFontId, textRole, textStartX, subtitleY, subtitle.c_str(),
                         !isSelected, EpdFontFamily::REGULAR);
       }
     } else {
       auto title =
           truncatedTextForRole(renderer, kTitleFontId, textRole, rowTitle(i).c_str(), textAreaWidth, EpdFontFamily::BOLD);
-      drawTextForRole(renderer, kTitleFontId, textRole, rowX + kInteractiveInsetX,
+      drawTextForRole(renderer, kTitleFontId, textRole, textStartX,
                       rowY + (rowHeight - titleLineHeight) / 2, title.c_str(), !isSelected, EpdFontFamily::BOLD);
     }
   }

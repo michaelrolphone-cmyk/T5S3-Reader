@@ -47,7 +47,7 @@ class GlobalMenuActivity final : public Activity {
   void drawBacklightButton(int x, int y, int width, int height, bool focused, int level);
   void drawActionButton(int x, int y, int width, int height, bool focused, const std::string& label);
   void applyBacklightLevel(int level, bool scheduleRender = true);
-  void renderOverlay(HalDisplay::RefreshMode refreshMode);
+  void renderOverlay(DisplayPresentMode refreshMode);
   void activateSelection();
   void triggerShutdown();
 

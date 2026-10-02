@@ -11,6 +11,8 @@ extern "C" {
 #define T5_HTTP_METHOD_GET 0u
 #define T5_HTTP_METHOD_POST 1u
 #define T5_HTTP_RESPONSE_TRUNCATED (1u << 0)
+#define T5_HTTP_SESSION_COOKIES_AVAILABLE (1u << 1)
+#define T5_HTTP_SESSION_COOKIES_STORED (1u << 2)
 
 typedef struct {
     const char *name;

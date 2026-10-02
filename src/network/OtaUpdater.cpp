@@ -13,13 +13,13 @@
 
 #include "GithubTlsCerts.h"
 #include "runtime/network/NetworkService.h"
+#include "runtime/memory/PsramJson.h"
 
 namespace {
 constexpr char latestReleaseUrl[] =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
 constexpr char releaseIndexUrl[] =
     "https://raw.githubusercontent.com/michaelrolphone-cmyk/T5S3-Reader/release-index/release-index.json";
-constexpr size_t kReleaseIndexMaxBytes = 64u * 1024u;
 
 esp_err_t http_client_set_header_cb(esp_http_client_handle_t http_client) {
   return esp_http_client_set_header(http_client, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
@@ -44,6 +44,16 @@ const char* skipVersionPrefix(const char* version) {
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
+  // A check result describes only this attempt. The updater is process-static
+  // for native clients, so invalidate an earlier release before any early
+  // return (network failure, parse failure, or no matching firmware asset).
+  updateAvailable = false;
+  latestVersion.clear();
+  otaUrl.clear();
+  otaSize = 0;
+  processedSize = 0;
+  totalSize = 0;
+
   // A direct ELF launch does not pass through Settings' Wi-Fi picker. Do not
   // invoke ESP-IDF HTTP until an initialized interface has a usable IP; lwIP
   // otherwise can assert at tcpip_send_msg_wait_sem with "Invalid mbox".
@@ -54,16 +64,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 
   // Prefer the independently published firmware pointer. If the index is not
   // available yet, retain the legacy GitHub Release lookup during migration.
-  std::string indexJson;
-  if (HttpDownloader::fetchUrl(releaseIndexUrl, indexJson)) {
-    if (indexJson.empty() || indexJson.size() > kReleaseIndexMaxBytes) {
-      LOG_ERR("OTA", "Release index has an invalid size: %u", static_cast<unsigned>(indexJson.size()));
-      return JSON_PARSE_ERROR;
-    }
+  RuntimeMemory::PsramGrowingTextStream indexJson;
+  if (HttpDownloader::fetchUrl(releaseIndexUrl, indexJson) && indexJson.good()) {
+    if (indexJson.empty()) return JSON_PARSE_ERROR;
     // The shared index also contains every app and driver record. Keep those
-    // entries out of the JSON document; the release-index publisher and native
-    // HTTP string reader both bound this complete document at 64 KiB.
-    JsonDocument filter;
+    // entries out of the JSON document while allocating parser scratch in PSRAM.
+    RuntimeMemory::PsramJsonAllocator allocator;
+    JsonDocument filter(&allocator);
     filter["schema"] = true;
     filter["firmware"]["version"] = true;
     filter["firmware"]["tag"] = true;
@@ -71,8 +78,9 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
     filter["firmware"]["url"] = true;
     filter["firmware"]["size"] = true;
     filter["firmware"]["sha256"] = true;
-    JsonDocument index;
-    if (deserializeJson(index, indexJson, DeserializationOption::Filter(filter)) ||
+    JsonDocument index(&allocator);
+    if (deserializeJson(index, indexJson.chars(), indexJson.size(),
+                        DeserializationOption::Filter(filter)) ||
         !index.is<JsonObjectConst>() ||
         index["schema"] != 1 || !index["firmware"].is<JsonObjectConst>()) {
       LOG_ERR("OTA", "Release index has no valid firmware entry");

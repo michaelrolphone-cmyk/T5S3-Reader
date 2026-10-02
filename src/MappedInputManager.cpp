@@ -3,6 +3,7 @@
 #include "CrossPointSettings.h"
 #include "GfxRenderer.h"
 #include "native/NativeNavigationInput.h"
+#include "native/NativeTouchInput.h"
 
 namespace {
 using ButtonIndex = uint8_t;
@@ -33,7 +34,7 @@ constexpr SideLayoutMap kSideLayouts[] = {
     {HalGPIO::BTN_DOWN, HalGPIO::BTN_UP},
 };
 
-MappedInputManager::TouchPoint orientTouchPoint(const HalGPIO::TouchPoint& raw, const GfxRenderer& renderer) {
+MappedInputManager::TouchPoint orientTouchPoint(const NativeTouchPoint& raw, const GfxRenderer& renderer) {
   MappedInputManager::TouchPoint point{};
 
   switch (renderer.getOrientation()) {
@@ -126,6 +127,11 @@ void MappedInputManager::update() const {
   nativeDeviceDiscoveryTick();
   nativeNavigationConfigure(SETTINGS.externalInputNavigation != 0);
   nativeNavigationTick();
+  if (!navigationHomePending && (nativeNavigationFrame().pressed & RISC_NAV_HOME)) {
+    navigationHomePending = true;
+    navigationHomeEventMs = millis();
+  }
+  nativeTouchTick();
 }
 
 bool MappedInputManager::wasAnyPressed() const {
@@ -142,40 +148,39 @@ unsigned long MappedInputManager::getHeldTime() const {
 }
 
 bool MappedInputManager::wasTouchTapped(TouchPoint& point, const GfxRenderer& renderer) const {
-  HalGPIO::TouchPoint raw;
-  if (!gpio.getTouchTap(raw)) {
-    return false;
-  }
+  NativeTouchPoint raw;
+  if (!nativeTouchGetTap(raw)) return false;
+  point = orientTouchPoint(raw, renderer);
+  return true;
+}
 
+bool MappedInputManager::getTouchContact(TouchPoint& point, const GfxRenderer& renderer) const {
+  NativeTouchPoint raw;
+  if (!nativeTouchGetContact(raw)) return false;
   point = orientTouchPoint(raw, renderer);
   return true;
 }
 
 bool MappedInputManager::getTouchHold(TouchPoint& point, unsigned long& heldMs, const GfxRenderer& renderer) const {
-  HalGPIO::TouchPoint raw;
-  if (!gpio.getTouchHold(raw, heldMs)) {
-    return false;
-  }
-
+  NativeTouchPoint raw;
+  if (!nativeTouchGetHold(raw, heldMs)) return false;
   point = orientTouchPoint(raw, renderer);
   return true;
 }
 
 bool MappedInputManager::getTouchSwipe(TouchPoint& start, TouchPoint& end, const GfxRenderer& renderer) const {
-  HalGPIO::TouchPoint rawStart, rawEnd;
-  if (!gpio.getTouchSwipe(rawStart, rawEnd)) {
-    return false;
-  }
-
+  NativeTouchPoint rawStart, rawEnd;
+  if (!nativeTouchGetSwipe(rawStart, rawEnd)) return false;
   start = orientTouchPoint(rawStart, renderer);
   end = orientTouchPoint(rawEnd, renderer);
   return true;
 }
 
 bool MappedInputManager::takeTouchHomeButtonPress(unsigned long& eventMs) const {
-  if (gpio.takeTouchHomeButtonPress(eventMs)) return true;
-  if (nativeNavigationFrame().pressed & RISC_NAV_HOME) {
-    eventMs = millis();
+  if (nativeTouchTakeHomePress(eventMs)) return true;
+  if (navigationHomePending) {
+    navigationHomePending = false;
+    eventMs = navigationHomeEventMs;
     return true;
   }
   return false;
