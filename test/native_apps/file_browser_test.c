@@ -12,7 +12,7 @@
 #include "T5StorageApi.h"
 #include "T5SystemUiApi.h"
 
-void app_main(void);
+#include "../../Apps/file_browser.c"
 
 static int phase;
 static int event_index;
@@ -32,6 +32,7 @@ static int chooser_renders;
 static int action_renders;
 static uint32_t fake_millis;
 static bool open_requested;
+static uint32_t picker_test_directory_count;
 
 static const t5_app_dirent_t root_entries[] = {
     {.name = "Book10.epub", .is_directory = 0},
@@ -59,6 +60,13 @@ static bool dir_open(const char *path) {
 
 static bool dir_next(t5_app_dirent_t *entry) {
     assert(entry);
+    if (phase == 5) {
+        if ((uint32_t)dir_index >= picker_test_directory_count) return false;
+        snprintf(entry->name, sizeof(entry->name), "Folder%03d", dir_index);
+        entry->is_directory = 1;
+        ++dir_index;
+        return true;
+    }
     if (strcmp(open_dir, "/sd/Books") == 0) {
         if (dir_index >= (int)(sizeof(books_entries) / sizeof(books_entries[0]))) return false;
         *entry = books_entries[dir_index++];
@@ -507,5 +515,22 @@ int main(void) {
     assert(session_exists);
     assert(back_exit_false_count == 4);
     assert(back_exit_true_count == 4);
+
+    /* Exercise the real destination picker directory collector at both offsets. */
+    app = &app_api;
+    browser = &browser_api;
+    phase = 5;
+    for (uint32_t offset = 1; offset <= 2; ++offset) {
+        const uint32_t sizes[] = {96, 97, 98, 120};
+        for (size_t n = 0; n < sizeof(sizes) / sizeof(sizes[0]); ++n) {
+            picker_test_directory_count = sizes[n];
+            dir_index = 0;
+            const uint32_t count = list_picker_directories(false, "/", offset);
+            assert(count == offset + PICKER_ENTRIES);
+            assert(dir_index == PICKER_ENTRIES);
+            assert(strcmp(picker_names[0], "Folder000") == 0);
+            assert(strcmp(picker_names[PICKER_ENTRIES - 1], "Folder095") == 0);
+        }
+    }
     return 0;
 }
