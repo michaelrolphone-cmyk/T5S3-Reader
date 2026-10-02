@@ -130,9 +130,9 @@ int main(){
  reset(s);s.input.homes={100,300};s.input.script={{},{int(B::Confirm)},{int(B::Left)},{-1,true}};
  pollInput(&out,0,false);assert(!out.exit_requested&&!shutdownRequested&&s.renderer.frames.size()==4);
  for(size_t i=16;i<64;++i)assert(s.renderer.frames[2][i]==0x42);appFrame(s.renderer.frames[3]);
- // Confirm routes through requestShutdown and asks ELF to exit, without a Home launch.
+ // Confirm requests shutdown and unwinds Springboard so main can power off.
  reset(s);s.input.homes={100,300};s.input.script={{},{int(B::Confirm)},{int(B::Right)}};
- pollInput(&out,0,false);assert(out.exit_requested&&shutdownRequested&&!homeRequested);
+ pollInput(&out,0,false);assert(out.exit_requested&&shutdownRequested&&homeRequested);
  reset(s);SETTINGS.confirmShutdown=false;s.input.homes={100,300};s.input.script={{},{int(B::Confirm)}};
  pollInput(&out,0,false);assert(out.exit_requested&&shutdownRequested);
  // Outside-panel tap and Back dismissal restore the complete original frame.

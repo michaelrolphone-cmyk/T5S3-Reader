@@ -343,6 +343,9 @@ bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
         *out = {};
         if (modal == GlobalMenuActivity::ModalResult::ShutdownRequested) {
           s->exiting = true;
+          // Unwind the synchronous Springboard/app loop so main can service
+          // requestShutdown(), instead of launching another ELF first.
+          homeRequested = true;
         } else if (modal == GlobalMenuActivity::ModalResult::Unavailable) {
           // A failed snapshot must not swallow the user's Home request.
           s->exiting = true;
