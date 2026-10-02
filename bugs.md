@@ -182,7 +182,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Keep a new server as an in-memory draft until required fields validate and the user explicitly saves/finishes it, or at minimum reject `addServer()` while the URL is empty/invalid. Preserve per-field autosave only after the initial valid record has been created. Add tests for Name-first, placeholder-only URL, Back-before-URL, and a valid URL-first creation flow.
 ### 22. File Browser root destination picker overruns its directory-name backing array
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Revalidated on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`: reachable SD/USB Move/Copy destination flow calls `list_picker_directories()`; at a root with 97 visible directories, count-minus-offset indexes `picker_names[96]` past its 96-element array. Claimed by `file_picker_bounds_20261002_0655` on `fix/file-browser-picker-bounds`; implementation not started. File Browser1.3.2 → candidate1.3.3; no firmware bump.
 - **Sources:** [automation/bug-scan-20260926-2324-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2324-findings/bugs.md); [automation/bug-scan-20260927-1124](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-1124/bugs.md)
 
 - **Affected code:** `Apps/file_browser.c`, `PICKER_ENTRIES`, `picker_names[]`, `picker_rows[]`, `list_picker_directories()`, and `choose_destination()`.
