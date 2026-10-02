@@ -7,6 +7,14 @@
 
 namespace FsHelpers {
 
+namespace {
+unsigned char foldAscii(unsigned char value) {
+  return value >= 'A' && value <= 'Z' ? static_cast<unsigned char>(value + ('a' - 'A')) : value;
+}
+
+bool isAsciiDigit(unsigned char value) { return value >= '0' && value <= '9'; }
+}  // namespace
+
 std::string normalisePath(const std::string& path) {
   std::vector<std::string> components;
   std::string component;
@@ -57,7 +65,8 @@ void sortFileList(std::vector<std::string>& strs) {
     // Iterate while both strings have characters
     while (*s1 && *s2) {
       // Check if both are at the start of a number
-      if (isdigit(*s1) && isdigit(*s2)) {
+      if (isAsciiDigit(static_cast<unsigned char>(*s1)) &&
+          isAsciiDigit(static_cast<unsigned char>(*s2))) {
         // Skip leading zeros and track them
         const char* start1 = s1;
         const char* start2 = s2;
@@ -66,8 +75,8 @@ void sortFileList(std::vector<std::string>& strs) {
 
         // Count digits to compare lengths first
         int len1 = 0, len2 = 0;
-        while (isdigit(s1[len1])) len1++;
-        while (isdigit(s2[len2])) len2++;
+        while (isAsciiDigit(static_cast<unsigned char>(s1[len1]))) len1++;
+        while (isAsciiDigit(static_cast<unsigned char>(s2[len2]))) len2++;
 
         // Different length so return smaller integer value
         if (len1 != len2) return len1 < len2;
@@ -82,8 +91,8 @@ void sortFileList(std::vector<std::string>& strs) {
         s2 += len2;
       } else {
         // Regular case-insensitive character comparison
-        char c1 = tolower(*s1);
-        char c2 = tolower(*s2);
+        const unsigned char c1 = foldAscii(static_cast<unsigned char>(*s1));
+        const unsigned char c2 = foldAscii(static_cast<unsigned char>(*s2));
         if (c1 != c2) return c1 < c2;
         s1++;
         s2++;
