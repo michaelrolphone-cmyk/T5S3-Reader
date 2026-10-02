@@ -77,7 +77,7 @@ static bool wait_idle(uint64_t deadline_ms) {
             return false;
         }
         saw_busy = x4pro_pin_read(X4PRO_PIN_EPD_BUSY);
-        if (saw_busy && !busy_assert_ms) busy_assert_ms = now;
+        if (saw_busy && !busy_before && !busy_assert_ms) busy_assert_ms = now;
         if (!saw_busy) sleep_ms(10);
     }
     while (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
@@ -129,35 +129,52 @@ static void append_hex(char *destination, size_t capacity, size_t *used, uint8_t
         destination[*used] = 0;
     }
 }
-static void probe_controller(void) {
+enum { PROBE_AMBIGUOUS = 0, PROBE_SSD = 1, PROBE_UC = 2, PROBE_DISABLED = 3 };
+__attribute__((weak)) int x4_test_probe_mode = 0;
+static int probe_controller(void) {
     uint8_t flg = 0;
     uint8_t ver[5] = {0};
     prepare_pins();
+    const uint8_t busy_before_reset = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
     x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
     sleep_ms(1);
     x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
     sleep_ms(30);
     const uint8_t busy = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
-    read_cmd(0x71, &flg, 1);
-    read_cmd(0x70, ver, 5);
-    bool floating = true;
-    for (int i = 1; i < 5; ++i) if (ver[i] != ver[0]) floating = false;
-    const bool uc = flg != 0 && flg != 0xFF && (flg & 1u) == 1u && !floating;
+    int verdict = PROBE_AMBIGUOUS;
+    if (x4_test_probe_mode == 1) verdict = PROBE_DISABLED;
+    else if (x4_test_probe_mode == 2) verdict = PROBE_AMBIGUOUS;
+    else if (x4_test_probe_mode == 3) verdict = PROBE_UC;
+    else if (x4_test_probe_mode == 4) verdict = PROBE_SSD;
+    else {
+        read_cmd(0x71, &flg, 1);
+        read_cmd(0x70, ver, 5);
+        bool floating = true;
+        for (int i = 0; i < 5; ++i) if (ver[i] != ver[0]) floating = false;
+        const bool uc = flg != 0 && flg != 0xFF && (flg & 1u) == 1u && !floating;
+        const bool ssd = floating && (flg == 0x00 || flg == 0xFF);
+        verdict = uc ? PROBE_UC : ssd ? PROBE_SSD : PROBE_AMBIGUOUS;
+    }
     size_t used = 0;
     append(probe_text, sizeof(probe_text), &used, "probe flg=");
     append_hex(probe_text, sizeof(probe_text), &used, flg);
     append(probe_text, sizeof(probe_text), &used, " ver=");
     for (int i = 0; i < 5; ++i) append_hex(probe_text, sizeof(probe_text), &used, ver[i]);
+    append(probe_text, sizeof(probe_text), &used, " busy0=");
+    append_u(probe_text, sizeof(probe_text), &used, busy_before_reset);
     append(probe_text, sizeof(probe_text), &used, " busy=");
     append_u(probe_text, sizeof(probe_text), &used, busy);
-    append(probe_text, sizeof(probe_text), &used, uc ? " verdict=uc81xx" : " verdict=ssd-assumed");
+    append(probe_text, sizeof(probe_text), &used, verdict == PROBE_SSD ? " verdict=ssd1677" : verdict == PROBE_UC ? " verdict=uc81xx" : verdict == PROBE_DISABLED ? " verdict=probe-disabled" : " verdict=ambiguous");
+    return verdict;
 }
 static void prepare_pins(void) {
     if (pins_ready) return;
     x4pro_pin_input(X4PRO_PIN_EPD_BUSY, false);
     x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
     x4pro_pin_output(X4PRO_PIN_EPD_SCLK, false);
+    x4pro_pin_output(X4PRO_PIN_EPD_MOSI, false);
     x4pro_pin_output(X4PRO_PIN_EPD_DC, false);
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
     pins_ready = true;
 }
 static const uint8_t x_window[] = {0x00, 0x00, 0x1F, 0x03};
@@ -176,6 +193,13 @@ static bool init_panel(void) {
     sleep_ms(10);
     command(0x12);
     sleep_ms(10);
+    if (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
+        uint64_t deadline = now_ms() + 500u;
+        while (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
+            if (now_ms() >= deadline) { set_reason("reset busy timeout"); return false; }
+            sleep_ms(10);
+        }
+    }
     command(0x18);
     data1(0x80);
     command(0x0C);
@@ -191,6 +215,8 @@ static bool init_panel(void) {
     command(0x45);
     for (size_t i = 0; i < sizeof(y_window); ++i) data1(y_window[i]);
     set_cursor();
+    command(0x46); data1(0xF7);
+    command(0x47); data1(0xF7);
     return true;
 }
 static bool transfer_frame(uint64_t deadline_ms) {
@@ -220,6 +246,7 @@ static bool transfer_frame(uint64_t deadline_ms) {
         return false;
     }
     busy_before = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
+    if (busy_before) { set_reason("busy already active"); return false; }
     command(0x21); data1(0x00);
     command(0x22); data1(0xF7);
     if (!sample_now(&refresh_ms) || refresh_ms >= deadline_ms) {
@@ -329,7 +356,12 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
         if (equal(dependencies[i].capability_id, "platform.clock") && dependencies[i].api_version == 1)
             clock_api = dependencies[i].api;
     if (!clock_api) { fail("platform.clock missing"); return false; }
-    probe_controller();
+    prepare_pins();
+    const int verdict = probe_controller();
+    if (verdict != PROBE_SSD) {
+        set_reason(verdict == PROBE_UC ? "unsupported-controller" : verdict == PROBE_DISABLED ? "probe-disabled" : "ambiguous-controller");
+        return false;
+    }
     for (size_t i = 0; i < sizeof(frame); ++i) frame[i] = 0;
     started = init_panel();
     return started;
@@ -355,7 +387,7 @@ static bool last_error(char *destination, size_t capacity) {
     size_t used = 0;
     destination[0] = 0;
     append(destination, capacity, &used, probe_text);
-    append(destination, capacity, &used, " v=0.1.7 token=");
+    append(destination, capacity, &used, " v=0.1.8 token=");
     append_u(destination, capacity, &used, pending_token);
     append(destination, capacity, &used, " state=");
     append_u(destination, capacity, &used, present_state);
