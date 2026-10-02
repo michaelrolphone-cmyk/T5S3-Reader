@@ -62,6 +62,10 @@ bool isUsbConnected();
 }
 
 namespace BoardX4ProPins {
+static constexpr uint16_t DisplayWidth = 800;
+static constexpr uint16_t DisplayHeight = 480;
+static constexpr uint16_t LogicalWidth = 480;
+static constexpr uint16_t LogicalHeight = 800;
 static constexpr uint8_t PowerButton = 3;
 static constexpr uint8_t TouchInterrupt = 10;
 static constexpr uint8_t SdCs = 0xFF;

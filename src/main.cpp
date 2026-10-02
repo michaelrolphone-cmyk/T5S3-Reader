@@ -429,9 +429,14 @@ void setup() {
 
   HalSystem::begin();
 #ifdef BOARD_XTEINK_X4_PRO
-  // T5S3 Wire, SPI SD, PCA9535, TPS65185 and the i80 panel stay uncalled.
-  // The main screen is the X4 SSD1677 presenter until HomeActivity can target it.
-  x4BootToMainScreen();
+  // T5S3 Wire, SPI SD, expander, charger and i80 panel stay uncalled.
+  // The shared home path uses the X4 panel backend.
+  gpio.begin();
+  if (!setupDisplayAndFonts()) {
+    g_displayBootFailed = true;
+    return;
+  }
+  activityManager.goHome();
   return;
 #endif
   // Timer wakes never reach this point. A true value means the user explicitly
@@ -604,8 +609,10 @@ void setup() {
 
 void loop() {
 #ifdef BOARD_XTEINK_X4_PRO
-  x4BootLoop();
-  return;
+  if (g_displayBootFailed) {
+    delay(250);
+    return;
+  }
 #endif
   if (g_displayBootFailed) {
     // Do not touch ActivityManager/renderer after failed display bootstrap.

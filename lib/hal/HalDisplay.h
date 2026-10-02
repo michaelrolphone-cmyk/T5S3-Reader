@@ -90,6 +90,7 @@ class HalDisplay : public DisplaySurface {
   static_assert(validateDisplaySurfaceInfo(SURFACE_INFO) == DisplaySurfaceValidationError::None,
                 "HalDisplay surface metadata violates the generic display contract");
 
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
   // The compiled-in compatibility backend is qualified only for the two
   // currently shipped 4.7-inch e-paper profiles. Do not make a new panel fit
   // by editing these numbers: new display hardware belongs behind display.output.
@@ -102,6 +103,10 @@ class HalDisplay : public DisplaySurface {
   static_assert(SAFE_INSETS.top == 9u && SAFE_INSETS.right == 3u &&
                     SAFE_INSETS.bottom == 9u && SAFE_INSETS.left == 3u,
                 "legacy e-paper safe insets changed unexpectedly");
+#elif defined(BOARD_XTEINK_X4_PRO)
+  static_assert(DISPLAY_WIDTH == 800u && DISPLAY_HEIGHT == 480u, "X4 Pro scan geometry changed");
+  static_assert(VISIBLE_WIDTH == 480u && VISIBLE_HEIGHT == 800u, "X4 Pro logical geometry changed");
+#endif
 
   // Frame buffer operations
   void clearScreen(uint8_t color = 0xFF) const override;
