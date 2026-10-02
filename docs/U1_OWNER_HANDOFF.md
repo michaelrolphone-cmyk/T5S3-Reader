@@ -1,13 +1,34 @@
 # U1 software candidate and one owner hardware session
 
 This is the handoff for the existing PR #96 candidate that integrates master
-`d2d5a9a132d747122b0f0b607f228132ba79e667`, including Wi-Fi #345 and
-Status Bar #346 as well as earlier Text Editor/display merges. The configured
-firmware candidate is **1.3.54**, reserved separately from display migration
-1.3.55; Status Bar's cumulative U1 ZIP is **1.0.3** above published loose
-1.0.2. Verify PR #96's current head and use only Actions artifacts whose
-`head_sha` exactly matches it. The prior green 1d93550f artifacts in the ledger
-are historical and are not install/flash inputs for this candidate.
+`91f3768ebb402c218aff64d41cfcef689d743b2e`, including Springboard #349,
+Wi-Fi #345 and Status Bar #346 as well as earlier Text Editor/display merges.
+The configured firmware candidate is **1.3.56**, above master's **1.3.55**;
+Status Bar's cumulative U1 ZIP is **1.0.3** above published loose 1.0.2.
+Verify PR #96's current head and use only Actions artifacts whose `head_sha`
+exactly matches it. Older artifacts in the ledger are historical and are not
+install/flash inputs for this candidate.
+
+## October 1 master-integration checkpoint
+
+The owner requested merge preparation on the same `impl/u1-riscrte` branch.
+Merge commit `01aa397dae6b4092178135084cc965617dfbb5dd` retains both parents:
+prior U1 `2744fddc970205905acfbceadc13045b8ef3d289` and master
+`91f3768ebb402c218aff64d41cfcef689d743b2e`. The incoming renderer repair and
+both test files reuse master's exact blobs. The only conflict resolution is
+firmware **1.3.54 -> 1.3.56**; U1's pinned Arduino framework, SD/SPI wrappers,
+build patch, package versions and all other implementation files are unchanged.
+The ref update was non-force. This handoff correction changes documentation only.
+
+Both workflows on prior U1 head `2744fddc` passed: PlatformIO/host
+[36940362548](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36940362548)
+and USB/ELF
+[36940362518](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36940362518).
+These results are baseline evidence, not passes for the new merged candidate.
+Use PR #96's current checks and exact-head artifacts for integration results.
+The local executor could not resolve github.com and had no PlatformIO command;
+no local full checkout/build is claimed. The original implementation ledger's
+older 1.3.54 candidate and pending-check wording remain checkpoint history.
 
 The candidate is **not released, flashed or physically qualified**. Only the
 owner can initiate Release Qualification, merge or flash. Camera PR #344 remains
@@ -18,10 +39,11 @@ app and camera behavior are outside this U1 session.
 
 | Gate | Result | Exact evidence or remaining limit |
 |---|---|---|
-| Four-kind ZIP build, ordinary install/update/inventory/uninstall/recovery, resources and stable CDC lineage | Connected | [PlatformIO/host run 36915387635](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36915387635) passed four-kind lifecycle, recovery, native app/manager and release-index checks on the previous source checkpoint; the new integration must retain these in its exact-head runs. |
-| Installed provider streams, rights, revocation, I²C/BQ/USB extraction, signing purge and verification receipts | Connected | The previous source checkpoint passed host and target checks; the new integration must retain these in its exact-head runs. Target reference reports record selected linked paths. Arbitrary indirect calls and physical PHY behavior are not inferred from those reports. |
+| Four-kind ZIP build, ordinary install/update/inventory/uninstall/recovery, resources and stable CDC lineage | Connected | The prior `2744fddc` exact-head PlatformIO/host workflow passed. The new integration must retain four-kind lifecycle, recovery, native app/manager and release-index checks in its exact-head runs. |
+| Installed provider streams, rights, revocation, I2C/BQ/USB extraction, signing purge and verification receipts | Connected | Both prior `2744fddc` exact-head workflows passed. The new integration must retain these checks. Target reference reports record selected linked paths. Arbitrary indirect calls and physical PHY behavior are not inferred from those reports. |
 | Bounded archive/loader/network work and approved SD/shared-SPI failure | Connected | `NativeOnlineRtePackageInstall.h` caps archive bytes/deadline; `HttpDownloader.cpp` bounds the selected HTTP worker; `esp_elf.c` and `SdVfs.cpp` bound loader chunks and descriptor waits. `SdSpiFault.cpp`, `HalStorage.cpp` and exact pinned per-build SDK patches park/retain the owner on an unrecoverable SD/shared-SPI stall until manual reboot. The previous source checkpoint passed host fault fixtures and both target builds; the new integration must retain these checks. No arbitrary synchronous SDK-call preemption or automatic reboot is claimed. |
-| Changed-source and loose-to-ZIP version identity | Connected | The local `--zip-transition` version guard passed against new master; its new exact-head job remains to run. Model Viewer ZIP 1.2.8, Risc Strike ZIP 1.0.4 and display provider ZIP 0.1.4 exceed master's respective loose/source identities. The index updater continues to reject conflicting published same-version records. |
+| Changed-source and loose-to-ZIP version identity | Connected | The new exact-head version guard must compare against current master. Model Viewer ZIP 1.2.8, Risc Strike ZIP 1.0.4 and display provider ZIP 0.1.4 exceed master's respective loose/source identities; this backmerge changes no app/driver/service/provider payload or version. The index updater continues to reject conflicting published same-version records. |
+| Springboard display takeover clearing | Integrated | Master's #349 renderer and regression-test blobs are unchanged in U1. RAM clearing no longer depends on physical-backend readiness; physical presentation remains gated. Physical touch and panel behavior still require observation. |
 | Independent receipt-loader review | Unperformed verification | A prior cybersecurity review request was denied. It was not retried or replaced. This is not a demonstrated missing production path or an owner hardware prerequisite. |
 | USB cable/PHY/power, real media stalls and power-loss behavior | Physical only | No U1 physical PASS is claimed by these CI runs. Record any reproducible defect against PR #96. |
 
@@ -44,7 +66,7 @@ artifact groups are:
 | Driver/service/provider ZIPs and linked experimental ELFs | `usb-v2-elves-and-hid-packages-unqualified-for-board` |
 | Linked firmware and controller evidence | `u1-target-references-t5s3-pro`, `u1-target-references-lilygo-epd47-s3`, `u1-controller-references` |
 
-The configured firmware version is **1.3.54**. Important source package
+The configured firmware version is **1.3.56**. Important source package
 versions: `i2c-esp32s3-v2` 0.1.6, `board-power-t5s3-v2` 0.1.9,
 `usb-controller-esp32s3` 0.1.20, `usb-host-v2` 0.1.5, canonical
 `usb-cdc-acm` 0.1.8, `usb-cp210x-v2` 0.1.8, `usb-ch34x-v2` 0.1.7,
@@ -64,7 +86,7 @@ image or package SHA; verify extracted assets against their contained records.
    display, Text Editor document opening and ordinary SD access before USB
    installation. With optional USB packages absent, confirm no USB fallback or
    unexpected VBUS.
-2. Through the ordinary manager, install the I²C bus ELF, the BQ VBUS owner
+2. Through the ordinary manager, install the I2C bus ELF, the BQ VBUS owner
    and any actually required board profile, then USB controller/host and class
    ELFs. Check capability inventory, power/role startup and absence behavior
    after withholding each dependency. Use a known ESP32-S3-CAM CDC device for
