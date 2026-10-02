@@ -308,11 +308,12 @@ static int hex_value(char c) {
     return -1;
 }
 
-static bool parse_hex4(const char *s, uint16_t *value) {
+static bool parse_hex4(const char *s, size_t available, uint16_t *value) {
     int i;
     uint16_t v = 0;
-    if (!s || !value) return false;
+    if (!s || !value || available < 4u) return false;
     for (i = 0; i < 4; ++i) {
+        if (s[i] == '\0') return false;
         int h = hex_value(s[i]);
         if (h < 0) return false;
         v = (uint16_t)((v << 4) | (uint16_t)h);
@@ -330,6 +331,8 @@ static bool append_utf8(char *out, size_t capacity, size_t *length, uint32_t cp)
         if (*length + 2 >= capacity) return false;
         out[(*length)++] = (char)(0xC0 | (cp >> 6));
         out[(*length)++] = (char)(0x80 | (cp & 0x3F));
+    } else if (cp >= 0xD800 && cp <= 0xDFFF) {
+        return false;
     } else if (cp <= 0xFFFF) {
         if (*length + 3 >= capacity) return false;
         out[(*length)++] = (char)(0xE0 | (cp >> 12));
@@ -348,13 +351,15 @@ static bool append_utf8(char *out, size_t capacity, size_t *length, uint32_t cp)
     return true;
 }
 
-static bool decode_json_string(const char *quoted, char *out, size_t capacity) {
+static bool decode_json_string(const char *quoted, size_t available,
+                               char *out, size_t capacity) {
     size_t pos = 0;
     size_t i = 0;
-    if (!quoted || quoted[0] != '"' || !out || capacity == 0) return false;
+    if (!quoted || available == 0u || quoted[0] != '"' || !out || capacity == 0)
+        return false;
     ++i;
     out[0] = 0;
-    while (quoted[i] && quoted[i] != '"') {
+    while (i < available && quoted[i] && quoted[i] != '"') {
         uint8_t c = (uint8_t)quoted[i++];
         if (c != '\\') {
             if (pos + 1 >= capacity) return false;
@@ -362,8 +367,8 @@ static bool decode_json_string(const char *quoted, char *out, size_t capacity) {
             out[pos] = 0;
             continue;
         }
+        if (i >= available || !quoted[i]) return false;
         c = (uint8_t)quoted[i++];
-        if (!c) return false;
         if (c == '"' || c == '\\' || c == '/') {
             if (pos + 1 >= capacity) return false;
             out[pos++] = (char)c;
@@ -376,22 +381,25 @@ static bool decode_json_string(const char *quoted, char *out, size_t capacity) {
         } else if (c == 'u') {
             uint16_t first;
             uint32_t cp;
-            if (!parse_hex4(quoted + i, &first)) return false;
+            if (!parse_hex4(quoted + i, available - i, &first)) return false;
             i += 4;
             cp = first;
-            if (first >= 0xD800 && first <= 0xDBFF && quoted[i] == '\\' && quoted[i + 1] == 'u') {
+            if (first >= 0xD800 && first <= 0xDBFF) {
                 uint16_t second;
-                if (parse_hex4(quoted + i + 2, &second) && second >= 0xDC00 && second <= 0xDFFF) {
-                    cp = 0x10000u + (((uint32_t)first - 0xD800u) << 10) + ((uint32_t)second - 0xDC00u);
-                    i += 6;
-                }
+                if (available - i < 6u || quoted[i] != '\\' || quoted[i + 1] != 'u' ||
+                    !parse_hex4(quoted + i + 2, available - i - 2u, &second) ||
+                    second < 0xDC00 || second > 0xDFFF) return false;
+                cp = 0x10000u + (((uint32_t)first - 0xD800u) << 10) + ((uint32_t)second - 0xDC00u);
+                i += 6;
+            } else if (first >= 0xDC00 && first <= 0xDFFF) {
+                return false;
             }
             if (!append_utf8(out, capacity, &pos, cp)) return false;
         } else {
             return false;
         }
     }
-    if (quoted[i] != '"') return false;
+    if (i >= available || quoted[i] != '"') return false;
     while (pos && (out[pos - 1] == '\n' || out[pos - 1] == '\r')) out[--pos] = 0;
     return true;
 }
@@ -404,7 +412,7 @@ static bool extract_string_after_key(const char *start, const char *key, char *o
     if (*p != ':') return false;
     ++p;
     while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') ++p;
-    return decode_json_string(p, out, capacity);
+    return decode_json_string(p, slen(p), out, capacity);
 }
 
 static void set_http_status(int32_t code) {

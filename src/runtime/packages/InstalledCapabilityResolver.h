@@ -3,16 +3,18 @@
 
 namespace RuntimePackages {
 // Package INSTALL preflight only: resolves capabilities backed by an installed,
-// fully integrity-verified canonical provider package and its dependencies.
+// structurally inspected canonical provider package and its dependencies.
 // This is never an execution grant and never activates an ELF. Runtime grants
 // still require provider-graph activation and an execution-context lease.
 uint32_t installedCapabilityVersion(const char* capability);
 
 // A startup operation may need many capability queries. Capture the complete,
-// independently SHA-256-verified installed inventory once and resolve all of
-// that operation's dependencies against the same snapshot. Never retain it
-// across installations, SD mutations or separate operations; callers must
-// release it before returning. A nullptr is a failed closed snapshot.
+// structurally inspected installed inventory once and resolve dependencies
+// against that same operation-owned snapshot. Quiescent observed storage epochs
+// permit bounded immutable metadata reuse, invalidated by mutation/remount or
+// raw-storage uncertainty. Compatible raw-storage callers retain an uncached
+// operation-local query. Neither mode attests content hashes or authorizes
+// activation. Callers release the snapshot before returning.
 struct InstalledCapabilitySnapshot;
 InstalledCapabilitySnapshot* captureInstalledCapabilities();
 uint32_t versionInInstalledSnapshot(const InstalledCapabilitySnapshot* snapshot,

@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <string>
 #include <utility>
@@ -15,7 +16,7 @@
 namespace RuntimePackages {
 namespace {
 constexpr PackageRuntimePolicy kPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr size_t kMaxDepth = 8;
 constexpr size_t kMaxEntriesPerRoot = 64;
 
@@ -41,8 +42,8 @@ bool readSmall(const char* path, char* buffer, size_t capacity, size_t& length) 
   return true;
 }
 
-// A provider profile counts only after the entire managed directory has been
-// verified against its exact inventory and per-entry hashes. A profile is not
+// A provider profile counts only after bounded installed-directory metadata
+// inspection. This hot path does not rehash contents. A profile is not
 // a grant of execution or hardware rights.
 bool parseProfile(const char* path, char (&capability)[64], uint32_t& version) {
   version = 0;
@@ -76,31 +77,43 @@ struct Candidate {
   std::vector<OrdinaryRequirement> requirements;
 };
 
-// Snapshot and hash each candidate ONCE per query. Never cache this inventory
-// beyond a caller-owned, single operation. A later query independently verifies
-// current on-card bytes rather than trusting stale global state.
-bool snapshotCandidates(std::vector<Candidate>& candidates) {
+// Inspect each candidate once per uncached operation. Quiescent snapshots may
+// be reused only with unchanged observed storage epochs; never as content proof.
+bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable) {
+  reusable = true;
   std::unique_ptr<char[]> json(new (std::nothrow) char[4097]{});
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
   if (!json || !plan) return false;
   const char* const roots[] = {"/Drivers", "/Providers", "/Services"};
   for (const char* root : roots) {
     HalFile directory = Storage.open(root, O_RDONLY);
-    if (!directory.isOpen() || !directory.isDirectory()) {
-      if (directory.isOpen()) (void)directory.close();
-      continue;
+    if (!directory.isOpen()) {
+      if (Storage.exists(root)) return false;
+      continue; // Optional namespace absent; no content-integrity claim.
     }
+    if (!directory.isDirectory()) { (void)directory.close(); return false; }
     size_t examined = 0;
-    while (examined++ < kMaxEntriesPerRoot) {
-      // SHA-256 verification yields within its byte loop; also give the idle
-      // task a chance to run between metadata and directory operations.
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+    const TickType_t started = xTaskGetTickCount();
+#endif
+    while (true) {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+      if (xTaskGetTickCount() - started >= pdMS_TO_TICKS(2000)) { (void)directory.close(); return false; }
+#endif
+      // Metadata-only inspection still yields between bounded directory items.
       ordinaryCooperativeYield(1, 1);
       HalFile item = directory.openNextFile();
-      if (!item.isOpen()) break;
+      if (!item.isOpen()) {
+        if (directory.getError()) { (void)directory.close(); return false; }
+        break;
+      }
+      if (examined++ == kMaxEntriesPerRoot) {
+        (void)item.close(); (void)directory.close(); return false;
+      }
       char id[64]{};
       const size_t n = item.getName(id, sizeof(id));
       const bool candidate = item.isDirectory() && n > 0 && n < sizeof(id) && safeId(id);
-      (void)item.close();
+      if (!item.close()) { (void)directory.close(); return false; }
       if (!candidate) continue;
       char path[160]{};
       if (std::snprintf(path, sizeof(path), "%s/%s", root, id) >=
@@ -109,16 +122,22 @@ bool snapshotCandidates(std::vector<Candidate>& candidates) {
       // trusting a declaration merely because its own dependency claims it.
       Identity installed{};
       if (!inspectInstalledOrdinarySdDirectory(path, kPolicy,
-              [](const char*) -> uint32_t { return UINT32_MAX; }, installed) ||
-          std::strcmp(installed.id, id) ||
+              [](const char*) -> uint32_t { return UINT32_MAX; }, installed)) {
+        // A metadata refusal can be transient (for example allocation failure)
+        // without a storage mutation. Never indefinitely cache that omission.
+        reusable = false;
+        continue;
+      }
+      if (resourceOnly(installed)) continue;
+      if (std::strcmp(installed.id, id) ||
           (installed.kind != Kind::Driver && installed.kind != Kind::Provider &&
-           installed.kind != Kind::Service)) continue;
+           installed.kind != Kind::Service)) { reusable = false; continue; }
       char profile[192]{};
       if (std::snprintf(profile, sizeof(profile), "%s/provider-abi.v1", path) >=
           static_cast<int>(sizeof(profile))) continue;
       char capability[64]{};
       uint32_t advertised = 0;
-      if (!parseProfile(profile, capability, advertised)) continue;
+      if (!parseProfile(profile, capability, advertised)) { reusable = false; continue; }
       char manifest[192]{};
       if (std::snprintf(manifest, sizeof(manifest), "%s/.package.json", path) >=
           static_cast<int>(sizeof(manifest))) continue;
@@ -127,12 +146,12 @@ bool snapshotCandidates(std::vector<Candidate>& candidates) {
       if (!readSmall(manifest, json.get(), 4097, length) ||
           !parseOrdinaryManifest(json.get(), length, *plan) ||
           std::strcmp(plan->identity.id, id) ||
-          plan->identity.kind != installed.kind) continue;
+          plan->identity.kind != installed.kind) { reusable = false; continue; }
       bool declared = false;
       for (size_t i = 0; i < plan->entryCount; ++i)
         if (std::strcmp(plan->entries[i].name, "provider-abi.v1") == 0)
           declared = true;
-      if (!declared) continue;
+      if (!declared) { reusable = false; continue; }
       Candidate provider;
       provider.id = id;
       provider.capability = capability;
@@ -174,25 +193,54 @@ uint32_t resolveSnapshot(const char* capability, const std::vector<Candidate>& c
 } // namespace
 
 struct InstalledCapabilitySnapshot {
-  std::vector<Candidate> candidates;
+  std::shared_ptr<const std::vector<Candidate>> candidates;
+  StorageGenerationStamp generation{};
+  bool coherent = false;
 };
+namespace {
+std::mutex inventoryMutex;
+std::shared_ptr<const std::vector<Candidate>> retainedCandidates;
+StorageGenerationStamp retainedGeneration{};
+}
 
 InstalledCapabilitySnapshot* captureInstalledCapabilities() {
   if (!Storage.ready()) return nullptr;
-  auto* snapshot = new (std::nothrow) InstalledCapabilitySnapshot();
+  const auto before = Storage.generation();
+  std::unique_ptr<InstalledCapabilitySnapshot> snapshot(new (std::nothrow) InstalledCapabilitySnapshot());
   if (!snapshot) return nullptr;
-  if (!snapshotCandidates(snapshot->candidates)) {
-    delete snapshot;
-    return nullptr;
+  if (before.quiescent) {
+    // Only pointer/stamp ownership is shared under this lock; no filesystem IO.
+    std::lock_guard<std::mutex> lock(inventoryMutex);
+    if (before.matches(retainedGeneration)) snapshot->candidates = retainedCandidates;
+    else retainedCandidates.reset();
   }
-  return snapshot;
+  bool reusable = true;
+  if (!snapshot->candidates) {
+    std::shared_ptr<std::vector<Candidate>> candidates(new (std::nothrow) std::vector<Candidate>());
+    if (!candidates || !snapshotCandidates(*candidates, reusable)) return nullptr;
+    snapshot->candidates = candidates;
+  }
+  // Compatible mutable raw-storage callers retain operation-local metadata
+  // lookup, without entering the coherent cache or granting execution rights.
+  if (!before.quiescent) return snapshot.release();
+  if (!Storage.unchanged(before)) return nullptr;
+  snapshot->generation = before;
+  snapshot->coherent = true;
+  if (reusable) {
+    std::lock_guard<std::mutex> lock(inventoryMutex);
+    retainedCandidates = snapshot->candidates;
+    retainedGeneration = before;
+  }
+  return snapshot.release();
 }
 
 uint32_t versionInInstalledSnapshot(const InstalledCapabilitySnapshot* snapshot,
                                     const char* capability) {
-  if (!snapshot || !capability || !safePackageCapability(capability)) return 0;
+  if (!snapshot || !snapshot->candidates || !capability || !safePackageCapability(capability) ||
+      (snapshot->coherent && !Storage.unchanged(snapshot->generation))) return 0;
   size_t ancestry[kMaxDepth]{};
-  return resolveSnapshot(capability, snapshot->candidates, ancestry, 0);
+  const uint32_t version = resolveSnapshot(capability, *snapshot->candidates, ancestry, 0);
+  return snapshot->coherent && !Storage.unchanged(snapshot->generation) ? 0 : version;
 }
 
 void releaseInstalledCapabilities(InstalledCapabilitySnapshot* snapshot) {

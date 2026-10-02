@@ -1,4 +1,4 @@
-#include "RiscUsbProviderV1.h"
+#include "RiscUsbControllerV1.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <stdint.h>
@@ -50,11 +50,47 @@ static void release_claim(void *ctx, uint64_t lease) {
     ++releases;
 }
 
+static bool checked_release(void *ctx, uint64_t lease) {
+    release_claim(ctx, lease);
+    return true;
+}
+
+static bool poll_host(void *ctx, size_t maximum, size_t *processed) {
+    (void)ctx;
+    if (!maximum || !processed) return false;
+    *processed = 0;
+    return true;
+}
+
+static bool devices(void *ctx, uint64_t *out, size_t *count) {
+    (void)ctx;
+    if (!count) return false;
+    if (*count < 1 || !out) {
+        *count = 1;
+        return false;
+    }
+    out[0] = 9;
+    *count = 1;
+    return true;
+}
+
 static int32_t control(void *ctx, uint64_t device, uint8_t type, uint8_t request,
                        uint16_t value, uint16_t iface, uint8_t *payload,
                        uint16_t length, uint32_t timeout) {
     (void)ctx; (void)value;
     assert(device == 9 && type == 0x21 && iface == 1 && timeout == 1000);
+    assert((request == 0x20 && payload && length == 7) ||
+           (request == 0x22 && !payload && length == 0));
+    ++controls;
+    return length;
+}
+
+static int32_t control_claim(void *ctx, uint64_t claim_token, uint8_t type,
+                             uint8_t request, uint16_t value, uint16_t iface,
+                             uint8_t *payload, uint16_t length,
+                             uint32_t timeout) {
+    (void)ctx; (void)value;
+    assert(claim_token == 101 && type == 0x21 && iface == 1 && timeout == 1000);
     assert((request == 0x20 && payload && length == 7) ||
            (request == 0x22 && !payload && length == 0));
     ++controls;
@@ -102,11 +138,12 @@ int main(int argc, char **argv) {
     assert(driver && strcmp(driver->capability_id, "serial.port") == 0);
     const risc_usb_cdc_api_v1 *cdc = (const risc_usb_cdc_api_v1 *)driver->capability;
 
-    risc_usb_host_api_v1 host = {
-        RISC_USB_HOST_API_V1, sizeof(host), NULL,
-        configuration, claim, release_claim, control, bulk_read, bulk_write
+    risc_usb_host_discovery_v1 host = {
+        {RISC_USB_HOST_API_V1, sizeof(host), NULL,
+         configuration, claim, release_claim, control, bulk_read, bulk_write},
+        poll_host, devices, NULL, NULL, checked_release, control_claim
     };
-    risc_provider_dependency_v1 dep = {"usb.host", 1, &host};
+    risc_provider_dependency_v1 dep = {"usb.host", 1, &host.host};
     assert(driver->start(&dep, 1));
 
     exercise(cdc); /* ST-LINK/V2.1 VCP */

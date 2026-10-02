@@ -11,14 +11,15 @@ import hashlib
 from pathlib import Path
 import sys
 
-from elftools.elf.elffile import ELFFile
-from elftools.elf.sections import SymbolTableSection
-
 MAX_IMPORTS = 128
 MAX_NAME = 127
 
 
 def extract_imports(path: Path) -> list[str]:
+    # Metadata discovery and import-list encoding need no optional ELF parser.
+    from elftools.elf.elffile import ELFFile
+    from elftools.elf.sections import SymbolTableSection
+
     with path.open('rb') as stream:
         elf = ELFFile(stream)
         if elf.elfclass != 32 or not elf.little_endian or elf.header['e_type'] != 'ET_DYN':

@@ -12,8 +12,8 @@
  * Keep this snapshot synchronized with g_esp_libc_elfsyms and strict audits.
  */
 static const char *const s_public_libc[] = {
-    "strerror", "memset", "memcpy", "strlen", "strtod", "strrchr",
-    "strchr", "strcmp", "strtol", "strcspn", "strncat",
+    "strerror", "memset", "memcpy", "memcmp", "strlen", "strtod", "strrchr",
+    "strchr", "strcmp", "strncmp", "strtol", "strcspn", "strncat",
     "puts", "putchar", "fputc", "fputs", "printf", "vfprintf",
     "fprintf", "fwrite", "usleep", "sleep", "exit", "close",
     "malloc", "calloc", "realloc", "free", "clock_gettime", "strftime",

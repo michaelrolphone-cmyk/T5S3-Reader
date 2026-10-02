@@ -1,13 +1,13 @@
 #pragma once
 /* Driver-only protocol ABI. RiscRTE core MUST treat usb.host, serial.port,
  * and their provider interface tables as opaque versioned capabilities. */
-#include "RiscProviderV2.h"
+#include "RiscSerialPortV1.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define RISC_USB_HOST_API_V1 1u
-#define RISC_USB_CDC_API_V1 1u
+#define RISC_USB_CDC_API_V1 RISC_SERIAL_PORT_API_V1
 #define RISC_USB_CONFIG_LIMIT 4096u
 #define RISC_USB_CDC_MAX_SESSIONS 4u
 
@@ -31,22 +31,16 @@ typedef struct {
                           const uint8_t *src, size_t length, uint32_t timeout_ms);
 } risc_usb_host_api_v1;
 
-/* Actual CDC configuration, class control requests, bulk I/O and interface
- * release are performed by the CDC ELF through the separate usb.host ELF.
- * Runtime grants authorize access but do not operate the hardware. */
-typedef struct {
-    uint32_t api_version;
-    uint32_t struct_size;
-    uint64_t (*open)(uint64_t device);
-    bool (*configure)(uint64_t session, uint32_t baud, uint8_t data_bits,
-                      uint8_t parity, uint8_t stop_bits);
-    bool (*control_lines)(uint64_t session, bool dtr, bool rts);
-    int32_t (*read)(uint64_t session, uint8_t *dst, size_t capacity,
-                    uint32_t timeout_ms);
-    int32_t (*write)(uint64_t session, const uint8_t *src, size_t length,
-                     uint32_t timeout_ms);
-    bool (*close)(uint64_t session);
-} risc_usb_cdc_api_v1;
+/* The generic serial ABI is identical to the previous class API prefix.
+ * Keep historical names for installed providers and their independent builds;
+ * compiled core uses only RiscSerialPortV1.h for semantic serial operations. */
+typedef risc_serial_port_api_v1 risc_usb_cdc_api_v1;
+typedef risc_serial_port_discovery_v1 risc_usb_serial_class_discovery_v1;
+
+/* The class's append-only inventory extension is provider-originated. It
+ * lists opaque generation-qualified physical identities through the class
+ * ELF itself rather than exporting host enumeration into compiled firmware. */
+typedef risc_serial_port_inventory_v1 risc_usb_serial_class_inventory_v1;
 #ifdef __cplusplus
 }
 #endif

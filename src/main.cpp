@@ -1,3 +1,8 @@
+#if defined(RISCRTE_PROFILE_HEADLESS)
+#include "runtime/boot/HeadlessRuntime.h"
+void setup() { RuntimeBoot::setup(); }
+void loop() { RuntimeBoot::loop(); }
+#else
 #include <Arduino.h>
 #include <Board.h>
 #include <Epub.h>
@@ -24,6 +29,9 @@
 #include "CrossPointState.h"
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
+#include "native/InstalledAppPath.h"
+#include "native/NativeStreamBridge.h"
+#include "runtime/boot/DefaultAppSelection.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
 #include "runtime/network/PsramTlsAllocator.h"
@@ -612,11 +620,37 @@ void loop() {
     return;
   }
 
+  // One normal app invocation per boot. A missing selector preserves the
+  // embedded paper UI; a damaged/unavailable app falls back without reboot or
+  // repeated hashing/launch attempts. The resolver verifies the installed
+  // package and sidecar before the existing native app host grants anything.
+  static bool defaultAppChecked = false;
+  if (!defaultAppChecked) {
+    defaultAppChecked = true;
+    char artifact[96]{};
+    const auto choice = RuntimeDefaultApp::read(artifact);
+    if (choice == RuntimeDefaultApp::Selection::Ready) {
+      std::string installed;
+      if (resolveInstalledAppPath(artifact, installed)) {
+        LOG_INF("APP", "default start artifact=%s", artifact);
+        const esp_err_t result = runNativeApp(installed.c_str(), renderer, mappedInputManager);
+        LOG_INF("APP", "default returned result=%d", static_cast<int>(result));
+      } else {
+        LOG_ERR("APP", "default unavailable artifact=%s", artifact);
+      }
+      activityManager.goHome();
+    } else if (choice == RuntimeDefaultApp::Selection::Invalid) {
+      LOG_ERR("APP", "default selector invalid; embedded GUI remains available");
+    }
+  }
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
 
   mappedInputManager.update();
+  // Generic installed-provider progress is independent of GUI/device polling.
+  // Foreground synchronous apps use the same owner-task hook in stream calls.
+  nativeProviderOwnerTick();
   // External power/connection changes allow a new bounded admission attempt.
   // No provider inventory scans on every frame after a failed/missing provider.
   if (gpio.wasUsbStateChanged()) nativeNavigationRetry();
@@ -809,3 +843,5 @@ void loop() {
     }
   }
 }
+
+#endif // RISCRTE_PROFILE_HEADLESS

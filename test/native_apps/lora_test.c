@@ -8,6 +8,7 @@
 
 void app_main(void);
 
+static bool block_display;
 static int renders;
 static int events;
 static int packets_polled;
@@ -83,7 +84,7 @@ static bool lora_transmit(const uint8_t *data, uint16_t length) {
     ++tx_count;
     return true;
 }
-static bool lora_prepare_display(void) { ++prepares; return true; }
+static bool lora_prepare_display(void) { ++prepares; return !block_display; }
 static bool lora_finish_display(void) { ++finishes; return true; }
 static const t5_lora_api_v1 lora_api = {
     .api_version = T5_LORA_API_VERSION,
@@ -141,14 +142,16 @@ const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
     return version == T5_UI_API_VERSION ? &ui_api : NULL;
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    (void)argv;
+    block_display = argc > 1;
     app_main();
     assert(started);
     assert(stopped);
     assert(transmits == 1);
-    assert(renders == 3);
+    assert(renders == (block_display ? 0 : 3));
     assert(prepares == 3);
-    assert(finishes == 3);
+    assert(finishes == (block_display ? 0 : 3));
     assert(rx_count == 1 && tx_count == 1);
     return 0;
 }

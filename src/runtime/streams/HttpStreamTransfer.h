@@ -158,4 +158,76 @@ inline Result download(const t5_stream_api_v1* api, const char* url,
   }
 }
 
+// Bounded staged transfer over the same HTTP/file stream adapters. A byte cap
+// must be checked BEFORE a write; an asynchronous unrestricted pipe cannot
+// enforce that by inspecting its counters afterward. Retain at most one chunk,
+// and replay short/AGAIN writes without losing or duplicating bytes.
+inline Result downloadBounded(const t5_stream_api_v1* api, const char* url,
+    const char* newStagePath, const Hooks& hooks, uint64_t maxBytes,
+    uint32_t totalTimeoutMs, Progress progress = nullptr, void* progressContext = nullptr,
+    uint64_t* transferred = nullptr, bool* destinationCreated = nullptr) {
+  if (transferred) *transferred = 0;
+  if (destinationCreated) *destinationCreated = false;
+  if (!hasApi(api) || !api->write || !url || !newStagePath || !hooks.now_ms ||
+      !hooks.cooperate || !hooks.stall_timeout_ms || !maxBytes ||
+      !totalTimeoutMs || totalTimeoutMs > 300000u) return Result::Invalid;
+  const uint32_t started = hooks.now_ms(hooks.context);
+  uint32_t lastProgress = started;
+  const auto checkpoint = [&]() {
+    if (interrupted(hooks)) return Result::Cancelled;
+    if (hooks.now_ms(hooks.context) - started >= totalTimeoutMs ||
+        timedOut(hooks, lastProgress)) return Result::Timeout;
+    return Result::Ok;
+  };
+  if (const auto state = checkpoint(); state != Result::Ok) return state;
+  Handles handles(api);
+  if (api->open_file(newStagePath, T5_STREAM_FILE_CREATE_NEW, &handles.destination) != T5_STREAM_OK)
+    return Result::File;
+  if (destinationCreated) *destinationCreated = true;
+  if (const auto state = checkpoint(); state != Result::Ok) return state;
+  if (api->open_http(url, &handles.source) != T5_STREAM_OK) return Result::Http;
+  uint8_t bytes[T5_STREAM_CHUNK];
+  uint64_t total = 0;
+  uint64_t reported = 0;
+  uint32_t reportedAt = started;
+  for (;;) {
+    if (const auto state = checkpoint(); state != Result::Ok) return state;
+    uint32_t count = 0;
+    const int32_t status = api->read(handles.source, bytes, sizeof(bytes), &count);
+    if (const auto state = checkpoint(); state != Result::Ok) return state;
+    if (count > sizeof(bytes)) return Result::Transfer;
+    if (status == T5_STREAM_EOF) {
+      if (count || !total) return Result::Http;
+      if (api->finish(handles.destination) != T5_STREAM_OK) return Result::File;
+      if (const auto state = checkpoint(); state != Result::Ok) return state;
+      if (api->close(handles.destination) != T5_STREAM_OK) return Result::File;
+      handles.destination = 0;
+      if (const auto state = checkpoint(); state != Result::Ok) return state;
+      if (progress && total != reported) progress(progressContext, total);
+      if (const auto state = checkpoint(); state != Result::Ok) return state;
+      if (transferred) *transferred = total;
+      return Result::Ok;
+    }
+    if (status != T5_STREAM_OK && status != T5_STREAM_AGAIN) return Result::Http;
+    if (count > maxBytes - total) return Result::Transfer;
+    uint32_t offset = 0;
+    while (offset < count) {
+      if (const auto state = checkpoint(); state != Result::Ok) return state;
+      uint32_t written = 0;
+      const int32_t result = api->write(handles.destination, bytes + offset, count - offset, &written);
+      if (const auto state = checkpoint(); state != Result::Ok) return state;
+      if (written > count - offset || (result != T5_STREAM_OK && result != T5_STREAM_AGAIN))
+        return Result::File;
+      offset += written; total += written;
+      if (written) lastProgress = hooks.now_ms(hooks.context);
+      if (offset < count) cooperate(hooks);
+    }
+    const uint32_t now = hooks.now_ms(hooks.context);
+    if (progress && (total - reported >= 65536u || now - reportedAt >= 250u)) {
+      progress(progressContext, total); reported = total; reportedAt = now;
+    }
+    cooperate(hooks);
+  }
+}
+
 }  // namespace RuntimeHttpStreams

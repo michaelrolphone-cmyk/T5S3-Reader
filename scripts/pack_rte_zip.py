@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Pack one schema-1/2 ordinary package into a bounded stored .rte.zip.
+
+Archive files and sizes MUST fit the firmware bootstrap decoder before release.
+ZIP CRC is transport only; ordinary .package.json SHA-256 is file integrity,
+not publisher trust. No network, ZIP service or signing dependency.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import struct
+import sys
+import zlib
+
+if __package__:
+    from .package_resource_paths import safe_resource_path, parent_paths, path_conflicts
+else:
+    from package_resource_paths import safe_resource_path, parent_paths, path_conflicts
+
+MAX_ENTRIES = 17  # kMaxPackageEntries + one .package.json
+MAX_NAME_BYTES = 127
+MAX_ENTRY_BYTES = 1024 * 1024
+MAX_TOTAL_BYTES = 4 * 1024 * 1024
+MAX_ARCHIVE_BYTES = MAX_TOTAL_BYTES + 65536
+MAX_MANIFEST_BYTES = 4096
+SAFE_NAME = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*\Z')
+
+
+def crc32(data: bytes) -> int:
+    return zlib.crc32(data) & 0xFFFFFFFF
+
+
+def put_local(name: bytes, payload: bytes, crc: int) -> bytes:
+    return struct.pack('<IHHHHHIIIHH', 0x04034B50, 20, 0, 0, 0, 0,
+                       crc, len(payload), len(payload), len(name), 0) + name + payload
+
+
+def put_central(name: bytes, payload: bytes, crc: int, offset: int) -> bytes:
+    return struct.pack('<IHHHHHHIIIHHHHHII', 0x02014B50, 20, 20, 0, 0,
+                       0, 0, crc, len(payload), len(payload), len(name),
+                       0, 0, 0, 0, 0, offset) + name
+
+
+def pack_directory(source: Path) -> bytes:
+    manifest_path = source / '.package.json'
+    if source.is_symlink() or not source.is_dir() or manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError('ordinary package manifest missing or is a symlink')
+    raw_manifest = manifest_path.read_bytes()
+    if not 2 <= len(raw_manifest) <= MAX_MANIFEST_BYTES:
+        raise ValueError('manifest exceeds device parser bound')
+    manifest = json.loads(raw_manifest)
+    if type(manifest.get('schema')) is not int or manifest['schema'] not in (1, 2, 3):
+        raise ValueError('ordinary schema 1 or 2 required')
+    if manifest['schema'] == 3:
+        if __package__:
+            from .update_release_index import validate_bundle_manifest
+        else:
+            from update_release_index import validate_bundle_manifest
+        validate_bundle_manifest(manifest, manifest.get('id'), manifest.get('version'),
+                                 manifest.get('architecture'), manifest.get('kind'))
+    entries = manifest['entries']
+    if not isinstance(entries, list) or not 1 <= len(entries) < MAX_ENTRIES:
+        raise ValueError('declared inventory exceeds firmware ZIP entry limit')
+    files = [('.package.json', raw_manifest)]
+    declared = {'.package.json'}
+    total_bytes = len(raw_manifest)
+    for item in entries:
+        if not isinstance(item, dict):
+            raise ValueError('invalid entry descriptor')
+        name = item.get('name')
+        if (not isinstance(name, str) or len(name) > MAX_NAME_BYTES or
+                not safe_resource_path(name) or
+                (manifest['schema'] == 1 and '/' in name) or
+                (item.get('executable') and '/' in name) or
+                path_conflicts(name, declared)):
+            raise ValueError(f'unsafe, duplicate or conflicting ordinary entry: {name!r}')
+        for parent in parent_paths(name):
+            directory = source / parent
+            if directory.is_symlink() or not directory.is_dir():
+                raise ValueError('resource parent is not a real package directory')
+        path = source / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f'missing or nonregular entry: {name}')
+        payload = path.read_bytes()
+        if (not payload or len(payload) > MAX_ENTRY_BYTES or
+                len(payload) != item['size_bytes']):
+            raise ValueError(f'device bound or manifest size mismatch: {name}')
+        total_bytes += len(payload)
+        if total_bytes > MAX_TOTAL_BYTES:
+            raise ValueError('archive content exceeds device bootstrap limit')
+        digest = hashlib.sha256(payload).hexdigest()
+        if digest != item['sha256']:
+            raise ValueError(f'sha256 mismatch: {name}')
+        files.append((name, payload))
+        declared.add(name)
+    directories = set().union(*(parent_paths(name) for name in declared))
+    # Walk only declared parents, refusing unknown directories before entering
+    # them. Inventory work is bounded by 16 files and at most 112 parents.
+    seen = set()
+    for relative in sorted({''} | directories):
+        count = 0
+        for entry in (source / relative).iterdir():
+            count += 1
+            if count > MAX_ENTRIES + len(directories):
+                raise ValueError('source inventory exceeds its declared tree bound')
+            name = (relative + '/' if relative else '') + entry.name
+            if entry.is_symlink() or name in seen:
+                raise ValueError('source contains a link or duplicate entry')
+            if name in directories:
+                if not entry.is_dir():
+                    raise ValueError('resource parent is not a directory')
+            elif name not in declared or not entry.is_file():
+                raise ValueError('source contains undeclared package entries')
+            seen.add(name)
+    if seen != declared | directories:
+        raise ValueError('source is missing declared package entries')
+    locals_ = bytearray()
+    centrals = bytearray()
+    offset = 0
+    for name, payload in files:
+        encoded = name.encode('ascii')
+        crc = crc32(payload)
+        local = put_local(encoded, payload, crc)
+        centrals.extend(put_central(encoded, payload, crc, offset))
+        locals_.extend(local)
+        offset += len(local)
+    eocd = struct.pack('<IHHHHIIH', 0x06054B50, 0, 0, len(files),
+                       len(files), len(centrals), len(locals_), 0)
+    archive = bytes(locals_) + bytes(centrals) + eocd
+    if len(archive) > MAX_ARCHIVE_BYTES:
+        raise ValueError('archive exceeds firmware ZIP file-length bound')
+    return archive
+
+
+def catalog_row(source: Path, archive_name: str, archive: bytes) -> dict:
+    manifest = json.loads((source / '.package.json').read_text(encoding='utf-8'))
+    row = {
+        'kind': manifest['kind'],
+        'id': manifest['id'],
+        'version': manifest['version'],
+        'artifact': manifest['artifact'],
+        'architecture': manifest['architecture'],
+        'archive': archive_name,
+        'size_bytes': len(archive),
+        'sha256': hashlib.sha256(archive).hexdigest(),
+    }
+    if manifest.get('payload') == 'resources':
+        row['payload'] = 'resources'
+    return row
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('source', type=Path, help='ordinary package directory')
+    parser.add_argument('output', type=Path, help='destination .rte.zip')
+    args = parser.parse_args()
+    archive = pack_directory(args.source)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_bytes(archive)
+    print(json.dumps(catalog_row(args.source, args.output.name, archive)))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

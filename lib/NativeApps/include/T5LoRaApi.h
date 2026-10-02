@@ -8,6 +8,7 @@ extern "C" {
 
 #define T5_LORA_API_VERSION 1u
 #define T5_LORA_MAX_PACKET 255u
+#define T5_LORA_ERROR_REBOOT_REQUIRED (-30000)
 
 typedef enum {
     T5_LORA_STATUS_UNSUPPORTED = 0,

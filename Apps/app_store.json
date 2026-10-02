@@ -1,6 +1,6 @@
 {
   "min_firmware_version": "1.3.10",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "display_name": "App Store",
   "file_name": "app_store.elf",
   "icon": "solid:f019",
