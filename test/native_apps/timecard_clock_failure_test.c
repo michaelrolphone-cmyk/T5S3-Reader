@@ -90,6 +90,7 @@ const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
 int main(void) {
     system_api = &mock_system_api;
     storage = &mock_storage_api;
+    store_ready = true; // The existing clock scenarios operate on a successfully loaded store.
     for (uint8_t punch = 0; punch < PUNCH_COUNT; ++punch) {
         day_count = 1;
         days[0] = blank_day(20260929);

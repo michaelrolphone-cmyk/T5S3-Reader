@@ -287,7 +287,8 @@ static void make_identifier(usb_debug_device_t *device) {
                  (unsigned)device->pid, serial);
     else
         snprintf(device->identifier, sizeof(device->identifier),
-                 "usb_%04x_%04x", (unsigned)device->vid, (unsigned)device->pid);
+                 "usb_%04x_%04x_%016llx", (unsigned)device->vid,
+                 (unsigned)device->pid, (unsigned long long)device->token);
 }
 
 static bool read_device_summary(uint64_t token, usb_debug_device_t *device) {

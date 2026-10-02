@@ -1,0 +1,20 @@
+name: Settings bridge persistence rollback
+on:
+  pull_request:
+    paths:
+      - 'src/native/NativeLanguageBridge.cpp'
+      - 'src/native/NativeTimeZoneBridge.cpp'
+      - 'test/native_bridges/**'
+      - 'test/run_settings_persistence_bridge_test.sh'
+      - '.github/workflows/settings-bridge-persistence.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rollback-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify settings persistence rollback contracts
+        run: bash test/run_settings_persistence_bridge_test.sh
