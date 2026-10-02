@@ -281,6 +281,19 @@ void ActivityManager::goHome() {
   replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
 }
 
+#if defined(BOARD_XTEINK_X4_PRO)
+bool ActivityManager::dispatchX4HomeNavigation(uint32_t pressed, uint32_t released) {
+  bool changed = false;
+  {
+    RenderLock lock;
+    if (currentActivity && currentActivity->name == "Home")
+      changed = currentActivity->onX4HomeNavigation(pressed, released);
+  }
+  if (changed) requestUpdate(true);
+  return changed;
+}
+#endif
+
 void ActivityManager::openGlobalMenu() {
   if (!currentActivity || !currentActivity->supportsGlobalMenu() || pendingActivity) {
     return;

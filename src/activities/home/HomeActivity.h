@@ -26,6 +26,9 @@ class HomeActivity final : public Activity {
   std::vector<t5_app_manifest_t> homeApps;
   std::string pendingHomeAppArtifact;
   std::string lastVisibleTextPrewarmKey;
+#if defined(BOARD_XTEINK_X4_PRO)
+  std::string x4Status;
+#endif
   void onSelectBook(const std::string& path);
   void onRecentsOpen();
   void onSettingsOpen();
@@ -48,6 +51,9 @@ class HomeActivity final : public Activity {
   void onEnter() override;
   void onExit() override;
   void loop() override;
+#if defined(BOARD_XTEINK_X4_PRO)
+  bool onX4HomeNavigation(uint32_t pressed, uint32_t released) override;
+#endif
   bool onTouchTap(int16_t x, int16_t y) override;
   bool showsHomeTouchButton() const override { return false; }
   void render(RenderLock&&) override;

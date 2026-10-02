@@ -51,6 +51,10 @@ int main(void) {
     x4_fake_pressed_pins = 1u << X4PRO_PIN_BTN_POWER;
     for (int i = 0; i < 4; ++i) f = poll_one(api);
     expect(f.pressed == RISC_NAV_CONFIRM, "power maps to confirm after neutral");
+    x4_fake_pressed_pins = 0;
+    for (int i = 0; i < 3; ++i) expect(poll_one(api).released == 0, "debounce confirm release");
+    f = poll_one(api);
+    expect(f.released == RISC_NAV_CONFIRM && f.buttons == 0, "confirm release edge");
     if (failures) return 1;
     puts("x4 buttons states: PASS");
     return 0;

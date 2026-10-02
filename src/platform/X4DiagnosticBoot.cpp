@@ -320,6 +320,7 @@ void x4DiagnosticLoop() {
                 LOG_INF("X4", "input.navigation event=%s sequence=%lu", event.name,
                         static_cast<unsigned long>(++input_sequence));
         }
+        (void)activityManager.dispatchX4HomeNavigation(frame_in.pressed, frame_in.released);
     } else if (frame_in.pressed) {
         ++sequence;
         paint(frame_in.pressed);

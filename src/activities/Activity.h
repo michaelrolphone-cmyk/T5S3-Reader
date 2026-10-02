@@ -32,6 +32,11 @@ class Activity {
   virtual void onEnter();
   virtual void onExit();
   virtual void loop() {}
+#if defined(BOARD_XTEINK_X4_PRO)
+  // X4's boot-owned input provider can move Home focus without running the
+  // normal activity loop or activating unqualified destinations.
+  virtual bool onX4HomeNavigation(uint32_t, uint32_t) { return false; }
+#endif
   virtual bool onTouchTap(int16_t x, int16_t y) { return false; }
   virtual bool onTouchSwipe(int16_t startX, int16_t startY, int16_t endX, int16_t endY) { return false; }
   // Return true to consume a home-button press before the default go-home / global-menu

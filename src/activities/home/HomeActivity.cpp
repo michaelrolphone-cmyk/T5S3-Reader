@@ -10,6 +10,9 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Utf8.h>
+#if defined(BOARD_XTEINK_X4_PRO)
+#include <RiscInputNavigationV1.h>
+#endif
 #include <Xtc.h>
 
 #include <cstring>
@@ -301,6 +304,40 @@ void HomeActivity::loop() {
   }
 }
 
+#if defined(BOARD_XTEINK_X4_PRO)
+bool HomeActivity::onX4HomeNavigation(uint32_t pressed, uint32_t released) {
+  const uint32_t directions = pressed & (RISC_NAV_LEFT | RISC_NAV_RIGHT);
+  if (directions == (RISC_NAV_LEFT | RISC_NAV_RIGHT)) return false;
+  if (directions) {
+    const int count = getMenuItemCount();
+    if (count <= 0) return false;
+    selectorIndex = directions == RISC_NAV_RIGHT
+        ? ButtonNavigator::nextIndex(selectorIndex, count)
+        : ButtonNavigator::previousIndex(selectorIndex, count);
+    x4Status.clear();
+    freeCoverBuffer();  // Stored Home pixels include the old header and focus.
+    LOG_INF("X4", "home focus=%d count=%d", selectorIndex, count);
+    return true;
+  }
+  if (released & RISC_NAV_CONFIRM) {
+    // Power is Confirm on this provider. Keep every destination closed until
+    // X4 has qualified its storage writes, app lifecycle and power services.
+    x4Status = recentBooks.empty() && selectorIndex == 0
+        ? "No recent books on X4"
+        : "Selection unavailable on X4";
+    freeCoverBuffer();
+    LOG_INF("X4", "home selection unavailable=%d", selectorIndex);
+    return true;
+  }
+  if ((pressed & RISC_NAV_BACK) && !x4Status.empty()) {
+    x4Status.clear();
+    freeCoverBuffer();
+    return true;
+  }
+  return false;
+}
+#endif
+
 bool HomeActivity::onTouchTap(int16_t, int16_t y) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
@@ -371,6 +408,9 @@ void HomeActivity::render(RenderLock&&) {
   }
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
+#if defined(BOARD_XTEINK_X4_PRO)
+                 !x4Status.empty() ? x4Status.c_str() :
+#endif
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
                  nullptr, TextRole::UserContent, TextRole::System, headerClockLabel);
 
