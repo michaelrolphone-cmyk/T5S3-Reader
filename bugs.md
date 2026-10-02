@@ -718,7 +718,7 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - Repair: publish recent-sync state only after write-back succeeds, or track acquisition and persistence independently.
 ### 70. Automatic network reconnect does not fall back after the preferred stored network fails.
 
-- **Status:** Freshly revalidated and claimed by `saved_network_fallback_refresh_20261002_0801` to sync existing PR354 to master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`, retest and rerun exact-head CI; prior old-head claim was released. Existing branch/PR preserved. Historical CI on old head does not qualify the resumed head.
+- **Status:** In progress on [PR #354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/354), branch `fix/saved-network-fallback`, current-master sync head `f874195992f2ef9830bc2eeebffb8c798c8260c9`, based directly on `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; firmware candidate1.3.64. Original-master production regression fails as expected; repaired helper/OTA/provider regressions pass locally. Focused exact-head run36982154677 passed; PlatformIO run36982154633 is pending. Claim `saved_network_fallback_refresh_20261002_0801` remains active.
 - **Sources:** [2026-09-27 12-21 MDT - automation-bug-scan-20260927-1221 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/17BY2jMeFoI2yFrSMEQc9FuTKEK3QlwSZoJfKFKzs_f0/edit?usp=drivesdk)
 
 - Affected: src/runtime/network/SavedNetworkConnection.cpp, ensureSavedConnection(); src/native/NativeOtaBridge.cpp, ensureOtaNetworkReady().
