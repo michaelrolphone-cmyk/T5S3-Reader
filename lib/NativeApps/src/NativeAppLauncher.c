@@ -111,6 +111,12 @@ esp_err_t launch_elf_app(const char *sd_path)
         goto done;
     }
     static const struct esp_elfsym host_symbols[] = {
+#if defined(RISCRTE_PROFILE_HEADLESS)
+        ESP_ELFSYM_EXPORT(t5_app_get_api),
+        ESP_ELFSYM_EXPORT(t5_provider_capability_get_api),
+        ESP_ELFSYM_EXPORT(t5_stream_get_api),
+        ESP_ELFSYM_END
+#else
         ESP_ELFSYM_EXPORT(t5_app_get_api),
         ESP_ELFSYM_EXPORT(t5_archive_get_api),
         ESP_ELFSYM_EXPORT(t5_battery_get_api),
@@ -148,6 +154,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_EXPORT(t5_video_get_api),
         ESP_ELFSYM_EXPORT(t5_math_get_api),
         ESP_ELFSYM_END
+#endif
     };
     const int registered = esp_elf_register_symbol(host_symbols);
     if (registered != 0 && registered != -EEXIST) {
