@@ -6,12 +6,14 @@
 #include "x4pro_proto.h"
 
 extern uint8_t x4_card_sector[512];
+extern uint8_t x4_card_partition_boot[512];
 extern bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
 extern unsigned x4_card_cmd17_count, x4_card_clock_count;
 
 static uint8_t command_bits[48], response_bits[136];
 static unsigned command_count, response_count, response_index, data_index;
 static bool response_active, data_active, data_pending;
+static const uint8_t *active_sector;
 
 static inline void x4_fake_response(const uint8_t *bytes, unsigned count) {
     response_count = count * 8u;
@@ -50,13 +52,22 @@ static inline void x4pro_pin_release(uint32_t pin) {
     for (unsigned i = 0; i < 8u; ++i) first = (uint8_t)((first << 1) | command_bits[i]);
     command_count = 0;
     const uint8_t index = first & 0x3fu;
-    if (index == 0u) return; /* Native CMD0 is response-free. */
+    if (index == 0u) {
+        response_active = data_active = data_pending = false;
+        return; /* Native CMD0 is response-free. */
+    }
     uint8_t reply[17] = {0};
     reply[0] = index;
     if (index == 8u) { reply[3] = 1u; reply[4] = 0xaau; }
     if (index == 41u) { reply[0] = 0x3fu; reply[1] = 0xc0u; }
     if (index == 3u) { reply[1] = 0x12u; reply[2] = 0x34u; }
-    if (index == 17u) { ++x4_card_cmd17_count; data_pending = true; }
+    if (index == 17u) {
+        uint32_t lba = 0;
+        for (unsigned i = 8u; i < 40u; ++i) lba = (lba << 1) | command_bits[i];
+        active_sector = lba == 1u ? x4_card_partition_boot : x4_card_sector;
+        ++x4_card_cmd17_count;
+        data_pending = true;
+    }
     x4_fake_response(reply, index == 2u ? 17u : 6u);
 }
 static inline bool x4pro_pin_read(uint32_t pin) {
@@ -66,9 +77,9 @@ static inline bool x4pro_pin_read(uint32_t pin) {
     if (!data_active) return true;
     if (data_index == 0u) return false;
     const unsigned bit = data_index - 1u;
-    if (bit < 4096u) return (x4_card_sector[bit / 8u] >> (7u - bit % 8u)) & 1u;
+    if (bit < 4096u) return (active_sector[bit / 8u] >> (7u - bit % 8u)) & 1u;
     if (bit < 4112u) {
-        const uint16_t crc = x4pro_sd_crc16(x4_card_sector, 512u) ^
+        const uint16_t crc = x4pro_sd_crc16(active_sector, 512u) ^
                              (x4_card_bad_crc ? 1u : 0u);
         return (crc >> (15u - (bit - 4096u))) & 1u;
     }

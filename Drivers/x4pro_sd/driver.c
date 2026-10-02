@@ -97,6 +97,62 @@ static bool read_sector(uint32_t lba, uint8_t out[512]) {
     tick();
     return stop && received_crc == x4pro_sd_crc16(out, 512u);
 }
+static uint16_t le16(const uint8_t *p) {
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+static uint32_t le32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+/* Parse only layout metadata. No mounted state or file access is granted here. */
+static bool fat32_layout(const uint8_t sector[512], uint32_t partition_sectors) {
+    if (sector[510] != 0x55u || sector[511] != 0xaau ||
+        le16(sector + 11) != 512u || sector[16] < 1u || sector[16] > 2u ||
+        le16(sector + 17) != 0u || le16(sector + 19) != 0u ||
+        le16(sector + 22) != 0u) return false;
+    const uint32_t spc = sector[13];
+    const uint32_t reserved = le16(sector + 14);
+    const uint32_t fat_size = le32(sector + 36);
+    const uint32_t total = le32(sector + 32);
+    const uint64_t data_begin = (uint64_t)reserved + (uint64_t)sector[16] * fat_size;
+    if (!spc || spc > 128u || (spc & (spc - 1u)) || !reserved || !fat_size ||
+        total < 65525u || (partition_sectors && total > partition_sectors) ||
+        data_begin >= total || (total - data_begin) / spc < 65525u) return false;
+    const uint32_t clusters = (uint32_t)((total - data_begin) / spc);
+    const uint32_t root = le32(sector + 44);
+    /* The FAT must have one 32-bit entry per possible data cluster. */
+    return root >= 2u && root < clusters + 2u &&
+           (uint64_t)fat_size * 128u >= (uint64_t)clusters + 2u;
+}
+static bool probe_fat32(void) {
+    uint8_t sector[512];
+    if (!read_sector(0, sector)) { fail("sector 0 read failed"); return false; }
+    if (sector[510] != 0x55u || sector[511] != 0xaau) {
+        fail("sector 0 signature invalid"); return false;
+    }
+    if (fat32_layout(sector, 0)) {
+        fail("FAT32 boot verified; filesystem not mounted");
+        return true;
+    }
+    /* Prefer one ordinary FAT32 MBR partition; never guess a non-FAT volume. */
+    uint32_t first = 0, count = 0;
+    for (unsigned i = 0; i < 4u; ++i) {
+        const uint8_t *entry = sector + 446u + 16u * i;
+        const uint8_t type = entry[4];
+        if (type != 0x0bu && type != 0x0cu && type != 0x1bu && type != 0x1cu) continue;
+        if (first) { fail("multiple FAT32 partitions unsupported"); return false; }
+        first = le32(entry + 8);
+        count = le32(entry + 12);
+        if (!first || !count || first > UINT32_MAX - count) {
+            fail("FAT32 partition bounds invalid"); return false;
+        }
+    }
+    if (!first) { fail("FAT32 volume absent"); return false; }
+    if (!read_sector(first, sector)) { fail("FAT32 boot read failed"); return false; }
+    if (!fat32_layout(sector, count)) { fail("FAT32 boot invalid"); return false; }
+    fail("FAT32 boot verified; filesystem not mounted");
+    return true;
+}
 static bool init_card(void) {
     uint8_t response[17] = {0};
     high_capacity = false;
@@ -129,13 +185,7 @@ static bool init_card(void) {
                                    !response_for(16, response))) {
                 fail("CMD16 block size failed"); return false;
             }
-            uint8_t sector[512];
-            if (!read_sector(0, sector)) { fail("sector 0 read failed"); return false; }
-            if (sector[510] != 0x55u || sector[511] != 0xaau) {
-                fail("sector 0 signature invalid"); return false;
-            }
-            fail("sector 0 read; filesystem not mounted");
-            return true;
+            return probe_fat32();
         }
         if (clock_api) clock_api->sleep_ms(clock_api->context, 10);
     }
