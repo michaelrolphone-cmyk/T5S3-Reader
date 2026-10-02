@@ -1,6 +1,9 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 typedef struct x4_embedded_provider {
     const char *id;
     const char *version;
@@ -13,3 +16,6 @@ typedef struct x4_embedded_provider {
     size_t import_count;
 } x4_embedded_provider;
 const x4_embedded_provider *x4_embedded_find(const char *id);
+#ifdef __cplusplus
+}
+#endif
