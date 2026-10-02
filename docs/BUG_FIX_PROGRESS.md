@@ -3,13 +3,21 @@
 - Firmware version reservations across concurrent open PRs now form a cascading patch chain; when one older PR merges, later branches can conflict or require another exact-head CI cycle. After PR351/PR353 current-master sync is complete, assess a less conflict-prone version-coordination/release workflow. This is a deferred process task only; do not redesign it during the current bug batch or write any release/catalog changes.
 
 
-## Current integration reconciliation — 2026-10-02
+## Current integration reconciliation — 2026-10-02 05:55 UTC
 
-- Master is `82caa0997e913f01c1f5f9ab942d056bc9f04a82`, firmware1.3.61. PR96 merged at prior master `f7f006f78bf1f83c28f3ce05728b8973e895956b`; PR344 then merged at82caa. The Image Viewer1.1.1 and firmware1.3.61 lineage are current; user reports U1 post-merge CI and normal release passed.
-- PR351 remains open/ready at `b7ca0fc80aa7613813db1e5cf4f065814b6767c4`; PR353 open/ready at `36f80118d16c4291bc9a931cdb5d18b0ccbff674`; PR354 open/ready at `0e464a2a9558303d845f33d434e4bf6db262cd7d`. These remain based on pre-f7f master and GitHub reports each nonmergeable against82caa. Their last exact-head CI was green on old heads only; no branch refresh or merge performed here. None is fixed on current master.
-- PR344 is now closed/merged at82caa; do not edit. PR347 is open/draft at `f923a5eaac977d70d3abcc99a7e7d5dc5cf54dfa`, based on82caa and mergeable. Hardware-CI owner retains PR347/all-board scope. X4 PR350 remains open in its separate chain; no takeover or board/hardware work.
-- PR332 remains the sole open draft ledger PR and is not closed because code PRs351/353/354 remain unmerged. Version-coordination redesign remains deferred backlog only.
-- Current firmware version1.3.61; checked active PR branches: PR3471.3.61, PR3511.3.59, PR3531.3.58, PR3541.3.60, PR3501.3.53. The BMP repair candidate is1.3.62 and changes firmware only; it does not touch PR347's files or boards.
+- Current master: `82caa0997e913f01c1f5f9ab942d056bc9f04a82`, firmware1.3.61.
+- PR347 remains open/draft and hardware-owner controlled at `92674b4db985301339361e6bd644bab7cceb9ea5`, based on82caa. It reserves firmware1.3.63; exact-head cloud and hardware checks remain pending. No camera/board scope here.
+- PR355 remains open/ready, unmerged at `ab36b60c79376efc44a3bb09811e2dc697a6ebc4`, based on82caa, firmware candidate1.3.62. BMP and PlatformIO exact-head CI passed. No conflict with selected app repair.
+- PR351, PR353 and PR354 remain open/unmerged on pre-f7f branches, stale/nonmergeable against82caa; do not edit them. PR350 and PR348 are X4 work; user priority is to wait until PR347 integration, so no X4 scope.
+- PR332 remains the sole draft coordination PR. Prior BMP claim released. No other active bug implementation claim found. Version-coordination redesign remains deferred.
+- Existing active source: current master Timecard app manifest1.0.3; candidate1.0.4 is app-only. No firmware increment is needed. Selected canonical bug#5 is claimed by `timecard_load_guard_20261002_0555` on branch `fix/timecard-load-failure` from baseline82caa; no source edits had been made when this claim was published.
+
+## Active Timecard history-load repair — canonical bug #5
+
+- Owner `timecard_load_guard_20261002_0555`; phase: claimed, implementation not started. Branch reservation `fix/timecard-load-failure`. Current master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; source blob `Apps/timecard.c` = `4b77261977b4d76f254605beee7a64472de12c87`; app manifest1.0.3, candidate1.0.4.
+- Revalidation: installed Timecard manifest is reachable from the first-party Apps catalog/Springboard workflow. In current source `load_store()` zeroes `day_count` before a fallible read and appends parsed records directly to live state; both startup and keyboard continuation ignore the false result. A subsequent `set_punch()` can save the empty/partial live history through `write_file_atomic`. This is distinct from #14 clock failure (already merged) and from the stale `fix/timecard-lunch-outside-shift` branch, which does not repair load transactionality.
+- Open-PR overlap check: no open PR mentions Timecard load failure; current open code PRs affect camera/BMP, X4, network/clock/OTA or unrelated paths. No active claim or applicable open fix found. Do not edit closed PRs or reuse the old clock-failure branch.
+- Repair plan: parse into staging state and publish only after a successful complete load; retain existing in-memory history on read/parse failure, mark the store unavailable for mutation, show a clear read-only failure state, and block both punch and keyboard edit saves until a successful load. Add production-app host regressions for immediate read failure and malformed input after valid records, proving no partial commit/no subsequent write and successful recovery/retry.
 
 ## Active malformed-BMP dimension repair — canonical bug #18
 
