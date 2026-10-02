@@ -204,7 +204,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Page or otherwise enumerate the full `handler_count()`, fetching visible entries with `handler_get()`. If a deliberate UI maximum remains, report it instead of silently dropping handlers. Add a regression with at least ten handlers for one extension and verify handlers beyond index 7 can be selected and launch the intended app.
 ### 24. Provider capability discovery ignores package directories after entry 64 and can miss ambiguity
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed on current master `3722a3f44a3294ba5e8adab830807a2523df3b03`; claimed by `sd_firmware_handoff_20261002` for a focused production-bridge regression and repair on `fix/sd-firmware-update-handoff-validation`. The normal File Browser `.bin` path resolves correctly for the initial open but validation still passes the empty legacy `selectedPath`; baseline integration test pending.
 - **Sources:** [automation/bug-scan-20260926-2324-findings](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2324-findings/bugs.md)
 
 - **Affected code:** `src/native/NativeProviderCapabilityBridge.cpp`, `findProvider()`.
