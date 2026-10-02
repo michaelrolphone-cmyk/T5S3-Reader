@@ -1,3 +1,13 @@
+## Active saved-network fallback repair — canonical bug #70
+
+- Owner claim `automatic_saved_network_fallback`; implementation branch planned `fix/saved-network-fallback`, current master baseline `ca66db298c2e735f45e5029083a9bfbd7b6740bd` after independently owned Hollow PR352 merge. Master firmware1.3.57; published release-index1.3.55.
+- Fresh source inspection confirms `RuntimeNetwork::ensureSavedConnection()` tries only the last-connected credential (or first saved profile) and returns false after its one timeout. OTA bridge and native network bridge both consume this helper, so the failure affects automatic OTA and native HTTP/network requests. Ordinary Wi-Fi picker remains user-directed and is out of scope.
+- Ownership check: open PR96 changed-file list has no saved-network helper overlap; PR351 touches OTA updater only, PR353 clock sync only. PR350 X4 and U1 remain owned elsewhere and untouched. PR352 is merged; no overlapping open fallback fix or active claim found.
+- Version reservations checked: master1.3.57, release-index1.3.55, PR3511.3.59, PR3531.3.58, U1 PR96 candidate1.3.56. Proposed firmware candidate1.3.60.
+- Next: fault/retry regression against production helper, preserving preferred-first/de-duplicated candidates and one total timeout; exact branch/PR and cloud CI. Claim remains active pending terminal verification. No master write/merge/release/catalog/device/architecture work.
+
+---
+
 ## Completed OTA version collision reconciliation — PR351
 
 - Canonical report **233** is repaired in open, unmerged [PR351](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/351), now ready for review. Branch `fix/ota-check-state`, current exact head `92b119122f0115da0adbac6ca52b6da55bbd8e6f`, base master `91f3768ebb402c218aff64d41cfcef689d743b2e`; PR is green and mergeable. Version-collision claim released.
