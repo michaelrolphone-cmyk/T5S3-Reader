@@ -250,7 +250,11 @@ void ActivityManager::goToInstalledApp(std::string artifact, std::string display
 }
 
 void ActivityManager::goToRecentBooks() {
+#if defined(BOARD_XTEINK_X4_PRO)
+  replaceActivity(std::make_unique<X4TxtActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+#else
   replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+#endif
 }
 
 void ActivityManager::goToBrowser() {
@@ -283,29 +287,6 @@ void ActivityManager::goToCrashReport() { replaceActivity(std::make_unique<Crash
 void ActivityManager::goHome() {
   replaceActivity(std::make_unique<HomeActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
 }
-
-#if defined(BOARD_XTEINK_X4_PRO)
-bool ActivityManager::dispatchX4Navigation(uint32_t pressed, uint32_t released) {
-  Activity::X4NavigationResult result = Activity::X4NavigationResult::None;
-  {
-    RenderLock lock;
-    if (currentActivity && (currentActivity->name == "Home" || currentActivity->name == "X4Txt"))
-      result = currentActivity->onX4Navigation(pressed, released);
-    if (result == Activity::X4NavigationResult::OpenTxt || result == Activity::X4NavigationResult::Home) {
-      if (currentActivity) currentActivity->onExit();
-      currentActivity.reset();
-      if (result == Activity::X4NavigationResult::OpenTxt)
-        currentActivity = std::make_unique<X4TxtActivity>(renderer, mappedInput);
-      else
-        currentActivity = std::make_unique<HomeActivity>(renderer, mappedInput);
-      currentActivity->onEnter();
-      requestedUpdate = false;
-    }
-  }
-  if (result != Activity::X4NavigationResult::None) requestUpdate(true);
-  return result != Activity::X4NavigationResult::None;
-}
-#endif
 
 void ActivityManager::openGlobalMenu() {
   if (!currentActivity || !currentActivity->supportsGlobalMenu() || pendingActivity) {

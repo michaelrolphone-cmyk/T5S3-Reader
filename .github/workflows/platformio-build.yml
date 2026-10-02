@@ -123,6 +123,9 @@ jobs:
           cc -std=c11 -Wall -Wextra -Werror -I Drivers/x4pro_board \
             test/x4pro_proto_test.c -o /tmp/x4proto
           /tmp/x4proto
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_touch_fake -I Drivers/x4pro_board \
+            test/x4pro_gt911_state_test.c Drivers/x4pro_gt911/driver.c -o /tmp/x4touch
+          /tmp/x4touch
           python3 test/x4pro_boot_isolation_test.py
           python3 test/x4pro_panel_sequence_test.py
           python3 test/x4pro_import_match_test.py

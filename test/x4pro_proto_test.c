@@ -15,7 +15,7 @@ int main(void) {
     uint16_t x = 0, y = 0;
     uint8_t id = 0;
     uint8_t point[8] = {10, 0, 20, 0, 0, 0, 0, 3};
-    expect(x4pro_gt911_map(point, &x, &y, &id) && x == 20 && y == 10 && id == 3, "swapxy");
+    expect(x4pro_gt911_map(point, &x, &y, &id) && x == 10 && y == 20 && id == 1, "portrait touch");
     point[0] = 224;
     point[1] = 1;
     expect(!x4pro_gt911_map(point, &x, &y, &id), "x range");

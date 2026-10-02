@@ -26,7 +26,8 @@ class X4TxtActivity final : public Activity {
       : Activity("X4Txt", renderer, input) {}
   void onEnter() override;
   void onExit() override;
-  X4NavigationResult onX4Navigation(uint32_t pressed, uint32_t released) override;
+  void loop() override;
+  bool supportsGlobalMenu() const override { return false; }
   void render(RenderLock&& lock) override;
 };
 

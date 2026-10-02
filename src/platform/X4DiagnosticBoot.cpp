@@ -20,6 +20,8 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Txt.h>
+#include <RiscI2cBusV1.h>
+#include <RiscTouchV1.h>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -31,6 +33,8 @@
 #include "activities/util/FullScreenMessageActivity.h"
 #include "components/UITheme.h"
 #include "native/NativeNavigationInput.h"
+#include "native/NativeTouchInput.h"
+#include "util/ButtonNavigator.h"
 #include "runtime/drivers/ProviderModuleV2.h"
 
 extern EpdFont notoserif14RegularFont;
@@ -49,6 +53,8 @@ RuntimeProviders::ModuleV2 panel_mod;
 RuntimeProviders::ModuleV2 buttons_mod;
 RuntimeProviders::ModuleV2 light_mod;
 RuntimeProviders::ModuleV2 sd_mod;
+RuntimeProviders::ModuleV2 i2c_mod;
+RuntimeProviders::ModuleV2 touch_mod;
 const risc_display_output_api_v1 *display_api = nullptr;
 const risc_input_navigation_api_v1 *nav_api = nullptr;
 const risc_frontlight_api_v1 *light_api = nullptr;
@@ -203,6 +209,8 @@ void x4DiagnosticSetup() {
     const x4_embedded_provider *buttons = x4_embedded_find("x4pro-buttons");
     const x4_embedded_provider *light = x4_embedded_find("x4pro-frontlight");
     const x4_embedded_provider *sd = x4_embedded_find("x4pro-sd");
+    const x4_embedded_provider *i2c = x4_embedded_find("x4pro-i2c");
+    const x4_embedded_provider *touch = x4_embedded_find("x4pro-gt911");
     if (!clock || !panel || !buttons || !light) {
         LOG_ERR("X4", "embedded provider missing");
         return;
@@ -227,6 +235,16 @@ void x4DiagnosticSetup() {
                 storage_preview = "SD ready; no root TXT file";
                 if (!openFirstText(volume, "/Books")) (void)openFirstText(volume, "/");
             }
+        }
+    }
+    if (i2c && touch && load_one(i2c_mod, *i2c, &dep, 1)) {
+        const risc_provider_dependency_v1 touch_deps[] = {
+            {"i2c.bus", 1, i2c_mod.capability()},
+            {"platform.clock", 1, clock_mod.capability()}
+        };
+        if (load_one(touch_mod, *touch, touch_deps, 2)) {
+            const auto *touch_api = static_cast<const risc_touch_api_v1 *>(touch_mod.capability());
+            LOG_INF("X4", "input.touch ready=%d", nativeTouchAttachBootstrap(touch_api) ? 1 : 0);
         }
     }
     display_api = static_cast<const risc_display_output_api_v1 *>(panel_mod.capability());
@@ -308,6 +326,7 @@ void x4DiagnosticSetup() {
         LOG_INF("X4", "home geometry width=%d height=%d menu_height=%d",
                 renderer.getScreenWidth(), renderer.getScreenHeight(), menu_height);
         activityManager.begin();
+        ButtonNavigator::setMappedInputManager(mappedInputManager);
         activityManager.goHome();
         // HomeActivity::onEnter queues a deferred update. X4 does not run the
         // normal activity loop yet, so wake its render worker for this frame.
@@ -331,11 +350,11 @@ void x4DiagnosticLoop() {
         last = now;
         LOG_INF("X4", "heartbeat ready=%d", ready ? 1 : 0);
     }
-    if (!ready || !nav_api) {
+    if (!ready) {
         delay(200);
         return;
     }
-    nativeNavigationTick();
+    mappedInputManager.updateBootstrapInput();
     const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
     if (showing_home) {
         static uint32_t input_sequence = 0;
@@ -348,7 +367,7 @@ void x4DiagnosticLoop() {
                 LOG_INF("X4", "input.navigation event=%s sequence=%lu", event.name,
                         static_cast<unsigned long>(++input_sequence));
         }
-        (void)activityManager.dispatchX4Navigation(frame_in.pressed, frame_in.released);
+        activityManager.loop();
     } else if (frame_in.pressed) {
         ++sequence;
         paint(frame_in.pressed);

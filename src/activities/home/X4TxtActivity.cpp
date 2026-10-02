@@ -4,9 +4,12 @@
 
 #include <GfxRenderer.h>
 #include <Logging.h>
+#include <RiscInputNavigationV1.h>
 #include <cstdio>
 
 #include "fontIds.h"
+#include "MappedInputManager.h"
+#include "activities/ActivityManager.h"
 
 bool X4TxtActivity::StorageSource::available() const { return Storage.ready(); }
 
@@ -60,15 +63,23 @@ void X4TxtActivity::onExit() {
   Activity::onExit();
 }
 
-Activity::X4NavigationResult X4TxtActivity::onX4Navigation(uint32_t pressed, uint32_t released) {
+void X4TxtActivity::loop() {
+  uint32_t pressed = 0, released = 0;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Left)) pressed |= RISC_NAV_LEFT;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right)) pressed |= RISC_NAV_RIGHT;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Back)) pressed |= RISC_NAV_BACK;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) released |= RISC_NAV_CONFIRM;
   const auto action = session_.input(pressed, released, source_);
-  if (action == X4TxtSession::Action::Home) return X4NavigationResult::Home;
-  if (action == X4TxtSession::Action::None) return X4NavigationResult::None;
+  if (action == X4TxtSession::Action::Home) {
+    activityManager.goHome();
+    return;
+  }
+  if (action == X4TxtSession::Action::None) return;
   LOG_INF("X4", "txt view=%u selection=%lu offset=%lu",
           session_.view() == X4TxtSession::View::Page ? 1u : 0u,
           static_cast<unsigned long>(session_.selection()),
           static_cast<unsigned long>(session_.offset()));
-  return X4NavigationResult::Redraw;
+  requestUpdate();
 }
 
 void X4TxtActivity::render(RenderLock&&) {

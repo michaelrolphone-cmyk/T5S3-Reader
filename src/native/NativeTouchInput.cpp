@@ -29,6 +29,7 @@ const risc_touch_api_v1* api = nullptr;
 uint64_t subscription = 0;
 bool enabled = true;
 bool quarantined = false;
+bool bootstrapAttached = false;
 uint32_t lastAttemptMs = 0;
 
 TaskHandle_t workerTask = nullptr;
@@ -496,6 +497,14 @@ bool nativeTouchSuspend() {
   bool ok = true;
   if (subscription && !api->unsubscribe(api->context, subscription)) ok = false;
   subscription = 0;
+#if defined(BOARD_XTEINK_X4_PRO)
+  if (bootstrapAttached) {
+    // The X4 boot controller owns the provider module and its bus/rail. Only
+    // this consumer's subscription is released here.
+    if (!ok) quarantined = true;
+    return ok;
+  }
+#endif
   RuntimeInstalledProviders::Lease grant = lease;
   lease = {};
   api = nullptr;
@@ -509,9 +518,45 @@ bool nativeTouchSuspend() {
 
 bool nativeTouchResume() {
   enabled = true;
+#if defined(BOARD_XTEINK_X4_PRO)
+  if (bootstrapAttached && api && !subscription && !quarantined) {
+    subscription = api->subscribe(api->context);
+    if (!subscription) return false;
+    clearTransient();
+    (void)resync(true);
+  }
+#endif
   if (!api) lastAttemptMs = 0;
   return activate();
 }
+
+#if defined(BOARD_XTEINK_X4_PRO)
+bool nativeTouchAttachBootstrap(const risc_touch_api_v1* candidate) {
+  if (api || bootstrapAttached || quarantined || lease.grant.slot ||
+      RuntimeInstalledProviders::hasLiveGrants() || !candidate ||
+      candidate->api_version != RISC_TOUCH_API_V1 ||
+      candidate->struct_size < sizeof(*candidate) || !candidate->subscribe ||
+      !candidate->unsubscribe || !candidate->poll || !candidate->next ||
+      !candidate->snapshot) return false;
+  const uint64_t token = candidate->subscribe(candidate->context);
+  if (!token) return false;
+  api = candidate;
+  subscription = token;
+  clearTransient();
+  serviceStarted = false;
+  (void)resync(true);
+  if (!startWorker()) {
+    (void)candidate->unsubscribe(candidate->context, token);
+    api = nullptr;
+    subscription = 0;
+    return false;
+  }
+  bootstrapAttached = true;
+  enabled = true;
+  LOG_INF("INPUT", "X4 touch bootstrap attached");
+  return true;
+}
+#endif
 
 bool nativeTouchAvailable() {
   portENTER_CRITICAL(&touchStateMux);

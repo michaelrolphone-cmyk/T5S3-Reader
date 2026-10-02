@@ -51,10 +51,10 @@ class HomeActivity final : public Activity {
   void onEnter() override;
   void onExit() override;
   void loop() override;
-#if defined(BOARD_XTEINK_X4_PRO)
-  X4NavigationResult onX4Navigation(uint32_t pressed, uint32_t released) override;
-#endif
   bool onTouchTap(int16_t x, int16_t y) override;
+#if defined(BOARD_XTEINK_X4_PRO)
+  bool supportsGlobalMenu() const override { return false; }
+#endif
   bool showsHomeTouchButton() const override { return false; }
   void render(RenderLock&&) override;
 };

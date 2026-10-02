@@ -215,6 +215,9 @@ void HomeActivity::onEnter() {
   coverRendered = false;
   coverBufferStored = false;
   pendingHomeAppArtifact.clear();
+#if defined(BOARD_XTEINK_X4_PRO)
+  x4Status.clear();
+#endif
   lastVisibleTextPrewarmKey.clear();
   const auto& metrics = UITheme::getInstance().getMetrics();
 #if defined(BOARD_XTEINK_X4_PRO)
@@ -316,39 +319,6 @@ void HomeActivity::loop() {
   }
 }
 
-#if defined(BOARD_XTEINK_X4_PRO)
-Activity::X4NavigationResult HomeActivity::onX4Navigation(uint32_t pressed, uint32_t released) {
-  const uint32_t directions = pressed & (RISC_NAV_LEFT | RISC_NAV_RIGHT);
-  if (directions == (RISC_NAV_LEFT | RISC_NAV_RIGHT)) return X4NavigationResult::None;
-  if (directions) {
-    const int count = getMenuItemCount();
-    if (count <= 0) return X4NavigationResult::None;
-    selectorIndex = directions == RISC_NAV_RIGHT
-        ? ButtonNavigator::nextIndex(selectorIndex, count)
-        : ButtonNavigator::previousIndex(selectorIndex, count);
-    x4Status.clear();
-    freeCoverBuffer();  // Stored Home pixels include the old header and focus.
-    LOG_INF("X4", "home focus=%d count=%d", selectorIndex, count);
-    return X4NavigationResult::Redraw;
-  }
-  if (released & RISC_NAV_CONFIRM) {
-    if (selectorIndex == 0) return X4NavigationResult::OpenTxt;
-    // Power is Confirm on this provider. Keep every destination closed until
-    // X4 has qualified its storage writes, app lifecycle and power services.
-    x4Status = "Selection unavailable on X4";
-    freeCoverBuffer();
-    LOG_INF("X4", "home selection unavailable=%d", selectorIndex);
-    return X4NavigationResult::Redraw;
-  }
-  if ((pressed & RISC_NAV_BACK) && !x4Status.empty()) {
-    x4Status.clear();
-    freeCoverBuffer();
-    return X4NavigationResult::Redraw;
-  }
-  return X4NavigationResult::None;
-}
-#endif
-
 bool HomeActivity::onTouchTap(int16_t, int16_t y) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
@@ -436,11 +406,7 @@ void HomeActivity::render(RenderLock&&) {
   menuIcons.reserve(menuItems.capacity());
   menuAppIcons.reserve(menuItems.capacity());
 
-#if defined(BOARD_XTEINK_X4_PRO)
-  menuItems.push_back("TXT Files");
-#else
   menuItems.push_back(tr(STR_MENU_RECENT_BOOKS));
-#endif
   menuIcons.push_back(Recent);
   menuAppIcons.push_back(nullptr);
   if (hasOpdsServers) {
@@ -488,6 +454,19 @@ void HomeActivity::render(RenderLock&&) {
 void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
 
 void HomeActivity::activateSelection(int index) {
+#if defined(BOARD_XTEINK_X4_PRO)
+  // Keep the shared Reader Home labels and menu layout. The X4 currently has
+  // only a read-only TXT subset behind Recent books; all other destinations
+  // stay visible but fail closed until their device services are qualified.
+  if (index == 0) {
+    activityManager.goToRecentBooks();
+  } else {
+    x4Status = "Selection unavailable on X4";
+    freeCoverBuffer();
+    requestUpdate();
+  }
+  return;
+#endif
   int idx = 0;
   int menuSelectedIndex = index - static_cast<int>(recentBooks.size());
   const int recentsIdx = idx++;
