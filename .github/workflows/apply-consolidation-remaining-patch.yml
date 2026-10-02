@@ -1,6 +1,9 @@
 name: Apply consolidation remaining patch
 on:
-  workflow_dispatch:
+  push:
+    branches: [consolidate/bugfixes-oct2]
+    paths:
+      - '.github/workflows/apply-consolidation-remaining-patch.yml'
 jobs:
   apply:
     runs-on: ubuntu-latest
@@ -15,7 +18,10 @@ jobs:
         run: |
           set -euo pipefail
           PATCH=".consolidation/remaining-three.patch"
-          test -f "$PATCH"
+          if [ ! -f "$PATCH" ]; then
+            echo "Patch already applied; nothing to do"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git apply "$PATCH"
@@ -27,4 +33,4 @@ jobs:
             exit 0
           fi
           git commit -m "Fold in Timecard, USB Debug, and ESP ROM FLASH_END disconnect fixes"
-          git push origin consolidate/bugfixes-oct2
+          git push origin HEAD:consolidate/bugfixes-oct2
