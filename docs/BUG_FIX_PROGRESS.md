@@ -1,3 +1,13 @@
+## Draft checkpoint — Firmware Flasher pagination, canonical #36 — 2026-10-02
+
+- Draft [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371), branch `fix/firmware-flasher-image-pagination`, exact head `7a65a66685de8bc214bdb985710eef7efb8dd1d8`, directly based on current master `3722a3f44a3294ba5e8adab830807a2523df3b03`. PR open, draft, mergeable; user handles merge.
+- Manifest version `1.1.1 -> 1.1.2`; no firmware/provider version change. Firmware-owned `program.esp_rom` API v1 exists in current master, and app requires firmware >=1.2.69; latest release is firmware v1.3.66. Optional `program.msp >=1` remains optional.
+- Focused production-app C regression passed at 64/65/130 entries, including back-navigation, directory-open failure/retry, cancellation/retry, and yielding. App ELF builder/structural validation and manifest/catalog validation passed; local `timeout` compatibility shim was required. `git diff --check`, manifest JSON, and shell syntax passed.
+- Broad local native host aggregate was stopped after ~90 seconds with no further output; no aggregate pass is claimed. Exact-head CAM candidate run [37058632369](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37058632369) and PlatformIO run [37058632210](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37058632210) are in progress. Keep draft until exact-head CI is terminal and reviewed.
+- No physical SD, device I/O, ESP/MSP programming, or hardware verification performed. Owner claim `firmware_flasher_image_pagination_20261002` remains active until terminal CI checkpoint.
+
+---
+
 ## Active repair claim — Firmware Flasher image pagination, canonical #36 — 2026-10-02
 
 - Owner: `michaelrolphone-cmyk`; claim `firmware_flasher_image_pagination_20261002`; phase: claimed / implementation in progress.
