@@ -1,3 +1,12 @@
+## Native storage read completeness — active claim 2026-10-02 18:57 UTC
+
+- Owner `native_storage_read_exact_20261002`; canonical #32. Baseline master `3722a3f44a3294ba5e8adab830807a2523df3b03`; captured ledger PR #332 head `f47cb71d85cab0e0d84b8b9caf5c323725b8250c`. Planned master-based branch `fix/native-storage-read-complete`. Phase: current production source/path revalidated; host baseline regression and implementation pending.
+- Confirmed path: Native Platform Bridge exports `readFile` through `t5_storage_get_api()`; installed Text Editor uses the read API's size-probe/full-read pattern. The bridge calls `HalStorage::readFile()`, whose current helper still stops after50,000 bytes. The bridge reports the shortened String length as the complete file size and returns success. Thus files larger than the helper cap are silently truncated before the caller's subsequent read, defeating size discovery.
+- Fresh PR check: master is still `3722a3f44a3294ba5e8adab830807a2523df3b03`; open repairs #366, #367, #368 do not touch the native read bridge; #368's firmware reservation is1.3.68. Searches found no storage-read repair branch or relevant open/closed-unmerged repair. Canonical scan provenance remains unchanged.
+- Planned focused regression invokes the production storage callback with a >50,000-byte deterministic file for size probe and exact full-buffer read; tests capacity failure, missing/invalid path, read fault and retry. Preserve stream and atomic-write contracts. Firmware source candidate1.3.69, after #366=1.3.67 and #368=1.3.68; no distributable app changed.
+
+---
+
 ## SD Firmware Update handoff validation — review checkpoint 2026-10-02 18:25 UTC
 
 - Canonical #25 is confirmed and fixed in ready-for-review [PR #368](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/368), branch `fix/sd-firmware-update-handoff-validation`, exact head `5721e255d7594faea453afb417afbbe5a352e4a6`, based directly on current master `3722a3f44a3294ba5e8adab830807a2523df3b03`. Fresh PR state: open, ready, mergeable. User handles merge. Durable claim `sd_firmware_handoff_20261002` is released after this terminal checkpoint.
