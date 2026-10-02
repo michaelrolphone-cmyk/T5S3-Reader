@@ -9,7 +9,6 @@
 #include "x4pro_pins.h"
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #define FRAME_BYTES ((X4PRO_PANEL_WIDTH / 8u) * X4PRO_PANEL_HEIGHT)
 static const risc_platform_clock_api_v1 *clock_api;
@@ -57,7 +56,6 @@ static uint64_t now_ms(void) {
     if (!clock_api || !clock_api->monotonic_ms) return UINT64_MAX;
     return clock_api->monotonic_ms(clock_api->context);
 }
-static char phase[160];
 static uint64_t transfer_start_ms, transfer_end_ms, refresh_ms, busy_assert_ms, busy_done_ms, wait_start_ms;
 static uint32_t bytes_sent, wait_budget_ms;
 static uint8_t busy_before;
@@ -275,20 +273,47 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
 }
 static void stop(void) { started = false; held = false; }
 static bool quiesce(void) { stop(); return true; }
+static bool append(char *destination, size_t capacity, size_t *used, const char *text) {
+    while (*text && *used + 1u < capacity) destination[(*used)++] = *text++;
+    destination[*used] = 0;
+    return *text == 0;
+}
+static bool append_u(char *destination, size_t capacity, size_t *used, uint64_t value) {
+    char digits[20];
+    size_t n = 0;
+    do { digits[n++] = (char)('0' + (value % 10u)); value /= 10u; } while (value && n < sizeof(digits));
+    while (n && *used + 1u < capacity) destination[(*used)++] = digits[--n];
+    destination[*used] = 0;
+    return n == 0;
+}
 static bool last_error(char *destination, size_t capacity) {
     if (!destination || !capacity) return false;
     uint64_t now = now_ms();
-    int wrote = snprintf(phase, sizeof(phase),
-        "v=0.1.5 ctl=SSD1677 token=%llu state=%u reason=%s budget=%u elapsed=%llu xfer=%u/%llums refresh=%llu busy0=%u assert=%llu done=%llu",
-        (unsigned long long)pending_token, present_state, reason, wait_budget_ms,
-        (unsigned long long)(now == UINT64_MAX || now < wait_start_ms ? 0 : now - wait_start_ms),
-        bytes_sent, (unsigned long long)(transfer_end_ms && transfer_end_ms >= transfer_start_ms ? transfer_end_ms - transfer_start_ms : 0),
-        (unsigned long long)refresh_ms, busy_before, (unsigned long long)busy_assert_ms, (unsigned long long)busy_done_ms);
-    if (wrote < 0) return false;
-    size_t i = 0;
-    while (phase[i] && i + 1u < capacity) { destination[i] = phase[i]; ++i; }
-    destination[i] = 0;
-    return i > 0;
+    size_t used = 0;
+    destination[0] = 0;
+    append(destination, capacity, &used, "v=0.1.5 ctl=SSD1677 token=");
+    append_u(destination, capacity, &used, pending_token);
+    append(destination, capacity, &used, " state=");
+    append_u(destination, capacity, &used, present_state);
+    append(destination, capacity, &used, " reason=");
+    append(destination, capacity, &used, reason);
+    append(destination, capacity, &used, " budget=");
+    append_u(destination, capacity, &used, wait_budget_ms);
+    append(destination, capacity, &used, " elapsed=");
+    append_u(destination, capacity, &used, now == UINT64_MAX || now < wait_start_ms ? 0 : now - wait_start_ms);
+    append(destination, capacity, &used, " xfer=");
+    append_u(destination, capacity, &used, bytes_sent);
+    append(destination, capacity, &used, "/");
+    append_u(destination, capacity, &used, transfer_end_ms && transfer_end_ms >= transfer_start_ms ? transfer_end_ms - transfer_start_ms : 0);
+    append(destination, capacity, &used, "ms refresh=");
+    append_u(destination, capacity, &used, refresh_ms);
+    append(destination, capacity, &used, " busy0=");
+    append_u(destination, capacity, &used, busy_before);
+    append(destination, capacity, &used, " assert=");
+    append_u(destination, capacity, &used, busy_assert_ms);
+    append(destination, capacity, &used, " done=");
+    append_u(destination, capacity, &used, busy_done_ms);
+    return used > 0;
 }
 static const risc_driver_diagnostics_v2 driver = {
     { RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_diagnostics_v2), "x4pro-panel",
