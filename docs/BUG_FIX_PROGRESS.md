@@ -1,3 +1,12 @@
+## Current continuation blocker — preserve both repair histories — 2026-10-02 22:08 UTC
+
+- Following owner direction, the denied force reset remains stopped. No alternative branch, PR, indirect reset, or force update was created.
+- A history-preserving merge needs a new two-parent commit whose tree is the faithful union of current master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231` and the repair head. The connected GitHub tool set exposes `github_create_commit` (requires `tree_sha`) and `github_create_tree` (requires `base_tree_sha`), but exposes no Git tree/ref read action that returns the commit's tree SHA and no native update-branch/merge-branch operation. `github_fetch_commit` returns normalized commit metadata and diffs without `tree.sha`.
+- Capability check: calling `github_create_tree` with the master commit SHA in the `base_tree_sha` field returned `GitHub API error 422: {"message":"Invalid tree info"}`. It created no tree/ref/commit. This is not a tree SHA, so constructing a union tree safely is blocked. Direct `git fetch` also remains unavailable in this execution environment due `Could not resolve host: github.com`.
+- Current safe state: PR #366 remains draft at `4fc4d610a055a2c527c9076d5e6942753e6fd1e8`; PR #368 remains draft at `5721e255d7594faea453afb417afbbe5a352e4a6`. Both original fix histories remain attached to their existing branch refs. Claims `opds_required_url_reconcile_20261002` and `sd_firmware_handoff_reconcile_20261002` remain active/resumable. No new exact-head CI was run.
+- Next supported action needed: provide a connected GitHub API operation that returns commit tree SHAs (for both master and repair heads) or performs a non-destructive branch update/merge, or restore DNS for ordinary repository fetch. Once available, create a genuine two-parent merge commit, verify both parents/ancestry, apply version increments `1.3.70` and `1.3.71`, rerun focused regressions and exact-head CI, then update PR/ledger checkpoints.
+
+---
 ## Reconciliation blocker — OPDS #21 and SD firmware handoff #25 — 2026-10-02 22:03 UTC
 
 - Both PRs #366 and #368 were moved back to draft while their old heads remain divergent/unmergeable. Existing fix code and focused tests were preserved; branches were not reset or otherwise changed.
