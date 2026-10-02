@@ -1,5 +1,7 @@
 #include "X4DiagnosticBoot.h"
 
+#if defined(BOARD_XTEINK_X4_PRO)
+
 #include "RiscDisplayOutputV1.h"
 #include "RiscFrontlightV1.h"
 #include "RiscInputNavigationV1.h"
@@ -211,3 +213,5 @@ void x4DiagnosticLoop() {
     }
     delay(20);
 }
+
+#endif  // BOARD_XTEINK_X4_PRO
