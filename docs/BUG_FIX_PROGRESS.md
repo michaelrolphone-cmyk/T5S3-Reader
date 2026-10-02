@@ -1,3 +1,14 @@
+## Terminal review checkpoint — Firmware Flasher pagination, canonical #36 — 2026-10-02
+
+- [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371) is **open, ready for review, and mergeable**, exact head `9c77ad8d396a7660ae97396c34683e6ea87f4b06`, directly based on current master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231). User handles merge. Claim `firmware_flasher_image_pagination_20261002` is released after terminal checks.
+- Root cause: `MAX_IMAGES 64` was both UI row capacity and inventory loop condition. The app now keeps 64-row bounded pages, traverses the directory by page offset, yields via app polling every 64 directory entries, and caps a scan at 65,536 entries or 30 seconds with a visible truncation state. Empty/error scan UI offers Retry; selected page remains after flash result.
+- Report source/provenance preserved. App version `1.1.1 -> 1.1.2`; no firmware/provider/driver or other app version change. The current firmware-owned `program.esp_rom` API v1 is present and required by the app, with minimum firmware1.2.69; latest published firmware is1.3.66. Optional `program.msp >=1` remains optional.
+- Focused production-app regression passed locally for 64/65/130 files, forward/back page edges, last image, directory-open failure/retry, and cancelled scan/retry. App ELF build and structural validation plus manifest/catalog build passed; temporary Mac `timeout` shim used. Local broad native aggregate was stopped after ~90 seconds with no further output and is not claimed.
+- Exact-head [PlatformIO run 37059888056](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37059888056) passed host/native aggregate including this test, source/version checks, headless core, both supported target builds, and released app/manifest validation. Exact-head [CAM candidate run 37059888150](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37059888150) passed. GitHub combined status still lists `CAM hardware / trusted owner SHA` pending; no device test or flash was performed.
+- PR is ready for code review; no merge, release, catalog publication, physical SD/device I/O, or ESP/MSP flash was performed.
+
+---
+
 ## Current master sync — Firmware Flasher pagination, canonical #36 — 2026-10-02
 
 - Master advanced from the original base `3722a3f44a3294ba5e8adab830807a2523df3b03` to `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231` during CI. The intervening commits did not modify flasher source or manifest; they added five regression-runner lines, which were preserved.
