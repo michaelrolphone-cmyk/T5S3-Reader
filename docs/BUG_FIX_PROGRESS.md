@@ -1,3 +1,10 @@
+## Saved-network fallback sync checkpoint — 2026-10-02 08:08 UTC
+
+- Existing PR354 is now a draft, open, mergeable and directly synchronized to current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. Branch `fix/saved-network-fallback`, exact remote head `f874195992f2ef9830bc2eeebffb8c798c8260c9`; tree has 11 intended files, compare 2 ahead/0 behind. The master first parent and old repair head `0e464a2a9558303d845f33d434e4bf6db262cd7d` second parent preserve both histories.
+- Firmware current source/tag1.3.61 (release `firmware-v1.3.61`); PR355 candidate1.3.62 and blocked PR347 candidate1.3.63 remain untouched; candidate for this fix is1.3.64. No app/driver version changes. Current master and old base ca66 have identical helper/header/OTA-bridge source blobs.
+- Current-master original helper regression failed as expected (exit134). Repaired preferred-failure/alternate-success, duplicate suppression, shared deadline, and later retry test passes; OTA contract and runtime network-provider test pass locally. Existing WIP checkout was not modified.
+- Exact-head focused workflow [36982154677](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36982154677) passed. Exact-head PlatformIO [36982154633](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36982154633) remains in progress; keep claim active/draft until terminal and inspect failures.
+
 ## Saved-network fallback repair resumed — 2026-10-02 08:01 UTC
 
 - Owner `saved_network_fallback_refresh_20261002_0801`; canonical report #70; active phase: fresh-master integration and exact-head revalidation. Claim recorded against ledger head `fa170c7051ab375c0016924d821032ef82ea7d73` before remote code writes.
