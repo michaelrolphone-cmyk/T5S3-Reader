@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Pinned multi-target candidate scanner. X4 has no live execution path.
+"""Pinned multi-target controller. X4 live execution remains disabled.
 
 This entry point validates cloud artifacts only. The existing CAM controller
 and its live timer remain unchanged. Install separately only after review.
 """
 import argparse
-from contextlib import contextmanager
 import fcntl
-import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -23,26 +22,7 @@ from x4 import contract as x4
 TARGETS = ("cam", "x4")
 
 
-@contextmanager
-def locks(port, mac, directory=None):
-    """Use existing lab directory/hash keys, including both macOS aliases.
-
-    Acquires all keys before any caller I/O, nonblocking, releasing partial
-    acquisition on contention. Never unlink a lock file while peers may use it.
-    """
-    directory = cam_device.LOCK_DIR if directory is None else directory
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    aliases = {port, port.replace("/dev/tty.", "/dev/cu."), port.replace("/dev/cu.", "/dev/tty.")}
-    handles = []
-    try:
-        for key in sorted({"mac:" + mac.lower()} | {"port:" + p for p in aliases}):
-            handle = (directory / (hashlib.sha256(key.encode()).hexdigest() + ".lock")).open("a+")
-            handles.append(handle)
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        yield
-    finally:
-        for handle in reversed(handles):
-            handle.close()
+from device_locks import locks
 
 
 def candidate(gh, number, sha, target):
@@ -176,6 +156,130 @@ def scan(gh, numbers, root, targets=TARGETS, publish=False):
                     return results
                 except (OSError, RuntimeError, ValueError, KeyError):
                     results.append({"target": target, "artifact": "retry_or_inspect", "hardware": "not_run"})
+    return results
+
+
+def hardware_success(result):
+    device = result.get("device", {})
+    return (result.get("mode") == "hardware" and result.get("target") == "x4"
+            and cam.SHA.fullmatch(result.get("source_sha", "")) is not None
+            and device.get("source_sha") == result["source_sha"]
+            and device.get("firmware_sha256") == result.get("firmware_sha256")
+            and isinstance(result.get("firmware_sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", result["firmware_sha256"]) is not None
+            and device.get("target") == x4.TARGET and device.get("mac") == x4.MAC
+            and device.get("mode") == "hardware" and device.get("result") == "pass"
+            and all(device.get(key) is True for key in ("identity_verified", "candidate_readback_equal",
+                                                       "metadata_preserved", "closed"))
+            and device.get("manual_recovery_required") is False
+            and device.get("checks") == {key: "pass" for key in x4.TESTS})
+
+
+def hardware_report(gh, result, path):
+    if result.get("status_id"):
+        return
+    x4.require(result.get("status_state") in ("success", "failure", "error"), "Incomplete hardware journal")
+    x4.require(result["status_state"] != "success" or hardware_success(result),
+               "X4 success lacks exact target/device evidence")
+    status = gh.call(f"/statuses/{result['source_sha']}", "POST", {
+        "context": "X4 hardware / trusted owner SHA", "state": result["status_state"],
+        "description": "X4 " + result["status_state"] + "; exact candidate; serial diagnostics only"})
+    result["status_id"] = status["id"]
+    save(path, result)
+
+
+def _hardware_once(gh, number, root, profile, runner):
+    """Pinned transaction orchestration, tested with fake runner/API only.
+
+    Public entry and the real adapter are independently gated. No CLI switch
+    reaches this implementation while execution approval remains unresolved.
+    """
+    sha = cam.eligible_source(gh, number)
+    folder = root / "hardware" / "x4" / sha
+    path = folder / "result.json"
+    if path.exists():
+        x4.require(path.stat().st_size <= 8192, "X4 journal oversized")
+        prior = json.loads(path.read_text())
+        x4.require(prior.get("source_sha") == sha and prior.get("target") == "x4"
+                   and prior.get("mode") == "hardware", "X4 journal identity mismatch")
+        hardware_report(gh, prior, path)
+        return prior
+    if folder.exists():
+        raise RuntimeError("Incomplete X4 hardware journal; manual recovery required; no retry")
+    try:
+        found = candidate(gh, number, sha, "x4")
+    except (ValueError, KeyError):
+        found = False
+    if found is None:
+        return None
+    folder.mkdir(mode=0o700, parents=True)
+    result = {"mode": "hardware", "target": "x4", "source_sha": sha, "pr": number,
+              "status_state": "error"}
+    if not found:
+        save(path, result)
+        hardware_report(gh, result, path)
+        return result
+    run, artifact = found
+    result.update(run_id=run["id"], run_attempt=run["run_attempt"], artifact_id=artifact["id"])
+    try:
+        digest = x4.unpack(gh, run, artifact, sha, folder / "candidate")
+        result["firmware_sha256"] = digest
+        x4.require(cam.eligible_source(gh, number) == sha, "X4 PR head moved")
+        gh.call(f"/statuses/{sha}", "POST", {
+            "context": "X4 hardware / trusted owner SHA", "state": "pending",
+            "description": "X4 exact candidate accepted; bounded device tests pending"})
+        result["device"] = runner(folder / "candidate" / x4.IMAGE, sha, digest, profile)
+        if hardware_success(result):
+            result["status_state"] = "success"
+        elif all(result["device"].get(key) is True for key in
+                 ("identity_verified", "candidate_readback_equal", "metadata_preserved", "closed")):
+            result["status_state"] = "failure"
+    except Exception:
+        result["status_state"] = "error"
+        result["error"] = "artifact_or_device_failed"  # no raw data or exception text
+    # Persist before status publication. A failed status post retries just the
+    # post. Crashes before this checkpoint leave an incomplete folder and stop.
+    save(path, result)
+    hardware_report(gh, result, path)
+    return result
+
+
+def hardware_once(gh, number, root, profile):
+    x4.live()  # before discovery, journal mutation, status posts or device access
+    from x4 import adapter
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (root / "hardware-scan.lock").open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return _hardware_once(gh, number, root, profile, adapter.run)
+
+
+def hardware_scan(gh, numbers, root, python, cam_binding, x4_profile, targets=TARGETS):
+    """Reviewable scheduler integration; never installed/activated by this PR.
+
+    CAM retains its original runner/journal. X4's gate is caught per target so
+    an unavailable X4 never suppresses CAM or creates an X4 pass. Tests mock CAM.
+    """
+    x4.require(0 < len(numbers) <= cam.MAX_OWNER_PRS and targets
+               and len(set(targets)) == len(targets) and set(targets) <= set(TARGETS), "Invalid hardware scan")
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    results = []
+    with (root / "multi-hardware-scan.lock").open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        deadline = time.monotonic() + 1200
+        for number in numbers:
+            for target in targets:
+                if time.monotonic() >= deadline:
+                    return results
+                try:
+                    if target == "cam":
+                        cam.once(gh, number, root, python, cam_binding)
+                        results.append({"target": "cam", "result": "see_original_cam_journal"})
+                    else:
+                        hardware_once(gh, number, root, x4_profile)
+                except cam.RateLimited:
+                    return results
+                except (OSError, ValueError, RuntimeError, KeyError):
+                    results.append({"target": target, "result": "blocked_or_failed"})
     return results
 
 

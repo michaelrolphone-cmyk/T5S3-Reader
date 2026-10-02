@@ -115,6 +115,7 @@ def observe(stream, sha, digest, *, clock=time.monotonic, seconds=90):
                 if msg == "diagnostic boot RISCRTE_BOARD_ID:xteink-x4-pro flash=16MB app0=0x10000":
                     key = "boot"
                 elif re.fullmatch(r"present complete elapsed=\d{1,5}(?: [ -~]{0,200})?", msg):
+                    require(int(re.search(r"elapsed=(\d+)", msg)[1]) <= 20000, "X4 panel deadline exceeded")
                     key = "panel"
                 elif re.fullmatch(r"storage.volume mounted=1 reason=[A-Za-z0-9_-]{1,64}", msg):
                     key = "storage"
