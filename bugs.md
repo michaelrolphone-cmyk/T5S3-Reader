@@ -53,7 +53,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 
 ### 5. Time Card can overwrite valid history after a store-load failure
 
-- **Status:** Confirmed and in draft [PR #356](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/356), branch `fix/timecard-load-failure`, exact head `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, based on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. Timecard1.0.3 →1.0.4. Baseline regression fails as expected; focused repaired error/retry tests and Xtensa ELF+sidecar pass. Exact-head PlatformIO CI queued; sanitizer stalled; no device verification. Claim `timecard_load_guard_20261002_0555` remains active until terminal CI.
+- **Status:** Awaiting merge in ready-for-review [PR #356](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/356), branch `fix/timecard-load-failure`, exact head `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, based on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; mergeable. Timecard1.0.3 →1.0.4; no firmware bump. Baseline production regression fails as expected; focused retry/error/UI/clock tests and Xtensa app+sidecar pass. Exact-head PlatformIO run36972137696 passed host aggregate, version check, both board builds/app validation, and headless core. ASan/UBSan stalled; no device verification. Claim released after terminal CI; original report/provenance retained.
 - **Sources:** pre-consolidation [master](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/6d876ae443d873d06068ae866fa4eda403b95f90/bugs.md)
 
 - **Affected code:** `Apps/timecard.c`, `load_store()`, `consume_keyboard()`, `app_main()`, and write paths through `set_punch()` / `save_store()`.
