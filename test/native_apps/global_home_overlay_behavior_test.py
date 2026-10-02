@@ -89,6 +89,11 @@ struct GlobalMenuActivity {
  void getPanelLayout(int& x,int& y,int& w,int& h){x=y=0;w=h=50;}
  void getButtonRect(int,int& x,int& y,int& w,int& h){getPanelLayout(x,y,w,h);}
  void applyBacklightLevel(int v,bool){SETTINGS.backlightLevel=v;}
+ bool resolveTouchButtonHint(int16_t x,int16_t y,MappedInputManager::Button& b) {
+   if(y<80 || y>=100) return false;
+   b=x<50?MappedInputManager::Button::Left:MappedInputManager::Button::Right;
+   return true;
+ }
  static ModalResult runFirmwareModal(GfxRenderer&,MappedInputManager&);
 };
 struct t5_app_input_t {unsigned buttons=0;bool tapped=false;int touch_x=0,touch_y=0;bool exit_requested=false;};
@@ -135,6 +140,11 @@ int main(){
  pollInput(&out,0,false);assert(out.exit_requested&&shutdownRequested&&homeRequested);
  reset(s);SETTINGS.confirmShutdown=false;s.input.homes={100,300};s.input.script={{},{int(B::Confirm)}};
  pollInput(&out,0,false);assert(out.exit_requested&&shutdownRequested);
+ // Embedded shutdown modal ignores right-half body taps, but accepts the mapped Confirm hint.
+ reset(s);GlobalMenuActivity menu(s.renderer,s.input,false);s.input.script={{-1,false,true,75,65},{int(B::Left)}};
+ assert(!modalShutdownConfirmed(menu,s.renderer,s.input)&&!shutdownRequested);
+ reset(s);GlobalMenuActivity confirmMenu(s.renderer,s.input,false);s.input.script={{-1,false,true,75,90}};
+ assert(modalShutdownConfirmed(confirmMenu,s.renderer,s.input));
  // Outside-panel tap and Back dismissal restore the complete original frame.
  reset(s);s.input.script={{-1,false,true,90,90}};assert(GlobalMenuActivity::runFirmwareModal(s.renderer,s.input)==GlobalMenuActivity::ModalResult::Dismissed);appFrame(s.renderer.frames.back());
  reset(s);s.input.script={{int(B::Back)}};assert(GlobalMenuActivity::runFirmwareModal(s.renderer,s.input)==GlobalMenuActivity::ModalResult::Dismissed);appFrame(s.renderer.frames.back());
