@@ -12,25 +12,33 @@ void app_main(void);
 
 static t5_opds_server_t stored[8];
 static uint32_t stored_count = 1;
-static int poll_step;
+static uint32_t input_script[8];
+static size_t script_count;
+static size_t script_index;
 static int renders;
 static int keyboard_requests;
 static int updates;
+static int adds;
 static bool keyboard_pending;
+static bool keyboard_cancelled;
+static bool expect_url_keyboard;
+static const char *keyboard_text = "Library";
 static uint64_t pending_cookie;
 
 static bool app_poll(t5_app_input_t *input, uint32_t wait_ms) {
     assert(input && wait_ms == 50);
     memset(input, 0, sizeof(*input));
-    ++poll_step;
-    if (!keyboard_pending && keyboard_requests == 0) {
-        // Open first server, then edit its Name field.
-        input->buttons = T5_APP_BUTTON_CONFIRM;
-    } else {
-        // After applying the keyboard result: Back to list, then Back out.
-        input->buttons = T5_APP_BUTTON_BACK;
-    }
+    if (script_index < script_count) input->buttons = input_script[script_index++];
+    else input->exit_requested = true;
     return true;
+}
+
+static void set_script(const uint32_t *buttons, size_t count) {
+    assert(count <= sizeof(input_script) / sizeof(input_script[0]));
+    memset(input_script, 0, sizeof(input_script));
+    if (count) memcpy(input_script, buttons, count * sizeof(buttons[0]));
+    script_count = count;
+    script_index = 0;
 }
 
 static const t5_app_api_v1 app_api = {
@@ -53,6 +61,7 @@ static bool opds_add(const t5_opds_server_t *server, uint32_t *new_index) {
     stored[stored_count] = *server;
     if (new_index) *new_index = stored_count;
     ++stored_count;
+    ++adds;
     return true;
 }
 static bool opds_update(uint32_t index, const t5_opds_server_t *server) {
@@ -82,10 +91,17 @@ const t5_opds_api_v1 *t5_opds_get_api(uint32_t version) {
 
 static bool keyboard_request(const char *title, const char *initial, size_t max_length,
                              uint8_t input_type, uint64_t cookie) {
-    assert(strcmp(title, "Server Name") == 0);
-    assert(strcmp(initial, "Calibre") == 0);
-    assert(max_length == 63);
-    assert(input_type == T5_SYSTEM_KEYBOARD_TEXT);
+    if (expect_url_keyboard) {
+        assert(strcmp(title, "OPDS Server URL") == 0);
+        assert(strcmp(initial, "https://") == 0);
+        assert(max_length == 127);
+        assert(input_type == T5_SYSTEM_KEYBOARD_URL);
+    } else {
+        assert(strcmp(title, "Server Name") == 0);
+        assert(strcmp(initial, "Calibre") == 0);
+        assert(max_length == 63);
+        assert(input_type == T5_SYSTEM_KEYBOARD_TEXT);
+    }
     pending_cookie = cookie;
     ++keyboard_requests;
     return true;
@@ -93,8 +109,8 @@ static bool keyboard_request(const char *title, const char *initial, size_t max_
 static bool keyboard_take_result(char *text, size_t capacity, bool *cancelled, uint64_t *cookie) {
     if (!keyboard_pending) return false;
     assert(text && capacity >= 8);
-    strcpy(text, "Library");
-    if (cancelled) *cancelled = false;
+    strcpy(text, keyboard_text);
+    if (cancelled) *cancelled = keyboard_cancelled;
     if (cookie) *cookie = pending_cookie;
     keyboard_pending = false;
     return true;
@@ -113,14 +129,19 @@ static void render_list(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *ro
                         uint32_t row_count, int32_t selected_index) {
     assert(chrome && rows && selected_index >= 0);
     if (strcmp(chrome->title, "OPDS Servers") == 0) {
-        assert(row_count == 2);
+        assert(row_count == stored_count + 1);
         assert(strcmp(rows[0].title, stored[0].name) == 0);
         assert(strcmp(rows[0].subtitle, stored[0].url) == 0);
-        assert(strcmp(rows[1].title, "Add Server") == 0);
+        assert(strcmp(rows[stored_count].title, "Add Server") == 0);
     } else {
-        assert(strcmp(chrome->title, "OPDS Server") == 0);
-        assert(row_count == 5);
-        assert(strcmp(rows[0].title, "Server Name") == 0);
+        if (strcmp(chrome->title, "Add Server") == 0) {
+            assert(row_count == 4);
+            assert(strcmp(rows[0].title, "Server Name") == 0);
+        } else {
+            assert(strcmp(chrome->title, "OPDS Server") == 0);
+            assert(row_count == 5);
+            assert(strcmp(rows[0].title, "Server Name") == 0);
+        }
     }
     ++renders;
 }
@@ -148,16 +169,63 @@ int main(void) {
     strcpy(stored[0].username, "alice");
     strcpy(stored[0].password, "secret");
 
-    poll_step = 0;
+    const uint32_t open_and_request_name[] = {T5_APP_BUTTON_CONFIRM, T5_APP_BUTTON_CONFIRM};
+    set_script(open_and_request_name, sizeof(open_and_request_name) / sizeof(open_and_request_name[0]));
     app_main();
     assert(keyboard_requests == 1);
-    assert(updates == 0);
+    assert(updates == 0 && adds == 0);
 
+    // Canceling an existing-server edit must not persist the canceled value.
     keyboard_pending = true;
-    poll_step = 0;
+    keyboard_cancelled = true;
+    const uint32_t back_out[] = {T5_APP_BUTTON_BACK};
+    set_script(back_out, sizeof(back_out) / sizeof(back_out[0]));
+    app_main();
+    assert(updates == 0);
+    assert(strcmp(stored[0].name, "Calibre") == 0);
+
+    // Retry with a successful keyboard result; the update is then persisted.
+    keyboard_pending = false;
+    keyboard_cancelled = false;
+    const uint32_t reopen_and_request_name[] = {T5_APP_BUTTON_CONFIRM, T5_APP_BUTTON_CONFIRM};
+    set_script(reopen_and_request_name, sizeof(reopen_and_request_name) / sizeof(reopen_and_request_name[0]));
+    app_main();
+    assert(keyboard_requests == 2);
+    keyboard_pending = true;
+    set_script(back_out, sizeof(back_out) / sizeof(back_out[0]));
     app_main();
     assert(updates == 1);
     assert(strcmp(stored[0].name, "Library") == 0);
-    assert(renders >= 4);
+
+    // Open Add Server, request its URL, cancel, then retry with a valid URL.
+    expect_url_keyboard = true;
+    const uint32_t open_add_and_request_url[] = {
+        T5_APP_BUTTON_DOWN, T5_APP_BUTTON_CONFIRM, T5_APP_BUTTON_DOWN, T5_APP_BUTTON_CONFIRM};
+    set_script(open_add_and_request_url,
+               sizeof(open_add_and_request_url) / sizeof(open_add_and_request_url[0]));
+    keyboard_pending = false;
+    app_main();
+    assert(keyboard_requests == 3);
+    keyboard_pending = true;
+    keyboard_cancelled = true;
+    set_script(back_out, sizeof(back_out) / sizeof(back_out[0]));
+    app_main();
+    assert(adds == 0 && stored_count == 1);
+
+    keyboard_pending = false;
+    const uint32_t reopen_add_and_request_url[] = {
+        T5_APP_BUTTON_DOWN, T5_APP_BUTTON_CONFIRM, T5_APP_BUTTON_DOWN, T5_APP_BUTTON_CONFIRM};
+    set_script(reopen_add_and_request_url,
+               sizeof(reopen_add_and_request_url) / sizeof(reopen_add_and_request_url[0]));
+    app_main();
+    assert(keyboard_requests == 4);
+    keyboard_pending = true;
+    keyboard_cancelled = false;
+    keyboard_text = "https://books.example/opds";
+    set_script(back_out, sizeof(back_out) / sizeof(back_out[0]));
+    app_main();
+    assert(adds == 1 && stored_count == 2);
+    assert(strcmp(stored[1].url, "https://books.example/opds") == 0);
+    assert(renders >= 10);
     return 0;
 }
