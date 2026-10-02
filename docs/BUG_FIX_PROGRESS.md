@@ -1,3 +1,13 @@
+## Font catalog validation — completed 2026-10-02 12:13:29 UTC
+
+- Owner `font_catalog_validation_20261002_1125` completed and released after terminal exact-head CI. Canonical reports #76/#174/#258/#259 remain awaiting merge; original reports and provenance retained.
+- Ready-for-review [PR #362](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/362), branch `fix/font-catalog-validation-atomicity`, exact remote head `25ca7b7d3da380ac2dac5e028e8be1bfce09132d`, based directly on master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. One coherent firmware batch, no app changes.
+- Verified Manage Fonts workflow uses the current firmware font API: remote manifest retrieval, row refresh and SD font installation. Current-source defects confirmed in `NativeFontBridge.cpp::refreshCatalog()`: failed parsing could expose a valid prefix; absent/wrong-type family arrays could report success; empty file lists could produce phantom Installed status; duplicate case-colliding family names could share SD path identity.
+- Repair stages the catalog, validates all arrays and family identities, rejects empty packages, then swaps live rows only on success. A failed candidate leaves existing rows intact. Explicit empty catalog arrays remain accepted.
+- Baseline source integration regression failed as expected on current master at missing top-level array guard. Focused helper failure/preservation/retry/valid/empty/duplicate tests, source-integration checks, shell syntax, YAML parsing, and diff check passed locally. Exact-head focused [run 37004726706](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37004726706) passed; exact-head PlatformIO [run 37004726659](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37004726659) passed host aggregate, source-version check, headless core, and both supported T5S3 firmware target builds.
+- Firmware source version 1.3.61 → 1.3.66; published lineage 1.3.61 and open reservations 1.3.62–1.3.65 rechecked. No app manifest/source changes.
+- No device or physical SD verification. User handles merge; no merge, release, catalog publication, deployment, flash, cross-repository work, U1–U4, X4, Hollow, or architecture changes. Next selection requires a fresh master/ledger/owner/PR check.
+
 ## Font catalog validation — PR checkpoint 2026-10-02 12:08:23 UTC
 
 - Active owner `font_catalog_validation_20261002_1125`; canonical #76/#174/#258/#259. Durable claim is published. No other current owner was found. Exact master base remains `82caa0997e913f01c1f5f9ab942d056bc9f04a82`.
