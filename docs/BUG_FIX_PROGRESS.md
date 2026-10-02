@@ -20,7 +20,14 @@
 - Version candidate1.3.62, above master1.3.61 and active branch candidates checked above. This is a firmware-only increment. Keep redesign backlog-only.
 - **Local PASS:** focused production layout test covers the overflow width, valid 24/32bpp and top-down boundaries, indexed palette boundary, extreme height, truncated rows, and invalid DIB bounds. Source-contract test verifies probe and decode use the same checked parser; it fails against original NativeImageBridge and passes after the fix. Shell/Python syntax and `git diff --check` pass.
 - **Local limitation:** a Mac ASan/UBSan invocation did not produce a result after >30 seconds and was interrupted; the regular focused test passes. No local PlatformIO target build attempted. Focused cloud workflow plus PlatformIO host/both-board/headless CI are required on exact remote head; keep draft until all pass.
-- Next: publish only the source/test/workflow/platformio files on current master, verify remote exact commit, create/update one draft PR, and await exact-head CI. No master write/merge/release/catalog/deployment/flash/device/cross-repository/architecture/hardware-owner action.--
+- Next: publish only the source/test/workflow/platformio files on current master, verify remote exact commit, create/update one draft PR, and await exact-head CI. No master write/merge/release/catalog/deployment/flash/device/cross-repository/architecture/hardware-owner action.
+
+## BMP row-layout overflow repair — PR355 checkpoint
+
+- [Draft PR #355](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/355) is open on `fix/image-bmp-layout-overflow`, exact remote head `ab36b60c79376efc44a3bb09811e2dc697a6ebc4`, directly based on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. The branch compare is 7 commits ahead, 0 behind, with exactly seven intended files. No merge or master write.
+- Canonical bug #18 is revalidated by current reachable Image Viewer→BMP probe/decode code and the reproduced overflow arithmetic documented above. Local focused test passes; ASan/UBSan stalled and was interrupted; no local target build or device check.
+- Candidate firmware version 1.3.62 increments current1.3.61 only. PR347 remains hardware-owner controlled; this change does not overlap its camera integration.
+- Exact-head cloud runs are queued: [PlatformIO build run 36968184165](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36968184165) and [BMP layout regression run 36968184192](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36968184192). Keep PR draft and retain implementation claim until both required checks reach terminal success; then update this record and release claim. User handles merge.
 
 ## Historical merge-base refresh — PR351 and PR353 (superseded by current master82caa)
 
