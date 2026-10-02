@@ -2,8 +2,12 @@
 #include <HalStorage.h>
 #include <T5StorageApi.h>
 #include <T5SystemApi.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
+#include <algorithm>
 #include <cstring>
+#include <cstdint>
 #include <ctime>
 #include <fcntl.h>
 #include <string>
@@ -47,14 +51,53 @@ bool readFile(const char* path, void* buffer, size_t capacity, size_t* outSize) 
   if (outSize) *outSize = 0;
   if (!outSize || !Storage.ready()) return false;
   std::string mapped;
-  if (!mapStoragePath(path, mapped) || !Storage.exists(mapped.c_str())) return false;
-  const String contents = Storage.readFile(mapped.c_str());
-  const size_t size = contents.length();
+  if (!mapStoragePath(path, mapped)) return false;
+
+  HalFile file = Storage.open(mapped.c_str(), O_RDONLY);
+  if (!file || file.isDirectory()) {
+    if (file.isOpen()) file.close();
+    return false;
+  }
+
+  const uint64_t size64 = file.fileSize64();
+  if (size64 > SIZE_MAX) {
+    file.close();
+    return false;
+  }
+  const size_t size = static_cast<size_t>(size64);
   *outSize = size;
-  if (!buffer || capacity == 0) return true;
-  if (size > capacity) return false;
-  if (size) std::memcpy(buffer, contents.c_str(), size);
-  return true;
+  if (!buffer || capacity == 0) return file.close();
+  if (size > capacity) {
+    file.close();
+    return false;
+  }
+
+  constexpr size_t kReadChunkSize = 512;
+  constexpr size_t kReadYieldBytes = 4096;
+  constexpr TickType_t kReadYieldTicks = pdMS_TO_TICKS(50);
+  size_t totalRead = 0;
+  size_t bytesSinceYield = 0;
+  TickType_t lastYieldTick = xTaskGetTickCount();
+  auto* destination = static_cast<uint8_t*>(buffer);
+  while (totalRead < size) {
+    const size_t requested = std::min(kReadChunkSize, size - totalRead);
+    const int result = file.read(destination + totalRead, requested);
+    if (result <= 0 || static_cast<size_t>(result) > requested) {
+      file.close();
+      return false;
+    }
+    totalRead += static_cast<size_t>(result);
+    bytesSinceYield += static_cast<size_t>(result);
+
+    const TickType_t now = xTaskGetTickCount();
+    if (bytesSinceYield >= kReadYieldBytes ||
+        static_cast<TickType_t>(now - lastYieldTick) >= kReadYieldTicks) {
+      vTaskDelay(1);
+      bytesSinceYield = 0;
+      lastYieldTick = xTaskGetTickCount();
+    }
+  }
+  return file.close();
 }
 
 bool writeFileAtomic(const char* path, const void* data, size_t size) {
