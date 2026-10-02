@@ -5,13 +5,18 @@
 #include "RiscInputNavigationV1.h"
 #include "RiscPlatformClockV1.h"
 #include "x4pro_embedded.h"
+#include "fontIds.h"
 
 #include <Board.h>
 #include <Arduino.h>
+#include <GfxRenderer.h>
 #include <Logging.h>
 #include <cstring>
 
 #include "runtime/drivers/ProviderModuleV2.h"
+
+extern GfxRenderer renderer;
+extern EpdFont notoserif14RegularFont;
 
 namespace {
 RuntimeProviders::ModuleV2 clock_mod;
@@ -74,6 +79,12 @@ void paint(uint32_t edge) {
     if (edge & RISC_NAV_LEFT) marker(80, 300);
     if (edge & RISC_NAV_RIGHT) marker(160, 300);
     if (edge & RISC_NAV_CONFIRM) marker(240, 300);
+    /* Exercise the same shared text rasterizer used by Reader UI. It uses
+     * 0=black, while the display.output diagnostic surface uses 1=black. */
+    for (uint8_t &value : surface) value = (uint8_t)~value;
+    GfxRenderer ui(renderer, surface, 800, 480);
+    ui.drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
+    for (uint8_t &value : surface) value = (uint8_t)~value;
 }
 bool present() {
     uint32_t black_pixels = 0;
@@ -139,6 +150,7 @@ void x4DiagnosticSetup() {
         return;
     }
     if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
+    renderer.insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
     char probe[160] = "unavailable";
     (void)panel_mod.copyProviderError(probe, sizeof(probe));
     LOG_INF("X4", "%s", probe);
