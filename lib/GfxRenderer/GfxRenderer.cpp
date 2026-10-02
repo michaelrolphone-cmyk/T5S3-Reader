@@ -1054,9 +1054,13 @@ void GfxRenderer::fillPolygon(const int* xPoints, const int* yPoints, int numPoi
 static unsigned long start_ms = 0;
 
 void GfxRenderer::clearScreen(const uint8_t color) const {
-  if (!initialized || !frameBuffer || !display.isReady()) return;
+  if (!initialized || !frameBuffer || frameBufferSize == 0) return;
   start_ms = millis();
-  display.clearScreen(color);
+  // Clearing is a RAM raster operation, not a physical display operation.
+  // UI-video takeover deliberately suspends the backend while retaining this
+  // buffer. Detached renderers must likewise clear their own target, not the
+  // font source's display. Presentation keeps its separate readiness gate.
+  std::memset(frameBuffer, color, frameBufferSize);
 }
 
 void GfxRenderer::invertScreen() const {
