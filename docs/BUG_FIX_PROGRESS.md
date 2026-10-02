@@ -1,3 +1,12 @@
+## Active reconciliation — OPDS URL validation and SD firmware handoff — 2026-10-02 21:58 UTC
+
+- Coordinator `michaelrolphone-cmyk` owns the reconciliation of existing [PR #366](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/366), canonical #21, claim `opds_required_url_reconcile_20261002`, and [PR #368](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/368), canonical #25, claim `sd_firmware_handoff_reconcile_20261002`. This resumes their existing repair branches; no duplicate repair is being created. Baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; preserved PR heads are `4fc4d610a055a2c527c9076d5e6942753e6fd1e8` and `5721e255d7594faea453afb417afbbe5a352e4a6`.
+- Fresh compare shows both heads diverged from master at merge base `3722a3f44a3294ba5e8adab830807a2523df3b03`: #366 is 3 ahead / 9 behind; #368 is 9 ahead / 9 behind. Their code diffs against current master contain only the existing intended source/test changes, but their firmware versions are stale (`1.3.67` and `1.3.68` vs current source/latest published `1.3.69`), and current mergeability is false.
+- Reconciliation target: retain each existing PR's focused regression and production fix on current master; preserve master's newer native-app aggregate edits; advance version reservations to `1.3.70` (#366) and `1.3.71` (#368). Verify focused failure/retry coverage, current-master runner integration, fresh matching-head workflows/mergeability, and release both claims only after exact-head terminal checks. No device I/O, release, merge, catalog edit, master write, or architecture work.
+- Environment note: approved local checkouts are preserved under `task-3/opds-required-url` and `task-3/sd-firmware-update-handoff-validation`; direct `git fetch` failed with `Could not resolve host: github.com`. Connected GitHub read/publish tools remain available and are being used for current-master reconciliation.
+- Next: construct the two existing branch updates from current master plus only each branch’s fix/test files, set source versions as above, run regressions and exact-head CI; then update the matching PRs and canonical report statuses.
+
+---
 ## Owner CAM status follow-up — 2026-10-02
 
 - After the terminal PR checkpoint, the owner-authored `CAM hardware / trusted owner SHA` commit status changed from pending to **success**. Its description records firmware `f85f079226c4`, a 20,988-byte capture, and baseline boot verified.
