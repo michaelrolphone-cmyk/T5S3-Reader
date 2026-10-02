@@ -12,6 +12,9 @@
 #include "browser/OpdsBookBrowserActivity.h"
 #include "home/CrashActivity.h"
 #include "home/HomeActivity.h"
+#if defined(BOARD_XTEINK_X4_PRO)
+#include "home/X4TxtActivity.h"
+#endif
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "reader/ReaderActivity.h"
@@ -282,15 +285,25 @@ void ActivityManager::goHome() {
 }
 
 #if defined(BOARD_XTEINK_X4_PRO)
-bool ActivityManager::dispatchX4HomeNavigation(uint32_t pressed, uint32_t released) {
-  bool changed = false;
+bool ActivityManager::dispatchX4Navigation(uint32_t pressed, uint32_t released) {
+  Activity::X4NavigationResult result = Activity::X4NavigationResult::None;
   {
     RenderLock lock;
-    if (currentActivity && currentActivity->name == "Home")
-      changed = currentActivity->onX4HomeNavigation(pressed, released);
+    if (currentActivity && (currentActivity->name == "Home" || currentActivity->name == "X4Txt"))
+      result = currentActivity->onX4Navigation(pressed, released);
+    if (result == Activity::X4NavigationResult::OpenTxt || result == Activity::X4NavigationResult::Home) {
+      if (currentActivity) currentActivity->onExit();
+      currentActivity.reset();
+      if (result == Activity::X4NavigationResult::OpenTxt)
+        currentActivity = std::make_unique<X4TxtActivity>(renderer, mappedInput);
+      else
+        currentActivity = std::make_unique<HomeActivity>(renderer, mappedInput);
+      currentActivity->onEnter();
+      requestedUpdate = false;
+    }
   }
-  if (changed) requestUpdate(true);
-  return changed;
+  if (result != Activity::X4NavigationResult::None) requestUpdate(true);
+  return result != Activity::X4NavigationResult::None;
 }
 #endif
 

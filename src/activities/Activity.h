@@ -33,9 +33,9 @@ class Activity {
   virtual void onExit();
   virtual void loop() {}
 #if defined(BOARD_XTEINK_X4_PRO)
-  // X4's boot-owned input provider can move Home focus without running the
-  // normal activity loop or activating unqualified destinations.
-  virtual bool onX4HomeNavigation(uint32_t, uint32_t) { return false; }
+  enum class X4NavigationResult { None, Redraw, OpenTxt, Home };
+  // The boot-owned input provider dispatches only to qualified X4 views.
+  virtual X4NavigationResult onX4Navigation(uint32_t, uint32_t) { return X4NavigationResult::None; }
 #endif
   virtual bool onTouchTap(int16_t x, int16_t y) { return false; }
   virtual bool onTouchSwipe(int16_t startX, int16_t startY, int16_t endX, int16_t endY) { return false; }

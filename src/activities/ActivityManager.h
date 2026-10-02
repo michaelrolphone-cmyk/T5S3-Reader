@@ -55,7 +55,7 @@ class ActivityManager {
   void begin();
   void loop();
 #if defined(BOARD_XTEINK_X4_PRO)
-  bool dispatchX4HomeNavigation(uint32_t pressed, uint32_t released);
+  bool dispatchX4Navigation(uint32_t pressed, uint32_t released);
 #endif
 
   void replaceActivity(std::unique_ptr<Activity>&& newActivity);

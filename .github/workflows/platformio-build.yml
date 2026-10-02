@@ -269,6 +269,9 @@ jobs:
           cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_buttons_fake -I Drivers/x4pro_board \
             test/x4pro_buttons_state_test.c Drivers/x4pro_buttons/driver.c -o /tmp/x4buttons
           /tmp/x4buttons
+          c++ -std=c++17 -Wall -Wextra -Werror -I src -I sdk/driver \
+            test/x4_txt_session_test.cpp -o /tmp/x4txtsession
+          /tmp/x4txtsession
 
       - name: Verify Home reading card rendering and cache behavior
         run: python3 test/home_reading_card_test.py

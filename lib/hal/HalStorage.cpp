@@ -527,8 +527,9 @@ class HalFile::Impl {
       : volume(volume), handle(handle), length(length), name(path ? path : "") {}
   ~Impl() {
     if (volume && handle != RISC_STORAGE_FILE_INVALID) {
-      (void)volume->file_close(volume->context, handle, false);
-      x4FileOwned = false;
+      // A failed close leaves provider ownership uncertain. Retain the gate
+      // instead of admitting a second handle that could reuse the same slot.
+      if (volume->file_close(volume->context, handle, false)) x4FileOwned = false;
     }
   }
   const risc_storage_volume_api_v1* volume = nullptr;
@@ -926,6 +927,7 @@ bool HalFile::close() {
 #if defined(BOARD_XTEINK_X4_PRO)
   if (!impl || !impl->volume || impl->handle == RISC_STORAGE_FILE_INVALID) return false;
   const bool closed = impl->volume->file_close(impl->volume->context, impl->handle, false);
+  if (!closed) return false;
   impl->handle = RISC_STORAGE_FILE_INVALID;
   x4FileOwned = false;
   return closed;

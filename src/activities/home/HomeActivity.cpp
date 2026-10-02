@@ -200,7 +200,15 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 
 void HomeActivity::onEnter() {
   Activity::onEnter();
+#if defined(BOARD_XTEINK_X4_PRO)
+  // X4 has only a qualified read-only TXT destination. Do not import stale
+  // recents, installed app pins, or OPDS into its Home menu yet.
+  hasOpdsServers = false;
+  recentBooks.clear();
+  homeApps.clear();
+#else
   hasOpdsServers = OPDS_STORE.hasServers();
+#endif
   selectorIndex = 0;
   recentsLoading = false;
   firstRenderDone = false;
@@ -209,9 +217,13 @@ void HomeActivity::onEnter() {
   pendingHomeAppArtifact.clear();
   lastVisibleTextPrewarmKey.clear();
   const auto& metrics = UITheme::getInstance().getMetrics();
+#if defined(BOARD_XTEINK_X4_PRO)
+  recentsLoaded = true;
+#else
   loadRecentBooks(metrics.homeRecentBooksCount);
   loadHomeApps();
   recentsLoaded = !needsRecentCovers(metrics.homeCoverHeight);
+#endif
   // Build missing thumbnails while the independent loading screen is visible,
   // rather than freezing navigation immediately after showing a usable Home.
   if (StartupScreen::isLoading() && !recentsLoaded) loadRecentCovers(metrics.homeCoverHeight);
@@ -305,36 +317,35 @@ void HomeActivity::loop() {
 }
 
 #if defined(BOARD_XTEINK_X4_PRO)
-bool HomeActivity::onX4HomeNavigation(uint32_t pressed, uint32_t released) {
+Activity::X4NavigationResult HomeActivity::onX4Navigation(uint32_t pressed, uint32_t released) {
   const uint32_t directions = pressed & (RISC_NAV_LEFT | RISC_NAV_RIGHT);
-  if (directions == (RISC_NAV_LEFT | RISC_NAV_RIGHT)) return false;
+  if (directions == (RISC_NAV_LEFT | RISC_NAV_RIGHT)) return X4NavigationResult::None;
   if (directions) {
     const int count = getMenuItemCount();
-    if (count <= 0) return false;
+    if (count <= 0) return X4NavigationResult::None;
     selectorIndex = directions == RISC_NAV_RIGHT
         ? ButtonNavigator::nextIndex(selectorIndex, count)
         : ButtonNavigator::previousIndex(selectorIndex, count);
     x4Status.clear();
     freeCoverBuffer();  // Stored Home pixels include the old header and focus.
     LOG_INF("X4", "home focus=%d count=%d", selectorIndex, count);
-    return true;
+    return X4NavigationResult::Redraw;
   }
   if (released & RISC_NAV_CONFIRM) {
+    if (selectorIndex == 0) return X4NavigationResult::OpenTxt;
     // Power is Confirm on this provider. Keep every destination closed until
     // X4 has qualified its storage writes, app lifecycle and power services.
-    x4Status = recentBooks.empty() && selectorIndex == 0
-        ? "No recent books on X4"
-        : "Selection unavailable on X4";
+    x4Status = "Selection unavailable on X4";
     freeCoverBuffer();
     LOG_INF("X4", "home selection unavailable=%d", selectorIndex);
-    return true;
+    return X4NavigationResult::Redraw;
   }
   if ((pressed & RISC_NAV_BACK) && !x4Status.empty()) {
     x4Status.clear();
     freeCoverBuffer();
-    return true;
+    return X4NavigationResult::Redraw;
   }
-  return false;
+  return X4NavigationResult::None;
 }
 #endif
 
@@ -425,7 +436,11 @@ void HomeActivity::render(RenderLock&&) {
   menuIcons.reserve(menuItems.capacity());
   menuAppIcons.reserve(menuItems.capacity());
 
+#if defined(BOARD_XTEINK_X4_PRO)
+  menuItems.push_back("TXT Files");
+#else
   menuItems.push_back(tr(STR_MENU_RECENT_BOOKS));
+#endif
   menuIcons.push_back(Recent);
   menuAppIcons.push_back(nullptr);
   if (hasOpdsServers) {
