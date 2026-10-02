@@ -1,0 +1,11 @@
+{
+  "type": "application",
+  "id": "camera_utility",
+  "version": "0.1.0",
+  "min_firmware_version": "1.3.49",
+  "display_name": "Camera Utility",
+  "file_name": "camera_utility.elf",
+  "icon": "solid:f030",
+  "category": ["Camera", "Utilities"],
+  "requires": [{"capability":"camera.capture","api":">=1"}]
+}

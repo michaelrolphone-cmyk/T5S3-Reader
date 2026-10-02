@@ -43,6 +43,10 @@ class BootAnimationContract(unittest.TestCase):
 
     def test_loading_precedes_expensive_initialization(self):
         main = (ROOT / "src/main.cpp").read_text()
+        # This choreography belongs to the default graphical entrypoint.
+        # The explicit headless branch has its own setup/loop and no animation.
+        if main.startswith("#if defined(RISCRTE_PROFILE_HEADLESS)\n"):
+            main = main.split("#else\n", 1)[1]
         setup = main[main.index("void setup()") : main.index("void loop()")]
         for work in ("sdFontSystem.begin(renderer)", "APP_STATE.loadFromFile()",
                      "logPlatformInputHealth()", "mappedInputManager.update()", "activityManager.goHome()"):
