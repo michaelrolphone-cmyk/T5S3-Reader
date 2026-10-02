@@ -56,7 +56,7 @@ static uint64_t now_ms(void) {
     if (!clock_api || !clock_api->monotonic_ms) return UINT64_MAX;
     return clock_api->monotonic_ms(clock_api->context);
 }
-static bool wait_idle(uint32_t deadline_ms) {
+static bool wait_idle(uint64_t deadline_ms) {
     bool saw_busy = false;
     while (!saw_busy) {
         uint64_t now = now_ms();
@@ -112,14 +112,21 @@ static bool init_panel(void) {
     set_cursor();
     return true;
 }
-static bool transfer_frame(uint32_t deadline_ms) {
+static bool transfer_frame(uint64_t deadline_ms) {
     if (transfer_started) return false;
     transfer_started = true;
     set_cursor();
     command(0x24);
     x4pro_pin_output(X4PRO_PIN_EPD_DC, true);
     x4pro_pin_output(X4PRO_PIN_EPD_CS, false);
-    for (size_t i = 0; i < FRAME_BYTES; ++i) spi_byte((uint8_t)~frame[i]);
+    for (size_t i = 0; i < FRAME_BYTES; ++i) {
+        spi_byte((uint8_t)~frame[i]);
+        if ((i & 0x3ffu) == 0 && now_ms() >= deadline_ms) {
+            x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
+            fail("transfer exceeded deadline");
+            return false;
+        }
+    }
     x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
     command(0x21); data1(0x00);
     command(0x22); data1(0xF7); command(0x20);
@@ -184,7 +191,7 @@ static bool wait_present(void *context, risc_display_present_token_v1 token, uin
     if (present_state == PRESENT_QUEUED && timeout_ms > 0 && !transfer_started) {
         uint64_t now = now_ms();
         present_state = PRESENT_ACTIVE;
-        if (now == UINT64_MAX || !transfer_frame((uint32_t)now + timeout_ms)) {
+        if (now == UINT64_MAX || !transfer_frame(now + timeout_ms)) {
             present_state = PRESENT_FAILED;
             held = false;
         } else {

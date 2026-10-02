@@ -87,9 +87,9 @@ bool present() {
         return false;
     }
     risc_display_present_status_v1 status{};
-    if (!display_api->wait_present(display_api->context, token, 2500, &status) ||
+    if (!display_api->wait_present(display_api->context, token, 20000, &status) ||
         status.state != RISC_DISPLAY_PRESENT_COMPLETE) {
-        LOG_ERR("X4", "present did not complete");
+        LOG_ERR("X4", "present did not complete state=%u", status.state);
         return false;
     }
     LOG_INF("X4", "present complete sequence=%lu", static_cast<unsigned long>(sequence));
