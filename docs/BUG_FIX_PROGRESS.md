@@ -1,3 +1,11 @@
+## Superseding exact-head update — Firmware Flasher pagination, canonical #36 — 2026-10-02
+
+- Draft [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371) now has exact head `780b04407c9223f37fda9f89bf40a6b35e8652d2`, directly based on master `3722a3f44a3294ba5e8adab830807a2523df3b03). This adds the Retry label for empty/error lists. The earlier head's in-progress runs are stale and do not qualify the new head.
+- Exact-head [PlatformIO run 37058994598](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37058994598) is pending and exact-head [CAM candidate 37058994656](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37058994656) is in progress. PR remains draft and claim `firmware_flasher_image_pagination_20261002` remains active.
+- Focused C regression passed after this follow-up; app build/ELF validation passed. Broader local native aggregate remains stopped at ~90s without a reported result. No hardware or physical SD verification.
+
+---
+
 ## Draft checkpoint — Firmware Flasher pagination, canonical #36 — 2026-10-02
 
 - Draft [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371), branch `fix/firmware-flasher-image-pagination`, exact head `7a65a66685de8bc214bdb985710eef7efb8dd1d8`, directly based on current master `3722a3f44a3294ba5e8adab830807a2523df3b03`. PR open, draft, mergeable; user handles merge.
