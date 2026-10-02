@@ -11,6 +11,15 @@
 - PR344 and PR347 are open drafts and remain under the hardware-CI owner's exclusive board/merge sequence; PR350 remains open in the X4 chain. No edits or takeover on those branches. Version-coordination redesign remains deferred backlog only.
 - Current active version baseline is firmware1.3.61. The prior PR351/353/354 candidates1.3.59/1.3.58/1.3.60 are below this new master and require fresh lineage coordination before any merge; this ledger refresh does not reassign their versions.
 
+
+## Active malformed-BMP dimension repair — canonical bug #18
+
+- Fresh claim owner `image_bmp_guard_20261002_0450`; canonical report #18; implementation branch `fix/image-bmp-layout-overflow`; phase: claimed before code edits. Baseline master `f7f006f78bf1f83c28f3ce05728b8973e895956b`, firmware1.3.61; current `src/native/NativeImageBridge.cpp` blob `6c515f8e4c57152d721de8d54bae79ea94792d06`.
+- Current workflow is supported: master publishes `Apps/image_viewer.json` v1.1.1 with .bmp; `Apps/image_viewer.c` opens the File Browser-provided path through T5FileOpenApi, calls t5_image probe/render, and firmware `NativeImageBridge.cpp` implements the BMP decoder. No hardware/device workflow is required.
+- Fresh reproduction arithmetic matches the production expression: width `0x20000001`, 32bpp, height1 wraps 32-bit rowBits to32, computes rowBytes4, and lets a 58-byte BMP pass the row-extent guard although the decode loop reads each of 536,870,913 pixels. The original report's impact is a potential out-of-bounds read/crash.
+- Overlap check: open PR347 changes the Image Viewer manifest but not `src/native/NativeImageBridge.cpp`; PR344/350/351/353/354 do not change the decoder. This repair will not change Image Viewer app source/manifest or any board/hardware code. Hardware owner retains PR344/347 and all boards; X4 PR350 remains untouched.
+- Firmware candidate1.3.62, strictly above master1.3.61 and checked active PR branches (PR3531.3.58, PR3511.3.59, PR3541.3.60, PR3471.3.57, PR3501.3.53). PR351/353/354 remain stale/nonmergeable after current master advanced; this claim does not update those branches. Version-workflow redesign remains deferred backlog only.
+- Next: add a production layout-validation helper and regression for width×bpp overflow, oversized height, truncated rows, palette bounds and valid edges; exact-head focused workflow plus PlatformIO host/both-board/headless CI. No master write/merge/release/catalog/deployment/flash/device/cross-repository/architecture/hardware operation.
 ---
 ---
 
