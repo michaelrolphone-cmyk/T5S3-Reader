@@ -74,7 +74,12 @@ for pair in \
   "button_remap button_remap_test" \
   "time_zone time_zone_test"; do
   set -- $pair
+  if [[ "$1" == "llm_ask" ]]; then
+    cc -std=c11 -Wall -Wextra -Werror \
+      -I"$repo_dir/lib/NativeApps/include" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  else
   cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" "$repo_dir/Apps/$1.c" "$repo_dir/test/native_apps/$2.c" -o "$binary"
+  fi
   "$binary"
 done
 # Absence of a USB device/provider is a normal disconnected UI state. Keep
