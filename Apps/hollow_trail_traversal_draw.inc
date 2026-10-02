@@ -96,6 +96,7 @@ static void ht_draw_traversal(const ht_game *g) {
     if(g->level==0)ht_forest_log_draw(g);
     ht_city_roof_detail(g);
     ht_city_service_arrival(g);
+    ht_city_rain_tank(g);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);

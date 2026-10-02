@@ -106,6 +106,41 @@ static void motion_emphasis_controls(void) {
         assert(velocity[0]==48 && velocity[1]==velocity[0] && velocity[2]==53);
     }
 }
+static void rain_controls(void) {
+    const unsigned a[2]={1,2},b[2]={2,1},y[2]={4,8};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=(HT_RAIN_TANK_X-1)*256;ht.y=ht_rain_tank_floor()*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);reports[source][0].hat=2;
+        for(unsigned i=0;i<12 && !ht_cutscene.active;++i)ht_input(32);
+        assert(ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_RAIN);
+        ht_game frozen=ht;
+        reports[source][0].buttons=a[source]|b[source]|y[source];
+        for(unsigned i=0;i<30;++i){ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(!ht_motion_emphasis && !reading && !paused && !jump_down);
+        /* Provider failure may rearm ownership, but cannot mutate the scene. */
+        healthy=false;for(unsigned i=0;i<9;++i)ht_input(32);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));healthy=true;
+        while(ht_cutscene.active)ht_input(32);
+        assert(ht_input_rearm && !memcmp(&ht,&frozen,sizeof(ht)));
+        ht_input(32);assert(!held && !jump_down && ht_input_rearm);
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
+        assert(!ht_input_rearm);reports[source][0].hat=2;ht_input(32);
+        assert(held&HT_RIGHT);
+        ht_game before=ht;before.x=(HT_RAIN_TANK_X-1)*256;
+        assert(!ht_cutscene_rain_arrival(&before,&ht)); /* Once per session. */
+        ht_cutscene_begin(HT_CUTSCENE_RAIN);host_exit=true;ht_input(1);
+        assert(quitting);host_exit=false;ht_cutscene.active=false;
+    }
+}
 int main(void) {
     app=&fake_app; pad=&xapi; hid_pad=&hapi;
     /* Receiver face-label correction reported on hardware for 1.0.15. */
@@ -283,5 +318,6 @@ int main(void) {
     host_exit=true;ht_input(1);assert(quitting && ht_cutscene.active);
     schoolroom_controls();
     motion_emphasis_controls();
+    rain_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

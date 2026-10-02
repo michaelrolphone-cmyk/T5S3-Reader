@@ -144,6 +144,11 @@ static void ht_advance(uint32_t now) {
             held=previous=0;jump_down=pause_down=false;
             simulation_accumulator=0;++scene_revision;break;
         }
+        if(ht_cutscene_rain_arrival(&before,&ht)) {
+            ht_cutscene_begin(HT_CUTSCENE_RAIN);
+            held=previous=0;jump_down=pause_down=false;
+            simulation_accumulator=0;++scene_revision;break;
+        }
         if(before.level!=ht.level) {
             if(ht_cutscene_city_arrival(&before,&ht)) {
                 ht_cutscene_begin(HT_CUTSCENE_CITY);
@@ -431,7 +436,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     memset(&ht_perf,0,sizeof(ht_perf));ht_perf.start=app->millis();
     if(video->frame_counter) ht_perf.scan_start=video->frame_counter();
     ht_fps_reset(&ht_fps,ht_perf.start);
-    ht_log("Hollow Trail 1.1.44: split startup PSRAM; native display + player-controlled schoolroom map; rolling 10-second FPS");
+    ht_log("Hollow Trail 1.1.45: split startup PSRAM; native display + player-controlled schoolroom map; rolling 10-second FPS");
     ht_log(HT_HAS(app,t5_app_api_v1,poll_nowait)?
         "Hollow Trail input: no-wait updates; scheduler yield every 32ms":
         "Hollow Trail input: legacy yielding poll (firmware lacks poll_nowait)");
@@ -512,7 +517,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
-                ht_text(88,48,"HOLLOW TRAIL 1.1.44",1);
+                ht_text(88,48,"HOLLOW TRAIL 1.1.45",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
                 snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
