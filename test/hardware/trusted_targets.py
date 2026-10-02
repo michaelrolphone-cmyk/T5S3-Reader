@@ -275,7 +275,9 @@ def hardware_scan(gh, numbers, root, python, cam_binding, x4_profile, targets=TA
                         cam.once(gh, number, root, python, cam_binding)
                         results.append({"target": "cam", "result": "see_original_cam_journal"})
                     else:
-                        hardware_once(gh, number, root, x4_profile)
+                        outcome = hardware_once(gh, number, root, x4_profile)
+                        results.append({"target": "x4", "result": "waiting" if outcome is None
+                                        else outcome["status_state"]})
                 except cam.RateLimited:
                     return results
                 except (OSError, ValueError, RuntimeError, KeyError):

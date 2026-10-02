@@ -228,6 +228,10 @@ class AdapterTests(unittest.TestCase):
                 self.assertEqual(out[1]["target"], "cam")
                 cam.assert_called_once()
                 x4_runner.assert_not_called()
+            with patch.object(controller, "hardware_once", return_value={"status_state": "success"}):
+                out = controller.hardware_scan(GitHub(), [350], Path(temp), Path("unused"), {}, PROFILE,
+                                               targets=("x4",))
+                self.assertEqual(out, [{"target": "x4", "result": "success"}])
 
     def test_hardware_wrong_artifact_reports_without_runner(self):
         gh = GitHub()

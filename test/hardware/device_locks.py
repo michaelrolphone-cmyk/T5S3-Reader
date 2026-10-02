@@ -28,4 +28,3 @@ def locks(port, mac, directory=None):
     finally:
         for handle in reversed(handles):
             handle.close()
-
