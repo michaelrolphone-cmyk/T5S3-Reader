@@ -417,9 +417,8 @@ void logPlatformInputHealth() {
 
 void setup() {
 #ifdef BOARD_XTEINK_X4_PRO
-  Serial.begin(115200);
-  Serial.println("X4 diagnostic entered");
-  Serial.flush();
+  x4DiagnosticSetup();
+  return;
 #endif
   t1 = millis();
 
@@ -432,11 +431,6 @@ void setup() {
   }
   RuntimeNetwork::enablePsramTlsAllocations();
 
-#ifdef BOARD_XTEINK_X4_PRO
-  // Desk-clock resume is not used on this target.
-  x4DiagnosticSetup();
-  return;
-#endif
   HalSystem::begin();
   // Timer wakes never reach this point. A true value means the user explicitly
   // left retained desk-clock deep sleep and normal startup should resume
