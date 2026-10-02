@@ -136,6 +136,8 @@ static int probe_controller(void) {
     uint8_t ver[5] = {0};
     prepare_pins();
     const uint8_t busy_before_reset = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
+    x4pro_epd_reset_unhold();
     x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
     sleep_ms(1);
     x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
@@ -175,6 +177,7 @@ static void prepare_pins(void) {
     x4pro_pin_output(X4PRO_PIN_EPD_MOSI, false);
     x4pro_pin_output(X4PRO_PIN_EPD_DC, false);
     x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
+    x4pro_epd_reset_unhold();
     pins_ready = true;
 }
 static const uint8_t x_window[] = {0x00, 0x00, 0x1F, 0x03};
@@ -196,6 +199,8 @@ static bool init_panel(void) {
     static const uint8_t booster[] = {0xAE, 0xC7, 0xC3, 0xC0, 0x80};
     static const uint8_t gate[] = {0xDF, 0x01, 0x02};
     prepare_pins();
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
+    x4pro_epd_reset_unhold();
     x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
     sleep_ms(10);
     x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
@@ -225,19 +230,13 @@ static bool init_panel(void) {
     if (!ready_for("second-ram busy timeout")) return false;
     return true;
 }
-static bool transfer_frame(uint64_t deadline_ms) {
-    if (transfer_started) { set_reason("invalid state"); return false; }
-    transfer_started = true;
-    if (!sample_now(&transfer_start_ms)) return false;
-    if (!ready_for("pre-transfer readiness")) return false;
-    set_cursor();
-    if (!ready_for("pre-transfer readiness")) return false;
-    command(0x24);
+static bool transfer_plane(uint8_t ram_command, uint64_t deadline_ms) {
+    command(ram_command);
     x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
     x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
     for (size_t i = 0; i < FRAME_BYTES; ++i) {
         spi_byte((uint8_t)~frame[i]);
-        bytes_sent = (uint32_t)(i + 1u);
+        bytes_sent++;
         if ((i & 0x3ffu) == 0x3ffu || i + 1u == FRAME_BYTES) {
             uint64_t now = 0;
             if (!sample_now(&now) || now >= deadline_ms) {
@@ -249,13 +248,25 @@ static bool transfer_frame(uint64_t deadline_ms) {
         }
     }
     x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+    return true;
+}
+static bool transfer_frame(uint64_t deadline_ms) {
+    if (transfer_started) { set_reason("invalid state"); return false; }
+    transfer_started = true;
+    if (!sample_now(&transfer_start_ms)) return false;
+    if (!ready_for("pre-transfer readiness")) return false;
+    set_cursor();
+    if (!ready_for("pre-transfer readiness")) return false;
+    /* Full absolute SSD1677 refresh starts with matched BW and RED planes. */
+    if (!transfer_plane(0x24, deadline_ms) || !transfer_plane(0x26, deadline_ms)) return false;
     if (!sample_now(&transfer_end_ms) || transfer_end_ms >= deadline_ms) {
         set_reason("transfer deadline");
         return false;
     }
     busy_before = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
     if (busy_before) { set_reason("busy already active"); return false; }
-    command(0x21); data1(0x00);
+    command(0x21); data1(0x40);
+    command(0x3C); data1(0xC0);
     command(0x22); data1(0xF7);
     if (!sample_now(&refresh_ms) || refresh_ms >= deadline_ms) {
         set_reason("transfer deadline");
@@ -375,7 +386,14 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
     return started;
 }
 static void stop(void) { started = false; held = false; }
-static bool quiesce(void) { stop(); return true; }
+static bool quiesce(void) {
+    /* A timed-out refresh may still be driving the panel. Keep this provider
+     * pinned until BUSY is observed idle; software state alone cannot prove it. */
+    if (present_state == PRESENT_ACTIVE || (pins_ready && x4pro_pin_read(X4PRO_PIN_EPD_BUSY)))
+        return false;
+    stop();
+    return true;
+}
 static bool append(char *destination, size_t capacity, size_t *used, const char *text) {
     while (*text && *used + 1u < capacity) destination[(*used)++] = *text++;
     destination[*used] = 0;
@@ -395,7 +413,7 @@ static bool last_error(char *destination, size_t capacity) {
     size_t used = 0;
     destination[0] = 0;
     append(destination, capacity, &used, probe_text);
-    append(destination, capacity, &used, " v=0.1.9 token=");
+    append(destination, capacity, &used, " v=0.1.10 token=");
     append_u(destination, capacity, &used, pending_token);
     append(destination, capacity, &used, " state=");
     append_u(destination, capacity, &used, present_state);

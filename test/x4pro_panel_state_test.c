@@ -10,6 +10,7 @@ uint32_t x4_fake_bytes;
 uint32_t x4_fake_cmd46;
 uint32_t x4_fake_cmd47;
 uint32_t x4_fake_cmd24;
+uint32_t x4_fake_cmd26;
 uint8_t x4_fake_hold_busy;
 uint32_t x4_fake_output_mask;
 uint32_t x4_fake_level_before_config;
@@ -61,6 +62,7 @@ int main(void) {
     x4_fake_busy = 1;
     expect(api->wait_present(api->context, token, 40, &status), "success wait");
     expect(status.state == RISC_DISPLAY_PRESENT_COMPLETE, "complete");
+    expect(x4_fake_cmd24 == 1 && x4_fake_cmd26 == 1, "full refresh writes both RAM planes");
     expect(api->wait_present(api->context, token, 40, &status), "repeat");
     expect(status.state == RISC_DISPLAY_PRESENT_COMPLETE && x4_fake_refresh_count == refreshes + 1, "no retransmit");
     x4_fake_busy = 0;
@@ -75,6 +77,7 @@ int main(void) {
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit stuck");
     expect(api->wait_present(api->context, token, 5, &status), "stuck wait");
     expect(status.state == RISC_DISPLAY_PRESENT_FAILED, "stuck busy fails");
+    expect(!driver->quiesce(), "busy panel remains pinned after timeout");
     char detail[160];
     const risc_driver_diagnostics_v2 *diag = (const risc_driver_diagnostics_v2 *)driver;
     expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "busy completion timeout"), "stuck reason");
@@ -126,6 +129,9 @@ int main(void) {
     x4_test_probe_mode = 2;
     expect(!driver->start(&dep, 1), "ambiguous rejected");
     expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "ambiguous-controller"), "ambiguous reason");
+    x4_fake_busy = 0;
+    x4_fake_hold_busy = 0;
+    expect(driver->quiesce(), "idle panel can quiesce");
     if (failures) return 1;
     puts("x4 panel states: PASS");
     return 0;
