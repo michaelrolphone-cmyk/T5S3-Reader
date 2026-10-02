@@ -61,10 +61,14 @@ class BootAnimationContract(unittest.TestCase):
         home = (ROOT / "src/activities/home/HomeActivity.cpp").read_text()
         self.assertIn("if (StartupScreen::isLoading() && !recentsLoaded) loadRecentCovers", home)
         self.assertIn("if (!bootLoading) GUI.fillPopupProgress", home)
-        self.assertLess(activity.index("currentActivity->render(std::move(lock))"),
-                        activity.index("StartupScreen::destinationReady()"))
-        self.assertLess(activity.index("StartupScreen::finishBoot(renderer)"),
-                        activity.index("currentActivity->render(std::move(lock))"))
+        render = activity[activity.index("void ActivityManager::renderTaskLoop()"):activity.index("void ActivityManager::loop()")]
+        # X4 has a provider-backed first frame and no T5S3 startup animation.
+        # Check the T5S3 render branch's ordering, not its preceding X4 branch.
+        t5_render = render.split("#else", 1)[1].split("#endif", 1)[0]
+        self.assertLess(t5_render.index("currentActivity->render(std::move(lock))"),
+                        t5_render.index("StartupScreen::destinationReady()"))
+        self.assertLess(t5_render.index("StartupScreen::finishBoot(renderer)"),
+                        t5_render.index("currentActivity->render(std::move(lock))"))
 
     def test_original_four_logo_layers_are_preserved(self):
         self.assertRegex(SOURCE, r"kLogoLayerCount\s*=\s*4\s*;")
