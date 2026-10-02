@@ -114,7 +114,7 @@ static void render_list(void) {
         .subtitle = "ESP via serial/FTDI | MSP430FR via MSP-FET",
         .status = list_status,
         .back_label = "Back",
-        .confirm_label = "Flash",
+        .confirm_label = (!image_count || scan_failed) ? "Retry" : "Flash",
         .previous_label = "Up",
         .next_label = "Down",
     };
