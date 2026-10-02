@@ -12,13 +12,14 @@ namespace RuntimePackages {
 // The verifier is independently supplied by the storage backend: it MUST
 // read the retained .package.json and rehash its exact file inventory.
 template <typename Source, typename Destination, typename Hash,
-          typename Resolver, typename Ops, typename Verify, typename Purge>
+          typename Resolver, typename Ops, typename Verify, typename Purge,
+          typename Transaction = OrdinaryInstallerTransaction>
 OrdinaryInstallOutcome installCanonicalOrdinaryPackage(
     const char* manifest, size_t manifestBytes, Source& source,
     Destination& destination, Hash& hash, Resolver resolver,
     const PackageRuntimePolicy& policy, uint8_t (&io)[kOrdinaryIoBytes],
     Ops& ops, Verify verifyDirectory, Purge purgeManagedBackup,
-    bool replacementAllowed, bool allowDowngrade = false) {
+    bool replacementAllowed, bool allowDowngrade = false, Transaction transaction = {}) {
   // The plan contains up to sixteen file descriptors and dependencies. It
   // must not be retained on loopTask's stack throughout download, hashing,
   // staged publication and the nested post-install verification.
@@ -28,7 +29,7 @@ OrdinaryInstallOutcome installCanonicalOrdinaryPackage(
       reinterpret_cast<const uint8_t*>(manifest), manifestBytes,
       source, destination, hash, resolver, policy, io,
       ops, verifyDirectory, purgeManagedBackup, replacementAllowed,
-      allowDowngrade);
+      allowDowngrade, transaction);
 }
 
 // Directory::readManifest(out, capacity, used) reads its retained manifest,

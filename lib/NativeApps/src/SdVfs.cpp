@@ -5,6 +5,7 @@
 #include <freertos/semphr.h>
 #include <cerrno>
 #include <climits>
+#include <cstdint>
 #include <fcntl.h>
 #include <sys/stat.h>
 
@@ -14,14 +15,21 @@ HalFile files[kSlots];
 StaticSemaphore_t mutexStorage;
 SemaphoreHandle_t mutex = nullptr;
 
+// Bound descriptor-table contention separately from the underlying HalStorage
+// and media calls. A timeout must not touch or discard a live slot, including
+// close: the loader then refuses admission rather than pretending it closed.
+constexpr uint32_t kDescriptorWaitMs = 1000;
 struct Lock {
-  Lock() { xSemaphoreTake(mutex, portMAX_DELAY); }
-  ~Lock() { xSemaphoreGive(mutex); }
+  bool held = false;
+  Lock() : held(mutex && xSemaphoreTake(mutex, pdMS_TO_TICKS(kDescriptorWaitMs)) == pdTRUE) {}
+  ~Lock() { if (held) xSemaphoreGive(mutex); }
+  explicit operator bool() const { return held; }
 };
 bool validFd(int fd) { return fd >= 0 && fd < kSlots && files[fd].isOpen(); }
 
 int openFile(const char* path, int flags, int) {
   Lock lock;
+  if (!lock) { errno = ETIMEDOUT; return -1; }
   if ((flags & O_ACCMODE) != O_RDONLY || (flags & (O_CREAT | O_TRUNC | O_APPEND))) {
     errno = EROFS;
     return -1;
@@ -46,6 +54,7 @@ int openFile(const char* path, int flags, int) {
 }
 ssize_t readFile(int fd, void* dst, size_t size) {
   Lock lock;
+  if (!lock) { errno = ETIMEDOUT; return -1; }
   if (!validFd(fd)) { errno = EBADF; return -1; }
   const int result = files[fd].read(dst, size);
   if (result < 0) errno = EIO;
@@ -53,6 +62,7 @@ ssize_t readFile(int fd, void* dst, size_t size) {
 }
 off_t seekFile(int fd, off_t offset, int whence) {
   Lock lock;
+  if (!lock) { errno = ETIMEDOUT; return -1; }
   if (!validFd(fd)) { errno = EBADF; return -1; }
   int64_t base = 0;
   if (whence == SEEK_CUR) base = files[fd].position();
@@ -66,6 +76,7 @@ off_t seekFile(int fd, off_t offset, int whence) {
 }
 int closeFile(int fd) {
   Lock lock;
+  if (!lock) { errno = ETIMEDOUT; return -1; }
   if (!validFd(fd)) { errno = EBADF; return -1; }
   const bool ok = files[fd].close();
   if (!ok) errno = EIO;
@@ -73,6 +84,7 @@ int closeFile(int fd) {
 }
 int statFile(int fd, struct stat* st) {
   Lock lock;
+  if (!lock) { errno = ETIMEDOUT; return -1; }
   if (!validFd(fd)) { errno = EBADF; return -1; }
   *st = {};
   st->st_mode = S_IFREG | S_IRUSR;

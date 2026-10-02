@@ -1,4 +1,5 @@
 #pragma once
+#include "AppIntegrity.h"
 #include <T5AppApi.h>
 #include "runtime/capabilities/AppCapabilityRequirements.h"
 #include <string>
@@ -17,8 +18,8 @@ struct AppFileTypes {
 bool parseAppManifest(const std::string& json, t5_app_manifest_t& out,
                       std::string* appVersion = nullptr, bool requireAppVersion = false,
                       RuntimeDevices::AppCapabilityRequirements* requirements = nullptr,
-                      AppFileTypes* fileTypes = nullptr);
+                      AppFileTypes* fileTypes = nullptr, AppIntegrity* integrity = nullptr);
 bool readAppManifest(const char* storagePath, t5_app_manifest_t& out,
                      std::string* appVersion = nullptr, bool requireAppVersion = false,
                      RuntimeDevices::AppCapabilityRequirements* requirements = nullptr,
-                     AppFileTypes* fileTypes = nullptr);
+                     AppFileTypes* fileTypes = nullptr, AppIntegrity* integrity = nullptr);

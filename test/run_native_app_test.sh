@@ -18,6 +18,7 @@ if [[ $# -gt 0 ]]; then
   timeout --kill-after=5s 60s "$binary" "$1"
   exit 0
 fi
+python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
@@ -165,6 +166,8 @@ MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/model_viewer_shading_test.py"
 MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/model_viewer_controls_test.py"
 MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/model_viewer_preview_test.py"
 MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/catalog_freshness_test.py"
+MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/ordinary_catalog_refresh_test.py"
+MV_SANITIZE=1 python3 "$repo_dir/test/native_apps/managed_app_identity_test.py"
 python3 "$repo_dir/test/resources/driver_install_stack_progress_source_test.py"
 python3 "$repo_dir/test/native_apps/scheduled_bug_fix_behavior_test.py"
 python3 "$repo_dir/test/native_apps/app_store_release_transition_source_test.py"
@@ -200,6 +203,16 @@ cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
 python3 "$repo_dir/test/native_apps/confirmation_input_test.py"
+echo '== Canonical app owned-buffer and invocation metadata admission =='
+c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -fsanitize=address,undefined \
+  -I"$repo_dir/test/hal/storage_stubs" -I"$repo_dir/lib/hal" -I"$repo_dir/src" \
+  -I"$repo_dir/test/resources/cdc_sd_stubs" \
+  "$repo_dir/lib/hal/HalStorage.cpp" "$repo_dir/src/runtime/packages/PackageExecutableAdmission.cpp" \
+  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/test/resources/managed_app_admission_test.cpp" \
+  -lcrypto -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/elf_owned_admission_test.py"
+python3 "$repo_dir/test/native_apps/sd_vfs_lock_test.py"
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"

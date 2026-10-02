@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Real packer -> record -> index -> runtime immutable catalog contract."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'test'))
+import product_release_test as fixture
+
+CPP = r'''
+#include "runtime/packages/PackageOnlineCatalog.h"
+#include <fstream>
+#include <iterator>
+#include <memory>
+#include <iostream>
+int main(int argc, char** argv) {
+  if (argc != 2) return 2;
+  std::ifstream input(argv[1]);
+  const std::string json((std::istreambuf_iterator<char>(input)), {});
+  auto index = std::make_unique<RuntimePackages::IndependentDriverCatalog>();
+  auto selected = std::make_unique<RuntimePackages::OnlinePackageCatalog>();
+  if (!RuntimePackages::parseIndependentDriverCatalog(json.data(), json.size(), *index) ||
+      !RuntimePackages::mergeOnlineCatalog(nullptr, *index, "xtensa-esp32s3", *selected)) return 3;
+  for (size_t i = 0; i < selected->packageCount; ++i) {
+    std::string url;
+    if (!RuntimePackages::onlineArchiveUrl(selected->packages[i], selected->releases[i],
+                                         "xtensa-esp32s3", url)) return 4;
+    std::cout << url << '\n';
+  }
+}
+'''
+
+def main():
+    case = fixture.ProductReleaseTests()
+    case.setUp()
+    try:
+        record = case.record()
+        index = fixture.update_index({'schema': 1, 'firmware': None, 'apps': [], 'drivers': []},
+                                     'drivers', record)
+        staged = fixture.stage_app(case.root)
+        resource = staged['stage'] / 'assets/text/help.txt'
+        resource.parent.mkdir(parents=True)
+        resource.write_bytes(b'nested resource round trip')
+        staged['manifest']['schema'] = 2
+        staged['manifest']['entries'].append({'name': 'assets/text/help.txt',
+            'size_bytes': resource.stat().st_size,
+            'sha256': fixture.hashlib.sha256(resource.read_bytes()).hexdigest(), 'executable': False})
+        (staged['stage'] / '.package.json').write_text(json.dumps(staged['manifest'], separators=(',', ':')))
+        archive = fixture.pack_directory(staged['stage'])
+        (staged['output'] / staged['name']).write_bytes(archive)
+        (staged['output'] / 'package-catalog.json').write_text(json.dumps({'schema': 1,
+            'release': 'unpublished-build',
+            'packages': [fixture.catalog_row(staged['stage'], staged['name'], archive)]}))
+        app = fixture.build_record('apps', 'clock', '1.2.3', case.root)
+        index = fixture.update_index(index, 'apps', app)
+        module_records = []
+        for kind in ('service', 'provider'):
+            fixture.stage_module(case.root, kind, kind + '-fixture')
+            module = fixture.build_record(kind + 's', kind + '-fixture', '1.0.0', case.root)
+            module_records.append(module)
+            index = fixture.update_index(index, kind + 's', module)
+        with tempfile.TemporaryDirectory(prefix='package-catalog-roundtrip-') as temp:
+            path = Path(temp)
+            source, binary, metadata = path/'test.cpp', path/'test', path/'index.json'
+            source.write_text(CPP)
+            subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-Wall', '-Wextra',
+                            '-Werror', '-I'+str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
+            metadata.write_text(fixture.serialize_index(index))
+            result = subprocess.run([str(binary), str(metadata)], check=True, capture_output=True, text=True)
+            assert set(result.stdout.splitlines()) == {record['url'], app['url'], *(row['url'] for row in module_records)}
+            # The producer's manifest/identity must remain joined at device intake.
+            index['drivers'][0]['manifest']['version'] = '2.0.2'
+            metadata.write_text(json.dumps(index))
+            assert subprocess.run([str(binary), str(metadata)]).returncode == 3
+        print('PASS: real ZIP/record/index round-trip reaches exact immutable runtime URL')
+    finally:
+        case.tearDown()
+
+if __name__ == '__main__':
+    main()

@@ -138,11 +138,11 @@ Weather scene -> acquire generic network capability -> request async refresh -> 
 
 ## 31. Core responsibilities
 
-Core: minimal boot/loader, signature/integrity validation, scheduler/contexts/handle tables, generic event bus, persistent deadline metadata, memory manager, logical data namespace, arbitrary capability resolver, service/driver package managers, generic policy and crash/watchdog diagnostics. Optional bootstrap storage/recovery is isolated. **Not core:** any production hardware controller, bus manager, USB host/class, Wi-Fi radio manager, GPS UART, charger/rail manager, panel driver or hardware-specific power/sleep operation. Those are ELF providers.
+Core: minimal boot/loader, content-integrity/ABI validation, scheduler/contexts/handle tables, generic event bus, persistent deadline metadata, memory manager, logical data namespace, arbitrary capability resolver, service/driver package managers, generic policy and crash/watchdog diagnostics. Optional bootstrap storage/recovery is isolated. **Not core:** any production hardware controller, bus manager, USB host/class, Wi-Fi radio manager, GPS UART, charger/rail manager, panel driver or hardware-specific power/sleep operation. Those are ELF providers.
 
 ## 32. Security/isolation
 
-Public APIs validate buffers, types, owner, rights, lifecycle and generations; avoid raw cross-ELF callbacks, validate packages and support provider revocation/unload. Centralize *authorization* in the generic core and *hardware implementation* in trusted providers. Signed packages and stronger isolation remain necessary; putting hardware in firmware is not an acceptable shortcut.
+Public APIs validate buffers, types, owner, rights, lifecycle and generations; avoid raw cross-ELF callbacks, validate packages and support provider revocation/unload. Centralize *authorization* in the generic core and *hardware implementation* in trusted providers. Independent runtime authorization and honest isolation limits remain necessary; putting hardware in firmware is not an acceptable shortcut.
 
 ## 33. Observability
 
@@ -158,7 +158,7 @@ Report contexts, resident modules, jobs, generic software grants, memory, VM pre
 6. Persistent deadlines and service activation, with actual RTC/wake operations in providers.
 7. Generic networking services with physical link/radio implementations in ELFs.
 8. Generic UI/navigation/virtualization with actual display and input hardware implemented in ELFs.
-9. Signed privileged drivers, stricter API rights/quotas, and containment.
+9. Privileged-driver admission, stricter API rights/quotas, and containment.
 10. Remove legacy firmware device-specific bridges/projections/managers; validate independent driver installation and physical teardown.
 
 ## 35. Acceptance criteria

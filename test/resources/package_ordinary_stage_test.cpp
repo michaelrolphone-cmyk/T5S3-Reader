@@ -135,7 +135,7 @@ Source fixture() {
   return out;
 }
 constexpr uint8_t metadata[] = "{\"type\":\"ordinary\"}";
-constexpr PackageRuntimePolicy kLimits{"xtensa-esp32s3", 2, 0, 2048, 4096};
+constexpr PackageRuntimePolicy kLimits{"xtensa-esp32s3", 2, 2048, 4096};
 uint32_t resolve(const char* name) {
   return std::strcmp(name, "kernel.serial") == 0 ? 1u : 0u;
 }
@@ -151,7 +151,13 @@ void validKindsAndSources() {
   for (Kind kind : {Kind::Application, Kind::Driver, Kind::Service, Kind::Provider}) {
     for (int transport = 0; transport < 2; ++transport) {
       Source source = fixture(); // Identical SD and downloaded input bytes.
-      const auto candidate = plan(kind, source);
+      auto candidate = plan(kind, source);
+      if (transport) {
+        candidate.schemaVersion = 2;
+        std::strcpy(candidate.entries[1].name, "assets/spec/schema.json");
+        source.files["assets/spec/schema.json"] = source.files.at("schema.json");
+        source.files.erase("schema.json");
+      }
       Directory installed;
       assert(stage(candidate, source, installed) ==
              OrdinaryStageResult::ReadyForPublicationReview);

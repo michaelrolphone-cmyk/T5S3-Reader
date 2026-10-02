@@ -56,7 +56,7 @@ static bool submit(uint16_t,uint16_t){assert(!stopped);lastSubmit=millis();retur
 static bool pending(){return false;}
 static uint32_t frames(){return 0;}
 static void stop(){stopped=true;++stops;}
-static const t5_video_api_v1 video={T5_VIDEO_API_VERSION,sizeof(t5_video_api_v1),startVideo,back,capacity,submit,pending,frames,stop,nullptr,nullptr,nullptr};
+static const t5_video_api_v1 video={T5_VIDEO_API_VERSION,sizeof(t5_video_api_v1),startVideo,back,capacity,submit,pending,frames,stop,nullptr,nullptr,nullptr,nullptr};
 extern "C" const t5_video_api_v1* t5_video_get_api(uint32_t){return &video;}
 extern "C" int native_hardware_takeover_begin(uint32_t flags){assert(flags==(T5_HARDWARE_TAKEOVER_DISPLAY|T5_HARDWARE_TAKEOVER_UI_VIDEO));return ESP_OK;}
 extern "C" int native_hardware_takeover_end(uint32_t){++ends;return failEnd?1:0;}

@@ -1,4 +1,5 @@
 #include "AppManifest.h"
+#include "ManagedAppAdmission.h"
 #include "NativeSerialPortBridge.h"
 #include "runtime/capabilities/AppDependencyBindings.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
@@ -42,6 +43,17 @@ bool loadRequirements(const char* sdPath, RuntimeDevices::AppCapabilityRequireme
   const std::string elf(sdPath + 3);
   if (elf.size() < 5 || elf.compare(elf.size() - 4, 4, ".elf") != 0) return false;
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
+  std::shared_ptr<const std::string> captured;
+  RuntimePackages::Identity identity{};
+  const auto state=RuntimePackages::captureManagedAppSidecar(sdPath,captured,&identity);
+  if(state==RuntimePackages::ManagedAppMetadata::Denied)return false;
+  if(state==RuntimePackages::ManagedAppMetadata::Captured || state==RuntimePackages::ManagedAppMetadata::CapturedLegacy){
+    if(captured->empty())return state==RuntimePackages::ManagedAppMetadata::CapturedLegacy;
+    hasManifest=true;t5_app_manifest_t manifest{};std::string version;
+    const bool canonical=state==RuntimePackages::ManagedAppMetadata::Captured;
+    return parseAppManifest(*captured,manifest,&version,canonical,&requirements) && manifest.compatible &&
+        (!canonical || version==identity.version) && elf.substr(elf.find_last_of('/')+1)==manifest.file_name;
+  }
   if (!Storage.exists(sidecar.c_str())) return true;
   hasManifest = true;
   t5_app_manifest_t manifest{};

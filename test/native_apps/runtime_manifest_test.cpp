@@ -10,6 +10,13 @@ static bool parse(const std::string& fields,
   return parseAppManifest(base + fields + "}", app, nullptr, false, required, fileTypes);
 }
 int main() {
+  t5_app_manifest_t parsed{};
+  AppIntegrity integrity{};
+  assert(parseAppManifest(base+"}",parsed,nullptr,false,nullptr,nullptr,&integrity));
+  assert(integrity.present && integrity.sizeBytes==15340 && std::string(integrity.sha256)=="bb08e32710b605f8d207a5e8abfb7643075ba9c02b5178c069838d6676bb7f4b");
+  assert(!parseAppManifest(base+",\"requires\":\"invalid\"}",parsed,nullptr,false,nullptr,nullptr,&integrity));
+  assert(!integrity.present && integrity.sizeBytes==0);
+
   assert(parse(""));
   assert(parse(R"(,"optional":[])"));
   assert(parse(R"(,"requires":[])"));

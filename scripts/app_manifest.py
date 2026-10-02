@@ -74,3 +74,9 @@ def validate_manifest(source, output):
     _validate_capabilities(path, data)
     _validate_file_types(path, data)
     return path
+
+
+def package_requirements(data):
+    """Carry validated mandatory app capabilities into its ordinary package."""
+    return [{'capability': item['capability'], 'min_api': int(item['api'][2:])}
+            for item in data.get('requires') or []]

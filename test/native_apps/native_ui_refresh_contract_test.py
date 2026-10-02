@@ -57,14 +57,14 @@ assert "rowFontAwesomeIcon" in rounded_theme and "rowFontAwesomeIconSize" in rou
 assert "FontAwesomeIcons::draw" in rounded_theme
 
 
-# App Store and Driver Manager explicitly opt into the same 12 px scale used by Home app icons.
+# App Store opts into the same 12 px scale used by Home app icons. Driver
+# Manager's package-state flags are exercised in driver_manager_test.c, without
+# depending on the name of its local flags variable.
 ui_api = (ROOT / "lib/NativeApps/include/T5UiApi.h").read_text()
 app_store = (ROOT / "Apps/app_store.c").read_text()
-driver_manager = (ROOT / "Apps/driver_manager.c").read_text()
 home_theme = (ROOT / "src/components/themes/BaseTheme.cpp").read_text()
 assert "#define T5_UI_LIST_ICON_COMPACT (1u << 4)" in ui_api
 assert "flags |= T5_UI_LIST_ICON_COMPACT" in app_store
-assert "state_flags |= T5_UI_LIST_ICON_COMPACT" in driver_manager
 assert "constexpr int kAppIconSize = 12;" in home_theme
 
 print("Native UI full-row selection and themed Font Awesome list-state rendering PASS")

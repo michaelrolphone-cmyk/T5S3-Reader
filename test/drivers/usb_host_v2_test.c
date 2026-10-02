@@ -96,6 +96,7 @@ int main(int argc, char **argv) {
     assert(extended->interrupt_read);
     const risc_usb_host_discovery_v1 *discovery =
         (const risc_usb_host_discovery_v1 *)host;
+    assert(discovery->control_claim && discovery->release_checked);
     assert(!driver->start(NULL, 0));
     risc_usb_controller_interrupt_v1 controller = {
         {RISC_USB_CONTROLLER_API_V1, sizeof(controller), NULL,
@@ -132,8 +133,17 @@ int main(int argc, char **argv) {
     uint64_t duplicate = 0;
     assert(!host->claim(host->context, first, 0, 0, &duplicate));
     assert(!driver->quiesce());
-    assert(host->control(host->context, first, 0x21, 0x22, 3, 1, NULL, 0, 1000) == -1);
-    assert(host->control(host->context, first, 0x21, 0x22, 3, 0, NULL, 0, 1000) == 0);
+    /* The old entry cannot identify a class owner even for a valid device.
+     * Only the exact live claim can authorize a control request. */
+    assert(host->control(host->context, first, 0x21, 0x22, 3, 0, NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, first, 0x21, 0x22, 3, 0,
+                                    NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x21, 0x22, 3, 1,
+                                    NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x22, 0x22, 3, 0,
+                                    NULL, 0, 1000) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x21, 0x22, 3, 0,
+                                    NULL, 0, 1000) == 0);
     uint8_t data[2] = {0};
     assert(host->bulk_read(host->context, claim_token, 0x81, data, 2, 100) == 1);
     assert(data[0] == 'R');
@@ -145,6 +155,8 @@ int main(int argc, char **argv) {
     queue(2, 51);
     assert(discovery->poll(host->context, 8, &processed) && processed == 1);
     assert(host->bulk_read(host->context, claim_token, 0x81, data, 2, 100) == -1);
+    assert(discovery->control_claim(host->context, claim_token, 0x21, 0x22, 3, 0,
+                                    NULL, 0, 1000) == -1);
     length = sizeof(desc);
     assert(!host->configuration(host->context, first, desc, &length, &vid, &pid));
     assert(!driver->quiesce());
@@ -181,6 +193,6 @@ int main(int argc, char **argv) {
     assert(driver->quiesce());
     driver->stop();
     assert(dlclose(elf) == 0);
-    puts("USB host ELF discovery/generation, bulk and interrupt claim gates: PASS");
+    puts("USB host ELF discovery, claim-scoped control, I/O and teardown: PASS");
     return 0;
 }

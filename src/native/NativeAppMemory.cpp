@@ -82,7 +82,17 @@ extern "C" void native_app_memory_end() {
       (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 }
 extern "C" void* native_app_psram_alloc(size_t bytes) {
-  return appHeapMalloc(bytes,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+  constexpr uint32_t caps=MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT;
+  void* pointer=appHeapMalloc(bytes,caps);
+  // Report the same memory capabilities as the failed request. The ordinary
+  // exit log's "largest" field is INTERNAL RAM, not the PSRAM allocation limit.
+  // appHeapMalloc has released the allocation-ledger mutex before logging.
+  if(!pointer && bytes) {
+    LOG_ERR("APP_MEM","psram-failed request=%u free_psram=%u largest_psram=%u",
+        (unsigned)bytes,(unsigned)heap_caps_get_free_size(caps),
+        (unsigned)heap_caps_get_largest_free_block(caps));
+  }
+  return pointer;
 }
 extern "C" void native_app_memory_free(void* pointer) {
   if(!pointer) return;

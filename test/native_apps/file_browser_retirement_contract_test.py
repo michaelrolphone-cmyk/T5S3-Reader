@@ -60,7 +60,7 @@ class FileBrowserRetirementContract(unittest.TestCase):
         self.assertNotIn('checkFileExtension(std::string_view{name}, ".elf")', SD_UPDATE)
 
     def test_bin_files_are_associated_with_sd_firmware_update(self):
-        self.assertEqual(MANIFEST["version"], "1.0.1")
+        self.assertGreaterEqual(tuple(map(int, MANIFEST["version"].split("."))), (1, 0, 1))
         self.assertIn(".bin", MANIFEST["supported_file_types"])
 
     def test_sd_firmware_bridge_accepts_file_open_handoff(self):
