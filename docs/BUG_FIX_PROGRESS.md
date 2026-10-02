@@ -6,12 +6,12 @@
 
 ## Active merge-base refresh — PR351 and PR353
 
-- Current master `ca66db298c2e735f45e5029083a9bfbd7b6740bd`, firmware1.3.57. Both PR branches now contain proper two-parent merge commits with current master as first parent and their previous repair head as second parent. Their trees preserve their source fixes, tests, current-master changes and unique versions. GitHub reports both open PRs mergeable; both remain draft while new exact-head CI runs.
+- Current master `ca66db298c2e735f45e5029083a9bfbd7b6740bd`, firmware1.3.57. Both PR branches now contain proper two-parent merge commits with current master as first parent and their previous repair head as second parent. Their trees preserve their source fixes, tests, current-master changes and unique versions. GitHub reports both open PRs mergeable. Exact-head CI is terminal and green for both; PR351 and PR353 are ready for review and both implementation claims are released.
 - PR351 OTA head `b7ca0fc80aa7613813db1e5cf4f065814b6767c4`, parents current master ca66db and prior repair92b119; candidate1.3.59; exact CI run36958852489 passed all four jobs. Merged `test/run_springboard_test.sh` retains PR352 Hollow memory test and PR351 OTA state test. PR351 has been marked ready for review; claim released.
-- PR353 ClockSync head `36f80118d16c4291bc9a931cdb5d18b0ccbff674`, parents current master ca66db and prior repair533c507; candidate1.3.58; CI run36958898901 in progress. Previous CI36954342160 passed old head533c507 only.
+- PR353 ClockSync head `36f80118d16c4291bc9a931cdb5d18b0ccbff674`, parents current master ca66db and prior repair533c507; candidate1.3.58; CI run36958898901 passed all four jobs on the exact merge head. Earlier CI36954342160 passed old head533c507 only.
 - Version lineage after PR352 merged: current master1.3.57; release index1.3.55; U1 candidate1.3.56; PR3531.3.58; PR3511.3.59. Each branch retains its unique reservation.
 - Canonical bug70 is paused with its locally verified production-helper fix/regression preserved at `/Users/micahelbyrns/Documents/Codex/2026-10-01/task-3/saved-network-fallback-wip`. Remote branch `fix/saved-network-fallback` is empty, no PR was opened, no candidate commit was published. Resume only after these two exact-head runs settle.
-- Do not mark PRs ready or release conflict claims until their corresponding merge-commit SHA CI is terminal and green. No master write, merge, release, device I/O or work on U1/PR352/PR350.
+- Both PRs are now marked ready after exact merge-commit SHA CI passed. No master write, merge, release, device I/O or work on U1/PR352/PR350. No master write, merge, release, device I/O or work on U1/PR352/PR350.
 
 ---
 
