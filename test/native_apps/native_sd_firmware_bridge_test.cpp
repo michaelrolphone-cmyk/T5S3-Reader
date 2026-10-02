@@ -134,9 +134,13 @@ int main() {
     assert(api->validate() == T5_SD_FIRMWARE_OK); /* Retry after a transient validator error. */
     assert(validator_path == active_source_path);
 
+    install_result = firmware_flash::Result::WRITE_FAIL;
+    assert(api->install(progress_callback, nullptr) == T5_SD_FIRMWARE_WRITE_FAILED);
+    assert(install_path == active_source_path && install_calls == 1);
+    install_result = firmware_flash::Result::OK;
     assert(api->install(progress_callback, nullptr) == T5_SD_FIRMWARE_OK);
     assert(install_path == active_source_path);
-    assert(install_calls == 1 && progress_calls == 1);
+    assert(install_calls == 2 && progress_calls == 2);
     assert(api->image_size() == 128 && api->written_size() == 64);
     api->restart_after_update();
     assert(restart_calls == 1);
