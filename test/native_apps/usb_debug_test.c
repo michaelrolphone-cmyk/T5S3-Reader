@@ -97,7 +97,8 @@ static int32_t mock_control(void *context, uint64_t device,
 static bool mock_configuration(void *context, uint64_t device, uint8_t *bytes,
                                size_t *length, uint16_t *vid, uint16_t *pid) {
     (void)context;
-    assert(device == 0x1122334455667788ULL);
+    assert(device == 0x1122334455667788ULL ||
+           device == 0x8877665544332211ULL);
     assert(bytes && length && vid && pid);
     if (*length < sizeof(configuration_descriptor)) {
         *length = sizeof(configuration_descriptor);
