@@ -1,10 +1,11 @@
 ## Active merge-base refresh — PR351 and PR353
 
-- User directed resolution of merge conflicts after master advanced through merged PR352. Current master exact head `ca66db298c2e735f45e5029083a9bfbd7b6740bd`, firmware1.3.57. Both repair branches were ready/green on older heads but GitHub now reports mergeable=false against current master; both PRs have been converted back to draft pending sync.
-- PR351 OTA repair head `92b119122f0115da0adbac6ca52b6da55bbd8e6f`, candidate1.3.59, exact CI36955528948 passed only on that pre-sync head.
-- PR353 ClockSync repair head `533c50733a86b1ca6b356975c22a089b3b6049f8`, candidate1.3.58, exact CI36954342160 passed only on that pre-sync head.
-- Plan: construct merge commits with current master as first parent and each existing repair head as second parent, preserving PR351's Hollow/renderer test runner addition while adding OTA test, and retaining respective unique firmware candidates. Re-run exact-head CI before restoring ready.
-- Canonical #70 candidate `fix/saved-network-fallback` has only an empty remote branch from current master; its focused revalidation, baseline-failing production-helper regression, and local fix are preserved in the Mac workspace. Implementation is paused until PR351/353 syncs settle. Do not start another new batch.
+- Current master `ca66db298c2e735f45e5029083a9bfbd7b6740bd`, firmware1.3.57. Both PR branches now contain proper two-parent merge commits with current master as first parent and their previous repair head as second parent. Their trees preserve their source fixes, tests, current-master changes and unique versions. GitHub reports both open PRs mergeable; both remain draft while new exact-head CI runs.
+- PR351 OTA head `b7ca0fc80aa7613813db1e5cf4f065814b6767c4`, parents current master ca66db and prior repair92b119; candidate1.3.59; CI run36958852489 in progress. The merged `test/run_springboard_test.sh` retains PR352 Hollow memory test and PR351 OTA state test. Previous CI36955528948 passed old head92b119 only.
+- PR353 ClockSync head `36f80118d16c4291bc9a931cdb5d18b0ccbff674`, parents current master ca66db and prior repair533c507; candidate1.3.58; CI run36958898901 in progress. Previous CI36954342160 passed old head533c507 only.
+- Version lineage after PR352 merged: current master1.3.57; release index1.3.55; U1 candidate1.3.56; PR3531.3.58; PR3511.3.59. Each branch retains its unique reservation.
+- Canonical bug70 is paused with its locally verified production-helper fix/regression preserved at `/Users/micahelbyrns/Documents/Codex/2026-10-01/task-3/saved-network-fallback-wip`. Remote branch `fix/saved-network-fallback` is empty, no PR was opened, no candidate commit was published. Resume only after these two exact-head runs settle.
+- Do not mark PRs ready or release conflict claims until their corresponding merge-commit SHA CI is terminal and green. No master write, merge, release, device I/O or work on U1/PR352/PR350.
 
 ---
 
