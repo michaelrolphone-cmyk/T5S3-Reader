@@ -346,7 +346,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Treat the migration transactionally: require a successful open, complete/validated legacy read, and successful `saveToFile()` before renaming the legacy file. If any step fails, leave `language.bin` intact and return `false`; also check the rename result. Add regression tests for open failure, truncated/invalid legacy data, destination-write failure, and successful migration.
 ### 36. Firmware Flasher silently hides firmware images after the first 64
 
-- **Status:** Confirmed on current master; draft [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371) at `780b04407c9223f37fda9f89bf40a6b35e8652d2` has exact-head checks pending. Owner claim remains active through terminal verification; see `docs/BUG_FIX_PROGRESS.md`.
+- **Status:** Confirmed on current master; draft [PR #371](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/371) at `9c77ad8d396a7660ae97396c34683e6ea87f4b06`, based on current master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`, has fresh exact-head checks queued. Owner claim remains active through terminal verification; see `docs/BUG_FIX_PROGRESS.md`.
 - **Sources:** [automation/bug-scan-20260927-0325](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0325/bugs.md)
 
 - **Affected code:** `Apps/esp_rom_flasher.c`, `MAX_IMAGES`, the fixed image inventory arrays, and the root-directory scan in `app_main()`.
