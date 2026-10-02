@@ -21,6 +21,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <string>
 
 #include "MappedInputManager.h"
 #include "activities/ActivityManager.h"
@@ -53,6 +54,7 @@ bool shared_text_ready = false;
 const char *storage_status = "SD provider unavailable";
 bool storage_mounted = false;
 bool showing_storage_activity = false;
+std::string storage_preview;
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
     LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
@@ -150,10 +152,36 @@ void x4DiagnosticSetup() {
             storage_mounted = volume->ready(volume->context);
             char reason[80] = "none";
             if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
-            storage_status = storage_mounted ? "SD files ready" :
-                (std::strcmp(reason, "FAT32 root read; filesystem not mounted") == 0 ?
-                 "SD card found; files unavailable" : "SD card not ready");
+            storage_status = storage_mounted ? "SD root read only" : "SD card not ready";
             LOG_INF("X4", "storage.volume mounted=%d reason=%s", storage_mounted ? 1 : 0, reason);
+            if (storage_mounted) storage_preview = "SD root read only";
+            if (storage_mounted && volume->dir_open && volume->dir_next &&
+                volume->dir_close && volume->file_open_read && volume->file_read && volume->file_close) {
+                storage_preview = "SD ready; no root TXT file";
+                const risc_storage_dir_t directory = volume->dir_open(volume->context, "/");
+                if (directory != RISC_STORAGE_DIR_INVALID) {
+                    risc_storage_dirent_v1 entry{};
+                    for (unsigned i = 0; i < 16 && volume->dir_next(volume->context, directory, &entry); ++i) {
+                        const char *extension = std::strrchr(entry.name, '.');
+                        if (entry.is_directory || !extension || std::strcmp(extension, ".TXT") != 0) continue;
+                        char path[RISC_STORAGE_VOLUME_NAME_MAX + 2] = "/";
+                        std::strncat(path, entry.name, sizeof(path) - 2);
+                        uint64_t size = 0;
+                        const risc_storage_file_t file = volume->file_open_read(volume->context, path, &size);
+                        if (file == RISC_STORAGE_FILE_INVALID) break;
+                        char sample[65] = {0};
+                        const size_t count = volume->file_read(volume->context, file, sample, sizeof(sample) - 1);
+                        (void)volume->file_close(volume->context, file, false);
+                        for (size_t j = 0; j < count; ++j)
+                            if ((unsigned char)sample[j] < 32 || (unsigned char)sample[j] > 126) sample[j] = ' ';
+                        storage_preview = std::string(entry.name) + ": " + std::string(sample, count);
+                        LOG_INF("X4", "storage preview file=%s bytes=%lu", entry.name,
+                                static_cast<unsigned long>(count));
+                        break;
+                    }
+                    volume->dir_close(volume->context, directory);
+                }
+            }
         }
     }
     display_api = static_cast<const risc_display_output_api_v1 *>(panel_mod.capability());
@@ -198,12 +226,14 @@ void x4DiagnosticSetup() {
     char probe[160] = "unavailable";
     (void)panel_mod.copyProviderError(probe, sizeof(probe));
     LOG_INF("X4", "%s", probe);
-    if (!storage_mounted && shared_text_ready) {
+    if (shared_text_ready) {
         // This existing Reader activity draws synchronously on entry. Do not
         // start the normal render worker: X4 power/storage/input owners have
         // not yet completed their provider cutover.
         activityManager.replaceActivity(std::make_unique<FullScreenMessageActivity>(
-            renderer, mappedInputManager, storage_status, EpdFontFamily::REGULAR,
+            renderer, mappedInputManager,
+            storage_mounted ? storage_preview : std::string(storage_status),
+            EpdFontFamily::REGULAR,
             DisplayPresentMode::Clean));
         showing_storage_activity = true;
         ready = provider_surface->lastPresentSucceeded();
@@ -228,7 +258,7 @@ void x4DiagnosticLoop() {
     nativeNavigationTick();
     const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
     if (frame_in.pressed && showing_storage_activity) {
-        LOG_INF("X4", "navigation edge=%lu while storage unavailable",
+        LOG_INF("X4", "navigation edge=%lu while storage preview active",
                 static_cast<unsigned long>(frame_in.pressed));
     } else if (frame_in.pressed) {
         ++sequence;

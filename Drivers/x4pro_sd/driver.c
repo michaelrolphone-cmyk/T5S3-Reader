@@ -13,6 +13,7 @@
 static const risc_platform_clock_api_v1 *clock_api;
 static bool started, high_capacity;
 static char error[80];
+static bool mounted;
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -108,6 +109,16 @@ typedef struct {
     uint32_t fat_lba, fat_sectors, data_lba, clusters, root_cluster;
     uint8_t sectors_per_cluster;
 } fat32_geometry;
+static fat32_geometry volume_geometry;
+static struct {
+    bool open;
+    uint32_t cluster, sector, slot, traversed;
+} directory_cursor;
+static uint32_t directory_last_cluster;
+static struct {
+    bool open;
+    uint32_t cluster, sector, offset, remaining, traversed;
+} file_cursor;
 /* Parse only layout metadata. No mounted state or file access is granted here. */
 static bool fat32_layout(const uint8_t sector[512], uint32_t partition_lba,
                          uint32_t partition_sectors, fat32_geometry *out) {
@@ -148,7 +159,7 @@ static bool fat_next_cluster(const fat32_geometry *geometry, uint32_t cluster,
     }
     uint8_t sector[512];
     if (!read_sector(geometry->fat_lba + cluster / 128u, sector)) {
-        fail("FAT32 table read failed"); return false;
+        fail("FAT32 table read failed"); mounted = false; return false;
     }
     const uint32_t next = le32(sector + (cluster % 128u) * 4u) & 0x0fffffffu;
     if (next < 0x0ffffff8u && (next < 2u || next == cluster ||
@@ -167,7 +178,11 @@ static bool read_cluster_sector(const fat32_geometry *geometry, uint32_t cluster
     }
     const uint32_t lba = geometry->data_lba +
         (cluster - 2u) * geometry->sectors_per_cluster + offset;
-    if (!read_sector(lba, out)) { fail("FAT32 root read failed"); return false; }
+    if (!read_sector(lba, out)) {
+        fail("FAT32 data read failed");
+        mounted = false;
+        return false;
+    }
     return true;
 }
 static bool probe_root(const fat32_geometry *geometry) {
@@ -175,7 +190,8 @@ static bool probe_root(const fat32_geometry *geometry) {
     uint32_t next = 0;
     if (!fat_next_cluster(geometry, geometry->root_cluster, &next) ||
         !read_cluster_sector(geometry, geometry->root_cluster, 0u, sector)) return false;
-    fail("FAT32 root read; filesystem not mounted");
+    volume_geometry = *geometry;
+    mounted = true;
     return true;
 }
 static bool probe_fat32(void) {
@@ -248,39 +264,153 @@ static bool init_card(void) {
 static bool refresh(void *context) {
     (void)context;
     error[0] = 0;
+    mounted = false;
+    directory_cursor.open = false;
+    file_cursor.open = false;
     if (!started) return false;
     (void)init_card();
     return true;
 }
-/* A card answering ACMD41 is not yet a mounted, usable filesystem. */
-static bool ready(void *context) { (void)context; return false; }
+static bool ready(void *context) { (void)context; return mounted; }
 static bool label(void *context, char *out, size_t capacity) {
     (void)context;
     if (!ready(0) || !out || capacity < 6) return false;
     memcpy(out, "X4PRO", 6);
     return true;
 }
+static risc_storage_dir_t dir_open(void *context, const char *path);
+static bool dir_next(void *context, risc_storage_dir_t directory, risc_storage_dirent_v1 *entry);
+static void dir_close(void *context, risc_storage_dir_t directory);
 static bool stat(void *context, const char *path, uint64_t *size_out, bool *is_directory_out) {
-    (void)context; (void)path; (void)size_out; (void)is_directory_out;
-    fail("filesystem not mounted");
+    (void)context;
+    if (!mounted || !path || !size_out || !is_directory_out) return false;
+    if (equal(path, "/")) { *size_out = 0; *is_directory_out = true; return true; }
+    risc_storage_dir_t handle = dir_open(0, "/");
+    if (!handle) return false;
+    risc_storage_dirent_v1 entry;
+    bool found = false;
+    while (dir_next(0, handle, &entry)) {
+        if (equal(path + (path[0] == '/' ? 1 : 0), entry.name)) {
+            *size_out = entry.size;
+            *is_directory_out = entry.is_directory != 0;
+            found = true;
+            break;
+        }
+    }
+    dir_close(0, handle);
+    return found;
+}
+static risc_storage_dir_t dir_open(void *context, const char *path) {
+    (void)context;
+    if (!mounted || !equal(path, "/")) return RISC_STORAGE_DIR_INVALID;
+    directory_cursor.open = true;
+    directory_cursor.cluster = volume_geometry.root_cluster;
+    directory_cursor.sector = directory_cursor.slot = directory_cursor.traversed = 0;
+    return 1;
+}
+static bool dir_next(void *context, risc_storage_dir_t directory, risc_storage_dirent_v1 *entry) {
+    (void)context;
+    if (!mounted || directory != 1 || !directory_cursor.open || !entry) return false;
+    uint8_t sector[512];
+    const uint64_t began = clock_api->monotonic_ms(clock_api->context);
+    for (unsigned reads = 0; reads < 128u; ++reads) {
+        if (directory_cursor.traversed >= 128u ||
+            clock_api->monotonic_ms(clock_api->context) - began >= 3000u) {
+            fail("FAT32 root scan limit"); return false;
+        }
+        if (!read_cluster_sector(&volume_geometry, directory_cursor.cluster,
+                                 directory_cursor.sector, sector)) return false;
+        ++directory_cursor.traversed;
+        while (directory_cursor.slot < 16u) {
+            const uint8_t *item = sector + 32u * directory_cursor.slot++;
+            if (!item[0]) return false;
+            if (item[0] == 0xe5u || item[11] == 0x0fu || (item[11] & 0x08u)) continue;
+            memset(entry, 0, sizeof(*entry));
+            size_t pos = 0;
+            for (size_t i = 0; i < 8u && item[i] != ' '; ++i) entry->name[pos++] = (char)item[i];
+            if (item[8] != ' ') {
+                entry->name[pos++] = '.';
+                for (size_t i = 8u; i < 11u && item[i] != ' '; ++i) entry->name[pos++] = (char)item[i];
+            }
+            entry->size = le32(item + 28);
+            entry->is_directory = (item[11] & 0x10u) != 0u;
+            directory_last_cluster = ((uint32_t)le16(item + 20) << 16) | le16(item + 26);
+            return true;
+        }
+        directory_cursor.slot = 0;
+        if (++directory_cursor.sector >= volume_geometry.sectors_per_cluster) {
+            uint32_t next = 0;
+            if (!fat_next_cluster(&volume_geometry, directory_cursor.cluster, &next)) return false;
+            if (next >= 0x0ffffff8u) return false;
+            directory_cursor.cluster = next;
+            directory_cursor.sector = 0;
+        }
+    }
+    fail("FAT32 root scan limit");
     return false;
 }
-static risc_storage_dir_t dir_open(void *context, const char *path) { (void)context; (void)path; return RISC_STORAGE_DIR_INVALID; }
-static bool dir_next(void *context, risc_storage_dir_t directory, risc_storage_dirent_v1 *entry) {
-    (void)context; (void)directory; (void)entry; return false;
+static void dir_close(void *context, risc_storage_dir_t directory) {
+    (void)context;
+    if (directory == 1) directory_cursor.open = false;
 }
-static void dir_close(void *context, risc_storage_dir_t directory) { (void)context; (void)directory; }
 static risc_storage_file_t file_open_read(void *context, const char *path, uint64_t *size_out) {
-    (void)context; (void)path; (void)size_out; return RISC_STORAGE_FILE_INVALID;
+    (void)context;
+    file_cursor.open = false;
+    if (!mounted || !path || !size_out || !path[0]) return RISC_STORAGE_FILE_INVALID;
+    const char *wanted = path + (path[0] == '/' ? 1 : 0);
+    if (!wanted[0] || !dir_open(0, "/")) return RISC_STORAGE_FILE_INVALID;
+    risc_storage_dirent_v1 entry;
+    bool found = false;
+    while (dir_next(0, 1, &entry)) {
+        if (equal(wanted, entry.name) && !entry.is_directory) { found = true; break; }
+    }
+    dir_close(0, 1);
+    if (!found) return RISC_STORAGE_FILE_INVALID;
+    if (entry.size && (directory_last_cluster < 2u ||
+        (uint64_t)directory_last_cluster >= (uint64_t)volume_geometry.clusters + 2u)) {
+        fail("FAT32 file cluster invalid"); return RISC_STORAGE_FILE_INVALID;
+    }
+    file_cursor.open = true;
+    file_cursor.cluster = directory_last_cluster;
+    file_cursor.sector = file_cursor.offset = file_cursor.traversed = 0;
+    file_cursor.remaining = (uint32_t)entry.size;
+    *size_out = entry.size;
+    return 1;
 }
 static size_t file_read(void *context, risc_storage_file_t file, void *buffer, size_t capacity) {
-    (void)context; (void)file; (void)buffer; (void)capacity; return 0;
+    (void)context;
+    if (!mounted || file != 1 || !file_cursor.open || !buffer || !capacity || !file_cursor.remaining) return 0;
+    if (file_cursor.sector >= volume_geometry.sectors_per_cluster) {
+        uint32_t next = 0;
+        if (file_cursor.traversed++ >= 1024u ||
+            !fat_next_cluster(&volume_geometry, file_cursor.cluster, &next) ||
+            next >= 0x0ffffff8u) { fail("FAT32 file chain truncated"); file_cursor.open = false; return 0; }
+        file_cursor.cluster = next;
+        file_cursor.sector = 0;
+    }
+    uint8_t sector[512];
+    if (!read_cluster_sector(&volume_geometry, file_cursor.cluster, file_cursor.sector, sector)) {
+        file_cursor.open = false; return 0;
+    }
+    size_t count = 512u - file_cursor.offset;
+    if (count > capacity) count = capacity;
+    if (count > file_cursor.remaining) count = file_cursor.remaining;
+    memcpy(buffer, sector + file_cursor.offset, count);
+    file_cursor.offset += (uint32_t)count;
+    file_cursor.remaining -= (uint32_t)count;
+    if (file_cursor.offset == 512u) { file_cursor.offset = 0; ++file_cursor.sector; }
+    return count;
 }
 static risc_storage_file_t file_open_write(void *context, const char *path) { (void)context; (void)path; return RISC_STORAGE_FILE_INVALID; }
 static size_t file_write(void *context, risc_storage_file_t file, const void *buffer, size_t size) {
     (void)context; (void)file; (void)buffer; (void)size; return 0;
 }
-static bool file_close(void *context, risc_storage_file_t file, bool commit) { (void)context; (void)file; (void)commit; return false; }
+static bool file_close(void *context, risc_storage_file_t file, bool commit) {
+    (void)context;
+    if (file != 1 || !file_cursor.open || commit) return false;
+    file_cursor.open = false;
+    return true;
+}
 static bool remove_path(void *context, const char *path) { (void)context; (void)path; return false; }
 static bool last_error_api(void *context, char *out, size_t capacity) {
     (void)context;
@@ -316,6 +446,9 @@ static void stop(void) {
     }
     started = false;
     high_capacity = false;
+    mounted = false;
+    directory_cursor.open = false;
+    file_cursor.open = false;
 }
 static bool quiesce(void) { stop(); return true; }
 static const risc_driver_v2 driver = {

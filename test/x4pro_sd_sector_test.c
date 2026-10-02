@@ -6,6 +6,7 @@
 uint8_t x4_card_sector[512];
 uint8_t x4_card_partition_boot[512];
 uint8_t x4_card_fat_sector[512], x4_card_root_sector[512];
+uint8_t x4_card_file_sector[2][512];
 bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
 uint32_t x4_card_bad_crc_lba = UINT32_MAX;
 unsigned x4_card_cmd17_count, x4_card_clock_count;
@@ -47,11 +48,52 @@ int main(void) {
     x4_card_root_sector[0] = 0u; /* empty root directory */
     failures += expect(driver->start(&dependency, 1), "provider start");
     char error[80] = {0};
-    failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 root read; filesystem not mounted") == 0,
-                       "CRC-verified FAT32 root remains unmounted");
-    failures += expect(!volume->ready(0), "readable sector is not a filesystem");
+    failures += expect(volume->ready(0), "CRC-verified FAT32 root mounted read-only");
     failures += expect(x4_card_cmd17_count == 3u, "boot, FAT and root sectors read");
+    risc_storage_dirent_v1 entry;
+    failures += expect(volume->dir_open(0, "/") == 1u, "root directory opens");
+    failures += expect(!volume->dir_next(0, 1u, &entry), "empty root ends");
+    volume->dir_close(0, 1u);
+    memcpy(x4_card_root_sector, "BOOK    TXT", 11);
+    x4_card_root_sector[11] = 0x20u;
+    put16(x4_card_root_sector + 26, 3u);
+    put32(x4_card_root_sector + 28, 600u);
+    put32(x4_card_fat_sector + 12, 4u);
+    put32(x4_card_fat_sector + 16, 0x0fffffffu);
+    memset(x4_card_file_sector[0], 'A', 512);
+    memset(x4_card_file_sector[1], 'B', 512);
+    failures += expect(volume->dir_open(0, "/") == 1u, "populated root opens");
+    failures += expect(volume->dir_next(0, 1u, &entry) &&
+                       strcmp(entry.name, "BOOK.TXT") == 0 && entry.size == 600u,
+                       "short root entry through provider API");
+    volume->dir_close(0, 1u);
+    uint64_t stat_size = 0;
+    bool is_directory = true;
+    failures += expect(volume->stat(0, "/BOOK.TXT", &stat_size, &is_directory) &&
+                       stat_size == 600u && !is_directory, "file stat through provider API");
+    uint64_t file_size = 0;
+    failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) == 1u &&
+                       file_size == 600u, "root file opens through provider API");
+    uint8_t file_data[512] = {0};
+    failures += expect(volume->file_read(0, 1u, file_data, sizeof(file_data)) == 512u &&
+                       file_data[0] == 'A' && file_data[511] == 'A', "first cluster read");
+    failures += expect(volume->file_read(0, 1u, file_data, sizeof(file_data)) == 88u &&
+                       file_data[0] == 'B' && file_data[87] == 'B', "FAT chain tail read");
+    failures += expect(volume->file_read(0, 1u, file_data, sizeof(file_data)) == 0u,
+                       "EOF bounded");
+    failures += expect(volume->file_close(0, 1u, false), "read handle closes");
+    failures += expect(volume->file_open_write(0, "/NEW.TXT") == RISC_STORAGE_FILE_INVALID &&
+                       !volume->remove(0, "/BOOK.TXT"), "write and remove fail closed");
+    failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) == 1u,
+                       "file reopens for media error test");
+    x4_card_bad_crc_lba = 2081u;
+    failures += expect(volume->file_read(0, 1u, file_data, sizeof(file_data)) == 0u &&
+                       !volume->ready(0), "file data CRC failure invalidates mount");
+    x4_card_bad_crc_lba = UINT32_MAX;
+    failures += expect(volume->refresh(0) && volume->ready(0), "healthy card remounts");
+    failures += expect(volume->file_read(0, 1u, file_data, sizeof(file_data)) == 0u,
+                       "refresh invalidates stale file handle");
+    x4_card_root_sector[0] = 0u;
 
     x4_card_bad_crc_lba = 32u;
     failures += expect(volume->refresh(0), "bad FAT CRC refresh serviced");
@@ -61,7 +103,7 @@ int main(void) {
     x4_card_bad_crc_lba = 2080u;
     failures += expect(volume->refresh(0), "bad root CRC refresh serviced");
     failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 root read failed") == 0,
+                       strcmp(error, "FAT32 data read failed") == 0,
                        "bad root CRC closes mount");
     x4_card_bad_crc_lba = UINT32_MAX;
 
@@ -102,9 +144,7 @@ int main(void) {
     x4_card_sector[510] = 0x55u; x4_card_sector[511] = 0xaau;
     fat32_boot(x4_card_partition_boot);
     failures += expect(volume->refresh(0), "MBR FAT32 refresh serviced");
-    failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 root read; filesystem not mounted") == 0,
-                       "MBR FAT and root verified without mount");
+    failures += expect(volume->ready(0), "MBR FAT and root mounted read-only");
     failures += expect(x4_card_cmd17_count >= 7u, "MBR reads boot, FAT and root");
     x4_card_partition_boot[36] = 0;
     x4_card_partition_boot[37] = 0;
@@ -121,10 +161,7 @@ int main(void) {
                        strcmp(error, "sector 0 read failed") == 0, "missing token closes mount");
     x4_card_no_data = false;
     failures += expect(volume->refresh(0), "healthy retry serviced");
-    failures += expect(volume->last_error(0, error, sizeof(error)) &&
-                       strcmp(error, "FAT32 root read; filesystem not mounted") == 0,
-                       "healthy retry restores root proof only");
-    failures += expect(!volume->ready(0), "filesystem remains unavailable");
+    failures += expect(volume->ready(0), "healthy retry restores read-only mount");
     failures += expect(!x4_card_bad_pin && x4_card_clock_count < 450000u,
                        "bounded traffic on assigned pins");
     driver->stop();
