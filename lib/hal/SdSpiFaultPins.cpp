@@ -11,6 +11,11 @@ bool affected(uint8_t pin) {
          pin == T5S3_LORA_CS || pin == T5S3_LORA_RST || pin == T5S3_LORA_IRQ || pin == T5S3_LORA_BUSY;
 #elif defined(BOARD_LILYGO_EPD47_S3)
   return pin == EPD47_SD_MISO || pin == EPD47_SD_MOSI || pin == EPD47_SD_SCLK || pin == EPD47_SD_CS;
+#elif defined(BOARD_XTEINK_X4_PRO)
+  // X4's SD provider owns its separate 1-bit GPIO 40/41/42 bus. The legacy
+  // firmware SD/SPI fault wrapper has no shared SPI pin to guard on this board.
+  (void)pin;
+  return false;
 #else
 #error SD/SPI fault pin boundary requires an explicit board profile
 #endif

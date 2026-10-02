@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build Xteink X4 Pro capability drivers as Xtensa provider-v2 ELFs."""
 import hashlib
+import argparse
 import json
 import os
 from pathlib import Path
@@ -63,7 +64,11 @@ def build_one(name):
     print(f"{manifest['id']} {len(payload)} {manifest['sha256']}")
 
 def main():
-    for name in PACKAGES:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", choices=PACKAGES,
+                        help="build only one source directory for a release plan")
+    args = parser.parse_args()
+    for name in ([args.source] if args.source else PACKAGES):
         build_one(name)
 
 if __name__ == "__main__":
