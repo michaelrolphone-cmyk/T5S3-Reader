@@ -6,6 +6,7 @@
 #include "RiscPlatformClockV1.h"
 #include "x4pro_embedded.h"
 #include "fontIds.h"
+#include "runtime/display/ProviderDisplaySurface.h"
 
 #include <Board.h>
 #include <Arduino.h>
@@ -14,6 +15,8 @@
 #include <GfxRenderer.h>
 #include <Logging.h>
 #include <cstring>
+#include <memory>
+#include <new>
 
 #include "runtime/drivers/ProviderModuleV2.h"
 
@@ -31,7 +34,7 @@ const risc_display_output_api_v1 *display_api = nullptr;
 const risc_input_navigation_api_v1 *nav_api = nullptr;
 const risc_frontlight_api_v1 *light_api = nullptr;
 uint8_t surface[48000];
-risc_display_frame_v1 frame = 0;
+std::unique_ptr<ProviderDisplaySurface> provider_surface;
 uint32_t sequence = 0;
 uint32_t last_buttons = 0;
 bool ready = false;
@@ -57,8 +60,8 @@ void pixel(int x, int y, bool black) {
     if (x < 0 || y < 0 || x >= 800 || y >= 480) return;
     uint8_t &byte = surface[(size_t)y * 100u + (size_t)x / 8u];
     uint8_t mask = (uint8_t)(0x80u >> (x & 7));
-    if (black) byte |= mask;
-    else byte &= (uint8_t)~mask;
+    if (black) byte &= (uint8_t)~mask;
+    else byte |= mask;
 }
 void marker(int x, int y) {
     for (int i = 0; i < 24; ++i) { pixel(x + i, y, true); pixel(x, y + i, true); }
@@ -68,7 +71,7 @@ void rectangle(int left, int top, int right, int bottom, bool black) {
         for (int x = left; x < right; ++x) pixel(x, y, black);
 }
 void paint(uint32_t edge) {
-    memset(surface, 0x00, sizeof(surface));
+    memset(surface, 0xFF, sizeof(surface));
     for (int i = 0; i < 800; ++i) { pixel(i, 0, true); pixel(i, 479, true); }
     for (int i = 0; i < 480; ++i) { pixel(0, i, true); pixel(799, i, true); }
     marker(8, 8);
@@ -84,43 +87,22 @@ void paint(uint32_t edge) {
     if (edge & RISC_NAV_LEFT) marker(80, 300);
     if (edge & RISC_NAV_RIGHT) marker(160, 300);
     if (edge & RISC_NAV_CONFIRM) marker(240, 300);
-    /* Exercise the same shared text rasterizer used by Reader UI. It uses
-     * 0=black, while the display.output diagnostic surface uses 1=black. */
+    /* Exercise the same 0=black software raster and text renderer as Reader UI. */
     if (shared_text_ready) {
-        for (uint8_t &value : surface) value = (uint8_t)~value;
         GfxRenderer ui(renderer, surface, 800, 480);
         ui.drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
-        for (uint8_t &value : surface) value = (uint8_t)~value;
     }
 }
 bool present() {
     uint32_t black_pixels = 0;
-    for (uint8_t value : surface) black_pixels += (uint32_t)__builtin_popcount((unsigned)value);
+    for (uint8_t value : surface) black_pixels += (uint32_t)__builtin_popcount((unsigned)((uint8_t)~value));
     LOG_INF("X4", "diagnostic black_pixels=%lu", static_cast<unsigned long>(black_pixels));
-    risc_display_surface_v1 out{};
-    if (!display_api->acquire(display_api->context, RISC_DISPLAY_FORMAT_MONO1, &out)) {
-        LOG_ERR("X4", "acquire failed");
-        return false;
-    }
-    if (out.width != 800 || out.height != 480 || out.stride_bytes != 100 ||
-        out.size_bytes != 48000 || out.pixel_format != RISC_DISPLAY_FORMAT_MONO1 || !out.pixels) {
-        LOG_ERR("X4", "surface geometry rejected");
-        display_api->release(display_api->context, out.frame);
-        return false;
-    }
-    memcpy(out.pixels, surface, sizeof(surface));
-    frame = out.frame;
-    risc_display_present_token_v1 token = 0;
-    if (!display_api->submit(display_api->context, frame, nullptr, 0, nullptr, &token)) {
-        LOG_ERR("X4", "submit failed");
-        return false;
-    }
-    risc_display_present_status_v1 status{};
+    if (!provider_surface || !provider_surface->isReady()) return false;
     const unsigned long began = millis();
-    const bool waited = display_api->wait_present(display_api->context, token, 20000, &status);
+    provider_surface->displayBuffer(DisplayPresentMode::Clean);
     char detail[160] = "unavailable";
     (void)panel_mod.copyProviderError(detail, sizeof(detail));
-    if (!waited || status.state != RISC_DISPLAY_PRESENT_COMPLETE) {
+    if (!provider_surface->lastPresentSucceeded()) {
         LOG_ERR("X4", "present failed elapsed=%lu budget=20000 %s", millis() - began, detail);
         return false;
     }
@@ -154,6 +136,12 @@ void x4DiagnosticSetup() {
         info.width != 800 || info.height != 480 ||
         info.preferred_format != RISC_DISPLAY_FORMAT_MONO1) {
         LOG_ERR("X4", "display.output geometry rejected");
+        return;
+    }
+    provider_surface.reset(new (std::nothrow) ProviderDisplaySurface(display_api, surface,
+                           sizeof(surface), 480, 800, 20000));
+    if (!provider_surface || !provider_surface->isReady()) {
+        LOG_ERR("X4", "display.output surface adapter rejected");
         return;
     }
     if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
