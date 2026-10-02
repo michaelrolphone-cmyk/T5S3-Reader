@@ -13,21 +13,22 @@
 
 ## Active malformed-BMP dimension repair — canonical bug #18
 
-- Owner `image_bmp_guard_20261002_0450`; implementation branch `fix/image-bmp-layout-overflow`; phase: implementation in progress. Claim was published before source edits. Current master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`, firmware1.3.61; `src/native/NativeImageBridge.cpp` remains blob `6c515f8e4c57152d721de8d54bae79ea94792d06`, identical to the freshly revalidated f7f master source.
+- Owner: none after terminal exact-head verification; claim `image_bmp_guard_20261002_0450` released. Repair branch `fix/image-bmp-layout-overflow` is ready for review in PR #355. Current master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`, firmware1.3.61; `src/native/NativeImageBridge.cpp` remains blob `6c515f8e4c57152d721de8d54bae79ea94792d06`, identical to the freshly revalidated f7f master source.
 - Workflow is reachable: master publishes `Apps/image_viewer.json`1.1.1 with .bmp; `Apps/image_viewer.c` consumes File Browser's path via T5FileOpenApi and calls t5_image probe/render; firmware NativeImageBridge implements BMP probe/decode. No hardware/device workflow is required.
 - Reproduction: width`0x20000001`, 32bpp, height1 causes original 32-bit rowBits to wrap to32, computes rowBytes4, and lets 58 bytes pass the extent check although the decode loop walks536,870,913 pixels. The same malformed file is now rejected by the proposed checked layout helper.
 - Scope check: PR344 merged without changing the image decoder; current PR347 changes no NativeImageBridge source and retains the hardware owner's board scope. PR350/351/353/354 do not change the decoder. No app source/manifest or board code is touched.
 - Version candidate1.3.62, above master1.3.61 and active branch candidates checked above. This is a firmware-only increment. Keep redesign backlog-only.
 - **Local PASS:** focused production layout test covers the overflow width, valid 24/32bpp and top-down boundaries, indexed palette boundary, extreme height, truncated rows, and invalid DIB bounds. Source-contract test verifies probe and decode use the same checked parser; it fails against original NativeImageBridge and passes after the fix. Shell/Python syntax and `git diff --check` pass.
-- **Local limitation:** a Mac ASan/UBSan invocation did not produce a result after >30 seconds and was interrupted; the regular focused test passes. No local PlatformIO target build attempted. Focused cloud workflow plus PlatformIO host/both-board/headless CI are required on exact remote head; keep draft until all pass.
-- Next: publish only the source/test/workflow/platformio files on current master, verify remote exact commit, create/update one draft PR, and await exact-head CI. No master write/merge/release/catalog/deployment/flash/device/cross-repository/architecture/hardware-owner action.
+- **Exact-head CI PASS:** BMP regression run36968184192 passed. PlatformIO run36968184165 passed host aggregate and package-version checks, both t5s3-pro and lilygo-epd47-s3 builds/app validation, and headless core on exact head `ab36b60c79376efc44a3bb09811e2dc697a6ebc4`.
+- **Local limitation:** Mac ASan/UBSan stalled >30 seconds and was interrupted; no local target build. No device verification.
+- [PR #355](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/355) is open, ready for user review, and mergeable against master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. No master write/merge/release/catalog/deployment/flash/device/cross-repository/architecture/hardware-owner action.
 
 ## BMP row-layout overflow repair — PR355 checkpoint
 
 - [Draft PR #355](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/355) is open on `fix/image-bmp-layout-overflow`, exact remote head `ab36b60c79376efc44a3bb09811e2dc697a6ebc4`, directly based on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. The branch compare is 7 commits ahead, 0 behind, with exactly seven intended files. No merge or master write.
 - Canonical bug #18 is revalidated by current reachable Image Viewer→BMP probe/decode code and the reproduced overflow arithmetic documented above. Local focused test passes; ASan/UBSan stalled and was interrupted; no local target build or device check.
 - Candidate firmware version 1.3.62 increments current1.3.61 only. PR347 remains hardware-owner controlled; this change does not overlap its camera integration.
-- Exact-head cloud runs are queued: [PlatformIO build run 36968184165](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36968184165) and [BMP layout regression run 36968184192](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36968184192). Keep PR draft and retain implementation claim until both required checks reach terminal success; then update this record and release claim. User handles merge.
+- Exact-head cloud runs completed successfully: [PlatformIO build run 36968184165](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36968184165) and [BMP layout regression run 36968184192](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/36968184192). All required exact-head checks passed; implementation claim released. PR is ready for user review/merge.
 
 ## Historical merge-base refresh — PR351 and PR353 (superseded by current master82caa)
 
