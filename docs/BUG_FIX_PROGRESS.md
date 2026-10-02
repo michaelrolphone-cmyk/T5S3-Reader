@@ -1,3 +1,11 @@
+## ESP ROM terminal reset — PR checkpoint 2026-10-02 13:02:54 UTC
+
+- Active owner `esp_rom_terminal_reset_20261002`; canonical #250; current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. [PR #363](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/363) is draft, branch `fix/esp-rom-terminal-reset`, exact remote head `50bdb27aa8233658755d935fe04f19f231c9fdf3`, ahead 1 / behind 0. Only `NativeEspRomBridge.cpp`, the existing direct provider fault test, and `platformio.ini` changed.
+- Baseline test with terminal disconnect injection fails at the expected target-lost assertion; focused compile/run of the actual provider bridge regression passes after repair. Existing sync/erase/write disconnect, no-ack timeout, reset-control error/loss, MD5 mismatch, release and execution-context tests remain.
+- Full local `test/run_driver_test.sh` aggregate was started with the macOS Clang warning suppressed for the existing C++ header diagnostic, but did not finish after about two minutes without further output and was interrupted. This is not a pass. Exact-head PlatformIO workflow [37010262638](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37010262638) is running its host aggregate and target builds; claim remains active.
+- Version 1.3.61 → 1.3.67: release `firmware-v1.3.61` and open reservations 1.3.62–1.3.66 (#355/#347/#354/#361/#362) checked. No app source/version change. Firmware Flasher API is already on the published app path through `program.esp_rom` + generic `serial.port`; no new API or architecture work.
+- No physical target/device I/O. Earlier serial loss is still an error; only the response window after the full FLASH_END send is accepted as the already-reset outcome. No U1–U4, X4, Hollow, release, catalog, deployment, flash, cross-repo, or master write.
+
 ## ESP ROM terminal reset — active claim 2026-10-02 12:54:00 UTC
 
 - Owner `esp_rom_terminal_reset_20261002`; canonical report #250. Current master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; ledger parent `2b08f43a743d6bdfcce40028cbb34c0d7cfe9d81`; planned master-based repair branch `fix/esp-rom-terminal-reset`. Phase: revalidated source and supported product path; baseline fault injection pending. Prior font-catalog owner is explicitly released in the latest completed checkpoint; older in-progress entries below are historical and superseded.
