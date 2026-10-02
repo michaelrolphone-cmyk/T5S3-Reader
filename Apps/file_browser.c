@@ -655,12 +655,13 @@ static bool choose_handler(const char *vfs_path, t5_file_handler_t *selected_han
     for (;;) {
         uint32_t page_count = count - offset;
         if (page_count > OPEN_HANDLERS_PER_PAGE) page_count = OPEN_HANDLERS_PER_PAGE;
-        for (uint32_t i = 0; i < page_count; ++i) {
-            memset(&handlers[i], 0, sizeof(handlers[i]));
-            if (!file_open->handler_get(vfs_path, offset + i, &handlers[i])) return false;
-            snprintf(subtitles[i], sizeof(subtitles[i]), "%s",
-                     handlers[i].kind == T5_FILE_HANDLER_SYSTEM_READER ? "System" : "App");
-            rows[i] = (t5_ui_list_row_t){handlers[i].display_name, subtitles[i], handlers[i].app_id, 0};
+        for (uint32_t i = offset; i < offset + page_count; ++i) {
+            const uint32_t slot = i - offset;
+            memset(&handlers[slot], 0, sizeof(handlers[slot]));
+            if (!file_open->handler_get(vfs_path, i, &handlers[slot])) return false;
+            snprintf(subtitles[slot], sizeof(subtitles[slot]), "%s",
+                     handlers[slot].kind == T5_FILE_HANDLER_SYSTEM_READER ? "System" : "App");
+            rows[slot] = (t5_ui_list_row_t){handlers[slot].display_name, subtitles[slot], handlers[slot].app_id, 0};
         }
         char page_subtitle[64];
         snprintf(page_subtitle, sizeof(page_subtitle), "Handlers %u-%u of %u",
