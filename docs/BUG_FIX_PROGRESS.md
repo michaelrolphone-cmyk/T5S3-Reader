@@ -1,3 +1,11 @@
+## USB Debug same-model log collision — 2026-10-02 08:50 UTC
+
+- Owner `usb_debug_unique_report_names_20261002_0850`; canonical report #30; phase: current-master revalidation, claim recorded before code edits. Baseline master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; coordination branch `automation/bug-ledger` captured at `fdc526322b495d4200bf332a1d16bb9b9e02eb44` before this update.
+- Repair branch planned: `fix/usb-debug-unique-log-names`; target master. Reconciliation: preserved source report `automation/bug-scan-20260927-0125`; current source hashes `Apps/usb_debug.c=76157ba88ca1851cd846cca49627e0aa535e6ff5`, `Apps/usb_debug.json=7a8f9d55521a0671a8c7f96195c40750fbea0c97`, and `test/native_apps/usb_debug_test.c=ef034e591297831c2690ec93404a299b90244cf9` confirmed against master. The active optional `usb.host>=1` app workflow remains supported; controller API guarantees generation-checked tokens and new tokens on reused addresses.
+- Production trigger revalidated: two active devices with the same VID/PID and empty serial both produce `usb_<VID>_<PID>`; Save Log writes both to the same `/sd/usb-debug/<identifier>.txt`. This is per-device file identity, not USB transport/architecture work. Open PR path scan and prior branch search show no active fix touching USB Debug; historical USB Debug-related PRs address other bugs.
+- Published app tag `app-usb_debug-v0.1.2` targets earlier published source; candidate app version is `0.1.3`. No firmware or driver version change is expected. User review/merge only; no master write, merge, release/catalog/dispatch, device I/O, or cross-repository work.
+- Focused test, app build, aggregate/board builds, exact-head CI, PR URL/head and final claim release are pending. Re-read this branch's remote head before every ledger update.
+
 ## Saved-network fallback repair closeout — 2026-10-02 08:12 UTC
 
 - Canonical #70 is in open, ready-for-review, mergeable [PR #354](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/354). Existing branch `fix/saved-network-fallback` has exact head `f874195992f2ef9830bc2eeebffb8c798c8260c9`, current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82` as first parent and old repair head `0e464a2a9558303d845f33d434e4bf6db262cd7d` second parent. Compare 2 ahead/0 behind, 11 intended files. No master write/merge.
