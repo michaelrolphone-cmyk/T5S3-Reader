@@ -1,3 +1,12 @@
+## ESP ROM terminal reset — completed 2026-10-02 13:08:29 UTC
+
+- Owner `esp_rom_terminal_reset_20261002` completed and released after terminal exact-head CI. Canonical #250 remains awaiting merge; original scan report/provenance retained.
+- Ready-for-review [PR #363](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/363), branch `fix/esp-rom-terminal-reset`, exact remote head `50bdb27aa8233658755d935fe04f19f231c9fdf3`, directly based on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. It changes only `NativeEspRomBridge.cpp`, the existing ESP ROM provider fault test, and `platformio.ini`.
+- Production-path defect confirmed: installed Firmware Flasher app calls the firmware `program.esp_rom` API, which obtains a supported `serial.port` capability (current `usb-cp210x-v2` provides it). After MD5 verification, a provider disconnect while awaiting the fully sent terminal `FLASH_END` response was incorrectly latched as failure. Earlier disconnects remain errors; a no-ack timeout retains prior reset-line behavior.
+- Baseline direct-provider injection fails at the expected target-lost result assertion. Fixed focused actual-provider regression passes; previous sync/erase/write loss, timeout, physical-control, verify-mismatch and lease-release cases remain covered. The local full `test/run_driver_test.sh` aggregate was interrupted after it stopped producing output and is not claimed as passed. Exact-head PlatformIO [run 37010262638](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37010262638) passed host aggregate, package-source version check, headless core, and both `t5s3-pro` and `lilygo-epd47-s3` target builds.
+- Firmware source version 1.3.61 → 1.3.67 after checking release `firmware-v1.3.61` and open reservations 1.3.62–1.3.66. No app source/manifest change. No physical target verification or device I/O.
+- User handles merge. No merge, master write, release, catalog, deployment, flash, cross-repository work, or architecture change.
+
 ## ESP ROM terminal reset — PR checkpoint 2026-10-02 13:02:54 UTC
 
 - Active owner `esp_rom_terminal_reset_20261002`; canonical #250; current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. [PR #363](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/363) is draft, branch `fix/esp-rom-terminal-reset`, exact remote head `50bdb27aa8233658755d935fe04f19f231c9fdf3`, ahead 1 / behind 0. Only `NativeEspRomBridge.cpp`, the existing direct provider fault test, and `platformio.ini` changed.
