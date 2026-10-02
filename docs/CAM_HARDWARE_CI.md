@@ -52,7 +52,8 @@ the prewrite app0 range to a private evidence directory, flashes and reads back
 the exact candidate, runs the bounded suite, then reconnects and restores the
 baseline bytes with readback in `finally`. Partition table, NVS and OTA
 metadata are hash-checked across the transaction. The fixture reuses a
-verified, installed `camera_utility` 0.1.0 package when present; a changed
+verified, installed `camera_utility` 0.1.1 package when present and performs
+the ordinary managed package upgrade from 0.1.0 when needed. A changed
 same-version archive is never used to replace an installed package. Failure to restore is a failure;
 the local backup must be kept for manual recovery. There is no relay or hub
 power action. USB disconnect, missing board, unexpected firmware or lock
@@ -68,6 +69,15 @@ world/group-readable binding, wrong MAC and unexpected port form. The device
 suite verifies chip MAC and installed baseline before writing; entering an
 incorrect USB-UART port can still reset that other board during chip ID, so
 physical mapping is a prerequisite.
+
+The first reconciled head `f923a5eaac977d70d3abcc99a7e7d5dc5cf54dfa`
+correctly posted a **failure** after its utility found all 16 original
+create-new SD filenames occupied. Candidate readback and exact firmware
+restoration passed. The next head upgrades `camera_utility` to 0.1.1, with
+bounded four-digit filenames through 9999 and a regression test proving it
+advances past the first 16 existing private images. Its ordinary package
+upgrade preserves existing captures; the new exact-head cloud and hardware
+result must be checked before treating that repair as qualified.
 
 ## Activation boundary
 

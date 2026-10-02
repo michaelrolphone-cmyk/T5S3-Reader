@@ -12,6 +12,7 @@ static unsigned polls, reads, captures, releases, cancels, opens, finishes, clos
 static uint8_t written[16];
 static uint32_t written_size;
 static int fail_read;
+static unsigned occupied_slots;
 static char saved_path[48];
 static bool mock_poll(t5_app_input_t* input,uint32_t wait){(void)wait;*input=(t5_app_input_t){0};polls++;return polls<100;}
 static uint32_t mock_millis(void){return polls*20;}
@@ -34,7 +35,9 @@ static int32_t mock_read(void* ctx,uint64_t token,void* data,uint32_t cap,uint32
 static int32_t mock_cancel(void* ctx,uint64_t token){(void)ctx;assert(token==1);cancels++;return T5_STREAM_OK;}
 static int32_t mock_release_job(void* ctx,uint64_t token){(void)ctx;assert(token==1);releases++;return T5_STREAM_OK;}
 static int32_t mock_open(const char* path,uint32_t mode,t5_stream_t* out){
- assert(mode==T5_STREAM_FILE_CREATE_NEW);opens++;strcpy(saved_path,path);*out=1;return T5_STREAM_OK;
+ assert(mode==T5_STREAM_FILE_CREATE_NEW);opens++;strcpy(saved_path,path);
+ if(opens<=occupied_slots)return T5_STREAM_IO;
+ *out=1;return T5_STREAM_OK;
 }
 static int32_t mock_write(t5_stream_t stream,const void* bytes,uint32_t size,uint32_t* count){
  assert(stream==1 && written_size+size<=sizeof(written));memcpy(written+written_size,bytes,size);
@@ -63,6 +66,12 @@ int main(void){
  assert(opens==1 && finishes==1 && closes==1 && written_size==4);
  assert(memcmp(written,"\xff\xd8\xff\xd9",4)==0);
  assert(strcmp(saved_path,"/sd/camera-utility-0001.jpg")==0);
+ polls=reads=captures=releases=cancels=opens=finishes=closes=written_size=0;occupied_slots=16;
+ camera_utility_entry();
+ assert(captures==1 && reads==2 && releases==1 && cancels==0);
+ assert(opens==17 && finishes==1 && closes==1 && written_size==4);
+ assert(strcmp(saved_path,"/sd/camera-utility-0017.jpg")==0);
+ occupied_slots=0;
  polls=reads=captures=releases=cancels=opens=finishes=closes=written_size=0;fail_read=1;
  camera_utility_entry();
  assert(captures==1 && reads==1 && cancels==1 && releases==1 && opens==0);

@@ -11,14 +11,14 @@
 #include <algorithm>
 #include <cstring>
 #include <fcntl.h>
-extern const uint8_t camAppStart[] asm("_binary_dist_release_app_packages_application_camera_utility_0_1_0_xtensa_esp32s3_rte_zip_start");
-extern const uint8_t camAppEnd[] asm("_binary_dist_release_app_packages_application_camera_utility_0_1_0_xtensa_esp32s3_rte_zip_end");
+extern const uint8_t camAppStart[] asm("_binary_dist_release_app_packages_application_camera_utility_0_1_1_xtensa_esp32s3_rte_zip_start");
+extern const uint8_t camAppEnd[] asm("_binary_dist_release_app_packages_application_camera_utility_0_1_1_xtensa_esp32s3_rte_zip_end");
 namespace RuntimeBoot {
 inline bool installCameraAppExperiment(){
   namespace P=RuntimePackages;
   constexpr P::PackageRuntimePolicy policy{"xtensa-esp32s3",2,8u*1024u*1024u,16u*1024u*1024u};
   constexpr const char* id="camera_utility";
-  constexpr const char* path="/Inbox/camera-app-1/app.rte.zip";
+  constexpr const char* path="/Inbox/camera-app-2/app.rte.zip";
   const bool storageReady=Storage.begin();
   const bool vfsReady=storageReady && native_app_register_sd_vfs()==ESP_OK;
   if(!vfsReady){LOG_ERR("APP","prepare storage=%u vfs=%u",unsigned(storageReady),unsigned(vfsReady));return false;}
@@ -30,13 +30,13 @@ inline bool installCameraAppExperiment(){
     P::Identity observed{};
     installedValid=P::verifyManagedOrdinarySdDirectory("/Apps/camera_utility",
       P::Kind::Application,id,policy,P::installedCapabilityVersion,observed) &&
-      !strcmp(observed.version,"0.1.0") && !observed.legacyVersion;
+      !strcmp(observed.version,"0.1.1") && !observed.legacyVersion;
   }
   if(good && installedValid){
     LOG_INF("APP","reuse id=%s verified=1",id);
   } else if(good){
     LOG_INF("APP","reuse id=%s verified=0",id);
-    good=Storage.mkdir("/Inbox/camera-app-1",true);
+    good=Storage.mkdir("/Inbox/camera-app-2",true);
     const size_t length=camAppEnd-camAppStart;
     good=good && length>0 && length<=64*1024;
     const bool exists=Storage.exists(path);
@@ -54,7 +54,7 @@ inline bool installCameraAppExperiment(){
     if(!good)LOG_ERR("APP","result=failed stage=inbox-archive");
     if(good){
       P::Identity expected{};
-      good=P::makeIdentity(P::Kind::Application,id,"0.1.0","camera_utility.elf",false,&expected);
+      good=P::makeIdentity(P::Kind::Application,id,"0.1.1","camera_utility.elf",false,&expected);
       if(good){
         const auto outcome=P::installOrdinaryFromSdZip(path,policy,P::installedCapabilityVersion,&expected);
         good=outcome.result==P::OrdinaryInstallResult::Installed;
