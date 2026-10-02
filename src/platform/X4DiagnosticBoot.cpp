@@ -137,11 +137,13 @@ void x4DiagnosticSetup() {
         auto *volume = static_cast<const risc_storage_volume_api_v1 *>(sd_mod.capability());
         if (volume && volume->api_version == RISC_STORAGE_VOLUME_API_V1 &&
             volume->struct_size >= sizeof(*volume) && volume->ready) {
-            const bool card_ready = volume->ready(volume->context);
-            storage_status = card_ready ? "SD bus ready; files unavailable" : "SD card not ready";
+            const bool mounted = volume->ready(volume->context);
             char reason[80] = "none";
             if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
-            LOG_INF("X4", "storage.volume ready=%d reason=%s", card_ready ? 1 : 0, reason);
+            storage_status = mounted ? "SD files ready" :
+                (std::strcmp(reason, "card initialized; filesystem not mounted") == 0 ?
+                 "SD card found; files unavailable" : "SD card not ready");
+            LOG_INF("X4", "storage.volume mounted=%d reason=%s", mounted ? 1 : 0, reason);
         }
     }
     display_api = static_cast<const risc_display_output_api_v1 *>(panel_mod.capability());

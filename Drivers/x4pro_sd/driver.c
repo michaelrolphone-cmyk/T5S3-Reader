@@ -11,7 +11,7 @@
 #include <string.h>
 
 static const risc_platform_clock_api_v1 *clock_api;
-static bool started, card_ready;
+static bool started;
 static char error[80];
 
 static bool equal(const char *a, const char *b) {
@@ -73,7 +73,10 @@ static bool init_card(void) {
         if (!command(55, 0, response, 6) || !command(41, 0x40100000u, response, 6)) {
             fail("ACMD41 failed"); return false;
         }
-        if (response[1] & 0x80u) { card_ready = true; return true; }
+        if (response[1] & 0x80u) {
+            fail("card initialized; filesystem not mounted");
+            return true;
+        }
         if (clock_api) clock_api->sleep_ms(clock_api->context, 10);
     }
     fail("card idle");
@@ -81,13 +84,13 @@ static bool init_card(void) {
 }
 static bool refresh(void *context) {
     (void)context;
-    card_ready = false;
     error[0] = 0;
     if (!started) return false;
     (void)init_card();
     return true;
 }
-static bool ready(void *context) { (void)context; return started && card_ready; }
+/* A card answering ACMD41 is not yet a mounted, usable filesystem. */
+static bool ready(void *context) { (void)context; return false; }
 static bool label(void *context, char *out, size_t capacity) {
     (void)context;
     if (!ready(0) || !out || capacity < 6) return false;
@@ -139,7 +142,7 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
     started = true;
     return refresh(0);
 }
-static void stop(void) { started = false; card_ready = false; }
+static void stop(void) { started = false; }
 static bool quiesce(void) { stop(); return true; }
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(driver), "x4pro-sd",
