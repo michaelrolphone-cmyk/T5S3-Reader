@@ -56,6 +56,7 @@ jobs:
             elf_name: riscrte-t5s3-pro.elf
           - environment: xteink-x4-pro
             board_id: xteink-x4-pro
+            firmware_name: riscrte-xteink-x4-pro.bin
             merged_firmware_name: riscrte-xteink-x4-pro-merged.bin
             elf_name: riscrte-xteink-x4-pro.elf
           - environment: lilygo-epd47-s3
@@ -99,6 +100,10 @@ jobs:
           /tmp/x4gpio
           python3 test/x4pro_boot_isolation_test.py
           python3 test/x4pro_panel_sequence_test.py
+          python3 test/x4pro_import_match_test.py
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_panel_fake -I Drivers/x4pro_board \
+            test/x4pro_panel_state_test.c Drivers/x4pro_panel/driver.c -o /tmp/x4panel
+          /tmp/x4panel
 
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}

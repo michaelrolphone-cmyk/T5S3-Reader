@@ -11,22 +11,38 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src/platform/x4pro_embedded.c"
 PACKAGES = ["platform-clock-v1", "x4pro-panel", "x4pro-buttons", "x4pro-frontlight"]
 
-def imports_for(elf):
-    readelf = os.environ.get("XTENSA_READELF")
-    if not readelf:
-        readelf = shutil.which("xtensa-esp32s3-elf-readelf")
-    if not readelf:
-        core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
-        readelf = str(core / "packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-readelf")
-    text = subprocess.check_output([readelf, "-sW", str(elf)], text=True)
-    names = []
-    for line in text.splitlines():
-        if "UND" not in line:
+def undefined_imports(elf):
+    """Named undefined symbols only. Skip the unnamed null symbol at index 0."""
+    data = Path(elf).read_bytes()
+    if data[:4] != b"\x7fELF" or data[4] != 1 or data[5] != 1:
+        raise SystemExit(f"{elf} is not a little-endian ELF32")
+    import struct
+    e_shoff, e_shentsize, e_shnum, e_shstrndx = struct.unpack_from("<IIII", data, 32)
+    e_shentsize = struct.unpack_from("<H", data, 46)[0]
+    e_shnum = struct.unpack_from("<H", data, 48)[0]
+    e_shstrndx = struct.unpack_from("<H", data, 50)[0]
+    sections = []
+    for i in range(e_shnum):
+        off = e_shoff + i * e_shentsize
+        sh_name, sh_type, sh_flags, sh_addr, sh_offset, sh_size, sh_link = struct.unpack_from("<IIIIIII", data, off)
+        sections.append((sh_type, sh_offset, sh_size, sh_link))
+    names = set()
+    for sh_type, sh_offset, sh_size, sh_link in sections:
+        if sh_type not in (2, 11):  # SHT_SYMTAB, SHT_DYNSYM
             continue
-        name = line.split()[-1]
-        if name and name != "t5_driver_get" and name not in names:
-            names.append(name)
-    return names
+        str_off = sections[sh_link][1]
+        count = sh_size // 16
+        for index in range(count):
+            st_name, st_value, st_size, st_info, st_other, st_shndx = struct.unpack_from("<IIIBBH", data, sh_offset + index * 16)
+            if st_shndx != 0:
+                continue
+            if index == 0 and st_name == 0 and st_info == 0:
+                continue
+            end = data.index(b"\0", str_off + st_name)
+            name = data[str_off + st_name:end].decode("ascii")
+            if name:
+                names.add(name)
+    return sorted(names)
 
 def main():
     parts = ['#include "x4pro_embedded.h"\n']
@@ -38,7 +54,7 @@ def main():
         digest = hashlib.sha256(payload).hexdigest()
         if manifest["sha256"] != digest:
             raise SystemExit(f"{package} hash mismatch")
-        imports = imports_for(directory / "driver.elf")
+        imports = undefined_imports(directory / "driver.elf")
         symbol = package.replace("-", "_")
         parts.append(f"static const uint8_t {symbol}_elf[] = {{")
         parts.append(",".join(str(b) for b in payload))

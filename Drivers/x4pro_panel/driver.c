@@ -13,7 +13,10 @@
 #define FRAME_BYTES ((X4PRO_PANEL_WIDTH / 8u) * X4PRO_PANEL_HEIGHT)
 static const risc_platform_clock_api_v1 *clock_api;
 static uint8_t frame[FRAME_BYTES];
-static bool started, held, present_done, pins_ready;
+static uint8_t present_state;
+static bool transfer_started;
+static bool started, held, pins_ready;
+enum { PRESENT_NONE = 0, PRESENT_QUEUED = 1, PRESENT_ACTIVE = 2, PRESENT_COMPLETE = 3, PRESENT_FAILED = 5 };
 static uint64_t frame_serial, token_serial, pending_token;
 static char last_error_text[64];
 
@@ -49,19 +52,24 @@ static void data1(uint8_t value) {
     spi_byte(value);
     x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
 }
-static bool wait_idle(void) {
+static uint64_t now_ms(void) {
+    if (!clock_api || !clock_api->monotonic_ms) return UINT64_MAX;
+    return clock_api->monotonic_ms(clock_api->context);
+}
+static bool wait_idle(uint32_t deadline_ms) {
     bool saw_busy = false;
-    for (uint32_t i = 0; i < 50u && !saw_busy; ++i) {
+    while (!saw_busy) {
+        uint64_t now = now_ms();
+        if (now == UINT64_MAX || now >= deadline_ms) { fail("busy never asserted"); return false; }
         saw_busy = x4pro_pin_read(X4PRO_PIN_EPD_BUSY);
+        if (!saw_busy) sleep_ms(1);
+    }
+    while (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
+        uint64_t now = now_ms();
+        if (now == UINT64_MAX || now >= deadline_ms) { fail("panel busy timeout"); return false; }
         sleep_ms(1);
     }
-    if (!saw_busy) { fail("busy never asserted"); return false; }
-    for (uint32_t i = 0; i < 2000u; ++i) {
-        if (!x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) return true;
-        sleep_ms(1);
-    }
-    fail("panel busy timeout");
-    return false;
+    return true;
 }
 static void prepare_pins(void) {
     if (pins_ready) return;
@@ -104,7 +112,9 @@ static bool init_panel(void) {
     set_cursor();
     return true;
 }
-static bool transfer_frame(void) {
+static bool transfer_frame(uint32_t deadline_ms) {
+    if (transfer_started) return false;
+    transfer_started = true;
     set_cursor();
     command(0x24);
     x4pro_pin_output(X4PRO_PIN_EPD_DC, true);
@@ -113,7 +123,7 @@ static bool transfer_frame(void) {
     x4pro_pin_output(X4PRO_PIN_EPD_CS, true);
     command(0x21); data1(0x00);
     command(0x22); data1(0xF7); command(0x20);
-    return wait_idle();
+    return wait_idle(deadline_ms);
 }
 static bool get_info(void *context, risc_display_info_v1 *out) {
     (void)context;
@@ -146,31 +156,42 @@ static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out
 }
 static void release(void *context, risc_display_frame_v1 frame_id) {
     (void)context;
+    if (present_state == PRESENT_QUEUED || present_state == PRESENT_ACTIVE) return;
     if (held && frame_id == frame_serial) held = false;
 }
 static bool submit(void *context, risc_display_frame_v1 frame_id, const risc_display_rect_v1 *damage,
                    size_t count, const risc_display_present_options_v1 *options,
                    risc_display_present_token_v1 *token_out) {
     (void)context; (void)damage; (void)count; (void)options;
-    if (!started || !held || frame_id != frame_serial) return false;
-    held = false;
+    if (!started || !held || frame_id != frame_serial || present_state == PRESENT_QUEUED || present_state == PRESENT_ACTIVE)
+        return false;
     if (++token_serial == 0) ++token_serial;
     pending_token = token_serial;
-    present_done = false;
+    present_state = PRESENT_QUEUED;
+    transfer_started = false;
     if (token_out) *token_out = pending_token;
     return true;
 }
 static bool present_status(void *context, risc_display_present_token_v1 token, risc_display_present_status_v1 *out) {
     (void)context;
     if (!out || token != pending_token) return false;
-    out->state = present_done ? RISC_DISPLAY_PRESENT_COMPLETE : RISC_DISPLAY_PRESENT_QUEUED;
+    out->state = present_state;
     return true;
 }
 static bool wait_present(void *context, risc_display_present_token_v1 token, uint32_t timeout_ms,
                          risc_display_present_status_v1 *out) {
-    (void)timeout_ms;
     if (token != pending_token) return false;
-    if (!present_done) present_done = transfer_frame();
+    if (present_state == PRESENT_QUEUED && timeout_ms > 0 && !transfer_started) {
+        uint64_t now = now_ms();
+        present_state = PRESENT_ACTIVE;
+        if (now == UINT64_MAX || !transfer_frame((uint32_t)now + timeout_ms)) {
+            present_state = PRESENT_FAILED;
+            held = false;
+        } else {
+            present_state = PRESENT_COMPLETE;
+            held = false;
+        }
+    }
     return present_status(context, token, out);
 }
 static bool set_brightness(void *context, uint16_t level, uint16_t maximum) {
