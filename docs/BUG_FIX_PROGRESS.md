@@ -3,18 +3,23 @@
 - Firmware version reservations across concurrent open PRs now form a cascading patch chain; when one older PR merges, later branches can conflict or require another exact-head CI cycle. After PR351/PR353 current-master sync is complete, assess a less conflict-prone version-coordination/release workflow. This is a deferred process task only; do not redesign it during the current bug batch or write any release/catalog changes.
 
 
-## Current integration reconciliation — 2026-10-02 05:55 UTC
+## Current integration reconciliation — 2026-10-02 06:55 UTC
 
-- Current master: `82caa0997e913f01c1f5f9ab942d056bc9f04a82`, firmware1.3.61.
-- PR347 remains open/draft and hardware-owner controlled at `92674b4db985301339361e6bd644bab7cceb9ea5`, based on82caa. It reserves firmware1.3.63; exact-head cloud and hardware checks remain pending. No camera/board scope here.
-- PR355 remains open/ready, unmerged at `ab36b60c79376efc44a3bb09811e2dc697a6ebc4`, based on82caa, firmware candidate1.3.62. BMP and PlatformIO exact-head CI passed. No conflict with selected app repair.
-- PR351, PR353 and PR354 remain open/unmerged on pre-f7f branches, stale/nonmergeable against82caa; do not edit them. PR350 and PR348 are X4 work; user priority is to wait until PR347 integration, so no X4 scope.
-- PR332 remains the sole draft coordination PR. Prior BMP claim released. No other active bug implementation claim found. Version-coordination redesign remains deferred.
-- Existing active source: current master Timecard app manifest1.0.3; candidate1.0.4 is app-only. No firmware increment is needed. Canonical bug#5 is repaired in ready-for-review PR #356 on `fix/timecard-load-failure`, exact head `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, based on82caa; app candidate1.0.4. Claim is released after exact-head CI.
+- Master remains `82caa0997e913f01c1f5f9ab942d056bc9f04a82`, firmware1.3.61.
+- PR347 is open/draft at `92674b4db985301339361e6bd644bab7cceb9ea5`, based on82caa; it reserves firmware1.3.63. Per latest owner/user direction, it is blocked pending explicit approval for automatic release/catalog side effects. Do not merge or route around that approval boundary.
+- PR355 is open/ready at `ab36b60c79376efc44a3bb09811e2dc697a6ebc4`, candidate firmware1.3.62; its exact-head BMP regression and PlatformIO CI passed. PR356 is open/ready at `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, Timecard app1.0.4; exact-head PlatformIO CI passed. Neither is merged.
+- PR351/353/354 remain open but stale/nonmergeable against82caa. PR350/#348 remain X4 work; main user priority is X4 after its baseline merges. No work on these scopes.
+- PR332 remains the sole coordination PR. No other active bug implementation claim found. T5S3 performance remains explicitly deferred until X4 works.
+- Selected independent File Browser bug#22 is claimed below. Current File Browser manifest1.3.2; candidate app version1.3.3, no firmware increment.
 
-## Completed Timecard history-load repair — PR #356
+## Active File Browser destination-picker bounds repair — canonical bug #22
 
-- Owner: none after terminal exact-head CI; claim `timecard_load_guard_20261002_0555` released. Repair branch `fix/timecard-load-failure`, PR #356 ready for user review/merge, exact head `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, based on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. Source blob before repair: `Apps/timecard.c` = `4b77261977b4d76f254605beee7a64472de12c87`; app manifest1.0.3 → candidate1.0.4.
+- Owner `file_picker_bounds_20261002_0655`; phase: claimed, implementation not started. Repair branch reservation `fix/file-browser-picker-bounds`. Master baseline `82caa0997e913f01c1f5f9ab942d056bc9f04a82`; `Apps/file_browser.c` blob `c7a4882d7abf12e8fb51627947cb645f296abf66`; app manifest1.3.2, candidate1.3.3.
+- Revalidated production path: File Browser exposes Copy/Move, then `choose_destination()` opens the SD/USB root picker and calls `list_picker_directories()`. Root begins with one fixed action row, so at visible directory97 the current loop reaches count97 and stores into `picker_names[96]` although valid indices are0–95. Both SD and USB enumeration share the function.
+- Overlap/owner check: no open PR changes this picker. Historical PR224 is merged; its surviving `fix/file-browser-options-actions` branch only has stale Copy/Open-handler changes, while `fix/file-browser-oversize-usb-handle` has the same current source and no picker fix. Neither is an active owner claim. No PR will be edited.
+- Fix scope is bounds-safe enumeration for both root and non-root fixed-row offsets. The existing fixed directory window remains as designed; this batch targets the out-of-bounds write only. A production-source test will cover 96/97/98+ root entries and the non-root parent-row offset.
+- Version: File Browser1.3.2 → candidate1.3.3; no firmware version change. The PR347 1.3.63 approval boundary and reserved PR3551.3.62 are unaffected.
+20261002_0555` released. Repair branch `fix/timecard-load-failure`, PR #356 ready for user review/merge, exact head `4e30e5ab0e6eb2d02bc63f7a03ad768ae1a49c9b`, based on current master `82caa0997e913f01c1f5f9ab942d056bc9f04a82`. Source blob before repair: `Apps/timecard.c` = `4b77261977b4d76f254605beee7a64472de12c87`; app manifest1.0.3 → candidate1.0.4.
 - Revalidation: installed Timecard manifest is reachable from the first-party Apps catalog/Springboard workflow. In current source `load_store()` zeroes `day_count` before a fallible read and appends parsed records directly to live state; both startup and keyboard continuation ignore the false result. A subsequent `set_punch()` can save the empty/partial live history through `write_file_atomic`. This is distinct from #14 clock failure (already merged) and from the stale `fix/timecard-lunch-outside-shift` branch, which does not repair load transactionality.
 - Open-PR overlap check: no open PR mentions Timecard load failure; current open code PRs affect camera/BMP, X4, network/clock/OTA or unrelated paths. No active claim or applicable open fix found. Do not edit closed PRs or reuse the old clock-failure branch.
 - Repair: parse into staging state and publish only after the complete bounded store validates; retain live history on read/parse failure; enter a visible read-only state; block punch and keyboard edits until a successful load. The production-source regression covers read failure, malformed JSON after a valid record, no partial commit/no writes, failed keyboard continuation, edit guard, cancel, recovery and retry.
