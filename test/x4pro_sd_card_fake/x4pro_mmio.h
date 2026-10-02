@@ -8,6 +8,7 @@
 extern uint8_t x4_card_sector[512];
 extern uint8_t x4_card_partition_boot[512];
 extern uint8_t x4_card_fat_sector[512], x4_card_root_sector[512];
+extern uint8_t x4_card_folder_sector[512];
 extern uint8_t x4_card_file_sector[2][512];
 extern bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
 extern uint32_t x4_card_bad_crc_lba;
@@ -69,7 +70,8 @@ static inline void x4pro_pin_release(uint32_t pin) {
         uint32_t lba = 0;
         for (unsigned i = 8u; i < 40u; ++i) lba = (lba << 1) | command_bits[i];
         if (lba != 0u && lba != 1u && lba != 32u && lba != 33u &&
-            lba != 2080u && lba != 2081u && lba != 2082u && lba != 2083u) x4_card_bad_pin = true;
+            lba != 2080u && lba != 2081u && lba != 2082u && lba != 2083u &&
+            lba != 2084u) x4_card_bad_pin = true;
         active_lba = lba;
         const bool mbr = x4_card_sector[446u + 4u] == 0x0cu;
         active_sector = (lba == 1u) ? x4_card_partition_boot :
@@ -77,6 +79,7 @@ static inline void x4pro_pin_release(uint32_t pin) {
                         (lba == (mbr ? 2081u : 2080u)) ? x4_card_root_sector :
                         (lba == (mbr ? 2082u : 2081u)) ? x4_card_file_sector[0] :
                         (lba == (mbr ? 2083u : 2082u)) ? x4_card_file_sector[1] :
+                        (lba == (mbr ? 2084u : 2083u)) ? x4_card_folder_sector :
                         x4_card_sector;
         ++x4_card_cmd17_count;
         data_pending = true;

@@ -20,6 +20,16 @@ static bool equal(const char *a, const char *b) {
     while (*a && *a == *b) { ++a; ++b; }
     return *a == *b;
 }
+static bool equal_short_name(const char *a, const char *b) {
+    if (!a || !b) return false;
+    while (*a && *b) {
+        char x = *a++, y = *b++;
+        if (x >= 'a' && x <= 'z') x = (char)(x - 'a' + 'A');
+        if (y >= 'a' && y <= 'z') y = (char)(y - 'a' + 'A');
+        if (x != y) return false;
+    }
+    return !*a && !*b;
+}
 static void fail(const char *text) {
     size_t i = 0;
     while (text[i] && i + 1u < sizeof(error)) { error[i] = text[i]; ++i; }
@@ -117,8 +127,9 @@ static struct {
 } directory_cursor;
 static uint32_t directory_last_cluster;
 static struct {
-    bool open;
+    bool open, sector_valid;
     uint32_t cluster, sector, offset, remaining, traversed;
+    uint8_t data[512];
 } file_cursor;
 /* Parse only layout metadata. No mounted state or file access is granted here. */
 static bool fat32_layout(const uint8_t sector[512], uint32_t partition_lba,
@@ -268,6 +279,7 @@ static bool refresh(void *context) {
     mounted = false;
     directory_cursor.open = false;
     file_cursor.open = false;
+    file_cursor.sector_valid = false;
     if (!started) return false;
     (void)init_card();
     return true;
@@ -282,33 +294,77 @@ static bool label(void *context, char *out, size_t capacity) {
 static risc_storage_dir_t dir_open(void *context, const char *path);
 static bool dir_next(void *context, risc_storage_dir_t directory, risc_storage_dirent_v1 *entry);
 static void dir_close(void *context, risc_storage_dir_t directory);
+static risc_storage_dir_t dir_open_cluster(uint32_t cluster) {
+    if (!mounted || cluster < 2u ||
+        (uint64_t)cluster >= (uint64_t)volume_geometry.clusters + 2u)
+        return RISC_STORAGE_DIR_INVALID;
+    directory_cursor.open = true;
+    directory_cursor.sector_valid = false;
+    directory_cursor.cluster = cluster;
+    directory_cursor.sector = directory_cursor.slot = directory_cursor.traversed = 0;
+    return 1;
+}
+/* Resolve at most four absolute short-name components. No dot aliases, long
+ * names, or implicit traversal outside the volume are accepted. */
+static bool find_path(const char *path, risc_storage_dirent_v1 *result,
+                      uint32_t *cluster_out) {
+    if (!mounted || !path || path[0] != '/' || !path[1] ||
+        !result || !cluster_out) return false;
+    uint32_t parent = volume_geometry.root_cluster;
+    const char *part = path + 1;
+    for (unsigned depth = 0; depth < 4u; ++depth) {
+        char name[13];
+        size_t length = 0;
+        while (part[length] && part[length] != '/') {
+            if (length >= 12u || part[length] == '\\') return false;
+            name[length] = part[length];
+            ++length;
+        }
+        if (!length || (length == 1u && name[0] == '.') ||
+            (length == 2u && name[0] == '.' && name[1] == '.')) return false;
+        name[length] = 0;
+        if (!dir_open_cluster(parent)) return false;
+        risc_storage_dirent_v1 entry;
+        bool found = false;
+        while (dir_next(0, 1, &entry)) {
+            if (equal_short_name(name, entry.name)) { found = true; break; }
+        }
+        const uint32_t child = directory_last_cluster;
+        dir_close(0, 1);
+        if (!found) return false;
+        if (!part[length]) {
+            *result = entry;
+            *cluster_out = child;
+            return true;
+        }
+        if (!entry.is_directory || child < 2u ||
+            (uint64_t)child >= (uint64_t)volume_geometry.clusters + 2u)
+            return false;
+        parent = child;
+        part += length + 1u;
+    }
+    return false;
+}
 static bool stat(void *context, const char *path, uint64_t *size_out, bool *is_directory_out) {
     (void)context;
     if (!mounted || !path || !size_out || !is_directory_out) return false;
     if (equal(path, "/")) { *size_out = 0; *is_directory_out = true; return true; }
-    risc_storage_dir_t handle = dir_open(0, "/");
-    if (!handle) return false;
     risc_storage_dirent_v1 entry;
-    bool found = false;
-    while (dir_next(0, handle, &entry)) {
-        if (equal(path + (path[0] == '/' ? 1 : 0), entry.name)) {
-            *size_out = entry.size;
-            *is_directory_out = entry.is_directory != 0;
-            found = true;
-            break;
-        }
-    }
-    dir_close(0, handle);
-    return found;
+    uint32_t cluster = 0;
+    if (!find_path(path, &entry, &cluster)) return false;
+    *size_out = entry.size;
+    *is_directory_out = entry.is_directory != 0;
+    return true;
 }
 static risc_storage_dir_t dir_open(void *context, const char *path) {
     (void)context;
-    if (!mounted || !equal(path, "/")) return RISC_STORAGE_DIR_INVALID;
-    directory_cursor.open = true;
-    directory_cursor.sector_valid = false;
-    directory_cursor.cluster = volume_geometry.root_cluster;
-    directory_cursor.sector = directory_cursor.slot = directory_cursor.traversed = 0;
-    return 1;
+    if (!mounted || !path) return RISC_STORAGE_DIR_INVALID;
+    if (equal(path, "/")) return dir_open_cluster(volume_geometry.root_cluster);
+    risc_storage_dirent_v1 entry;
+    uint32_t cluster = 0;
+    if (!find_path(path, &entry, &cluster) || !entry.is_directory)
+        return RISC_STORAGE_DIR_INVALID;
+    return dir_open_cluster(cluster);
 }
 static bool dir_next(void *context, risc_storage_dir_t directory, risc_storage_dirent_v1 *entry) {
     (void)context;
@@ -361,22 +417,19 @@ static void dir_close(void *context, risc_storage_dir_t directory) {
 static risc_storage_file_t file_open_read(void *context, const char *path, uint64_t *size_out) {
     (void)context;
     file_cursor.open = false;
+    file_cursor.sector_valid = false;
     if (!mounted || !path || !size_out || !path[0]) return RISC_STORAGE_FILE_INVALID;
-    const char *wanted = path + (path[0] == '/' ? 1 : 0);
-    if (!wanted[0] || !dir_open(0, "/")) return RISC_STORAGE_FILE_INVALID;
     risc_storage_dirent_v1 entry;
-    bool found = false;
-    while (dir_next(0, 1, &entry)) {
-        if (equal(wanted, entry.name) && !entry.is_directory) { found = true; break; }
-    }
-    dir_close(0, 1);
-    if (!found) return RISC_STORAGE_FILE_INVALID;
-    if (entry.size && (directory_last_cluster < 2u ||
-        (uint64_t)directory_last_cluster >= (uint64_t)volume_geometry.clusters + 2u)) {
+    uint32_t cluster = 0;
+    if (!find_path(path, &entry, &cluster) || entry.is_directory)
+        return RISC_STORAGE_FILE_INVALID;
+    if (entry.size && (cluster < 2u ||
+        (uint64_t)cluster >= (uint64_t)volume_geometry.clusters + 2u)) {
         fail("FAT32 file cluster invalid"); return RISC_STORAGE_FILE_INVALID;
     }
     file_cursor.open = true;
-    file_cursor.cluster = directory_last_cluster;
+    file_cursor.sector_valid = false;
+    file_cursor.cluster = cluster;
     file_cursor.sector = file_cursor.offset = file_cursor.traversed = 0;
     file_cursor.remaining = (uint32_t)entry.size;
     *size_out = entry.size;
@@ -389,21 +442,34 @@ static size_t file_read(void *context, risc_storage_file_t file, void *buffer, s
         uint32_t next = 0;
         if (file_cursor.traversed++ >= 1024u ||
             !fat_next_cluster(&volume_geometry, file_cursor.cluster, &next) ||
-            next >= 0x0ffffff8u) { fail("FAT32 file chain truncated"); file_cursor.open = false; return 0; }
+            next >= 0x0ffffff8u) {
+            fail("FAT32 file chain truncated");
+            file_cursor.open = false;
+            mounted = false;
+            return 0;
+        }
         file_cursor.cluster = next;
         file_cursor.sector = 0;
+        file_cursor.sector_valid = false;
     }
-    uint8_t sector[512];
-    if (!read_cluster_sector(&volume_geometry, file_cursor.cluster, file_cursor.sector, sector)) {
-        file_cursor.open = false; return 0;
+    if (!file_cursor.sector_valid) {
+        if (!read_cluster_sector(&volume_geometry, file_cursor.cluster, file_cursor.sector,
+                                 file_cursor.data)) {
+            file_cursor.open = false; return 0;
+        }
+        file_cursor.sector_valid = true;
     }
     size_t count = 512u - file_cursor.offset;
     if (count > capacity) count = capacity;
     if (count > file_cursor.remaining) count = file_cursor.remaining;
-    memcpy(buffer, sector + file_cursor.offset, count);
+    memcpy(buffer, file_cursor.data + file_cursor.offset, count);
     file_cursor.offset += (uint32_t)count;
     file_cursor.remaining -= (uint32_t)count;
-    if (file_cursor.offset == 512u) { file_cursor.offset = 0; ++file_cursor.sector; }
+    if (file_cursor.offset == 512u) {
+        file_cursor.offset = 0;
+        ++file_cursor.sector;
+        file_cursor.sector_valid = false;
+    }
     return count;
 }
 static risc_storage_file_t file_open_write(void *context, const char *path) { (void)context; (void)path; return RISC_STORAGE_FILE_INVALID; }
@@ -415,6 +481,7 @@ static bool file_close(void *context, risc_storage_file_t file, bool commit) {
     (void)commit; /* Read handles have no transaction to commit. */
     if (file != 1 || !file_cursor.open) return false;
     file_cursor.open = false;
+    file_cursor.sector_valid = false;
     return true;
 }
 static bool remove_path(void *context, const char *path) { (void)context; (void)path; return false; }
@@ -455,6 +522,7 @@ static void stop(void) {
     mounted = false;
     directory_cursor.open = false;
     file_cursor.open = false;
+    file_cursor.sector_valid = false;
 }
 static bool quiesce(void) { stop(); return true; }
 static const risc_driver_v2 driver = {

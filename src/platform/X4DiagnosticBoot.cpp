@@ -78,6 +78,35 @@ void advancePreview() {
     preview_position += count;
     LOG_INF("X4", "storage preview bytes=%lu", static_cast<unsigned long>(preview_position));
 }
+bool openFirstText(const risc_storage_volume_api_v1 *volume, const char *directory) {
+    const risc_storage_dir_t cursor = volume->dir_open(volume->context, directory);
+    if (cursor == RISC_STORAGE_DIR_INVALID) return false;
+    risc_storage_dirent_v1 entry{};
+    bool found = false;
+    for (unsigned i = 0; i < 16 && volume->dir_next(volume->context, cursor, &entry); ++i) {
+        const char *extension = std::strrchr(entry.name, '.');
+        if (entry.is_directory || !extension || std::strcmp(extension, ".TXT") != 0) continue;
+        char path[RISC_STORAGE_VOLUME_NAME_MAX + 16] = {0};
+        const size_t prefix = std::strlen(directory);
+        const size_t name = std::strlen(entry.name);
+        if (prefix + name + 2 >= sizeof(path)) break;
+        std::memcpy(path, directory, prefix);
+        size_t at = prefix;
+        if (at == 0 || path[at - 1] != '/') path[at++] = '/';
+        std::memcpy(path + at, entry.name, name + 1);
+        uint64_t size = 0;
+        const risc_storage_file_t file = volume->file_open_read(volume->context, path, &size);
+        if (file == RISC_STORAGE_FILE_INVALID) break;
+        preview_volume = volume;
+        preview_file = file;
+        preview_name = entry.name;
+        advancePreview();
+        found = true;
+        break;
+    }
+    volume->dir_close(volume->context, cursor);
+    return found;
+}
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
     LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
@@ -181,25 +210,7 @@ void x4DiagnosticSetup() {
             if (storage_mounted && volume->dir_open && volume->dir_next &&
                 volume->dir_close && volume->file_open_read && volume->file_read && volume->file_close) {
                 storage_preview = "SD ready; no root TXT file";
-                const risc_storage_dir_t directory = volume->dir_open(volume->context, "/");
-                if (directory != RISC_STORAGE_DIR_INVALID) {
-                    risc_storage_dirent_v1 entry{};
-                    for (unsigned i = 0; i < 16 && volume->dir_next(volume->context, directory, &entry); ++i) {
-                        const char *extension = std::strrchr(entry.name, '.');
-                        if (entry.is_directory || !extension || std::strcmp(extension, ".TXT") != 0) continue;
-                        char path[RISC_STORAGE_VOLUME_NAME_MAX + 2] = "/";
-                        std::strncat(path, entry.name, sizeof(path) - 2);
-                        uint64_t size = 0;
-                        const risc_storage_file_t file = volume->file_open_read(volume->context, path, &size);
-                        if (file == RISC_STORAGE_FILE_INVALID) break;
-                        preview_volume = volume;
-                        preview_file = file;
-                        preview_name = entry.name;
-                        advancePreview();
-                        break;
-                    }
-                    volume->dir_close(volume->context, directory);
-                }
+                if (!openFirstText(volume, "/Books")) (void)openFirstText(volume, "/");
             }
         }
     }

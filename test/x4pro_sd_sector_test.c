@@ -6,6 +6,7 @@
 uint8_t x4_card_sector[512];
 uint8_t x4_card_partition_boot[512];
 uint8_t x4_card_fat_sector[512], x4_card_root_sector[512];
+uint8_t x4_card_folder_sector[512];
 uint8_t x4_card_file_sector[2][512];
 bool x4_card_bad_crc, x4_card_no_data, x4_card_bad_pin;
 uint32_t x4_card_bad_crc_lba = UINT32_MAX;
@@ -89,13 +90,43 @@ int main(void) {
     for (unsigned i = 0; i < 512u; ++i) x4_card_file_sector[0][i] = (uint8_t)i;
     failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) == 1u,
                        "file reopens for partial reads");
+    const unsigned before_chunks = x4_card_cmd17_count;
     failures += expect(volume->file_read(0, 1u, file_data, 48u) == 48u &&
                        file_data[0] == 0u && file_data[47] == 47u &&
                        volume->file_read(0, 1u, file_data, 48u) == 48u &&
                        file_data[0] == 48u && file_data[47] == 95u,
                        "successive 48-byte Reader chunks keep position");
+    failures += expect(x4_card_cmd17_count == before_chunks + 1u,
+                       "partial Reader chunks share one CRC-verified data sector");
     failures += expect(volume->file_close(0, 1u, true),
                        "read handle closes regardless of write commit flag");
+    uint8_t saved_root[512];
+    memcpy(saved_root, x4_card_root_sector, sizeof(saved_root));
+    memset(x4_card_root_sector, 0, sizeof(x4_card_root_sector));
+    memcpy(x4_card_root_sector, "BOOKS      ", 11);
+    x4_card_root_sector[11] = 0x10u;
+    put16(x4_card_root_sector + 26, 5u);
+    memcpy(x4_card_folder_sector, saved_root, sizeof(saved_root));
+    put32(x4_card_fat_sector + 20, 0x0fffffffu);
+    failures += expect(volume->stat(0, "/BOOKS", &stat_size, &is_directory) &&
+                       is_directory, "short-name child directory stat");
+    failures += expect(volume->dir_open(0, "/BOOKS") == 1u &&
+                       volume->dir_next(0, 1u, &entry) &&
+                       strcmp(entry.name, "BOOK.TXT") == 0,
+                       "short-name child directory lists file");
+    volume->dir_close(0, 1u);
+    failures += expect(volume->file_open_read(0, "/BOOKS/BOOK.TXT", &file_size) == 1u &&
+                       volume->file_read(0, 1u, file_data, 48u) == 48u,
+                       "nested short-name file reads through volume");
+    failures += expect(volume->file_close(0, 1u, false), "nested read closes");
+    failures += expect(volume->file_open_read(0, "/Books/book.txt", &file_size) == 1u,
+                       "short-name lookup is ASCII case insensitive");
+    failures += expect(volume->file_close(0, 1u, false), "case-insensitive read closes");
+    failures += expect(!volume->stat(0, "/BOOKS/../BOOK.TXT", &stat_size, &is_directory) &&
+                       volume->file_open_read(0, "/BOOKS/BOOK.TXT/OTHER", &file_size) ==
+                           RISC_STORAGE_FILE_INVALID,
+                       "traversal and file-as-directory paths rejected");
+    memcpy(x4_card_root_sector, saved_root, sizeof(saved_root));
     memset(x4_card_file_sector[0], 'A', 512);
     put16(x4_card_root_sector + 26, 1u);
     failures += expect(volume->file_open_read(0, "/BOOK.TXT", &file_size) ==
