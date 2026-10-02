@@ -9,10 +9,10 @@ using esp_http_client_handle_t = void*;
 struct esp_http_client_config_t {
   const char* url;
   const char* cert_pem;
+  int timeout_ms;
   esp_err_t (*event_handler)(esp_http_client_event_t*);
   int buffer_size;
   int buffer_size_tx;
-  int timeout_ms;
   void* user_data;
   bool skip_cert_common_name_check;
   bool keep_alive_enable;
