@@ -164,7 +164,7 @@ static int probe_controller(void) {
     append_u(probe_text, sizeof(probe_text), &used, busy_before_reset);
     append(probe_text, sizeof(probe_text), &used, " busy=");
     append_u(probe_text, sizeof(probe_text), &used, busy);
-    append(probe_text, sizeof(probe_text), &used, verdict == PROBE_SSD ? " verdict=ssd1677" : verdict == PROBE_UC ? " verdict=uc81xx" : verdict == PROBE_DISABLED ? " verdict=probe-disabled" : " verdict=ambiguous");
+    append(probe_text, sizeof(probe_text), &used, verdict == PROBE_SSD ? " verdict=ssd-assumed" : verdict == PROBE_UC ? " verdict=uc81xx" : verdict == PROBE_DISABLED ? " verdict=probe-disabled" : " verdict=ambiguous");
     return verdict;
 }
 static void prepare_pins(void) {
@@ -183,6 +183,15 @@ static void set_cursor(void) {
     command(0x4E); data1(0x00); data1(0x00);
     command(0x4F); data1(0xDF); data1(0x01);
 }
+static bool ready_for(const char *failure) {
+    if (!x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) return true;
+    uint64_t deadline = now_ms() + 500u;
+    while (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
+        if (now_ms() >= deadline) { set_reason(failure); return false; }
+        sleep_ms(10);
+    }
+    return true;
+}
 static bool init_panel(void) {
     static const uint8_t booster[] = {0xAE, 0xC7, 0xC3, 0xC0, 0x80};
     static const uint8_t gate[] = {0xDF, 0x01, 0x02};
@@ -193,13 +202,7 @@ static bool init_panel(void) {
     sleep_ms(10);
     command(0x12);
     sleep_ms(10);
-    if (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
-        uint64_t deadline = now_ms() + 500u;
-        while (x4pro_pin_read(X4PRO_PIN_EPD_BUSY)) {
-            if (now_ms() >= deadline) { set_reason("reset busy timeout"); return false; }
-            sleep_ms(10);
-        }
-    }
+    if (!ready_for("reset busy timeout")) return false;
     command(0x18);
     data1(0x80);
     command(0x0C);
@@ -214,16 +217,21 @@ static bool init_panel(void) {
     for (size_t i = 0; i < sizeof(x_window); ++i) data1(x_window[i]);
     command(0x45);
     for (size_t i = 0; i < sizeof(y_window); ++i) data1(y_window[i]);
+    if (!ready_for("pre-cursor readiness")) return false;
     set_cursor();
     command(0x46); data1(0xF7);
+    if (!ready_for("first-ram busy timeout")) return false;
     command(0x47); data1(0xF7);
+    if (!ready_for("second-ram busy timeout")) return false;
     return true;
 }
 static bool transfer_frame(uint64_t deadline_ms) {
     if (transfer_started) { set_reason("invalid state"); return false; }
     transfer_started = true;
     if (!sample_now(&transfer_start_ms)) return false;
+    if (!ready_for("pre-transfer readiness")) return false;
     set_cursor();
+    if (!ready_for("pre-transfer readiness")) return false;
     command(0x24);
     x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
     x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
@@ -387,7 +395,7 @@ static bool last_error(char *destination, size_t capacity) {
     size_t used = 0;
     destination[0] = 0;
     append(destination, capacity, &used, probe_text);
-    append(destination, capacity, &used, " v=0.1.8 token=");
+    append(destination, capacity, &used, " v=0.1.9 token=");
     append_u(destination, capacity, &used, pending_token);
     append(destination, capacity, &used, " state=");
     append_u(destination, capacity, &used, present_state);

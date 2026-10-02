@@ -7,6 +7,10 @@
 uint8_t x4_fake_busy;
 uint32_t x4_fake_refresh_count;
 uint32_t x4_fake_bytes;
+uint32_t x4_fake_cmd46;
+uint32_t x4_fake_cmd47;
+uint32_t x4_fake_cmd24;
+uint8_t x4_fake_hold_busy;
 uint32_t x4_fake_output_mask;
 uint32_t x4_fake_level_before_config;
 int x4_test_probe_mode = 4;
@@ -75,6 +79,8 @@ int main(void) {
     const risc_driver_diagnostics_v2 *diag = (const risc_driver_diagnostics_v2 *)driver;
     expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "busy completion timeout"), "stuck reason");
     charge_ms = 1;
+    x4_fake_busy = 0;
+    x4_fake_hold_busy = 0;
     uint32_t before = x4_fake_refresh_count;
     expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "acquire transfer deadline");
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit transfer deadline");
@@ -104,6 +110,13 @@ int main(void) {
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit nonmonotonic");
     expect(api->wait_present(api->context, token, 20, &status), "nonmonotonic wait");
     expect(status.state == RISC_DISPLAY_PRESENT_FAILED && diag->last_error(detail, sizeof(detail)) && strstr(detail, "clock nonmonotonic"), "nonmonotonic reason");
+    expect(x4_fake_cmd46 == 1 && x4_fake_cmd47 == 1, "ram clears waited in order");
+    x4_test_probe_mode = 4;
+    x4_fake_busy = 5;
+    x4_fake_cmd46 = x4_fake_cmd47 = x4_fake_cmd24 = 0;
+    expect(!driver->start(&dep, 1), "stuck ram init");
+    expect(x4_fake_cmd46 == 1 && x4_fake_cmd47 == 0 && x4_fake_cmd24 == 0, "stuck init does not continue");
+    expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "first-ram busy timeout"), "first ram reason");
     x4_test_probe_mode = 1;
     expect(!driver->start(&dep, 1), "probe disabled");
     expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "probe-disabled"), "disabled reason");
