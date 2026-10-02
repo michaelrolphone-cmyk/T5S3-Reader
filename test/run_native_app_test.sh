@@ -190,11 +190,6 @@ python3 "$repo_dir/test/native_apps/timecard_store_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_store_failure_test.c" -o "$binary"
 "$binary"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -I"$repo_dir/test/native_apps/sd_firmware_bridge_stubs" \
-  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/src/native" -I"$repo_dir/src" \
-  "$repo_dir/test/native_apps/native_sd_firmware_bridge_test.cpp" -o "$binary"
-"$binary"
 bash "$repo_dir/test/run_serial_launch_contract.sh"
 cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/gnss_consent_contract_test.c" -o "$binary"
@@ -222,6 +217,16 @@ c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -fsanitize=address,
 "$binary"
 python3 "$repo_dir/test/native_apps/elf_owned_admission_test.py"
 python3 "$repo_dir/test/native_apps/sd_vfs_lock_test.py"
+c++ -std=c++17 -Wall -Wextra -Werror \
+  -I"$repo_dir/test/native_storage_stubs" -I"$repo_dir/lib/NativeApps/include" \
+  -I"$repo_dir/src/native" -I"$repo_dir/src" \
+  "$repo_dir/test/native_storage_read_test.cpp" -o "$binary"
+"$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo_dir/test/native_apps/sd_firmware_bridge_stubs" \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/src/native" -I"$repo_dir/src" \
+  "$repo_dir/test/native_apps/native_sd_firmware_bridge_test.cpp" -o "$binary"
+"$binary"
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"
