@@ -1,3 +1,13 @@
+## Active merge-base refresh — PR351 and PR353
+
+- User directed resolution of merge conflicts after master advanced through merged PR352. Current master exact head `ca66db298c2e735f45e5029083a9bfbd7b6740bd`, firmware1.3.57. Both repair branches were ready/green on older heads but GitHub now reports mergeable=false against current master; both PRs have been converted back to draft pending sync.
+- PR351 OTA repair head `92b119122f0115da0adbac6ca52b6da55bbd8e6f`, candidate1.3.59, exact CI36955528948 passed only on that pre-sync head.
+- PR353 ClockSync repair head `533c50733a86b1ca6b356975c22a089b3b6049f8`, candidate1.3.58, exact CI36954342160 passed only on that pre-sync head.
+- Plan: construct merge commits with current master as first parent and each existing repair head as second parent, preserving PR351's Hollow/renderer test runner addition while adding OTA test, and retaining respective unique firmware candidates. Re-run exact-head CI before restoring ready.
+- Canonical #70 candidate `fix/saved-network-fallback` has only an empty remote branch from current master; its focused revalidation, baseline-failing production-helper regression, and local fix are preserved in the Mac workspace. Implementation is paused until PR351/353 syncs settle. Do not start another new batch.
+
+---
+
 ## Active saved-network fallback repair — canonical bug #70
 
 - Owner claim `automatic_saved_network_fallback`; implementation branch planned `fix/saved-network-fallback`, current master baseline `ca66db298c2e735f45e5029083a9bfbd7b6740bd` after independently owned Hollow PR352 merge. Master firmware1.3.57; published release-index1.3.55.
