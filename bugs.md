@@ -94,7 +94,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Read one `t5_local_datetime_t` snapshot and refuse the punch if it fails. Derive both date and minutes from the successful snapshot, and test that failed clock reads create no record.
 ### 15. App Store silently hides applications after row 64
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Revalidated on current master `ca66db298c2e735f45e5029083a9bfbd7b6740bd`; in progress under claim `automatic_saved_network_fallback`, planned branch `fix/saved-network-fallback`. Production helper selects only one saved Wi-Fi profile and does not try alternatives after failure. OTA and native HTTP/network paths call the helper. Original report/provenance retained; host regression and implementation pending.
 - **Sources:** [automation/bug-scan-20260926-2025](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260926-2025/bugs.md); [automation/bug-scan-20260927-0725](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0725/bugs.md)
 
 - **Affected code:** `Apps/app_store.c`: `MAX_ROWS`, `build_releases()`, and `build_inbox()`; online catalog capacity in `src/native/NativeAppHost.cpp`.
