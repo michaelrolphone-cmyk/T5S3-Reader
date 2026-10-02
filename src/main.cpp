@@ -425,6 +425,11 @@ void logPlatformInputHealth() {
 
 void setup() {
 #ifdef BOARD_XTEINK_X4_PRO
+#ifdef ENABLE_SERIAL_LOG
+  Serial.begin(115200);
+  const unsigned long x4SerialStart = millis();
+  while (!Serial && millis() - x4SerialStart < 500) delay(10);
+#endif
   x4DiagnosticSetup();
   return;
 #endif
