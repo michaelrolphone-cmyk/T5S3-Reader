@@ -1,9 +1,13 @@
-## Native storage read completeness — active claim 2026-10-02 18:57 UTC
+## Native storage read completeness — active claim 2026-10-02 19:08 UTC
 
-- Owner `native_storage_read_exact_20261002`; canonical #32. Baseline master `3722a3f44a3294ba5e8adab830807a2523df3b03`; captured ledger PR #332 head `f47cb71d85cab0e0d84b8b9caf5c323725b8250c`. Planned master-based branch `fix/native-storage-read-complete`. Phase: current production source/path revalidated; host baseline regression and implementation pending.
-- Confirmed path: Native Platform Bridge exports `readFile` through `t5_storage_get_api()`; installed Text Editor uses the read API's size-probe/full-read pattern. The bridge calls `HalStorage::readFile()`, whose current helper still stops after50,000 bytes. The bridge reports the shortened String length as the complete file size and returns success. Thus files larger than the helper cap are silently truncated before the caller's subsequent read, defeating size discovery.
-- Fresh PR check: master is still `3722a3f44a3294ba5e8adab830807a2523df3b03`; open repairs #366, #367, #368 do not touch the native read bridge; #368's firmware reservation is1.3.68. Searches found no storage-read repair branch or relevant open/closed-unmerged repair. Canonical scan provenance remains unchanged.
-- Planned focused regression invokes the production storage callback with a >50,000-byte deterministic file for size probe and exact full-buffer read; tests capacity failure, missing/invalid path, read fault and retry. Preserve stream and atomic-write contracts. Firmware source candidate1.3.69, after #366=1.3.67 and #368=1.3.68; no distributable app changed.
+- Owner `native_storage_read_exact_20261002`; canonical #32. Baseline master `3722a3f44a3294ba5e8adab830807a2523df3b03`; captured ledger PR #332 head `880ddc740cbfd14c79c05bd74f11d3a3a7cd095f`. Draft [PR #369](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/369), branch `fix/native-storage-read-complete`, exact remote head `ece6667b06d5f3d91ccce5dc0317a045c5ecd3af`, based directly on current master. Claim remains active pending exact-head CI terminal result.
+
+- The public native-storage API exports `read_file` to installed native apps. Current bridge routes it through `HalStorage::readFile()`, which still caps at 50,000 bytes. The bridge reports this shortened String length and returns success. Host regression against original production callback proves the size probe for 60,017 bytes reports 50,000; current focused production callback test passes after the fix.
+
+- Strict C++17 host regression also verifies full data equality across short reads, 0-byte files, insufficient capacity, storage not ready, invalid/missing path, open/close/read error, retry after partial failure, and scheduler yields. Local `git diff --check` passes. Exact-head PlatformIO, BMP and CAM checks are pending.
+
+- Implementation uses bounded 512-byte reads and yields after 4 KiB or 50 ms; the existing storage API has no cancellation callback. API and apps are unchanged. Firmware source increments 1.3.66 →1.3.69 because open #366 reserves1.3.67 and #368 reserves1.3.68. #367 is app-only. No device I/O/flash.
+
 
 ---
 
