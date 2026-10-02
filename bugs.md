@@ -707,7 +707,7 @@ Repair direction: Size the choice model for the supported registry count plus bu
 - **Repair:** Capture the previous Wi-Fi power-save mode and restore that exact mode on every exit path using a scope guard/RAII cleanup. Add a fault-injection regression for begin failure.
 ### 69. Clock synchronization can suppress retry after a hardware-clock write failure.
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Awaiting merge in open, ready-for-review [PR353](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/353), exact head `36f80118d16c4291bc9a931cdb5d18b0ccbff674`; exact-head CI36958898901 passed all four jobs. Implementation claim released.
 - **Sources:** [2026-09-27 12-21 MDT - automation-bug-scan-20260927-1221 - intended bugs.md diff](https://docs.google.com/spreadsheets/d/17BY2jMeFoI2yFrSMEQc9FuTKEK3QlwSZoJfKFKzs_f0/edit?usp=drivesdk)
 
 - Affected: src/ClockSync.cpp, commitCurrentSystemTime(), shouldSync().
