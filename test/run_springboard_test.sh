@@ -3,6 +3,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
+python3 "$repo_dir/test/native_apps/hollow_trail_memory_test.py"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/springboard_video_test.c" -o "$binary"
 "$binary"

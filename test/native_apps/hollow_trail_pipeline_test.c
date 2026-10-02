@@ -10,6 +10,7 @@ static unsigned transition_loading_polls,reader_releases;
 static bool journal_run,old_video;
 static unsigned transition_level;
 static uint8_t *stage;
+static void *owned[HT_MEM_BLOCKS];
 static uint8_t display[HT_PACKED_BYTES];
 static uint32_t clock_ms(void) { return ++now_ms; }
 static bool ready(void) {
@@ -32,13 +33,29 @@ static bool poll_input(t5_app_input_t *out,uint32_t wait) {
     return true;
 }
 static void *allocate(size_t size) {
-    ++allocations;
-    if(allocations==2 && failed_alloc) return NULL;
+    const size_t sizes[HT_MEM_BLOCKS]={HT_MEMORY,HT_NATIVE_PIXELS,HT_NATIVE_PIXELS,
+                                     HT_PACKED_BYTES,HT_PACKED_BYTES};
+    const unsigned slot=allocations++;
+    assert(slot<HT_MEM_BLOCKS && size==sizes[slot]+15u);
+    assert(!owned[slot]);
+    /* The optional staging buffer is last, not the second allocation now
+     * occupied by native raster A. Keep the direct-packing failure scenario. */
+    if(slot==HT_MEM_STAGING && failed_alloc) return NULL;
     uint8_t *p=malloc(size);assert(p);memset(p,0x5a,size);
-    if(allocations==2) { assert(size==HT_PACKED_BYTES);stage=p; }
+    owned[slot]=p;
+    if(slot==HT_MEM_STAGING)
+        stage=(uint8_t *)(((uintptr_t)p+15u)&~(uintptr_t)15u);
     return p;
 }
-static void release(void *p) { assert(p);++frees;free(p); }
+static void release(void *p) {
+    assert(p);
+    unsigned slot=0;
+    while(slot<HT_MEM_BLOCKS && owned[slot]!=p) ++slot;
+    assert(slot<HT_MEM_BLOCKS); // Reject foreign pointers and double frees.
+    owned[slot]=NULL;
+    if(slot==HT_MEM_STAGING) stage=NULL;
+    ++frees;free(p);
+}
 static bool start_video(t5_video_surface_v1 *s,uint8_t format) {
     assert(format==T5_VIDEO_PIXEL_MONO_1BPP_MSB);
     *s=(t5_video_surface_v1){960,540,120,format,T5_VIDEO_FLAG_ONE_IS_BLACK};
@@ -127,7 +144,9 @@ int main(void) {
         assert(submissions==(journal_run?4u:3u) && backbuffer_calls==(journal_run?5u:4u));
         assert(old_video?strip_requests==0:(strip_requests>=1 && strip_requests<=submissions-1));
         assert(reader_releases==(journal_run?1u:0u));
-        assert(frees==(failed_alloc?1u:2u));
+        assert(allocations==HT_MEM_BLOCKS);
+        assert(frees==HT_MEM_BLOCKS-(failed_alloc?1u:0u));
+        for(unsigned slot=0;slot<HT_MEM_BLOCKS;++slot) assert(!owned[slot]);
         assert(overlapped==!failed_alloc);
     }
     puts("Hollow Trail pipeline: pack while busy, buffer ownership, retry, direct fallback and cleanup PASS");
