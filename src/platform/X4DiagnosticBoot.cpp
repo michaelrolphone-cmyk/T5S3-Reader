@@ -13,6 +13,7 @@
 #include <FontCacheManager.h>
 #include <FontDecompressor.h>
 #include <GfxRenderer.h>
+#include <HalDisplay.h>
 #include <Logging.h>
 #include <cstring>
 #include <memory>
@@ -22,6 +23,8 @@
 
 extern EpdFont notoserif14RegularFont;
 extern FontDecompressor fontDecompressor;
+extern GfxRenderer renderer;
+extern FontCacheManager fontCacheManager;
 
 namespace {
 RuntimeProviders::ModuleV2 clock_mod;
@@ -33,8 +36,6 @@ const risc_input_navigation_api_v1 *nav_api = nullptr;
 const risc_frontlight_api_v1 *light_api = nullptr;
 uint8_t surface[48000];
 std::unique_ptr<ProviderDisplaySurface> provider_surface;
-std::unique_ptr<GfxRenderer> reader_renderer;
-std::unique_ptr<FontCacheManager> reader_font_cache;
 uint32_t sequence = 0;
 uint32_t last_buttons = 0;
 bool ready = false;
@@ -71,7 +72,7 @@ void rectangle(int left, int top, int right, int bottom, bool black) {
         for (int x = left; x < right; ++x) pixel(x, y, black);
 }
 void paint(uint32_t edge) {
-    reader_renderer->clearScreen(0xFF);
+    renderer.clearScreen(0xFF);
     for (int i = 0; i < 800; ++i) { pixel(i, 0, true); pixel(i, 479, true); }
     for (int i = 0; i < 480; ++i) { pixel(0, i, true); pixel(799, i, true); }
     marker(8, 8);
@@ -89,7 +90,7 @@ void paint(uint32_t edge) {
     if (edge & RISC_NAV_CONFIRM) marker(240, 300);
     /* Exercise the same 0=black software raster and text renderer as Reader UI. */
     if (shared_text_ready) {
-        reader_renderer->drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
+        renderer.drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
     }
 }
 bool present() {
@@ -98,7 +99,7 @@ bool present() {
     LOG_INF("X4", "diagnostic black_pixels=%lu", static_cast<unsigned long>(black_pixels));
     if (!provider_surface || !provider_surface->isReady()) return false;
     const unsigned long began = millis();
-    reader_renderer->displayBuffer(DisplayPresentMode::Clean);
+    renderer.displayBuffer(DisplayPresentMode::Clean);
     char detail[160] = "unavailable";
     (void)panel_mod.copyProviderError(detail, sizeof(detail));
     if (!provider_surface->lastPresentSucceeded()) {
@@ -143,20 +144,22 @@ void x4DiagnosticSetup() {
         LOG_ERR("X4", "display.output surface adapter rejected");
         return;
     }
-    reader_renderer.reset(new (std::nothrow) GfxRenderer(*provider_surface));
-    if (!reader_renderer || !reader_renderer->preflightSurface() || !reader_renderer->begin()) {
+    if (!display.attachProvider(*provider_surface)) {
+        LOG_ERR("X4", "Reader display facade rejected provider");
+        return;
+    }
+    display.begin(false);
+    if (!renderer.preflightSurface() || !renderer.begin()) {
         LOG_ERR("X4", "shared renderer surface rejected");
         return;
     }
-    reader_renderer->setOrientation(GfxRenderer::LandscapeCounterClockwise);
+    renderer.setOrientation(GfxRenderer::LandscapeCounterClockwise);
     if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
-    reader_font_cache.reset(new (std::nothrow) FontCacheManager(reader_renderer->getFontMap(),
-                                                               reader_renderer->getSdCardFonts()));
-    shared_text_ready = reader_font_cache && fontDecompressor.init();
+    shared_text_ready = fontDecompressor.init();
     if (shared_text_ready) {
-        reader_font_cache->setFontDecompressor(&fontDecompressor);
-        reader_renderer->setFontCacheManager(reader_font_cache.get());
-        reader_renderer->insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
+        fontCacheManager.setFontDecompressor(&fontDecompressor);
+        renderer.setFontCacheManager(&fontCacheManager);
+        renderer.insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
     }
     LOG_INF("X4", "shared text ready=%d", shared_text_ready ? 1 : 0);
     char probe[160] = "unavailable";

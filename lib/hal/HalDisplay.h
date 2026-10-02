@@ -49,6 +49,10 @@ class HalDisplay : public DisplaySurface {
   // retained clock wakes pass false to preserve the physical image until their
   // own bounded update. Recovery and ordinary callers keep the full clear.
   void begin(bool clearPanel = true);
+#if defined(BOARD_XTEINK_X4_PRO)
+  // The provider remains the sole owner of panel pins and refresh operations.
+  bool attachProvider(DisplaySurface& surface);
+#endif
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and
   // stop other display users for the entire interval. Physical refresh calls
@@ -151,9 +155,15 @@ class HalDisplay : public DisplaySurface {
 
   void displayGrayBuffer(RefreshMode mode = HALF_REFRESH) override;
 
-  bool isReady() const override { return displayReady && frameBuffer != nullptr; }
+  bool isReady() const override { return displayReady && getFrameBuffer() != nullptr; }
 
-  DisplaySurfaceInfo getSurfaceInfo() const override { return SURFACE_INFO; }
+  DisplaySurfaceInfo getSurfaceInfo() const override {
+#if defined(BOARD_XTEINK_X4_PRO)
+    return providerSurface ? providerSurface->getSurfaceInfo() : SURFACE_INFO;
+#else
+    return SURFACE_INFO;
+#endif
+  }
 
   // Last-resort boot diagnostic that deliberately bypasses GfxRenderer and
   // runtime surface metadata. A large X plus eight code boxes gives a visible
@@ -228,6 +238,8 @@ class HalDisplay : public DisplaySurface {
   bool externalOwner = false;
 #elif defined(BOARD_LILYGO_EPD47_S3)
   uint8_t* epdFrameBuffer = nullptr;
+#elif defined(BOARD_XTEINK_X4_PRO)
+  DisplaySurface* providerSurface = nullptr;
 #endif
   uint8_t* frameBuffer = nullptr;
   uint8_t* grayscaleLsbBuffer = nullptr;
