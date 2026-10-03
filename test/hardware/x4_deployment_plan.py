@@ -17,6 +17,7 @@ import zipfile
 APP_OFFSET, APP_SIZE = 0x10000, 0x640000
 STORE_OFFSET, STORE_SIZE = 0xc90000, 0x360000
 TABLE_HASH = '9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60'
+BOARD_IDS = ('xteink-x4-pro', 't5s3-pro')
 MAX_ARCHIVE = 24 * 1024 * 1024
 MAX_EXPANDED = 32 * 1024 * 1024
 
@@ -114,19 +115,20 @@ def decode_store(image, tool, tool_sha):
         return files
 
 
-def validate(raw, expected_sha, archive_sha, tool=None, tool_sha=None, decoder=decode_store):
+def validate(raw, expected_sha, archive_sha, tool=None, tool_sha=None, decoder=decode_store, *, board_id='xteink-x4-pro'):
+    require(board_id in BOARD_IDS, 'Unsupported explicit board profile')
     require(re.fullmatch('[0-9a-f]{40}',expected_sha) is not None,'Full expected source SHA required')
     require(len(raw) <= MAX_ARCHIVE and digest(raw)['sha256'] == archive_sha,'Artifact size/hash mismatch')
     files=archive_files(raw,32,APP_SIZE,MAX_EXPANDED)
     m=read_json(files['deployment.json'])
-    require(m['schema'] == 1 and m['board'] == 'xteink-x4-pro' and m['source_sha'] == expected_sha,'Deployment source/board mismatch')
+    require(m['schema'] == 1 and m['board'] == board_id and m['source_sha'] == expected_sha,'Deployment source/board mismatch')
     require(m['provisioning_authorized'] is False,'Artifact cannot authorize provisioning')
     require(m['firmware'] == {'file':'firmware.bin','offset':APP_OFFSET,**digest(files['firmware.bin'])},'Paired firmware hash/offset mismatch')
     require(m['module_store'] == {'file':'module-store.bin','offset':STORE_OFFSET,**digest(files['module-store.bin'])}
             and len(files['module-store.bin']) == STORE_SIZE,'Paired store hash/offset/size mismatch')
     app=files['firmware.bin'];erase=(len(app)+4095)//4096*4096
     require(24 < len(app) <= APP_SIZE and erase <= APP_SIZE and app[0] == 0xe9 and int.from_bytes(app[12:14],'little') == 9
-            and b'RISCRTE_BOARD_ID:xteink-x4-pro' in app,'X4 firmware identity/range invalid')
+            and ('RISCRTE_BOARD_ID:'+board_id).encode() in app,'Firmware board identity/range invalid')
     require(digest(files['partitions.csv']) == m['partition_table'],'Partition CSV hash mismatch')
     rows=[]
     for row in csv.reader(files['partitions.csv'].decode().splitlines()):
@@ -147,7 +149,7 @@ def validate(raw, expected_sha, archive_sha, tool=None, tool_sha=None, decoder=d
     decoded=decoder(files['module-store.bin'],tool,tool_sha)
     require({k:digest(v) for k,v in decoded.items()} == inventory,'Store contents differ from declared inventory')
     boot=read_json(decoded['boot.json']);board=read_json(decoded['board.json'])
-    require(boot['board']=='board.json' and board['board_id']=='xteink-x4-pro','Store board binding mismatch')
+    require(boot['board']=='board.json' and board['board_id']==board_id,'Store board binding mismatch')
     selected=set();store_paths={'boot.json','board.json'}
     require(isinstance(boot['drivers'],list) and 1 <= len(boot['drivers']) <= 16,'Boot driver list invalid')
     for item in boot['drivers']:
@@ -158,9 +160,11 @@ def validate(raw, expected_sha, archive_sha, tool=None, tool_sha=None, decoder=d
             key='Drivers/'+identity+'/'+entry;store_paths.add(key)
             require(decoded.get(key)==data,'Store/package bytes differ')
     require(set(decoded)==store_paths,'Unexpected/missing store files')
-    return {'schema':1,'validation':'pass','mode':'offline-dry-run','source_sha':expected_sha,'artifact_sha256':archive_sha,
+    return {'schema':1,'validation':'pass','mode':'offline-dry-run','board':board_id,'source_sha':expected_sha,'artifact_sha256':archive_sha,
             'provisioning_authorized':False,'deployment_state':'failure','deployment_reason':'Store compatibility and prior contents unverified; explicit provisioning approval required',
-            'expected_mac':'84:c7:bb:79:e2:ac','expected_partition_sha256':TABLE_HASH,
+            'expected_mac':'84:c7:bb:79:e2:ac' if board_id=='xteink-x4-pro' else None,
+            'expected_partition_sha256':TABLE_HASH if board_id=='xteink-x4-pro' else None,
+            'physical_binding_established':board_id=='xteink-x4-pro',
             'proposed_regions':[dict(m['firmware'],erase_bytes=erase),dict(m['module_store'],erase_bytes=STORE_SIZE)],
             'protected_regions':[{'offset':0,'bytes':0x10000},{'offset':0x650000,'bytes':APP_SIZE},{'offset':0xff0000,'bytes':0x10000}],
             'store_replaces_entire_region':True,'selected_drivers':sorted(selected),'packages':records,
@@ -171,10 +175,11 @@ def validate(raw, expected_sha, archive_sha, tool=None, tool_sha=None, decoder=d
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--artifact',type=Path,required=True);p.add_argument('--expected-sha',required=True)
     p.add_argument('--artifact-sha256',required=True);p.add_argument('--decoder',type=Path,required=True);p.add_argument('--decoder-sha256',required=True);p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--board',choices=BOARD_IDS,default='xteink-x4-pro',help='Explicit artifact identity; T5 software validation does not establish physical binding')
     a=p.parse_args()
     try:
         require(a.artifact.is_file() and not a.artifact.is_symlink() and a.artifact.stat().st_size<=MAX_ARCHIVE,'Artifact path/size invalid')
-        result=validate(a.artifact.read_bytes(),a.expected_sha,a.artifact_sha256,a.decoder,a.decoder_sha256)
+        result=validate(a.artifact.read_bytes(),a.expected_sha,a.artifact_sha256,a.decoder,a.decoder_sha256,board_id=a.board)
     except Exception as error:result={'validation':'failure','deployment_state':'failure','reason':str(error),'provisioning_authorized':False,'hardware_access_performed':False}
     a.output.write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
     return 0 if result['validation']=='pass' else 1

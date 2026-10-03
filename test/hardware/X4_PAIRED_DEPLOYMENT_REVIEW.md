@@ -41,3 +41,17 @@ LittleFS image does not authorize formatting or replacing an existing region.
 The selected boot-store drivers must match ordinary package bytes exactly.
 Unselected packages (currently the battery driver) may be distributed alongside
 the selected set but are not treated as installed or hardware-validated.
+
+## Explicit T5 software-pair validation
+
+The same offline tool accepts `--board t5s3-pro` for the separately published
+`t5-external-deployment-<sha>` artifact. Default identity remains
+`xteink-x4-pro`; deployment manifest, firmware marker and decoded board profile
+must all match the explicitly selected board. Unknown boards and cross-board
+pairs fail. Package integrity, decoded payload equality and fixed partition
+geometry checks are unchanged.
+
+A T5 software pass reports no expected MAC or qualified binary partition-table
+hash and `physical_binding_established: false`. It cannot borrow the X4 device
+binding or backup. Physical T5 identity, live layout and prior-store preservation
+remain unverified; this option adds no controller dispatch or hardware access.
