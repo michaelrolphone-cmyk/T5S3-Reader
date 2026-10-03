@@ -216,10 +216,11 @@ def build(identities: set[str] | None = None) -> list[dict]:
                              f"{len(mapping['unmapped_relative_values'])} invalid values; "
                              f"executable orphans={mapping['unmapped_executable_sections']}")
         imports = extract_imports(elf)
-        # The sole permitted U1 raw I2C importer is the installed bus ELF.
-        is_bus = candidate['capability'] == 'i2c.bus'
-        if ((BRIDGE in imports) != is_bus or
-                (is_bus and mapping['absolute_peripheral_relocations'])):
+        # Only the transitional ESP32-S3 adapter may import the firmware I2C
+        # bridge. X4's separate i2c.bus ELF owns its GPIO bus directly.
+        is_firmware_i2c_adapter = identity == 'i2c-esp32s3-v2' and candidate['capability'] == 'i2c.bus'
+        if ((BRIDGE in imports) != is_firmware_i2c_adapter or
+                (is_firmware_i2c_adapter and mapping['absolute_peripheral_relocations'])):
             raise ValueError(f'firmware I2C bridge isolation violated by {identity}')
         target = DESTINATION / identity
         target.mkdir(parents=True, exist_ok=True)

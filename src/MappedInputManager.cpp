@@ -131,6 +131,15 @@ void MappedInputManager::update() const {
   nativeTouchTick();
 }
 
+#if defined(BOARD_XTEINK_X4_PRO)
+void MappedInputManager::updateBootstrapInput() const {
+  // X4's boot-owned providers already have their grants. The legacy GPIO
+  // facade and installed-provider discovery target T5S3 hardware.
+  nativeNavigationTick();
+  nativeTouchTick();
+}
+#endif
+
 bool MappedInputManager::wasAnyPressed() const {
   return gpio.wasAnyPressed() || hasInjectedButtonTap || nativeNavigationFrame().pressed;
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <RiscTouchV1.h>
 
 struct NativeTouchPoint {
   uint16_t x = 0;
@@ -12,6 +13,10 @@ struct NativeTouchPoint {
 void nativeTouchTick();
 bool nativeTouchResume();
 bool nativeTouchSuspend();
+#if defined(BOARD_XTEINK_X4_PRO)
+// Borrow an X4 boot-owned, verified provider without scanning installed packages.
+bool nativeTouchAttachBootstrap(const risc_touch_api_v1* candidate);
+#endif
 bool nativeTouchAvailable();
 bool nativeTouchHadActivity();
 // Start a new focus generation without dropping the provider. Clears delivered

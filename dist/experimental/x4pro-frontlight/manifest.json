@@ -1,0 +1,19 @@
+{
+  "type": "driver",
+  "id": "x4pro-frontlight",
+  "version": "0.1.1",
+  "driver_abi": 2,
+  "architecture": "xtensa-esp32s3",
+  "file_name": "driver.elf",
+  "board": "xteink-x4-pro",
+  "requires": [],
+  "provides": [
+    {
+      "capability": "display.frontlight",
+      "api": 1
+    }
+  ],
+  "status": "experimental-unpublished",
+  "size_bytes": 3188,
+  "sha256": "497d3f6f447bb287e00cbe2399fedc532808f4af58e7583e4d1e51f97d9d2035"
+}

@@ -8,6 +8,9 @@
 #include <memory>
 #include <string>
 #include <vector>
+#if defined(BOARD_XTEINK_X4_PRO)
+#include "RiscStorageVolumeV1.h"
+#endif
 
 class HalFile;
 
@@ -15,6 +18,11 @@ class HalStorage {
  public:
   HalStorage();
   bool begin();
+#if defined(BOARD_XTEINK_X4_PRO)
+  // Borrowed from the X4 boot owner; it retains the provider module for the
+  // whole Reader session. No SPI transport or filesystem implementation here.
+  bool bindVolume(const risc_storage_volume_api_v1* volume);
+#endif
   bool ready() const;
   StorageGenerationStamp generation() const;
   bool unchanged(const StorageGenerationStamp& stamp) const;
