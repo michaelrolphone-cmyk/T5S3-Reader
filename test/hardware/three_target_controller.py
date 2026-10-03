@@ -118,10 +118,17 @@ def status(gh,path,result):
     passed=(record.get('result')=='pass' and record.get('candidate_readback_equal') is True
             and record.get('protected_equal') is True and record.get('heartbeat_restored') is True
             and record.get('heartbeat_readback_equal') is True and isinstance(record.get('heartbeat_health'),dict))
-    state='success' if passed else 'failure' if record.get('heartbeat_restored') else 'error'
+    state='success' if passed else 'failure'
+    if passed: description='Candidate verified; heartbeat ready'
+    elif record.get('cleanup_error'): description='FAILED: heartbeat cleanup could not be verified'
+    elif not record: description='FAILED: candidate artifact retrieval or validation failed'
+    elif not record.get('protected_sha256'): description='FAILED: device identity, layout or serial preflight failed'
+    elif not record.get('candidate_readback_equal'): description='FAILED: candidate write/readback failed'
+    elif not record.get('candidate_checks'): description='FAILED: candidate boot acceptance failed'
+    else: description='FAILED: incomplete hardware or cleanup evidence'
     response=gh.call('/statuses/'+result['source_sha'],'POST',{
         'context':result['target']+' hardware / heartbeat cleanup','state':state,
-        'description':'Candidate verified; heartbeat ready' if passed else 'Hardware failed; inspect private evidence'})
+        'description':description})
     result.update(status_id=response['id'],status_state=state)
     device.save(path,result)
 

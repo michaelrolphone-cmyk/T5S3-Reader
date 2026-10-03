@@ -68,6 +68,9 @@ class ControllerTests(unittest.TestCase):
                 controller.status(gh,Path(root)/f'{index}.json',result)
                 state=gh.call.call_args.args[2]['state']
                 self.assertEqual(state=='success',missing is None)
+                if missing:
+                    self.assertEqual(state,'failure')
+                    self.assertTrue(gh.call.call_args.args[2]['description'].startswith('FAILED:'))
                 controller.status(gh,Path(root)/f'{index}.json',result)
                 self.assertEqual(gh.call.call_count,1)
 
