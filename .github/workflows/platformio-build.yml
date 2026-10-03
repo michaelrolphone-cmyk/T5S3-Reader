@@ -114,10 +114,13 @@ jobs:
       - name: Rebuild X4 provider ELFs and embed them
         run: |
           pio pkg install -e xteink-x4-pro
-          export PATH="$HOME/.platformio/packages/toolchain-xtensa-esp32s3/bin:$PATH"
+          bash scripts/install_x4_provider_toolchain.sh
+          export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+          export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
           python scripts/build_platform_clock_v1.py
           python scripts/build_x4pro_drivers.py
           python scripts/embed_x4pro_providers.py
+          python3 test/x4pro_provider_link_test.py
           cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
           /tmp/x4gpio
           cc -std=c11 -Wall -Wextra -Werror -I Drivers/x4pro_board \

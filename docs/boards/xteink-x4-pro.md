@@ -28,6 +28,10 @@ Frontlight stays off at startup. Battery/RTC integration, sleep/wake and shutdow
 
 ## Provider and board facts
 
+Provider builds use the pinned Espressif `esp-14.2.0_20260121` compiler with `RISCRTE_X4_LINK_PROFILE=esp14-no-relax`: `-O2` and `--no-relax`, plus `-fno-ivopts` for the panel only. The clock explicitly selects the firmware's 32-bit time ABI and asserts the `timespec` layout. Every provider build validates relative relocation targets against mapped sections before embedding; the runtime loader's rejection behavior is unchanged. The software workflow uses the digest-checked installer in `scripts/install_x4_provider_toolchain.sh`.
+
+These selectively integrated fixes originate in CI commits `2c585242`, `484cd741`, and `4b4daea0`. All provider bytes are rebuilt from this branch; no old SD binary or manifest is imported. Reprofiled package versions: clock `0.1.1`, panel `0.1.13`, I²C `0.1.1`, buttons `0.1.4`, frontlight `0.1.2`, GT911 `0.1.2`, battery `0.1.1`; storage remains `0.2.0` and firmware `1.3.74`.
+
 Embedded load dependencies are `platform-clock-v1`, `x4pro-panel`, `x4pro-buttons`, `x4pro-frontlight`, `x4pro-sd`, `x4pro-i2c`, and `x4pro-gt911`. Modules are hash-verified by `ProviderModuleV2::loadVerifiedBytes` and remain owned by the board boot composition. Drivers publish existing capability ABIs with `t5_driver_get`; peripheral logic stays in the providers.
 
 The GT911 0.1.1 provider controls master enable GPIO1 and active-low touch power GPIO2, performs the INT/RESET selection on GPIO10/4, and probes 0x5D/0x14 through the I2C provider. It publishes portrait single-contact DOWN/MOVE/UP and Home-key events to the shared capture task. Multiple contacts invalidate the gesture stream. The SD provider alone owns active-low power GPIO5 and native one-bit CMD42/CLK41/DAT0 40, with 80 ms off/120 ms on sequencing.
