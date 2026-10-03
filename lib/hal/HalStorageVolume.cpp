@@ -78,6 +78,14 @@ bool HalStorage::cancelSleep() {
   const auto* power = risc_storage_volume_power(volume);
   return power && power->cancel_power_down && power->cancel_power_down(volume->context);
 }
+bool HalStorage::commitSleep() {
+  StorageLock lock;
+  if (!lock) return false;
+  if (!volume) return !initialized; // Display-only timer boot: bootstrap is off.
+  const auto* power = risc_storage_volume_power_commit(volume);
+  return power && power->commit_power_down(volume->context);
+}
+bool halStorageCommitSleep() { return Storage.commitSleep(); }
 bool halStoragePrepareForSleep() { return Storage.prepareForSleep(); }
 bool halStorageCancelSleep() { return Storage.cancelSleep(); }
 void halStorageMediaUnavailable() { Storage.markUnavailable(); }

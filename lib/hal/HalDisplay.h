@@ -56,6 +56,8 @@ class HalDisplay : public DisplaySurface {
 #if defined(BOARD_XTEINK_X4_PRO)
   // The provider remains the sole owner of panel pins and refresh operations.
   bool attachProvider(ProviderDisplaySurface& surface);
+  void detachProvider();
+  bool lastPresentSucceeded() const;
 #endif
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and

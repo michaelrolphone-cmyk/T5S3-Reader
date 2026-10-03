@@ -42,6 +42,8 @@ void loop() { RuntimeBoot::loop(); }
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
+#include "runtime/power/IdleSleepDeadline.h"
+#include "native/NativeBatteryGauge.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
@@ -227,9 +229,16 @@ bool suspendInputProvidersForSleep() {
     (void)nativeTouchResume();
     return false;
   }
+  if (!nativeBatterySuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: battery provider has not quiesced");
+    (void)nativeBatteryResume();
+    (void)nativeTouchResume();
+    return false;
+  }
   if (!nativeNavigationSuspend()) {
     LOG_ERR("INPUT", "Sleep refused: navigation/provider graph has not quiesced");
     nativeNavigationResume();
+    (void)nativeBatteryResume();
     (void)nativeTouchResume();
     return false;
   }
@@ -239,6 +248,7 @@ bool suspendInputProvidersForSleep() {
 void resumeInputProvidersAfterSleep() {
   // Bootstrap/navigation first; touch can then join the already healthy graph.
   nativeNavigationResume();
+  (void)nativeBatteryResume();
   (void)nativeTouchResume();
 }
 
@@ -351,6 +361,34 @@ void enterPowerOffKeepingScreen(const char* status) {
 // Set by activities (e.g. the reader menu's Shut Down button) to request a full
 // power-off. Consumed at the top of loop() so the battery-cut runs in the main-loop
 // context rather than inside an activity's call stack.
+namespace { IdleSleepDeadline idleSleep; }
+bool idleSleepRequested() { return idleSleep.pending(); }
+void resumeIdleTimer() { idleSleep.activity(static_cast<uint32_t>(millis())); }
+bool serviceIdleSleep(bool userActivity) {
+  const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
+  bool activeWork = activityManager.preventAutoSleep();
+#ifdef ENABLE_SERIAL_LOG
+  activeWork = activeWork || (Serial && !deskClock);
+#endif
+#if defined(BOARD_XTEINK_X4_PRO)
+  // Other X4 sleep/shutdown modes still need their own board implementation.
+  const bool sleepBlocked = !deskClock;
+#else
+  const bool sleepBlocked = gpio.isUsbConnected() && !deskClock;
+#endif
+  if (userActivity || activeWork) powerManager.setPowerSaving(false);
+  const uint32_t now = static_cast<uint32_t>(millis());
+  if (!idleSleep.observe(now, SETTINGS.getSleepTimeoutMs(), userActivity, activeWork)) return false;
+  if (sleepBlocked) {
+    // Preserve the existing USB policy: restart the sleep deadline only when
+    // it expires, without turning a connected cable into continuous activity
+    // or disabling the separate CPU-idle power-saving timer.
+    (void)idleSleep.consume(now);
+    return false;
+  }
+  return true;
+}
+
 bool g_shutdownRequested = false;
 bool g_displayBootFailed = false;
 void requestShutdown() { g_shutdownRequested = true; }
@@ -459,6 +497,17 @@ void logPlatformInputHealth() {
   }
 }
 
+bool resumeSavedReaderActivity() {
+  if (!shouldResumeReaderOnBoot()) return false;
+  const auto path = APP_STATE.openEpubPath;
+  APP_STATE.openEpubPath = "";
+  APP_STATE.readerActivityLoadCount++;
+  APP_STATE.saveToFile();
+  display.suppressInitialFullRefresh();
+  activityManager.goToReader(path, readerResumeRefreshMode());
+  return true;
+}
+
 void setup() {
 #ifdef BOARD_XTEINK_X4_PRO
 #ifdef ENABLE_SERIAL_LOG
@@ -466,7 +515,8 @@ void setup() {
   const unsigned long x4SerialStart = millis();
   while (!Serial && millis() - x4SerialStart < 500) delay(10);
 #endif
-  x4DiagnosticSetup();
+  if (DeskClockSleep::resumeAfterTimerWake()) return;
+  x4DiagnosticSetup(DeskClockSleep::consumeUserWake());
   return;
 #endif
   t1 = millis();
@@ -633,12 +683,7 @@ void setup() {
     activityManager.goHome();
   } else {
     // Clear app state to avoid getting into a boot loop if the epub doesn't load
-    const auto path = APP_STATE.openEpubPath;
-    APP_STATE.openEpubPath = "";
-    APP_STATE.readerActivityLoadCount++;
-    APP_STATE.saveToFile();
-    display.suppressInitialFullRefresh();
-    activityManager.goToReader(path, readerResumeRefreshMode());
+    (void)resumeSavedReaderActivity();
   }
 
   // Ensure we're not still holding the power button before leaving setup
@@ -731,20 +776,13 @@ void loop() {
   }
 
   // Check for any user activity (button press or release) or active background work
-  static unsigned long lastActivityTime = millis();
-  if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
+  const bool userActivity = mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
       nativeNavigationFrame().buttons || nativeTouchHadActivity() ||
 #if !defined(BOARD_XTEINK_X4_PRO)
       halTiltSensor.hadActivity() ||
 #endif
-      activityManager.preventAutoSleep()
-#ifdef ENABLE_SERIAL_LOG
-      || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)
-#endif
-  ) {
-    lastActivityTime = millis();         // Reset inactivity timer
-    powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
-  }
+      false;
+  (void)serviceIdleSleep(userActivity);
 
   bool hasHardwareButtonTap = false;
   auto hardwareButtonTap = MappedInputManager::Button::Up;
@@ -835,20 +873,6 @@ void loop() {
     return;
   }
 
-  const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
-  if (millis() - lastActivityTime >= sleepTimeoutMs) {
-    if (gpio.isUsbConnected() && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK) {
-      LOG_DBG("SLP", "Auto sleep skipped after %lu ms of inactivity because USB is connected", sleepTimeoutMs);
-      lastActivityTime = millis();
-    } else {
-      LOG_DBG("SLP", "Auto sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
-      enterDeepSleep();
-      // Desk-clock light sleep returns on user wake; start a fresh idle period.
-      lastActivityTime = millis();
-      return;
-    }
-  }
-
   // Refresh the battery icon when USB is plugged or unplugged.
   // Placed after sleep guards so we never queue a render that won't be processed.
   if (gpio.wasUsbStateChanged()) {
@@ -856,12 +880,21 @@ void loop() {
   }
 #endif
 
+  if (idleSleep.pending()) {
+    LOG_DBG("SLP", "Auto sleep triggered after configured idle timeout");
+    // Keep the latch through activity onExit/save/render preparation; no child
+    // may be mapped while the sleep transition is still unwinding the UI.
+    enterDeepSleep();
+    (void)idleSleep.consume(static_cast<uint32_t>(millis())); // Refusal starts a fresh idle period.
+    return;
+  }
+
   const unsigned long activityStartTime = millis();
   if (hasHardwareButtonTap) {
     mappedInputManager.injectButtonTap(hardwareButtonTap);
   }
   activityManager.loop();
-  if (consumeNativeAppReturn()) lastActivityTime = millis();
+  if (consumeNativeAppReturn()) resumeIdleTimer();
   if (hasHardwareButtonTap) {
     mappedInputManager.clearInjectedButtonTap();
   }
@@ -882,7 +915,7 @@ void loop() {
     powerManager.setPowerSaving(false);  // Make sure we're at full performance when skipLoopDelay is requested
     yield();                             // Give FreeRTOS a chance to run tasks, but return immediately
   } else {
-    if (millis() - lastActivityTime >= HalPowerManager::IDLE_POWER_SAVING_MS) {
+    if (idleSleep.inactiveFor(static_cast<uint32_t>(millis())) >= HalPowerManager::IDLE_POWER_SAVING_MS) {
       // If we've been inactive for a while, increase the delay to save power
       powerManager.setPowerSaving(true);  // Lower CPU frequency after extended inactivity
       delay(50);

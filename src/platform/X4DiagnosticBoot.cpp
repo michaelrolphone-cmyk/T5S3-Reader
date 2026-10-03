@@ -17,6 +17,7 @@
 #include <Arduino.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
+#include <HalClock.h>
 #include <HalStorage.h>
 #include <Logging.h>
 #include <HalPowerManager.h>
@@ -27,6 +28,7 @@
 #include <esp_heap_caps.h>
 #include "runtime/network/PsramTlsAllocator.h"
 #include <memory>
+#include <initializer_list>
 #include <new>
 
 #include "MappedInputManager.h"
@@ -41,6 +43,7 @@
 
 extern bool setupDisplayAndFonts();
 extern void setupReaderState();
+extern bool resumeSavedReaderActivity();
 extern GfxRenderer renderer;
 extern MappedInputManager mappedInputManager;
 extern ActivityManager activityManager;
@@ -60,9 +63,72 @@ bool acquire(const char* capability, RuntimeInstalledProviders::Lease& lease) {
             RuntimeInstalledProviders::lastError());
     return false;
 }
+bool bindDisplay() {
+    if (provider_surface && provider_surface->isReady() && display_api) return true;
+    const auto refuse = []() {
+        display.detachProvider(); provider_surface.reset(); display_api = nullptr;
+        display_lease.interface = nullptr; return false;
+    };
+    if (display_lease.grant.slot) {
+        if (!RuntimeInstalledProviders::release(&display_lease)) {
+            display_lease.interface = nullptr;
+            return false;
+        }
+    }
+    if (!acquire("display.output", display_lease)) return false;
+    display_api = static_cast<const risc_display_output_api_v1*>(display_lease.interface);
+    risc_display_info_v1 info{};
+    if (!display_api || display_api->api_version != RISC_DISPLAY_OUTPUT_API_V1 ||
+        display_api->struct_size < sizeof(*display_api) || !display_api->get_info ||
+        !display_api->get_info(display_api->context, &info) ||
+        info.width != 800 || info.height != 480 ||
+        info.preferred_format != RISC_DISPLAY_FORMAT_MONO1) {
+        LOG_ERR("X4", "display.output geometry rejected");
+        return refuse();
+    }
+    provider_surface.reset(new (std::nothrow) ProviderDisplaySurface(display_api, surface,
+                           sizeof(surface), 480, 800, 20000));
+    if (!provider_surface || !provider_surface->isReady()) {
+        LOG_ERR("X4", "display.output surface adapter rejected");
+        return refuse();
+    }
+    if (!display.attachProvider(*provider_surface)) {
+        LOG_ERR("X4", "Reader display facade rejected provider");
+        return refuse();
+    }
+    return true;
+}
 }
 
-void x4DiagnosticSetup() {
+bool x4BeginClockDisplay() {
+    if (psramFound()) heap_caps_malloc_extmem_enable(1024);
+    return loadPlatformSdPackages() && bindDisplay();
+}
+bool x4DrainProvidersForSleep() {
+    RuntimeInstalledProviders::Lease retained[3];
+    size_t count = 0;
+    for (const auto* lease : {&display_lease, &light_lease, &storage_lease})
+        if (lease->grant.slot) retained[count++] = *lease;
+    return RuntimeInstalledProviders::drainExcept(retained, count);
+}
+bool x4ReleaseDisplayForSleep() {
+    if (!provider_surface || !provider_surface->supportsSleep() || !x4DrainProvidersForSleep()) return false;
+    display.detachProvider();
+    provider_surface.reset();
+    display_api = nullptr;
+    const bool released = !display_lease.grant.slot || RuntimeInstalledProviders::release(&display_lease);
+    display_lease.interface = nullptr;
+    return released && x4DrainProvidersForSleep();
+}
+bool x4RestoreDisplayAfterSleep() {
+    // No provider acquisition observes frozen Storage. Failed releases keep
+    // their exact token; bindDisplay completes cleanup before reacquisition.
+    if (!Storage.cancelSleep() || !bindDisplay()) return false;
+    display.begin(false);
+    return display.isReady();
+}
+
+void x4DiagnosticSetup(bool deskClockUserWake) {
     LOG_INF("X4", "diagnostic entered");
     // Match the shared firmware allocation policy before UI/app allocations.
     if (psramFound()) heap_caps_malloc_extmem_enable(1024);
@@ -79,8 +145,7 @@ void x4DiagnosticSetup() {
     char reason[80]="none";
     if(volume->last_error) (void)volume->last_error(volume->context,reason,sizeof(reason));
     LOG_INF("X4","storage.volume mounted=%d reason=%s",storage_mounted?1:0,reason);
-    if (!acquire("display.output",display_lease) || !acquire("display.frontlight",light_lease)) return;
-    display_api=static_cast<const risc_display_output_api_v1*>(display_lease.interface);
+    if (!acquire("display.frontlight",light_lease)) return;
     light_api=static_cast<const risc_frontlight_api_v1*>(light_lease.interface);
     if (!Board::attachFrontlight(light_api)) return;
     // Shared input consumers acquire real graph leases, with the same normal
@@ -88,27 +153,14 @@ void x4DiagnosticSetup() {
     nativeNavigationTick();
     nativeTouchTick();
     LOG_INF("X4","input.touch ready=%d",nativeTouchAvailable()?1:0);
-    risc_display_info_v1 info{};
-    if (!display_api || !display_api->get_info(display_api->context, &info) ||
-        info.width != 800 || info.height != 480 ||
-        info.preferred_format != RISC_DISPLAY_FORMAT_MONO1) {
-        LOG_ERR("X4", "display.output geometry rejected");
-        return;
-    }
-    provider_surface.reset(new (std::nothrow) ProviderDisplaySurface(display_api, surface,
-                           sizeof(surface), 480, 800, 20000));
-    if (!provider_surface || !provider_surface->isReady()) {
-        LOG_ERR("X4", "display.output surface adapter rejected");
-        return;
-    }
-    if (!display.attachProvider(*provider_surface)) {
-        LOG_ERR("X4", "Reader display facade rejected provider");
-        return;
-    }
+    if (!bindDisplay()) return;
     // BoardX4Pro's power hooks do not touch T5S3 peripherals. Initialize
     // the shared power mutex before any native app takes its UI/power lock.
     powerManager.begin();
     SETTINGS.loadFromFile();
+    // System time survives deep sleep; no legacy Wire RTC owner on X4.
+    halClock.configure(SETTINGS.timeZoneId, SETTINGS.rtcStoresUtc != 0,
+                       SETTINGS.rtcVariantHint, SETTINGS.rtcReferenceEpoch);
     I18N.setLanguage(static_cast<Language>(SETTINGS.language));
     UITheme::getInstance().reload();
     if (!setupDisplayAndFonts()) return;
@@ -126,12 +178,14 @@ void x4DiagnosticSetup() {
     // E-paper retains its previous frame across reset. Present a brief
     // startup frame so a fresh boot is visible before an identical Home
     // image is drawn. This is X4-only and adds no NVS or storage write.
+    if (!deskClockUserWake) {
     renderer.clearScreen();
     renderer.drawCenteredText(UI_12_FONT_ID, 72, "Starting Reader");
     renderer.drawCenteredText(UI_10_FONT_ID, 116, "X4 Pro");
     renderer.displayBuffer(DisplayPresentMode::Clean);
     LOG_INF("X4", "boot splash present=%d", provider_surface->lastPresentSucceeded() ? 1 : 0);
     provider_surface->clearPresentStatus();
+    }
     const auto &home = UITheme::getInstance().getMetrics();
     const int menu_height = renderer.getScreenHeight() -
         (home.homeTopPadding + home.homeCoverTileHeight + home.homeMenuTopOffset +
@@ -149,7 +203,7 @@ void x4DiagnosticSetup() {
     // snapshot after storage/input startup, before Home queues its first render.
     // The optional provider may be absent or fail; it never gates Home startup.
     nativeBatteryTick();
-    activityManager.goHome();
+    if (!resumeSavedReaderActivity()) activityManager.goHome();
     // Home queues its first render before the owner loop starts.
     activityManager.requestUpdate(true);
     showing_home = true;

@@ -1,5 +1,7 @@
 #include "BoardX4Pro.h"
 #include "../../src/native/NativeBatteryGauge.h"
+extern bool halStoragePrepareForSleep();
+extern void halStorageMediaUnavailable();
 
 namespace BoardX4Pro {
 namespace {
@@ -29,8 +31,8 @@ void setBacklightLevel(uint8_t level) {
 void restoreBacklightLevel(uint8_t level) { setBacklightLevel(level); }
 void prepareSdBus() {}
 void disableGpsLora() {}
-bool prepareForSleep() { return false; }
-void deinitForSleep() {}
+bool prepareForSleep() { return halStoragePrepareForSleep(); }
+void deinitForSleep() { halStorageMediaUnavailable(); }
 const BatteryProfile& batteryProfile() { return kProfile; }
 bool beginBatteryManagement() { return isBatteryManagementReady(); }
 bool isBatteryManagementReady() {

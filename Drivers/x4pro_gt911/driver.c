@@ -172,7 +172,9 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         candidate_clock->struct_size < sizeof(*candidate_clock) || !candidate_clock->sleep_ms ||
         !candidate_clock->monotonic_ms) { fail("gt911 dependencies"); return false; }
     bus = candidate_bus; clock_api = candidate_clock;
-    /* GPIO1 is the shared master rail; GPIO2 is active-low GT911 power. */
+    /* GPIO1 enables touch; GPIO2 is active-low GT911 power. Corrected pinned
+     * bench notes establish no display/SD dependency on GPIO1. */
+    x4pro_pin_hold(X4PRO_PIN_TOUCH_PWR, false);
     x4pro_pin_output(X4PRO_PIN_PERIPH_EN, true);
     x4pro_pin_output(X4PRO_PIN_TOUCH_PWR, false);
     powered = true;
@@ -200,7 +202,10 @@ static bool quiesce(void) {
         }
         claim = 0;
     }
-    if (powered) x4pro_pin_output(X4PRO_PIN_TOUCH_PWR, true);
+    if (powered) {
+        x4pro_pin_output(X4PRO_PIN_TOUCH_PWR, true);
+        x4pro_pin_hold(X4PRO_PIN_TOUCH_PWR, true);
+    }
     powered = false;
     bus = 0; clock_api = 0;
     return true;

@@ -258,3 +258,21 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['c++','-std=c++17',*flags,'-I'+str(ROOT/'src/native'),
                     str(cpp),str(obj),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
+
+# Compile complete production lifecycle code, rather than sliced gesture code,
+# to exercise retained leases/subscriptions and RTOS stop-before-release rules.
+with tempfile.TemporaryDirectory() as temp:
+    temp = Path(temp)
+    (temp/'freertos').mkdir()
+    for header in ('Arduino.h', 'HalStorage.h', 'Logging.h',
+                   'freertos/FreeRTOS.h', 'freertos/task.h'):
+        (temp/header).write_text('#pragma once\n')
+    binary = temp/'touch-lifetime-test'
+    for board in ('BOARD_T5S3_PRO', 'BOARD_XTEINK_X4_PRO'):
+        subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                        '-D'+board, '-I'+str(temp), '-I'+str(ROOT/'sdk/driver'),
+                        '-I'+str(ROOT/'src'),
+                        str(ROOT/'test/drivers/native_touch_input_test.cpp'),
+                        '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)

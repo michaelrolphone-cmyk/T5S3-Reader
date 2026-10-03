@@ -392,36 +392,38 @@ bool stopWorker() {
 }
 
 bool activate() {
-  if (api) return startWorker();
   if (!enabled || quarantined) return false; // Graph may use the read-only boot store.
+  if (api) return subscription && startWorker();
+  // A failed release revokes API use but retains the exact grant for cleanup.
+  // Never overwrite it with a new acquisition, including a failed one.
+  if (lease.grant.slot) return false;
   const uint32_t now = millis();
   if (lastAttemptMs && static_cast<uint32_t>(now - lastAttemptMs) < kRetryMs) return false;
   lastAttemptMs = now;
 
-  RuntimeInstalledProviders::Lease candidate{};
-  if (!RuntimeInstalledProviders::acquireCapability("input.touch.raw", RISC_TOUCH_API_V1, &candidate)) {
+  if (!RuntimeInstalledProviders::acquireCapability("input.touch.raw", RISC_TOUCH_API_V1, &lease)) {
+    if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) quarantined = true;
     LOG_DBG("INPUT", "Touch provider unavailable: %s", RuntimeInstalledProviders::lastError());
     return false;
   }
 
-  const auto* candidateApi = static_cast<const risc_touch_api_v1*>(candidate.interface);
+  const auto* candidateApi = static_cast<const risc_touch_api_v1*>(lease.interface);
   if (!candidateApi || candidateApi->api_version != RISC_TOUCH_API_V1 ||
       candidateApi->struct_size < sizeof(*candidateApi) ||
       !candidateApi->subscribe || !candidateApi->unsubscribe ||
       !candidateApi->poll || !candidateApi->next || !candidateApi->snapshot) {
-    (void)RuntimeInstalledProviders::release(&candidate);
+    if (!RuntimeInstalledProviders::release(&lease)) quarantined = true;
     LOG_ERR("INPUT", "Touch provider exposed an invalid API");
     return false;
   }
 
   const uint64_t candidateSubscription = candidateApi->subscribe(candidateApi->context);
   if (!candidateSubscription) {
-    (void)RuntimeInstalledProviders::release(&candidate);
+    if (!RuntimeInstalledProviders::release(&lease)) quarantined = true;
     LOG_ERR("INPUT", "Touch provider subscription failed");
     return false;
   }
 
-  lease = candidate;
   api = candidateApi;
   subscription = candidateSubscription;
   pollFailureActive = pollFailureExpired = false;
@@ -429,13 +431,10 @@ bool activate() {
   serviceStarted = false;
   (void)resync(true);
   if (!startWorker()) {
-    const bool unsubscribed = api->unsubscribe(api->context, subscription);
-    subscription = 0;
-    RuntimeInstalledProviders::Lease grant = lease;
-    lease = {};
-    api = nullptr;
-    const bool released = RuntimeInstalledProviders::release(&grant);
-    if (!unsubscribed || !released) quarantined = true;
+    // The same checked path retains a failed unsubscribe or release, rather
+    // than losing ownership while unwinding an unsuccessful activation.
+    (void)nativeTouchSuspend();
+    enabled = true;
     return false;
   }
 
@@ -494,35 +493,35 @@ bool nativeTouchSuspend() {
 
   pollFailureActive = pollFailureExpired = false;
   clearTransient();
-  if (!api) {
+  if (subscription) {
+    if (!api || !api->unsubscribe(api->context, subscription)) {
+      quarantined = true;
+      return false;
+    }
     subscription = 0;
-    lease = {};
-    return true;
   }
-
-  bool ok = true;
-  if (subscription && !api->unsubscribe(api->context, subscription)) ok = false;
-  subscription = 0;
-#if defined(BOARD_XTEINK_X4_PRO)
   if (bootstrapAttached) {
     // The X4 boot controller owns the provider module and its bus/rail. Only
     // this consumer's subscription is released here.
-    if (!ok) quarantined = true;
-    return ok;
+    quarantined = false;
+    return true;
   }
-#endif
-  RuntimeInstalledProviders::Lease grant = lease;
-  lease = {};
+  // release() may revoke the API before reporting failed quiescence. Keep its
+  // exact grant for retries, but never call through the revoked API again.
   api = nullptr;
-  if (!RuntimeInstalledProviders::release(&grant)) ok = false;
-  if (!ok) {
+  if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) {
     quarantined = true;
     LOG_ERR("INPUT", "Touch provider failed to quiesce");
+    return false;
   }
-  return ok;
+  quarantined = false;
+  return true;
 }
 
 bool nativeTouchResume() {
+  // A cancelled sleep/failed activation may still own a subscription or a
+  // pending grant. Finish that exact cleanup before starting a fresh lifetime.
+  if ((quarantined || (!api && lease.grant.slot)) && !nativeTouchSuspend()) return false;
   enabled = true;
 #if defined(BOARD_XTEINK_X4_PRO)
   if (bootstrapAttached && api && !subscription && !quarantined) {
@@ -548,16 +547,18 @@ bool nativeTouchAttachBootstrap(const risc_touch_api_v1* candidate) {
   if (!token) return false;
   api = candidate;
   subscription = token;
+  bootstrapAttached = true;
   clearTransient();
   serviceStarted = false;
   (void)resync(true);
   if (!startWorker()) {
-    (void)candidate->unsubscribe(candidate->context, token);
-    api = nullptr;
-    subscription = 0;
+    if (nativeTouchSuspend()) {
+      api = nullptr;
+      bootstrapAttached = false;
+    }
+    enabled = true;
     return false;
   }
-  bootstrapAttached = true;
   enabled = true;
   LOG_INF("INPUT", "X4 touch bootstrap attached");
   return true;
@@ -568,7 +569,7 @@ bool nativeTouchAvailable() {
   portENTER_CRITICAL(&touchStateMux);
   const bool worker = workerTask != nullptr;
   portEXIT_CRITICAL(&touchStateMux);
-  return api != nullptr && subscription != 0 && worker;
+  return enabled && !quarantined && api != nullptr && subscription != 0 && worker;
 }
 
 bool nativeTouchHadActivity() {

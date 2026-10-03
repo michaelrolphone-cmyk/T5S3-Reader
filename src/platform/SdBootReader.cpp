@@ -178,6 +178,19 @@ esp_err_t unmount() {
     if (result != ESP_OK) return result;
     hostUp = false;
   }
+#if defined(BOARD_XTEINK_X4_PRO)
+  // Isolated boot owner parks its own card only AFTER checked controller
+  // release. Retain bootstrap ownership on any failed pin/hold transition.
+  const auto powerPin = static_cast<gpio_num_t>(X4PRO_PIN_SD_PWR);
+  const auto clockPin = static_cast<gpio_num_t>(X4PRO_PIN_SD_CLK);
+  const auto commandPin = static_cast<gpio_num_t>(X4PRO_PIN_SD_CMD);
+  const auto dataPin = static_cast<gpio_num_t>(X4PRO_PIN_SD_DAT0);
+  if (gpio_hold_dis(powerPin) != ESP_OK || gpio_set_direction(powerPin, GPIO_MODE_OUTPUT) != ESP_OK ||
+      gpio_set_direction(clockPin, GPIO_MODE_OUTPUT) != ESP_OK || gpio_set_level(clockPin, 0) != ESP_OK ||
+      gpio_set_direction(commandPin, GPIO_MODE_INPUT) != ESP_OK || gpio_set_pull_mode(commandPin, GPIO_FLOATING) != ESP_OK ||
+      gpio_set_direction(dataPin, GPIO_MODE_INPUT) != ESP_OK || gpio_set_pull_mode(dataPin, GPIO_FLOATING) != ESP_OK ||
+      gpio_set_level(powerPin, 1) != ESP_OK || gpio_hold_en(powerPin) != ESP_OK) return ESP_FAIL;
+#endif
   operation = false;
   owner = nullptr;
   claimed.store(false);
@@ -203,10 +216,15 @@ esp_err_t mountDisk() {
   if(result==ESP_OK) sectors=spiCard.sectorCount();
   if(!sectors) result=ESP_ERR_NOT_SUPPORTED;
 #else
-  // X4 card power is active low, matching the extracted SD provider.
-  gpio_set_direction(static_cast<gpio_num_t>(X4PRO_PIN_SD_PWR),GPIO_MODE_OUTPUT);
-  gpio_set_level(static_cast<gpio_num_t>(X4PRO_PIN_SD_PWR),0);
-  vTaskDelay(pdMS_TO_TICKS(10));
+  // Reuse the normal X4 provider's documented 80 ms off / 120 ms on
+  // sequence. Warm reset and minute wake must not rely on a 10 ms settle.
+  const auto powerPin = static_cast<gpio_num_t>(X4PRO_PIN_SD_PWR);
+  esp_err_t result = gpio_hold_dis(powerPin);
+  if (result == ESP_OK) result = gpio_set_direction(powerPin, GPIO_MODE_OUTPUT);
+  if (result == ESP_OK) result = gpio_set_level(powerPin, 1);
+  if (result == ESP_OK) vTaskDelay(pdMS_TO_TICKS(80));
+  if (result == ESP_OK) result = gpio_set_level(powerPin, 0);
+  if (result == ESP_OK) vTaskDelay(pdMS_TO_TICKS(120));
   card={};
   sdmmc_host_t host=SDMMC_HOST_DEFAULT();
   host.flags=SDMMC_HOST_FLAG_1BIT;
@@ -214,7 +232,7 @@ esp_err_t mountDisk() {
   slot.width=1; slot.clk=static_cast<gpio_num_t>(X4PRO_PIN_SD_CLK);
   slot.cmd=static_cast<gpio_num_t>(X4PRO_PIN_SD_CMD);
   slot.d0=static_cast<gpio_num_t>(X4PRO_PIN_SD_DAT0);
-  esp_err_t result=sdmmc_host_init();
+  if (result == ESP_OK) result=sdmmc_host_init();
   if(result==ESP_OK) { hostUp=true; result=sdmmc_host_init_slot(host.slot,&slot); }
   host.max_freq_khz=SDMMC_FREQ_DEFAULT;
   host.command_timeout_ms=kCommandTimeoutMs;

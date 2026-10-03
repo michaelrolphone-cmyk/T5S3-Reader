@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Validate generated import metadata through the production exact-import matcher."""
 import subprocess
+import argparse
+import os
+import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -15,11 +19,17 @@ PACKAGES = {
     "x4pro-panel": None,
     "x4pro-buttons": [],
     "x4pro-frontlight": [],
+    "x4pro-sd": sorted(["memcpy", "memcmp", "memset", "strlen", "strchr",
+                           "xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
+                           "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
     "x4pro-i2c": sorted(["xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
                            "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
 }
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--package", choices=sorted(PACKAGES), help="check only one built provider")
+    args = parser.parse_args()
     harness = Path("/tmp/x4-import-match.c")
     harness.write_text(r'''
 #include "private/esp_privileged_manifest_imports.h"
@@ -32,8 +42,9 @@ int main(int argc, char **argv) {
     rewind(file);
     unsigned char *image = malloc(length);
     fread(image, 1, length, file);
-    const char *declared[8] = {0};
-    for (int i = 2; i < argc && i - 2 < 8; ++i) declared[i - 2] = argv[i];
+    const char *declared[128] = {0};
+    if (argc - 2 > 128) return 2;
+    for (int i = 2; i < argc; ++i) declared[i - 2] = argv[i];
     int ok = esp_elf_privileged_manifest_imports_match_v1(image, length, declared, argc - 2);
     return ok ? 0 : 1;
 }
@@ -49,11 +60,22 @@ int main(int argc, char **argv) {
         str(ROOT / "lib/elf_loader/src/esp_privileged_imports.c"), "-o", str(binary)
     ], check=True)
     for package, expected in PACKAGES.items():
+        if args.package and package != args.package:
+            continue
         elf = ROOT / "dist/experimental" / package / "driver.elf"
         found = undefined_imports(elf)
         if (package == "x4pro-panel" and found not in ([], ["memset"])) or \
                 (package != "x4pro-panel" and found != expected):
             raise SystemExit(f"{package} imports {found} != {expected}")
+        if package == "x4pro-sd":
+            compiler = os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
+            if compiler:
+                disassembly = subprocess.check_output([compiler.replace("gcc", "objdump"), "-d", str(elf)], text=True)
+                if re.search(r"\bs32c1i\b", disassembly, re.IGNORECASE):
+                    raise SystemExit("x4pro-sd contains a PSRAM-unsafe raw compare-and-set")
+                print("x4 SD target admission: no S32C1I instructions")
+            else:
+                print("x4 SD disassembly check NOT RUN: target toolchain unavailable")
         if "UND" in found:
             raise SystemExit(f"{package} kept the unnamed UND row")
         result = subprocess.run([str(binary), str(elf), *found])

@@ -1,6 +1,6 @@
 # X4 Pro I²C admission and lifetime
 
-`x4pro-i2c 0.1.2` keeps the existing `i2c.bus@1` provider prefix. GPIO38/39
+`x4pro-i2c 0.1.3` keeps the existing `i2c.bus@1` provider prefix. GPIO38/39
 and every START/byte/repeated-START/STOP remain in this external ELF. The repair
 is required because GT911 capture runs on a separate task from the optional
 battery consumer; placing battery reads on the UI owner did not serialize them.
@@ -88,3 +88,9 @@ Install the coherent X4 set together before boot: `x4pro-i2c 0.1.2`,
 failed-release token; updating only the bus does not repair that consumer.
 The ordinary X4 package builder produces the complete matching set. This is not
 a claim that the generic installer can atomically upgrade every live dependency.
+
+The clock follow-through advances this package to 0.1.3. Admission-closed and
+quiescence-accepted are distinct: acceptance is published only after the final
+mutex give succeeds. A delayed-give pthread regression proves another lifecycle
+caller cannot accept quiescence or delete the still-owned mutex in that window.
+The delivered battery-only 0.1.2 set remains recorded above as historical custody.

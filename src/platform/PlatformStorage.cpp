@@ -1,5 +1,6 @@
 #include <T5VideoApi.h>
 #include "PlatformStorage.h"
+#include "X4DiagnosticBoot.h"
 #include "SdBootReader.h"
 #include "runtime/drivers/BootstrapModuleStore.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
@@ -72,7 +73,9 @@ bool beginPlatformStorage() {
 #endif
 }
 bool drainPlatformProvidersForSleep() {
-#if defined(BOARD_T5S3_PRO)
+#if defined(BOARD_XTEINK_X4_PRO)
+    return x4DrainProvidersForSleep();
+#elif defined(BOARD_T5S3_PRO)
     // Includes partial startup grants, never drops an uncertain chip owner.
     RuntimeInstalledProviders::Lease retained[5];
     size_t count = 0;

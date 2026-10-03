@@ -40,6 +40,9 @@ enum {
     RISC_DISPLAY_INFO_RETAINS_IMAGE = 1u << 3,
     RISC_DISPLAY_INFO_CLEAN_PRESENT = 1u << 4,
     RISC_DISPLAY_INFO_BRIGHTNESS = 1u << 5,
+    // Successful provider quiescence leaves panel analog/controller power off
+    // with its retained image and required sleep pin states preserved.
+    RISC_DISPLAY_INFO_QUIESCE_SLEEP = 1u << 6,
 };
 enum {
     RISC_DISPLAY_ROTATION_0 = 1u << 0,
@@ -134,6 +137,28 @@ typedef struct {
                          uint32_t timeout_ms, risc_display_present_status_v1 *out);
     bool (*set_brightness)(void *context, uint16_t level, uint16_t maximum);
 } risc_display_output_api_v1;
+
+/* Optional retained-image reconstruction, used after a deep-sleep reset loses
+ * panel RAM. The client fills an acquired frame with the previously displayed
+ * image, then asks the provider to COPY it before replacing that frame with
+ * current pixels. No display refresh occurs while seeding. The same frame is
+ * subsequently submitted with ordinary damage and presentation options.
+ * Providers without this suffix still support ordinary full-frame presents. */
+#define RISC_DISPLAY_HISTORY_TAG 0x44485331u /* DHS1 */
+typedef struct {
+    risc_display_output_api_v1 base;
+    uint32_t extension_tag, extension_version;
+    bool (*seed_previous)(void *context, risc_display_frame_v1 frame);
+} risc_display_output_api_v1_history;
+static inline const risc_display_output_api_v1_history *risc_display_output_history(
+    const risc_display_output_api_v1 *api) {
+    if (!api || api->api_version != RISC_DISPLAY_OUTPUT_API_V1 ||
+        api->struct_size < sizeof(risc_display_output_api_v1_history)) return NULL;
+    const risc_display_output_api_v1_history *ext = (const risc_display_output_api_v1_history *)api;
+    return ext->extension_tag == RISC_DISPLAY_HISTORY_TAG && ext->extension_version == 1u &&
+           ext->seed_previous ? ext : NULL;
+}
+
 
 #ifdef __cplusplus
 }

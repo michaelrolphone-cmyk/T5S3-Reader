@@ -5,7 +5,10 @@
 #include <initializer_list>
 
 struct Fake {
-    uint8_t pixels[8]{};
+    uint8_t pixels[8]{}, prior[8]{};
+    unsigned seedCount=0, damageCount=0;
+    risc_display_rect_v1 damage{};
+    bool seedFails=false;
     uint32_t acquireCount = 0, releaseCount = 0, submitCount = 0, waitCount = 0;
     uint8_t intent = 0;
     uint32_t timeout = 0;
@@ -31,10 +34,11 @@ static void release(void*, risc_display_frame_v1 frame) {
     assert(frame == 1);
     ++fake.releaseCount;
 }
-static bool submit(void*, risc_display_frame_v1 frame, const risc_display_rect_v1*,
+static bool submit(void*, risc_display_frame_v1 frame, const risc_display_rect_v1* rect,
                    size_t damage, const risc_display_present_options_v1* options,
                    risc_display_present_token_v1* token) {
-    assert(frame == 1 && damage == 0);
+    assert(frame == 1 && damage <= 1);
+    fake.damageCount=damage;if(damage)fake.damage=*rect;
     ++fake.submitCount;
     fake.intent = options->intent;
     if (fake.submitFails) return false;
@@ -48,6 +52,10 @@ static bool wait_present(void*, risc_display_present_token_v1 token, uint32_t ti
     fake.timeout = timeout;
     out->state = fake.waitFails ? RISC_DISPLAY_PRESENT_FAILED : RISC_DISPLAY_PRESENT_COMPLETE;
     return !fake.waitFails;
+}
+static bool seed(void*, risc_display_frame_v1 frame) {
+    assert(frame==1); ++fake.seedCount;
+    std::memcpy(fake.prior,fake.pixels,sizeof(fake.prior));return !fake.seedFails;
 }
 int main() {
     risc_display_output_api_v1 api{};
@@ -135,5 +143,23 @@ int main() {
     assert(!surface.lastPresentSucceeded() && fake.submitCount == submitted);
     ProviderDisplaySurface invalid(&api, raster, sizeof(raster) - 1, 8, 8);
     assert(!invalid.isReady() && !invalid.getFrameBuffer());
-    std::puts("provider display surface: PASS");
+    risc_display_output_api_v1_history ext{api,RISC_DISPLAY_HISTORY_TAG,1,seed};
+    ext.base.struct_size=sizeof(ext);
+    ProviderDisplaySurface diff(&ext.base,raster,sizeof(raster),8,8,1234);
+    uint8_t previous[8];std::memset(previous,0xFF,sizeof(previous));
+    std::memcpy(raster,previous,sizeof(raster));raster[2]=0x7F;
+    diff.displayBufferDiff(previous,DisplayPresentMode::Quality);
+    assert(diff.lastPresentSucceeded() && fake.seedCount==1 && fake.damageCount==1);
+    assert(fake.prior[2]==0 && fake.pixels[2]==0x80);
+    assert(fake.damage.x==0 && fake.damage.y==2 && fake.damage.width==8 && fake.damage.height==1);
+    diff.setFlipOutput(true);diff.suppressInitialFullRefresh();
+    diff.displayBufferDiff(previous,DisplayPresentMode::Quality);
+    assert(fake.damage.y==5 && fake.pixels[5]==1 && fake.prior[5]==0);
+    fake.seedFails=true;const auto calls=fake.submitCount;
+    diff.displayBufferDiff(previous,DisplayPresentMode::Quality);
+    assert(!diff.lastPresentSucceeded() && fake.submitCount==calls);
+    fake.seedFails=false;std::memcpy(raster,previous,sizeof(raster));
+    diff.displayBufferDiff(previous,DisplayPresentMode::Quality);
+    assert(diff.lastPresentSucceeded() && fake.submitCount==calls);
+    std::puts("provider display surface: old-frame seeding, clipped damage, flip, refusal and unchanged frame PASS");
 }

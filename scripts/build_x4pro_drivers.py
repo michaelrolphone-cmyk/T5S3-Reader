@@ -56,7 +56,7 @@ def check_i2c_sdk_contract():
 
 
 def build_one(name):
-    if name == "x4pro_i2c":
+    if name in ("x4pro_i2c", "x4pro_sd"):
         check_i2c_sdk_contract()
     source = ROOT / "Drivers" / name
     manifest = json.loads((source / "manifest.json").read_text())

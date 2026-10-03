@@ -25,6 +25,9 @@ bool finishBootstrapHandoff();
 // Generic owner-loop work; never scans storage or loads a provider.
 void poll();
 // Enumerate verified candidates for one semantic capability and API version.
+// The cursor is opaque: zero starts enumeration; SIZE_MAX reports failure.
+// Rebuilding the metadata snapshot invalidates earlier cursors, including
+// interleaved calls on this same owner task. Restart with zero after failure.
 // The cursor advances across inspected slots and never activates hardware.
 // The identity is copied into caller storage: no graph-owned pointer escapes.
 // The legacy bool conflates exhaustion with invalid/unverified inventory.

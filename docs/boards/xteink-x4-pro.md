@@ -160,3 +160,77 @@ FatFs implementation; neither active board has a firmware SD filesystem fallback
 See [T5 extraction and sleep ownership](t5s3-external-storage.md) for lifecycle,
 legacy-import compatibility, separate package artifacts and remaining M3 work.
 The X4 SD package remains the cumulative unreleased `0.2.1` update.
+
+## Existing desk-clock parity follow-through (1.3.93)
+
+This follows the user-confirmed healthy `firmware-v1.3.53` tag (`d2d5a9a1`).
+`DeskClockSleep`, its six `DeskClockFaces`, retained minute/timezone/face state,
+minute timer, power-button wake and periodic full refresh are reused. There is
+no second X4 clock engine or awake-only clock replacement. Before this change,
+X4 compiled out the idle timeout and synchronous native apps never reached the
+main-loop timeout on either board.
+
+The existing idle policy now has one owner-task deadline shared by main and
+`NativeAppHost::pollInput`. Its existing `exit_requested` ABI lets unchanged
+Springboard/other cooperative apps return normally; no app payload is copied
+or modified, so no application version is bumped. A pending request fences every
+central app entry/queued launch until cleanup and the firmware-owned sleep
+transition finish. Queued ActivityManager transitions run before outgoing
+activity dispatch, avoiding a late finish/relaunch replacing Sleep.
+
+X4 minute boot uses the same verified read-only SD bootstrap and binds only the
+ordinary display provider/dependencies. It does access the SD card to load
+providers; it does not bind normal `storage.volume`, load settings/Home/apps or
+start touch/battery/network work each minute. The prior minute is reconstructed
+by the shared renderer; the panel ELF receives exact old/new pixels and clipped
+damage. A failed presentation never advances retained display state. Cancellation
+restores the prior renderer orientation/mode. User wake follows normal Reader
+resume/Home policy and skips the X4 startup frame.
+
+The firmware retains its exact display/frontlight/storage grants at the existing
+`drainExcept` barrier. Touch, battery and navigation release their own grants
+first, preserving all failed cleanup tokens and revoking stale callbacks. A
+checked display release uses the provider's POF/DSLP lifecycle; no new display
+power implementation exists in firmware. The existing storage prepare/cancel
+suffix remains reversible. An optional tagged terminal commit lets the SD ELF
+turn off/hold its own rail while frozen read handles and module mappings remain
+pinned until reset. Irrecoverable prepare/give/release/commit failure cannot
+resume an off/detached UI; it follows the existing reboot recovery pattern.
+
+The isolated bootstrap reuses the provider's HIGH80 ms/LOW120 ms SD sequence and
+parks its pins/rail only after checked controller release. X4 wake-pad setup
+explicitly restores digital input before repaint and configures RTC input/pull
+for sleep. IDF4.4.7 disables EXT1 pulls with RTC_PERIPH off, so X4 retains that
+small RTC domain; CPU, radios, display, touch and SD take the actual sleep/off
+path. No assertion about measured current is made.
+
+The pinned Arduino `dcc1105b0cf1322a437b354c336f2abf72b7e512` X4 SDK enables RTC
+system time, checked at compile time. Valid system time survives minute deep
+sleep without a second legacy Wire owner. The internal RC source can drift and
+loses epoch on cold power-up; this is not a claim of battery-backed external RTC
+accuracy or completed X4 RTC-provider integration. Normal unset-time behavior
+is retained.
+
+Coherent versions: firmware1.3.93; I2C0.1.3; GT9110.1.4; panel0.1.14; X4SD0.2.2;
+unchanged battery0.1.2. T5SD advances0.1.0→0.1.1 because the shared FatFs gate/
+metadata return plumbing changes its rebuilt payload. X4 SD replaces PSRAM-unsafe
+S32C1I admission with the already-reviewed six-symbol OS/CPU ABI1 mutex, without
+expanding imports or forcing any failed owner to unload.
+
+Shared provider enumeration is the exact reviewed function from PR387 commit
+`a383c65169afad73ccfaa0cee47d53d747a65953` (function SHA256
+`713a0cba3d9abc52c79ee57a19a81fb09e90e8f7e28569c69165e9bda37ca883`). Its tests and
+opaque-cursor contract are preserved. The local harness includes this branch's
+existing `ProviderAbiProfile.h`; bootstrap/OS-CPU registration is not replaced.
+
+### Explicit pending T5 safety follow-through
+
+`Drivers/storage_fatfs/volume.c` still uses its original raw atomic gate for the
+non-X4/T5 path. `lib/elf_loader/src/esp_elf_adapter.c` allocates ELF data in PSRAM;
+the X4 target disassembly demonstrated why raw S32C1I there is unsafe. The
+coordinated T5 follow-through should reuse the same tested mutex boundary, check
+its target imports/lifecycle and bump its own package. This is pending work,
+owned by the shared-provider follow-through after the current X4 edits settle.
+T5 transport regression tests and target import checks do not establish T5
+hardware reliability or clear that concern. No T5 ready-for-hardware claim is
+made by this X4 candidate.

@@ -9,6 +9,8 @@ extern uint8_t *card_image;
 extern uint32_t card_sectors;
 extern bool card_bad_crc, card_reject_write, card_busy_forever, card_bad_pin;
 extern unsigned card_reads, card_writes;
+extern bool card_sleep_off;
+extern unsigned card_sleep_commits;
 static uint8_t cmd_bits[48], reply_bits[136], write_bytes[512];
 static unsigned cmd_count, reply_count, reply_at, data_at, write_at, token_at;
 static uint16_t write_crc;
@@ -76,4 +78,13 @@ static inline bool x4pro_pin_read(uint32_t pin) {
     if (bit < 4096) return (data[bit / 8] >> (7 - bit % 8)) & 1;
     if (bit < 4112) return ((x4pro_sd_crc16(data, 512) ^ (card_bad_crc ? 1 : 0)) >> (15 - (bit - 4096))) & 1;
     return true;
+}
+
+static inline void x4pro_pin_input(uint32_t pin, bool pullup) {
+    if ((pin != X4PRO_PIN_SD_CMD && pin != X4PRO_PIN_SD_DAT0) || pullup) card_bad_pin = true;
+}
+static inline void x4pro_pin_hold(uint32_t pin, bool hold) {
+    if (pin != X4PRO_PIN_SD_PWR) card_bad_pin = true;
+    card_sleep_off = hold;
+    if (hold) ++card_sleep_commits;
 }

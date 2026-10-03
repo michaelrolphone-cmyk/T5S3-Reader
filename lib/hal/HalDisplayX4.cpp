@@ -3,6 +3,8 @@
 #if defined(BOARD_XTEINK_X4_PRO)
 
 #include <Logging.h>
+extern bool halStorageCommitSleep();
+#include "../../src/platform/X4DiagnosticBoot.h"
 #include "../../src/native/NativeTouchInput.h"
 #include "../../src/runtime/display/ProviderDisplaySurface.h"
 
@@ -28,6 +30,10 @@ bool HalDisplay::attachProvider(ProviderDisplaySurface& surface) {
   return true;
 }
 
+void HalDisplay::detachProvider() {
+  displayReady = false;
+  providerSurface = nullptr;
+}
 void HalDisplay::begin(bool) {
   displayReady = providerSurface && providerSurface->isReady() && providerSurface->getFrameBuffer();
   if (!displayReady) LOG_ERR("DSP", "X4 display.output provider unavailable");
@@ -53,7 +59,9 @@ void HalDisplay::displayBuffer(RefreshMode mode, bool) {
     flipTouchBoundaryPending = false;
   }
 }
-void HalDisplay::displayBufferDiff(const uint8_t*, RefreshMode mode) { displayBuffer(mode); }
+void HalDisplay::displayBufferDiff(const uint8_t* previous, RefreshMode mode) {
+  if (isReady()) providerSurface->displayBufferDiff(previous, mode);
+}
 void HalDisplay::refreshDisplay(RefreshMode mode, bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }
 void HalDisplay::setFlipOutput(bool enabled) {
   if (flipOutput != enabled) {
@@ -69,8 +77,26 @@ void HalDisplay::requestNextRefresh(RefreshMode mode) {
 void HalDisplay::requestNextDisplayEffect(DisplayEffect effect) {
   if (isReady()) providerSurface->requestNextDisplayEffect(effect);
 }
-void HalDisplay::suppressInitialFullRefresh() {}
-bool HalDisplay::deepSleep() { return false; }
+void HalDisplay::suppressInitialFullRefresh() { if (providerSurface) providerSurface->suppressInitialFullRefresh(); }
+bool HalDisplay::lastPresentSucceeded() const { return isReady() && providerSurface->lastPresentSucceeded(); }
+bool HalDisplay::deepSleep() {
+  const auto refused = []() {
+    if (!x4RestoreDisplayAfterSleep()) {
+      // Preparation/give may have poisoned frozen storage; final commit may
+      // already have removed its rail. Never return to a detached/off UI.
+      // Ordinary boot owns checked reinitialization, as for wake-arm failure.
+      LOG_ERR("DSP", "Sleep cancellation could not restore providers; restarting");
+      ESP.restart();
+    }
+    return false;
+  };
+  if (!Board::prepareForSleep()) return refused();
+  if (!x4ReleaseDisplayForSleep()) return refused();
+  if (!halStorageCommitSleep()) return refused();
+  Board::deinitForSleep();
+  return true;
+}
+
 void HalDisplay::setIdlePowerSaving(bool) {}
 uint8_t* HalDisplay::getFrameBuffer() const {
   return providerSurface ? providerSurface->getFrameBuffer() : nullptr;

@@ -17,3 +17,10 @@ static inline bool x4pro_pin_read(uint32_t pin) {
     if (pin != X4PRO_PIN_SD_CMD) x4_sd_fake_bad_pin = true;
     return true; /* No card drives CMD low. */
 }
+
+static inline void x4pro_pin_input(uint32_t pin, bool pullup) {
+    if ((pin != X4PRO_PIN_SD_CMD && pin != X4PRO_PIN_SD_DAT0) || pullup) x4_sd_fake_bad_pin = true;
+}
+static inline void x4pro_pin_hold(uint32_t pin, bool hold) {
+    (void)hold; if (pin != X4PRO_PIN_SD_PWR) x4_sd_fake_bad_pin = true;
+}

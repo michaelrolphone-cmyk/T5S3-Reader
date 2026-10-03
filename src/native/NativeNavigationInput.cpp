@@ -18,14 +18,16 @@ uint32_t lastPoll = 0, heldSince = 0, lastAttemptMs = 0;
 
 void clearFrame() { frame = {}; heldSince = millis(); }
 bool ready() {
-    if (api) return true;
     if (quarantined) return false; // The graph may be backed by the read-only boot store.
+    if (api) return true;
+    if (lease.grant.slot) return false; // A revoked grant still awaits checked cleanup.
     const uint32_t now = millis();
     if (attempted && static_cast<uint32_t>(now - lastAttemptMs) < kActivationRetryMs)
         return false;
     attempted = true;
     lastAttemptMs = now;
     if (!RuntimeInstalledProviders::acquireCapability("input.navigation", 1, &lease)) {
+        if (lease.grant.slot) quarantined = true;
         LOG_INF("INPUT", "Navigation provider unavailable: %s", RuntimeInstalledProviders::lastError());
         return false;
     }
@@ -99,28 +101,20 @@ static bool releaseNavigation(bool requireGraphShutdown) {
         // claim sleep quiescence or release it through the installed graph.
         return api && api->reset(api->context) && !requireGraphShutdown;
     }
-    if (!api) {
-        if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) {
-            quarantined = true;
-            return false;
-        }
-        // Failed activation can retain a physical dependency even though no
-        // navigation API was returned. Absence of our grant is not quiescence.
-        if (!attempted && !quarantined) return !requireGraphShutdown || drainPlatformProvidersForSleep();
-        if (!requireGraphShutdown && !quarantined && RuntimeInstalledProviders::hasLiveGrants()) return true;
-        quarantined = !(requireGraphShutdown ? drainPlatformProvidersForSleep() : RuntimeInstalledProviders::shutdown());
-        return !quarantined;
-    }
-    if (!api->reset(api->context)) return false;
-    const bool released = RuntimeInstalledProviders::release(&lease);
-    // A failed release retains the exact grant for a later cleanup retry.
+    if (api && !api->reset(api->context)) return false;
+    // release() can revoke API access even when quiescence fails. Retry only
+    // the retained grant; never reset/poll the old provider after that point.
     api = nullptr;
-    if (!released) { quarantined = true; return false; }
-    // Releasing this composite can leave a failed lower dependency pinned.
-    // Prove the whole graph quiescent before sleep, not just our top-level ELF.
-    const bool shared = !requireGraphShutdown && RuntimeInstalledProviders::hasLiveGrants();
-    quarantined = !released || (!shared && !(requireGraphShutdown ? drainPlatformProvidersForSleep() : RuntimeInstalledProviders::shutdown()));
-    return !quarantined;
+    if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) {
+        quarantined = true;
+        return false;
+    }
+    quarantined = false;
+    // The board must still prove graph-wide quiescence before sleep. A failed
+    // unrelated node blocks sleep, but must not disable safely released input
+    // after cancellation. The graph itself keeps unsafe nodes pinned and
+    // rejects their reacquisition; ordinary disable/resume never tears it down.
+    return !requireGraphShutdown || drainPlatformProvidersForSleep();
 }
 bool nativeNavigationSuspend() { return releaseNavigation(true); }
 void nativeNavigationConfigure(bool requested) {
@@ -130,6 +124,7 @@ void nativeNavigationConfigure(bool requested) {
     else if (!releaseNavigation(false)) LOG_ERR("INPUT", "Navigation disabled; unsafe provider retained");
 }
 void nativeNavigationResume() {
+    if ((quarantined || (!api && lease.grant.slot)) && !releaseNavigation(false)) return;
     enabled = configured;
     nativeNavigationRetry();
     nativeNavigationBoundary();

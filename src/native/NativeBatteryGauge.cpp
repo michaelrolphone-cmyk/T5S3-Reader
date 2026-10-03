@@ -24,6 +24,7 @@ uint32_t lastAttemptMs = 0;
 uint32_t lastPollMs = 0;
 TaskHandle_t ownerTask = nullptr;
 bool servicing = false;
+bool suspended = false;
 portMUX_TYPE snapshotMux = portMUX_INITIALIZER_UNLOCKED;
 NativeBatterySnapshot snapshot{};
 uint32_t sampledAtMs = 0;
@@ -104,6 +105,7 @@ bool acquire(uint32_t now) {
 void nativeBatteryTick() {
   if (!enterOwner()) return;
   const OwnerTurn turn{};
+  if (suspended) return;
   const uint32_t now = static_cast<uint32_t>(millis());
   if (!api && !acquire(now)) return;
   if (polled && static_cast<uint32_t>(now - lastPollMs) < kPollMs) return;
@@ -121,6 +123,30 @@ void nativeBatteryTick() {
   publish(&sample);
 }
 
+bool nativeBatterySuspend() {
+  if (!enterOwner()) return false;
+  const OwnerTurn turn{};
+  suspended = true;
+  api = nullptr;
+  publish(nullptr);
+  const bool released = !lease.grant.slot || RuntimeInstalledProviders::release(&lease);
+  lease.interface = nullptr; // Failed release revoked use, but retains its token.
+  return released;
+}
+
+bool nativeBatteryResume() {
+  if (!enterOwner()) return false;
+  const OwnerTurn turn{};
+  if (!suspended) return true;
+  if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) {
+    lease.interface = nullptr;
+    return false;
+  }
+  suspended = false;
+  attempted = polled = false;
+  return true; // Optional reacquisition happens on the next ordinary owner tick.
+}
+
 bool nativeBatteryReadSnapshot(NativeBatterySnapshot* out) {
   if (!out) return false;
   portENTER_CRITICAL(&snapshotMux);
@@ -136,6 +162,8 @@ bool nativeBatteryReadSnapshot(NativeBatterySnapshot* out) {
   return valid;
 }
 #else
+bool nativeBatterySuspend() { return true; }
+bool nativeBatteryResume() { return true; }
 void nativeBatteryTick() {}
 bool nativeBatteryReadSnapshot(NativeBatterySnapshot* out) {
   if (out) *out = {};

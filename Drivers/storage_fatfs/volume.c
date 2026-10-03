@@ -9,8 +9,20 @@
 static FATFS filesystem;
 static uint64_t operation_start;
 static uint32_t operation_steps, operation_sectors;
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+/* The X4 loader may place BSS in PSRAM. Reuse the privileged OS/CPU ABI1
+ * mutex so no raw Xtensa compare-and-set can target this storage. */
+static x4_cpu_mutex operation_mutex;
+static x4_cpu_task operation_owner;
+static bool mutex_poisoned, quiescing, quiesced;
+static bool valid_task(void) { return !xPortInIsrContext() && xTaskGetCurrentTaskHandle() != 0; }
+#else
 static bool operation_busy;
+#endif
 static bool power_down_prepared;
+#ifdef STORAGE_VOLUME_COMMIT_POWER_DOWN
+static bool power_down_committed;
+#endif
 static uint32_t next_generation = 1;
 typedef struct {
     FIL object;
@@ -27,16 +39,58 @@ static bool has_handles(void) {
     return false;
 }
 static bool enter_lifecycle(void) {
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+    if (!valid_task() || !operation_mutex || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&quiescing, __ATOMIC_ACQUIRE)) return false;
+    /* Zero wait, nonrecursive. Reject contenders before state or hardware. */
+    if (xQueueSemaphoreTake(operation_mutex, 0) != 1) return false;
+    if (__atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&quiescing, __ATOMIC_ACQUIRE)) {
+        if (xQueueGenericSend(operation_mutex, 0, 0, 0) != 1)
+            __atomic_store_n(&mutex_poisoned, true, __ATOMIC_RELEASE);
+        return false;
+    }
+    operation_owner = xTaskGetCurrentTaskHandle();
+#else
     if (__atomic_test_and_set(&operation_busy, __ATOMIC_ACQUIRE)) return false;
+#endif
     operation_start = clock_api ? clock_api->monotonic_ms(clock_api->context) : 0;
     operation_steps = operation_sectors = 0;
     return true;
 }
-static void leave(void) { __atomic_clear(&operation_busy, __ATOMIC_RELEASE); }
+static bool leave(void) {
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+    if (!valid_task() || operation_owner != xTaskGetCurrentTaskHandle()) {
+        __atomic_store_n(&mutex_poisoned, true, __ATOMIC_RELEASE);
+        return false;
+    }
+    operation_owner = 0;
+    if (xQueueGenericSend(operation_mutex, 0, 0, 0) != 1) {
+        /* Ownership is uncertain. Retain the mutex, ELF and dependencies;
+         * no later callback, including quiesce, can erase this poison. */
+        __atomic_store_n(&mutex_poisoned, true, __ATOMIC_RELEASE);
+        return false;
+    }
+#else
+    __atomic_clear(&operation_busy, __ATOMIC_RELEASE);
+#endif
+    return true;
+}
 static bool enter(void) {
     if (!enter_lifecycle()) return false;
-    if (power_down_prepared) { leave(); return false; }
+    if (power_down_prepared) { (void)leave(); return false; }
     return true;
+}
+static bool enter_ready(void) {
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+    if (!enter()) return false;
+    if (!mounted || io_failed) { (void)leave(); return false; }
+    return true;
+#else
+    /* Keep the T5 transport's existing readiness-before-admission behavior. */
+    return mounted && !io_failed &&
+        !__atomic_load_n(&power_down_prepared, __ATOMIC_ACQUIRE) && enter();
+#endif
 }
 int risc_fatfs_checkpoint(void) {
     if (!clock_api || io_failed) return 0;
@@ -136,28 +190,41 @@ static bool refresh(void *context) {
     mounted = card_ready = io_failed = false;
     error[0] = 0;
     if (started) (void)init_card();
-    leave();
-    return started;
+    return leave() && started;
 }
-static bool ready(void *context) { (void)context; return mounted && !io_failed && !__atomic_load_n(&power_down_prepared, __ATOMIC_ACQUIRE); }
+static bool ready(void *context) {
+    (void)context;
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+    if (!enter_ready()) return false;
+    return leave();
+#else
+    return mounted && !io_failed && !__atomic_load_n(&power_down_prepared, __ATOMIC_ACQUIRE);
+#endif
+}
 static bool label(void *context, char *out, size_t size) {
     (void)context;
-    if (!ready(0) || !out || size < sizeof(STORAGE_VOLUME_LABEL)) return false;
+    if (!out || size < sizeof(STORAGE_VOLUME_LABEL)) return false;
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+    if (!enter_ready()) return false;
+    memcpy(out, STORAGE_VOLUME_LABEL, sizeof(STORAGE_VOLUME_LABEL)); return leave();
+#else
+    if (!ready(0)) return false;
     memcpy(out, STORAGE_VOLUME_LABEL, sizeof(STORAGE_VOLUME_LABEL)); return true;
+#endif
 }
 static bool stat_path(void *context, const char *path, uint64_t *size, bool *directory) {
     (void)context;
-    if (!ready(0) || !valid_path(path) || !size || !directory || !enter()) return false;
+    if (!valid_path(path) || !size || !directory || !enter_ready()) return false;
     FILINFO info;
     FRESULT result = FR_OK;
     if (equal(path, "/")) { memset(&info, 0, sizeof(info)); info.fattrib = AM_DIR; }
     else result = f_stat(path, &info);
     if (result == FR_OK) { *size = info.fsize; *directory = (info.fattrib & AM_DIR) != 0; }
-    bool ok = result_ok(result); leave(); return ok;
+    bool ok = result_ok(result); return leave() && ok;
 }
 static risc_storage_dir_t dir_open(void *context, const char *path) {
     (void)context;
-    if (!ready(0) || !valid_path(path) || !enter()) return 0;
+    if (!valid_path(path) || !enter_ready()) return 0;
     uint32_t handle = 0;
     for (unsigned i = 0; i < DIR_SLOTS; ++i) if (!dirs[i].handle) {
         const uint32_t candidate = allocate_handle(i);
@@ -168,11 +235,11 @@ static risc_storage_dir_t dir_open(void *context, const char *path) {
         }
         break;
     }
-    leave(); return handle;
+    return leave() ? handle : 0;
 }
 static bool dir_next(void *context, risc_storage_dir_t handle, risc_storage_dirent_v1 *out) {
     (void)context;
-    if (!out || !ready(0) || !enter()) return false;
+    if (!out || !enter_ready()) return false;
     dir_slot *slot = dir_for(handle);
     bool ok = false;
     if (slot && !slot->error) {
@@ -186,28 +253,29 @@ static bool dir_next(void *context, risc_storage_dir_t handle, risc_storage_dire
             } else if (length) slot->error = FR_INVALID_NAME;
         } else slot->error = result;
     }
-    leave(); return ok;
+    return leave() && ok;
 }
 static bool dir_rewind(void *context, risc_storage_dir_t handle) {
-    (void)context; if (!ready(0) || !enter()) return false;
+    (void)context; if (!enter_ready()) return false;
     dir_slot *slot = dir_for(handle);
     const bool ok = slot && result_ok(f_readdir(&slot->object, 0));
     if (ok) slot->error = 0;
-    leave(); return ok;
+    return leave() && ok;
 }
 static bool dir_close_checked(void *context, risc_storage_dir_t handle) {
     (void)context; if (!enter()) return false;
     dir_slot *slot = dir_for(handle);
     const bool ok = slot && (io_failed || result_ok(f_closedir(&slot->object)));
     if (ok) slot->handle = 0;
-    leave(); return ok;
+    if (!leave()) { if (ok) slot->handle = handle; return false; }
+    return ok;
 }
 static void dir_close(void *context, risc_storage_dir_t handle) { (void)dir_close_checked(context, handle); }
-static risc_storage_file_t file_open(void *context, const char *path, uint32_t flags) {
+static risc_storage_file_t file_open_impl(void *context, const char *path, uint32_t flags, uint64_t *size, bool abortable) {
     (void)context;
-    if (!ready(0) || !valid_path(path) || !(flags & 3u) || (flags & ~63u) ||
+    if (!valid_path(path) || !(flags & 3u) || (flags & ~63u) ||
         ((flags & 60u) && !(flags & RISC_STORAGE_OPEN_WRITE)) ||
-        ((flags & RISC_STORAGE_OPEN_EXCLUSIVE) && !(flags & RISC_STORAGE_OPEN_CREATE)) || !enter()) return 0;
+        ((flags & RISC_STORAGE_OPEN_EXCLUSIVE) && !(flags & RISC_STORAGE_OPEN_CREATE)) || !enter_ready()) return 0;
     BYTE mode = (flags & RISC_STORAGE_OPEN_READ ? FA_READ : 0) | (flags & RISC_STORAGE_OPEN_WRITE ? FA_WRITE : 0);
     if (flags & RISC_STORAGE_OPEN_EXCLUSIVE) mode |= FA_CREATE_NEW;
     else if (flags & RISC_STORAGE_OPEN_CREATE) mode |= flags & RISC_STORAGE_OPEN_TRUNCATE ? FA_CREATE_ALWAYS : FA_OPEN_ALWAYS;
@@ -217,7 +285,7 @@ static risc_storage_file_t file_open(void *context, const char *path, uint32_t f
         if (!candidate) break;
         file_slot *slot = &files[i];
         if (!result_ok(f_open(&slot->object, path, mode))) break;
-        slot->handle = candidate; slot->flags = flags; slot->error = 0; slot->abortable = false;
+        slot->handle = candidate; slot->flags = flags; slot->error = 0; slot->abortable = abortable;
         memcpy(slot->path, path, strlen(path) + 1);
         if ((flags & RISC_STORAGE_OPEN_TRUNCATE) && !(flags & RISC_STORAGE_OPEN_CREATE)) {
             if (!result_ok(f_truncate(&slot->object))) { slot->error = FR_DISK_ERR; break; }
@@ -225,35 +293,34 @@ static risc_storage_file_t file_open(void *context, const char *path, uint32_t f
         if ((flags & RISC_STORAGE_OPEN_APPEND) && !result_ok(f_lseek(&slot->object, f_size(&slot->object)))) {
             slot->error = FR_DISK_ERR; break;
         }
+        if (size) *size = f_size(&slot->object);
         handle = candidate; break;
     }
-    leave(); return handle;
+    return leave() ? handle : 0;
+}
+static risc_storage_file_t file_open(void *context, const char *path, uint32_t flags) {
+    return file_open_impl(context, path, flags, 0, false);
 }
 static risc_storage_file_t file_open_read(void *context, const char *path, uint64_t *size) {
-    if (!size) return 0;
-    const uint32_t handle = file_open(context, path, RISC_STORAGE_OPEN_READ);
-    file_slot *slot = file_for(handle);
-    if (slot) *size = f_size(&slot->object);
-    return handle;
+    return size ? file_open_impl(context, path, RISC_STORAGE_OPEN_READ, size, false) : 0;
 }
 static risc_storage_file_t file_open_write(void *context, const char *path) {
-    const uint32_t handle = file_open(context, path, RISC_STORAGE_OPEN_WRITE | RISC_STORAGE_OPEN_CREATE | RISC_STORAGE_OPEN_EXCLUSIVE);
-    file_slot *slot = file_for(handle); if (slot) slot->abortable = true;
-    return handle;
+    return file_open_impl(context, path,
+        RISC_STORAGE_OPEN_WRITE | RISC_STORAGE_OPEN_CREATE | RISC_STORAGE_OPEN_EXCLUSIVE, 0, true);
 }
 static size_t file_read(void *context, uint32_t handle, void *buffer, size_t capacity) {
     (void)context;
-    if (!ready(0) || !buffer || !capacity || !enter()) return 0;
+    if (!buffer || !capacity || !enter_ready()) return 0;
     file_slot *slot = file_for(handle); UINT count = 0;
     if (slot && !slot->error && (slot->flags & RISC_STORAGE_OPEN_READ)) {
         const FRESULT result = f_read(&slot->object, buffer, capacity < RISC_STORAGE_VOLUME_IO_MAX ? capacity : RISC_STORAGE_VOLUME_IO_MAX, &count);
         if (!result_ok(result)) slot->error = result;
     } else if (slot && !slot->error) slot->error = FR_DENIED;
-    leave(); return count;
+    return leave() ? count : 0;
 }
 static size_t file_write(void *context, uint32_t handle, const void *buffer, size_t size) {
     (void)context;
-    if (!ready(0) || !buffer || !size || !enter()) return 0;
+    if (!buffer || !size || !enter_ready()) return 0;
     file_slot *slot = file_for(handle); UINT count = 0;
     if (slot && !slot->error && (slot->flags & RISC_STORAGE_OPEN_WRITE)) {
         FRESULT result = FR_OK;
@@ -263,10 +330,10 @@ static size_t file_write(void *context, uint32_t handle, const void *buffer, siz
         if (!result_ok(result)) slot->error = result;
         else if (count != request) { slot->error = FR_DENIED; fail("volume full"); }
     } else if (slot && !slot->error) slot->error = FR_DENIED;
-    leave(); return count;
+    return leave() ? count : 0;
 }
 static bool file_seek(void *context, uint32_t handle, uint64_t offset) {
-    (void)context; if (!ready(0) || offset > UINT32_MAX || !enter()) return false;
+    (void)context; if (offset > UINT32_MAX || !enter_ready()) return false;
     file_slot *slot = file_for(handle);
     bool ok = false;
     /* Do not create uninitialized holes. Callers extend with explicit writes. */
@@ -275,22 +342,22 @@ static bool file_seek(void *context, uint32_t handle, uint64_t offset) {
         ok = result_ok(result) && f_tell(&slot->object) == offset;
         if (!ok) slot->error = result == FR_OK ? FR_INT_ERR : result;
     }
-    leave(); return ok;
+    return leave() && ok;
 }
 static bool file_info(void *context, uint32_t handle, uint64_t *size, uint64_t *position) {
-    (void)context; if (!ready(0) || !size || !position || !enter()) return false;
+    (void)context; if (!size || !position || !enter_ready()) return false;
     file_slot *slot = file_for(handle);
     if (slot) { *size = f_size(&slot->object); *position = f_tell(&slot->object); }
-    leave(); return slot != 0;
+    return leave() && slot != 0;
 }
 static bool file_sync(void *context, uint32_t handle) {
-    (void)context; if (!ready(0) || !enter()) return false;
+    (void)context; if (!enter_ready()) return false;
     file_slot *slot = file_for(handle);
     bool ok = false;
     if (slot && !slot->error) {
         FRESULT result = f_sync(&slot->object); ok = result_ok(result); if (!ok) slot->error = result;
     }
-    leave(); return ok;
+    return leave() && ok;
 }
 static bool file_close(void *context, uint32_t handle, bool commit) {
     (void)context; if (!enter()) return false;
@@ -305,15 +372,16 @@ static bool file_close(void *context, uint32_t handle, bool commit) {
         if (ok && slot->abortable && !commit && !io_failed) ok = result_ok(f_unlink(slot->path));
         if (ok) slot->handle = 0;
     }
-    leave(); return ok;
+    if (!leave()) { if (ok) slot->handle = handle; return false; }
+    return ok;
 }
 static uint32_t handle_error(void *context, uint32_t handle, bool directory) {
     (void)context;
     if (!enter()) return FR_LOCKED;
     const dir_slot *dir = directory ? dir_for(handle) : 0;
     const file_slot *file = directory ? 0 : file_for(handle);
-    uint32_t result = !ready(0) ? FR_DISK_ERR : dir ? dir->error : file ? file->error : FR_INVALID_OBJECT;
-    leave(); return result;
+    uint32_t result = (!mounted || io_failed) ? FR_DISK_ERR : dir ? dir->error : file ? file->error : FR_INVALID_OBJECT;
+    return leave() ? result : FR_LOCKED;
 }
 /* Compare actual directory clusters rather than textual prefixes: SFN aliases
  * and case variants must not let a rename invalidate a live descendant. */
@@ -349,16 +417,16 @@ static bool directory_in_use(const char *path) {
     return false;
 }
 static bool remove_path(void *context, const char *path) {
-    (void)context; if (!ready(0) || !valid_path(path) || equal(path, "/") || !enter()) return false;
+    (void)context; if (!valid_path(path) || equal(path, "/") || !enter_ready()) return false;
     if (directory_in_use(path)) { fail("directory has live handles"); leave(); return false; }
-    bool ok = result_ok(f_unlink(path)); leave(); return ok;
+    bool ok = result_ok(f_unlink(path)); return leave() && ok;
 }
 static bool mkdir_path(void *context, const char *path) {
-    (void)context; if (!ready(0) || !valid_path(path) || !enter()) return false;
-    bool ok = result_ok(f_mkdir(path)); leave(); return ok;
+    (void)context; if (!valid_path(path) || !enter_ready()) return false;
+    bool ok = result_ok(f_mkdir(path)); return leave() && ok;
 }
 static bool rename_path(void *context, const char *from, const char *to) {
-    (void)context; if (!ready(0) || !valid_path(from) || !valid_path(to) || equal(from, "/") || equal(to, "/") || !enter()) return false;
+    (void)context; if (!valid_path(from) || !valid_path(to) || equal(from, "/") || equal(to, "/") || !enter_ready()) return false;
     FILINFO info;
     FRESULT destination = f_stat(to, &info);
     if (destination == FR_OK) { fail("destination already exists"); leave(); return false; }
@@ -375,17 +443,26 @@ static bool rename_path(void *context, const char *from, const char *to) {
         }
     }
     if (directory_in_use(from)) { fail("rename has live descendants"); leave(); return false; }
-    bool ok = result_ok(f_rename(from, to)); leave(); return ok;
+    bool ok = result_ok(f_rename(from, to)); return leave() && ok;
 }
 static bool last_error_api(void *context, char *out, size_t capacity) {
     (void)context; if (!out || !capacity) return false;
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+    if (!enter_lifecycle()) return false;
+#endif
     size_t i = 0; while (error[i] && i + 1 < capacity) { out[i] = error[i]; ++i; }
-    out[i] = 0; return error[0] != 0;
+    out[i] = 0;
+    const bool present = error[0] != 0;
+#ifdef STORAGE_VOLUME_OS_CPU_MUTEX
+    return leave() && present;
+#else
+    return present;
+#endif
 }
 static bool prepare_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
-    if (power_down_prepared) { leave(); return true; }
+    if (power_down_prepared) { return leave(); }
     if (io_failed || !transport_idle()) { leave(); return false; }
     for (unsigned i = 0; i < FILE_SLOTS; ++i) {
         if (files[i].handle && (files[i].flags & RISC_STORAGE_OPEN_WRITE)) {
@@ -396,16 +473,36 @@ static bool prepare_power_down(void *context) {
     // pinned. No filesystem operation or active transport survives this barrier.
     if (card_ready && !sync_card()) { fail("power down media sync failed"); leave(); return false; }
     __atomic_store_n(&power_down_prepared, true, __ATOMIC_RELEASE);
-    leave(); return true;
+    return leave();
 }
 static bool cancel_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
-    const bool safe = !io_failed && transport_idle();
+    const bool safe = !io_failed && transport_idle()
+#ifdef STORAGE_VOLUME_COMMIT_POWER_DOWN
+        && !power_down_committed
+#endif
+        ;
     if (safe) __atomic_store_n(&power_down_prepared, false, __ATOMIC_RELEASE);
-    leave(); return safe;
+    return leave() && safe;
 }
+#ifdef STORAGE_VOLUME_COMMIT_POWER_DOWN
+static bool commit_power_down(void *context) {
+    (void)context;
+    if (!enter_lifecycle()) return false;
+    const bool safe = power_down_prepared && !io_failed && transport_idle();
+    if (safe && !power_down_committed) {
+        // The board owner's final transition is fixed, synchronous and cannot
+        // fail after its frozen/synced precondition. No fallible I/O follows.
+        STORAGE_VOLUME_COMMIT_POWER_DOWN();
+        power_down_committed = true;
+    }
+    return leave() && safe;
+}
+static const risc_storage_volume_api_v1_power_commit api = { {
+#else
 static const risc_storage_volume_api_v1_power api = {
+#endif
   {
     {RISC_STORAGE_VOLUME_API_V1, sizeof(api), 0, refresh, ready, label, stat_path,
      dir_open, dir_next, dir_close, file_open_read, file_read, file_open_write,
@@ -413,4 +510,7 @@ static const risc_storage_volume_api_v1_power api = {
     file_open, file_seek, file_info, file_sync, dir_rewind, dir_close_checked,
     handle_error, mkdir_path, rename_path
   }, prepare_power_down, cancel_power_down
+#ifdef STORAGE_VOLUME_COMMIT_POWER_DOWN
+  }, RISC_STORAGE_POWER_COMMIT_TAG, 1u, commit_power_down
+#endif
 };

@@ -11,10 +11,15 @@
 
 #define FRAME_BYTES ((X4PRO_PANEL_WIDTH / 8u) * X4PRO_PANEL_HEIGHT)
 static const risc_platform_clock_api_v1 *clock_api;
-static uint8_t frame[FRAME_BYTES];
+static uint8_t frame[FRAME_BYTES], previous_frame[FRAME_BYTES];
+static bool previous_seeded, partial_update;
+static risc_display_rect_v1 update_area;
+static uint64_t transfer_yielded_ms;
+static unsigned transfer_work;
 static uint8_t present_state;
 static bool transfer_started;
 static bool started, held, pins_ready;
+static uint8_t shutdown_stage;
 static int controller;
 enum { PRESENT_NONE = 0, PRESENT_QUEUED = 1, PRESENT_ACTIVE = 2, PRESENT_COMPLETE = 3, PRESENT_FAILED = 5 };
 static uint64_t frame_serial, token_serial, pending_token;
@@ -213,6 +218,7 @@ static bool uc_ready_for(const char *failure, uint64_t deadline_ms) {
 }
 static bool uc_init_panel(void) {
     /* FreeInk UC8279 X4 Pro: use panel-programmed voltage and OTP waveform. */
+    x4pro_epd_reset_unhold();
     x4pro_pin_output(X4PRO_PIN_EPD_RST, false);
     sleep_ms(50);
     x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
@@ -262,22 +268,54 @@ static bool init_panel(void) {
     if (!ready_for("second-ram busy timeout")) return false;
     return true;
 }
+static bool transfer_checkpoint(uint64_t deadline_ms, unsigned work) {
+    uint64_t now = 0;
+    if (!sample_now(&now) || now >= deadline_ms) {
+        x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+        transfer_end_ms = now;
+        set_reason("transfer deadline");
+        return false;
+    }
+    transfer_work += work;
+    if (transfer_work >= 1024u || now - transfer_yielded_ms >= 2u) {
+        sleep_ms(1u);
+        if (!sample_now(&now) || now >= deadline_ms) {
+            x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
+            set_reason("transfer deadline"); return false;
+        }
+        transfer_yielded_ms = now; transfer_work = 0;
+    }
+    return true;
+}
+static void set_update_window(void) {
+    const uint16_t x = partial_update ? (uint16_t)update_area.x : 0u;
+    const uint16_t y = partial_update ? (uint16_t)update_area.y : 0u;
+    const uint16_t w = partial_update ? (uint16_t)update_area.width : X4PRO_PANEL_WIDTH;
+    const uint16_t h = partial_update ? (uint16_t)update_area.height : X4PRO_PANEL_HEIGHT;
+    const uint16_t right = x + w - 1u;
+    const uint16_t first = X4PRO_PANEL_HEIGHT - 1u - y, last = first + 1u - h;
+    command(0x44); data1(x & 255u); data1(x >> 8); data1(right & 255u); data1(right >> 8);
+    command(0x45); data1(first & 255u); data1(first >> 8); data1(last & 255u); data1(last >> 8);
+    command(0x4E); data1(x & 255u); data1(x >> 8);
+    command(0x4F); data1(first & 255u); data1(first >> 8);
+}
 static bool transfer_plane(uint8_t ram_command, uint64_t deadline_ms) {
     command(ram_command);
     x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
     x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
-    for (size_t i = 0; i < FRAME_BYTES; ++i) {
-        spi_byte((uint8_t)~frame[i]);
-        bytes_sent++;
-        if ((i & 0x3ffu) == 0x3ffu || i + 1u == FRAME_BYTES) {
-            uint64_t now = 0;
-            if (!sample_now(&now) || now >= deadline_ms) {
-                x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
-                transfer_end_ms = now;
-                set_reason("transfer deadline");
-                return false;
-            }
+    const uint8_t *pixels = partial_update && ram_command == 0x26 ? previous_frame : frame;
+    const unsigned x = partial_update ? (unsigned)update_area.x / 8u : 0u;
+    const unsigned y = partial_update ? (unsigned)update_area.y : 0u;
+    const unsigned w = partial_update ? update_area.width / 8u : X4PRO_PANEL_WIDTH / 8u;
+    const unsigned h = partial_update ? update_area.height : X4PRO_PANEL_HEIGHT;
+    for (unsigned row = 0; row < h; ++row) {
+        for (unsigned col = 0; col < w; ++col) {
+            const size_t i = (size_t)(row + y) * (X4PRO_PANEL_WIDTH / 8u) + x + col;
+            spi_byte((uint8_t)~pixels[i]);
+            ++bytes_sent;
+            if ((col & 63u) == 63u && !transfer_checkpoint(deadline_ms, 64u)) return false;
         }
+        if (!transfer_checkpoint(deadline_ms, w & 63u)) return false;
     }
     x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
     return true;
@@ -286,21 +324,14 @@ static bool uc_transfer_plane(uint8_t ram_command, bool white, uint64_t deadline
     command(ram_command);
     x4pro_pin_level(X4PRO_PIN_EPD_DC, true);
     x4pro_pin_level(X4PRO_PIN_EPD_CS, false);
+    const uint8_t *pixels = white && partial_update ? previous_frame : frame;
     for (size_t row = 0; row < 600u; ++row) {
         for (size_t col = 0; col < X4PRO_PANEL_WIDTH / 8u; ++col) {
-            uint8_t value = (white || row < 120u) ? 0xFFu : (uint8_t)~frame[(row - 120u) * (X4PRO_PANEL_WIDTH / 8u) + col];
-            spi_byte(value);
-            ++bytes_sent;
+            uint8_t value = ((white && !partial_update) || row < 120u) ? 0xFFu :
+                (uint8_t)~pixels[(row - 120u) * (X4PRO_PANEL_WIDTH / 8u) + col];
+            spi_byte(value); ++bytes_sent;
         }
-        if ((row & 7u) == 7u || row == 599u) {
-            uint64_t now = 0;
-            if (!sample_now(&now) || now >= deadline_ms) {
-                x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
-                transfer_end_ms = now;
-                set_reason("transfer deadline");
-                return false;
-            }
-        }
+        if (!transfer_checkpoint(deadline_ms, X4PRO_PANEL_WIDTH / 8u)) return false;
     }
     x4pro_pin_level(X4PRO_PIN_EPD_CS, true);
     return true;
@@ -311,14 +342,24 @@ static bool uc_transfer_frame(uint64_t deadline_ms) {
     if (!sample_now(&transfer_start_ms) || !uc_ready_for("uc pre-transfer busy", deadline_ms)) return false;
     if (!uc_transfer_plane(0x13, false, deadline_ms) || !uc_transfer_plane(0x10, true, deadline_ms)) return false;
     if (!sample_now(&transfer_end_ms) || transfer_end_ms >= deadline_ms) { set_reason("transfer deadline"); return false; }
-    command(0x50); data1(0x97);
+    command(0x50); data1(partial_update ? 0xD7 : 0x97);
     command(0xE0); data1(0x02);
-    command(0xE5); data1(0x1E);
+    command(0xE5); data1(partial_update ? 0x5A : 0x1E);
+    if (partial_update) { command(0x03); data1(0x20); command(0xE1); data1(0x02); }
     if (!sample_now(&refresh_ms) || refresh_ms >= deadline_ms) { set_reason("transfer deadline"); return false; }
     command(0x04);
     /* UC8279 PON may reload MTP settings. Select built-in OTP after PON. */
     sleep_ms(1); /* Give BUSY_N one controller tick to assert, as the pinned bus does. */
     if (!uc_ready_for("uc power-on timeout", deadline_ms)) return false;
+    if (partial_update) {
+        const uint16_t right = (uint16_t)(update_area.x + update_area.width - 1u);
+        const uint16_t top = (uint16_t)update_area.y + 120u;
+        const uint16_t bottom = top + (uint16_t)update_area.height - 1u;
+        command(0x91); command(0x90);
+        data1((uint16_t)update_area.x >> 8); data1((uint16_t)update_area.x & 0xF8u);
+        data1(right >> 8); data1(right | 7u);
+        data1(top >> 8); data1(top & 255u); data1(bottom >> 8); data1(bottom & 255u); data1(0x01);
+    }
     command(0x00); data1(0x17); data1(0x4D);
     busy_before = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
     if (!busy_before) { set_reason("busy already active"); return false; }
@@ -331,6 +372,7 @@ static bool uc_transfer_frame(uint64_t deadline_ms) {
     if (!sample_now(&busy_assert_ms)) return false;
     if (!uc_ready_for("busy completion timeout", deadline_ms)) return false;
     if (!sample_now(&busy_done_ms)) return false;
+    if (partial_update) command(0x92);
     return true;
 }
 static bool transfer_frame(uint64_t deadline_ms) {
@@ -338,7 +380,7 @@ static bool transfer_frame(uint64_t deadline_ms) {
     transfer_started = true;
     if (!sample_now(&transfer_start_ms)) return false;
     if (!ready_for("pre-transfer readiness")) return false;
-    set_cursor();
+    set_update_window();
     if (!ready_for("pre-transfer readiness")) return false;
     /* Full absolute SSD1677 refresh starts with matched BW and RED planes. */
     if (!transfer_plane(0x24, deadline_ms) || !transfer_plane(0x26, deadline_ms)) return false;
@@ -348,9 +390,9 @@ static bool transfer_frame(uint64_t deadline_ms) {
     }
     busy_before = x4pro_pin_read(X4PRO_PIN_EPD_BUSY) ? 1u : 0u;
     if (busy_before) { set_reason("busy already active"); return false; }
-    command(0x21); data1(0x40);
-    command(0x3C); data1(0xC0);
-    command(0x22); data1(0xF7);
+    command(0x21); data1(partial_update ? 0x00 : 0x40);
+    command(0x3C); data1(partial_update ? 0x80 : 0xC0);
+    command(0x22); data1(partial_update ? 0xFC : 0xF7);
     if (!sample_now(&refresh_ms) || refresh_ms >= deadline_ms) {
         set_reason("transfer deadline");
         return false;
@@ -369,7 +411,7 @@ static bool get_info(void *context, risc_display_info_v1 *out) {
     out->supported_formats = RISC_DISPLAY_FORMAT_BIT(RISC_DISPLAY_FORMAT_MONO1);
     out->preferred_format = RISC_DISPLAY_FORMAT_MONO1;
     out->supported_rotations = RISC_DISPLAY_ROTATION_0;
-    out->flags = RISC_DISPLAY_INFO_RETAINS_IMAGE;
+    out->flags = RISC_DISPLAY_INFO_RETAINS_IMAGE | RISC_DISPLAY_INFO_PARTIAL_DAMAGE | RISC_DISPLAY_INFO_QUIESCE_SLEEP;
     out->damage_x_alignment = 8;
     out->damage_width_alignment = 8;
     out->damage_y_alignment = 1;
@@ -380,7 +422,7 @@ static bool get_info(void *context, risc_display_info_v1 *out) {
 }
 static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out) {
     (void)context;
-    if (!started || held || !out || format != RISC_DISPLAY_FORMAT_MONO1) return false;
+    if (!started || shutdown_stage || held || !out || format != RISC_DISPLAY_FORMAT_MONO1) return false;
     if (++frame_serial == 0) ++frame_serial;
     held = true;
     *out = (risc_display_surface_v1){frame_serial, frame, X4PRO_PANEL_WIDTH, X4PRO_PANEL_HEIGHT,
@@ -390,16 +432,36 @@ static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out
 static void release(void *context, risc_display_frame_v1 frame_id) {
     (void)context;
     if (present_state == PRESENT_QUEUED || present_state == PRESENT_ACTIVE) return;
-    if (held && frame_id == frame_serial) held = false;
+    if (held && frame_id == frame_serial) { held = false; previous_seeded = false; }
 }
 static bool submit(void *context, risc_display_frame_v1 frame_id, const risc_display_rect_v1 *damage,
                    size_t count, const risc_display_present_options_v1 *options,
                    risc_display_present_token_v1 *token_out) {
-    (void)context; (void)damage; (void)count; (void)options;
-    if (!started || !held || frame_id != frame_serial || present_state == PRESENT_QUEUED || present_state == PRESENT_ACTIVE)
+    (void)context;
+    if (!started || shutdown_stage || !held || frame_id != frame_serial || present_state == PRESENT_QUEUED || present_state == PRESENT_ACTIVE)
         return false;
+    if (!token_out || count > RISC_DISPLAY_MAX_DAMAGE_RECTS || (count && !damage)) return false;
+    partial_update = count && previous_seeded && (!options || options->intent != RISC_DISPLAY_PRESENT_CLEAN);
+    update_area = (risc_display_rect_v1){0, 0, X4PRO_PANEL_WIDTH, X4PRO_PANEL_HEIGHT};
+    if (count) {
+        uint32_t left = X4PRO_PANEL_WIDTH, top = X4PRO_PANEL_HEIGHT, right = 0, bottom = 0;
+        for (size_t i = 0; i < count; ++i) {
+            const risc_display_rect_v1 *r = &damage[i];
+            if (r->x < 0 || r->y < 0 || !r->width || !r->height ||
+                r->width > X4PRO_PANEL_WIDTH || r->height > X4PRO_PANEL_HEIGHT ||
+                (uint32_t)r->x > X4PRO_PANEL_WIDTH - r->width ||
+                (uint32_t)r->y > X4PRO_PANEL_HEIGHT - r->height) return false;
+            if ((uint32_t)r->x < left) left = (uint32_t)r->x;
+            if ((uint32_t)r->y < top) top = (uint32_t)r->y;
+            if ((uint32_t)r->x + r->width > right) right = (uint32_t)r->x + r->width;
+            if ((uint32_t)r->y + r->height > bottom) bottom = (uint32_t)r->y + r->height;
+        }
+        left &= ~7u; right = (right + 7u) & ~7u;
+        update_area = (risc_display_rect_v1){(int32_t)left, (int32_t)top, right - left, bottom - top};
+    }
     if (++token_serial == 0) ++token_serial;
     pending_token = token_serial;
+    previous_seeded = false; // Consumed by this one admitted submission.
     present_state = PRESENT_QUEUED;
     transfer_started = false;
     if (token_out) *token_out = pending_token;
@@ -425,7 +487,8 @@ static bool wait_present(void *context, risc_display_present_token_v1 token, uin
             held = false;
             return present_status(context, token, out);
         }
-        wait_start_ms = now;
+        wait_start_ms = transfer_yielded_ms = now;
+        transfer_work = 0;
         if (timeout_ms > UINT64_MAX - now) {
             set_reason("clock overflow");
             present_state = PRESENT_FAILED;
@@ -440,6 +503,7 @@ static bool wait_present(void *context, risc_display_present_token_v1 token, uin
             present_state = PRESENT_COMPLETE;
             reason = "complete";
             held = false;
+            previous_seeded = false;
         }
     }
     return present_status(context, token, out);
@@ -448,11 +512,37 @@ static bool set_brightness(void *context, uint16_t level, uint16_t maximum) {
     (void)context; (void)level; (void)maximum;
     return false;
 }
-static const risc_display_output_api_v1 api = {
-    RISC_DISPLAY_OUTPUT_API_V1, sizeof(api), 0, get_info, acquire, release, submit,
-    present_status, wait_present, set_brightness
+static bool seed_previous(void *context, risc_display_frame_v1 frame_id) {
+    (void)context;
+    if (!started || shutdown_stage || !held || frame_id != frame_serial ||
+        present_state == PRESENT_QUEUED || present_state == PRESENT_ACTIVE) return false;
+    previous_seeded = false;
+    const uint64_t began = now_ms();
+    if (began == UINT64_MAX || began > UINT64_MAX - 100u) return false;
+    uint64_t last_yield = began;
+    for (size_t i = 0; i < FRAME_BYTES; ++i) {
+        previous_frame[i] = frame[i];
+        if ((i & 255u) == 255u) {
+            uint64_t now = now_ms();
+            if (now == UINT64_MAX || now < began || now - began >= 100u) return false;
+            if ((i & 4095u) == 4095u || now - last_yield >= 2u) {
+                sleep_ms(1u); last_yield = now;
+            }
+        }
+    }
+    const uint64_t completed = now_ms();
+    if (completed == UINT64_MAX || completed < began || completed - began >= 100u) return false;
+    previous_seeded = true;
+    return true;
+}
+static const risc_display_output_api_v1_history api = {
+    { RISC_DISPLAY_OUTPUT_API_V1, sizeof(api), 0, get_info, acquire, release, submit,
+      present_status, wait_present, set_brightness },
+    RISC_DISPLAY_HISTORY_TAG, 1u, seed_previous
 };
 static bool start(const risc_provider_dependency_v1 *dependencies, size_t count) {
+    shutdown_stage = 0;
+    previous_seeded = partial_update = false;
     clock_api = 0;
     for (size_t i = 0; i < count; ++i)
         if (equal(dependencies[i].capability_id, "platform.clock") && dependencies[i].api_version == 1)
@@ -471,11 +561,40 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
 }
 static void stop(void) { started = false; held = false; }
 static bool quiesce(void) {
-    /* A timed-out refresh may still be driving the panel. Keep this provider
-     * pinned until BUSY is observed idle; software state alone cannot prove it. */
-    if (present_state == PRESENT_ACTIVE || (pins_ready && (controller == PROBE_UC8279 ? !x4pro_pin_read(X4PRO_PIN_EPD_BUSY) : x4pro_pin_read(X4PRO_PIN_EPD_BUSY))))
-        return false;
-    stop();
+    if (held || present_state == PRESENT_QUEUED || present_state == PRESENT_ACTIVE) return false;
+    if (!pins_ready || shutdown_stage == 3u) { started = false; return true; }
+    if (!clock_api || (controller != PROBE_SSD && controller != PROBE_UC8279)) return false;
+    const uint64_t began = now_ms();
+    if (began == UINT64_MAX || began > UINT64_MAX - 1500u) return false;
+    const uint64_t deadline = began + 1500u;
+    if (shutdown_stage == 0u) {
+        const bool busy = controller == PROBE_UC8279 ? !x4pro_pin_read(X4PRO_PIN_EPD_BUSY)
+                                                   : x4pro_pin_read(X4PRO_PIN_EPD_BUSY);
+        if (busy) return false; // A timed-out physical refresh remains owned.
+        /* Pinned FreeInk 111fdcc7 X4 shutdown sequences. No T5 PMIC/GPIO path. */
+        if (controller == PROBE_UC8279) command(0x02);
+        else { command(0x3C); data1(0x80); command(0x22); data1(0x03); command(0x20); }
+        shutdown_stage = 1u; // Retry observes the outstanding POF, never resends.
+        sleep_ms(controller == PROBE_UC8279 ? 1u : 200u);
+    }
+    if (shutdown_stage == 1u) {
+        for (unsigned checks = 0; checks < 150u; ++checks) {
+            const uint64_t now = now_ms();
+            if (now == UINT64_MAX || now < began || now >= deadline) return false;
+            const bool busy = controller == PROBE_UC8279 ? !x4pro_pin_read(X4PRO_PIN_EPD_BUSY)
+                                                       : x4pro_pin_read(X4PRO_PIN_EPD_BUSY);
+            if (!busy) { shutdown_stage = 2u; break; }
+            sleep_ms(10u);
+        }
+        if (shutdown_stage != 2u) return false;
+    }
+    if (controller == PROBE_UC8279) { command(0x07); data1(0xA5); }
+    else { command(0x10); data1(0x03); }
+    // X4 has no panel rail switch. Hold RESET high so it cannot leave DSLP.
+    x4pro_pin_output(X4PRO_PIN_EPD_RST, true);
+    x4pro_pin_hold(X4PRO_PIN_EPD_RST, true);
+    shutdown_stage = 3u;
+    started = false;
     return true;
 }
 static bool append(char *destination, size_t capacity, size_t *used, const char *text) {

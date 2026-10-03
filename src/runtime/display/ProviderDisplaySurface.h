@@ -33,10 +33,12 @@ class ProviderDisplaySurface final : public DisplaySurface {
              static_cast<uint32_t>(bytes), DisplayPixelFormat::Mono1,
              {physical.safe_insets.top, physical.safe_insets.right,
               physical.safe_insets.bottom, physical.safe_insets.left}};
+    sleepSupported_ = (physical.flags & RISC_DISPLAY_INFO_QUIESCE_SLEEP) != 0;
     ready_ = validateDisplaySurfaceInfo(info_) == DisplaySurfaceValidationError::None;
   }
 
   bool isReady() const override { return ready_; }
+  bool supportsSleep() const { return ready_ && sleepSupported_; }
   DisplaySurfaceInfo getSurfaceInfo() const override { return info_; }
   uint8_t* getFrameBuffer() const override { return ready_ ? raster_ : nullptr; }
   bool lastPresentSucceeded() const { return lastPresentSucceeded_; }
@@ -74,8 +76,13 @@ class ProviderDisplaySurface final : public DisplaySurface {
     }
   }
 
+  void suppressInitialFullRefresh() { flipRefreshPending_ = false; }
+  void displayBufferDiff(const uint8_t* previous, DisplayPresentMode mode) {
+    present(mode, previous);
+  }
   void displayBuffer(DisplayPresentMode mode = DisplayPresentMode::LowLatency,
-                     bool = false) override {
+                     bool = false) override { present(mode, nullptr); }
+  void present(DisplayPresentMode mode, const uint8_t* previous) {
     lastPresentSucceeded_ = false;
     lastPresentState_ = 0;
     if (!ready_) return;
@@ -88,18 +95,44 @@ class ProviderDisplaySurface final : public DisplaySurface {
         target.pixel_format == RISC_DISPLAY_FORMAT_MONO1;
     if (!compatible) { api_->release(api_->context, target.frame); return; }
     uint8_t* pixels = static_cast<uint8_t*>(target.pixels);
-    // Rotate only while copying to the acquired provider frame. The Reader's
-    // logical raster and its cover/cache snapshots remain in their own axes.
-    for (size_t i = 0; i < rasterSize_; ++i) {
-      const uint8_t pixel = static_cast<uint8_t>(~raster_[flipOutput_ ? rasterSize_ - 1 - i : i]);
-      pixels[i] = flipOutput_ ? reverseBits(pixel) : pixel;
+    const auto* history = previous && !flipRefreshPending_ ? risc_display_output_history(api_) : nullptr;
+    risc_display_rect_v1 damage{};
+    bool differential = false;
+    if (history) {
+      copyPhysical(pixels, previous);
+      if (!history->seed_previous(api_->context, target.frame)) {
+        api_->release(api_->context, target.frame);
+        return;
+      }
+      size_t minByte = info_.strideBytes, maxByte = 0, minRow = info_.height, maxRow = 0;
+      for (size_t i = 0; i < rasterSize_; ++i) if (previous[i] != raster_[i]) {
+        const size_t physical = flipOutput_ ? rasterSize_ - 1u - i : i;
+        const size_t row = physical / info_.strideBytes, byte = physical % info_.strideBytes;
+        if (byte < minByte) minByte = byte;
+        if (byte > maxByte) maxByte = byte;
+        if (row < minRow) minRow = row;
+        if (row > maxRow) maxRow = row;
+      }
+      if (minRow == info_.height) {
+        api_->release(api_->context, target.frame);
+        lastPresentSucceeded_ = true;
+        lastPresentState_ = RISC_DISPLAY_PRESENT_COMPLETE;
+        return;
+      }
+      damage = {static_cast<int32_t>(minByte * 8u), static_cast<int32_t>(minRow),
+                static_cast<uint32_t>((maxByte - minByte + 1u) * 8u),
+                static_cast<uint32_t>(maxRow - minRow + 1u)};
+      differential = true;
     }
+    // Rotate only in the transfer copy. The renderer's reconstructed previous
+    // minute and its current raster stay in the same logical coordinate space.
+    copyPhysical(pixels, raster_);
     risc_display_present_options_v1 options{};
     options.intent = flipRefreshPending_ ? static_cast<uint8_t>(RISC_DISPLAY_PRESENT_CLEAN) :
         intent(nextModeRequested_ ? nextMode_ : mode);
     options.queue_policy = RISC_DISPLAY_QUEUE_FIFO;
     risc_display_present_token_v1 token = RISC_DISPLAY_PRESENT_TOKEN_INVALID;
-    if (!api_->submit(api_->context, target.frame, nullptr, 0, &options, &token) ||
+    if (!api_->submit(api_->context, target.frame, differential ? &damage : nullptr, differential ? 1u : 0u, &options, &token) ||
         token == RISC_DISPLAY_PRESENT_TOKEN_INVALID) {
       api_->release(api_->context, target.frame);
       return;
@@ -131,6 +164,12 @@ class ProviderDisplaySurface final : public DisplaySurface {
   }
 
  private:
+  void copyPhysical(uint8_t* target, const uint8_t* source) const {
+    for (size_t i = 0; i < rasterSize_; ++i) {
+      const uint8_t pixel = static_cast<uint8_t>(~source[flipOutput_ ? rasterSize_ - 1u - i : i]);
+      target[i] = flipOutput_ ? reverseBits(pixel) : pixel;
+    }
+  }
   static uint8_t reverseBits(uint8_t byte) {
     byte = static_cast<uint8_t>((byte >> 4) | (byte << 4));
     byte = static_cast<uint8_t>(((byte & 0xccu) >> 2) | ((byte & 0x33u) << 2));
@@ -153,6 +192,6 @@ class ProviderDisplaySurface final : public DisplaySurface {
   DisplayPresentMode nextMode_ = DisplayPresentMode::Quality;
   bool nextModeRequested_ = false;
   bool flipOutput_ = false, flipRefreshPending_ = false;
-  bool ready_ = false, lastPresentSucceeded_ = false;
+  bool ready_ = false, sleepSupported_ = false, lastPresentSucceeded_ = false;
   uint8_t lastPresentState_ = 0;
 };

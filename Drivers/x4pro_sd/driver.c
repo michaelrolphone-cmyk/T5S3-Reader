@@ -6,6 +6,7 @@
 #include "x4pro_mmio.h"
 #include "x4pro_pins.h"
 #include "x4pro_proto.h"
+#include "../x4pro_i2c/os_cpu_v1.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -118,6 +119,7 @@ static bool read_sector(uint32_t lba, uint8_t out[512]) {
 static bool init_card(void) {
     uint8_t response[17] = {0};
     high_capacity = false;
+    x4pro_pin_hold(X4PRO_PIN_SD_PWR, false);
     x4pro_pin_output(X4PRO_PIN_SD_PWR, true);
     if (clock_api) clock_api->sleep_ms(clock_api->context, 80);
     x4pro_pin_output(X4PRO_PIN_SD_PWR, false);
@@ -196,21 +198,51 @@ static bool write_sector(uint32_t lba, const uint8_t data[512]) {
 static bool sync_card(void) { return wait_dat0(true, 262144, 1000); }
 // All native one-bit transfers are synchronous; failed I/O stays quarantined.
 static bool transport_idle(void) { return true; }
+static void commit_sleep_rails(void) {
+    // Only called after the existing barrier froze all handles and synced the
+    // card. Keep read metadata and this ELF pinned until the deep-sleep reset.
+    x4pro_pin_output(X4PRO_PIN_SD_CLK, false);
+    x4pro_pin_input(X4PRO_PIN_SD_CMD, false);
+    x4pro_pin_input(X4PRO_PIN_SD_DAT0, false);
+    x4pro_pin_output(X4PRO_PIN_SD_PWR, true);
+    x4pro_pin_hold(X4PRO_PIN_SD_PWR, true);
+}
+#define STORAGE_VOLUME_COMMIT_POWER_DOWN commit_sleep_rails
+#define STORAGE_VOLUME_OS_CPU_MUTEX
 #define STORAGE_VOLUME_LABEL "X4PRO"
 #include "../storage_fatfs/volume.c"
 
 static bool start(const risc_provider_dependency_v1 *dependencies, size_t count) {
-    if (started || has_handles()) return false;
+    /* ModuleV2 serializes initial start/restart before publishing consumers. */
+    if (!valid_task() || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE)) return false;
+    if (!operation_mutex) {
+        operation_mutex = xQueueCreateMutex(1); /* queueQUEUE_TYPE_MUTEX */
+        if (!operation_mutex) return false; /* No hardware before admission. */
+    }
+    if (__atomic_load_n(&quiesced, __ATOMIC_ACQUIRE)) {
+        __atomic_store_n(&quiesced, false, __ATOMIC_RELEASE);
+        __atomic_store_n(&quiescing, false, __ATOMIC_RELEASE);
+    }
+    if (!enter_lifecycle()) return false;
+    bool okay = false;
+    if (started || has_handles() || !dependencies) goto done;
     clock_api = 0;
     for (size_t i = 0; i < count; ++i)
         if (equal(dependencies[i].capability_id, "platform.clock") && dependencies[i].api_version == 1)
             clock_api = dependencies[i].api;
     if (!clock_api || clock_api->api_version != RISC_PLATFORM_CLOCK_API_V1 ||
         clock_api->struct_size < sizeof(*clock_api) || !clock_api->monotonic_ms ||
-        !clock_api->sleep_ms) { clock_api = 0; fail("platform.clock missing or invalid"); return false; }
+        !clock_api->sleep_ms) { clock_api = 0; fail("platform.clock missing or invalid"); goto done; }
     x4pro_pin_output(X4PRO_PIN_SD_CLK, false);
+    power_down_prepared = power_down_committed = false;
     started = true;
-    return refresh(0);
+    mounted = card_ready = io_failed = false;
+    error[0] = 0;
+    operation_start = clock_api->monotonic_ms(clock_api->context);
+    (void)init_card(); /* An absent card does not remove the refresh capability. */
+    okay = true;
+done:
+    return leave() && okay;
 }
 static void stop_locked(void) {
     /* Refuse unsafe unload: borrowers or unsynced failed writers retain module. */
@@ -224,12 +256,31 @@ static void stop_locked(void) {
     }
     started = card_ready = mounted = power_down_prepared = false;
 }
-static void stop(void) { if (!enter_lifecycle()) return; stop_locked(); leave(); }
 static bool quiesce(void) {
+    if (!valid_task() || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE)) return false;
+    if (!operation_mutex || __atomic_load_n(&quiesced, __ATOMIC_ACQUIRE)) return true;
     if (!enter_lifecycle()) return false;
     const bool safe = !has_handles();
-    if (safe) stop_locked();
-    leave(); return safe && !started;
+    if (safe) {
+        stop_locked();
+        clock_api = 0;
+        /* Fence admission before giving, but do not publish acceptance yet.
+         * A concurrent lifecycle caller must not mistake this in-flight give
+         * for completed quiescence and delete a still-owned mutex. */
+        __atomic_store_n(&quiescing, true, __ATOMIC_RELEASE);
+    }
+    if (!leave() || !safe) return false;
+    __atomic_store_n(&quiesced, true, __ATOMIC_RELEASE);
+    return true;
+}
+static void stop(void) {
+    if (!valid_task() || !operation_mutex || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE)) return;
+    if (!__atomic_load_n(&quiesced, __ATOMIC_ACQUIRE) && !quiesce()) return;
+    /* The runtime drains consumers before accepted quiesce and then unmaps.
+     * No second take/give or fallible transition after that acceptance. */
+    x4_cpu_mutex retired = operation_mutex;
+    operation_mutex = 0;
+    vQueueDelete(retired);
 }
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(driver), "x4pro-sd",

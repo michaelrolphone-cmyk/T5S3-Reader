@@ -29,9 +29,10 @@ def run(build, name, text, includes=(), sources=(), defines=()):
 
 with tempfile.TemporaryDirectory() as temp:
     build = Path(temp)
-    (build / 'Arduino.h').write_text('#pragma once\n#include <cstdint>\n#include <cstddef>\n#include <cstring>\n')
+    (build / 'Arduino.h').write_text('#pragma once\n#include <cstdint>\n#include <cstddef>\n#include <cstring>\n#include <cstdlib>\nstruct TestEsp{void restart(){std::abort();}};inline TestEsp ESP;\n')
     (build / 'Logging.h').write_text('#pragma once\n#define LOG_ERR(...) ((void)0)\n')
     (build / 'Board.h').write_text('''#pragma once
+namespace Board {inline bool prepareForSleep(){return false;} inline void deinitForSleep(){}}
 namespace BoardPins {
 constexpr unsigned DisplayWidth=800, DisplayHeight=480, LogicalWidth=480, LogicalHeight=800;
 }
@@ -48,6 +49,9 @@ constexpr unsigned DisplayWidth=800, DisplayHeight=480, LogicalWidth=480, Logica
 #include <cstring>
 static uint8_t raster[48000], pixels[48000], original[48000];
 static unsigned presents;
+bool halStorageCommitSleep(){return false;}
+bool x4ReleaseDisplayForSleep(){return false;}
+bool x4RestoreDisplayAfterSleep(){return false;}
 static uint8_t lastIntent;
 static bool presentOkay=true, suppressed=false;
 static unsigned suppressionCalls,queuedTouches;

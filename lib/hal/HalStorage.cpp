@@ -228,7 +228,9 @@ void HalStorage::markUnavailable() {
   storageGeneration.mutationAttempt();
 }
 bool HalStorage::prepareForSleep() { return !storageBackendUnavailable(); }
+bool HalStorage::commitSleep() { return !storageBackendUnavailable(); }
 bool HalStorage::cancelSleep() { return !storageBackendUnavailable(); }
+bool halStorageCommitSleep() { return Storage.commitSleep(); }
 bool halStoragePrepareForSleep() { return Storage.prepareForSleep(); }
 bool halStorageCancelSleep() { return Storage.cancelSleep(); }
 void halStorageMediaUnavailable() { Storage.markUnavailable(); }

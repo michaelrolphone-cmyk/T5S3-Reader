@@ -11,7 +11,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "$repo/src/native/NativeBatteryGauge.cpp" \
   "$repo/lib/Board_X4Pro/BoardX4Pro.cpp" \
   "$repo/test/native_battery/native_battery_gauge_test.cpp" -o "$binary"
-for scenario in normal failures expiry retry grantless partial release threads; do "$binary" "$scenario"; done
+for scenario in normal failures expiry retry grantless partial release threads sleep; do "$binary" "$scenario"; done
 for invalid in version size read interface generation grant; do "$binary" invalid "$invalid"; done
 c++ -std=c++17 -Wall -Wextra -Werror -DBOARD_T5S3_PRO -I"$repo/src" \
   "$repo/src/native/NativeBatteryGauge.cpp" \

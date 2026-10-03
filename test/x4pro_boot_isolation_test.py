@@ -49,8 +49,8 @@ class X4BootIsolation(unittest.TestCase):
         before, body, after = x4_branch(setup)
         effective = before + body
         self.assertNotIn("HalSystem::begin()", effective)
-        self.assertIn("x4DiagnosticSetup()", body)
-        self.assertLess(body.index("Serial.begin(115200)"), body.index("x4DiagnosticSetup()"))
+        self.assertIn("x4DiagnosticSetup(DeskClockSleep::consumeUserWake())", body)
+        self.assertLess(body.index("Serial.begin(115200)"), body.index("x4DiagnosticSetup(DeskClockSleep::consumeUserWake())"))
         self.assertIn("millis() - x4SerialStart < 500", body)
         self.assertIn("HalSystem::begin()", after)
         for banned in ("goHome()", "Storage.begin()", "setupDisplayAndFonts()"):

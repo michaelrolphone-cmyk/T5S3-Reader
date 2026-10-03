@@ -12,3 +12,6 @@ c++ "${flags[@]}" lib/hal/HalStorage.cpp src/runtime/packages/InstalledCapabilit
 python3 test/hal/storage_inventory_test.py
 python3 test/hal/storage_compat_import_test.py
 python3 test/hal/storage_file_lifetime_test.py
+
+# Reuse the shared U1 bounded, generation-tagged provider enumeration test.
+python3 test/provider_enumeration/run_test.py --sanitize

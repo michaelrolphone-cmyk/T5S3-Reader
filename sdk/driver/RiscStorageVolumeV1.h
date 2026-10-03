@@ -97,6 +97,25 @@ typedef struct {
     bool (*cancel_power_down)(void *context);
 } risc_storage_volume_api_v1_power;
 
+/* Optional terminal commit after the existing reversible prepare/cancel pair.
+ * The provider owns rail/pin changes. It stays mapped with frozen read handles;
+ * successful commit is terminal until reset, so cancel MUST then fail. No
+ * generic runtime code may substitute a raw board power write. */
+#define RISC_STORAGE_POWER_COMMIT_TAG 0x53504331u /* SPC1 */
+typedef struct {
+    risc_storage_volume_api_v1_power power;
+    uint32_t extension_tag, extension_version;
+    bool (*commit_power_down)(void *context);
+} risc_storage_volume_api_v1_power_commit;
+static inline const risc_storage_volume_api_v1_power_commit *risc_storage_volume_power_commit(
+    const risc_storage_volume_api_v1 *api) {
+    if (!api || api->api_version != RISC_STORAGE_VOLUME_API_V1 ||
+        api->struct_size < sizeof(risc_storage_volume_api_v1_power_commit)) return NULL;
+    const risc_storage_volume_api_v1_power_commit *p = (const risc_storage_volume_api_v1_power_commit *)api;
+    return p->extension_tag == RISC_STORAGE_POWER_COMMIT_TAG && p->extension_version == 1u &&
+           p->commit_power_down ? p : NULL;
+}
+
 static inline const risc_storage_volume_api_v1_power *risc_storage_volume_power(
     const risc_storage_volume_api_v1 *api) {
     return api && api->api_version == RISC_STORAGE_VOLUME_API_V1 &&

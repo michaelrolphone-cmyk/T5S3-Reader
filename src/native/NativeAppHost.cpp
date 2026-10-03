@@ -4,6 +4,7 @@
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
+#include "PowerControl.h"
 #include "ManagedAppAdmission.h"
 #include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
@@ -308,6 +309,13 @@ bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
   nativeProviderOwnerTick();
+  if (serviceIdleSleep(s->input.wasAnyPressed() || s->input.wasAnyReleased() ||
+                       nativeNavigationFrame().buttons || nativeTouchHadActivity())) {
+    // Return through the existing ELF/resource/RenderLock cleanup. Never run
+    // physical sleep from an app callback or dispatch a queued next app.
+    s->exiting = true;
+    s->launchPath.clear();
+  }
   *out = {};
   using Button = MappedInputManager::Button;
   const Button buttons[] = {Button::Back, Button::Confirm, Button::Left, Button::Right, Button::Up, Button::Down};
@@ -1472,6 +1480,9 @@ static bool validateLooseAdmissionSidecar(const std::string& json,const std::str
 }
 
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
+  // Every synchronous child/resume route crosses this guard, not just the
+  // Springboard loop. Let pending sleep unwind without mapping another ELF.
+  if (idleSleepRequested()) return ESP_OK;
   const uint32_t launchBegan = millis();
   const auto launchStage = [&](const char* stage) {
     LOG_INF("APP", "Launch stage=%s elapsed_ms=%lu path=%s", stage,
@@ -1617,7 +1628,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   }
   const auto systemNavigation = nativeSystemUiTakeNavigation();
   homeRequested = homeRequested || systemNavigation == NativeSystemUiNavigation::Home;
-  queuedLaunch = active.launchPath;
+  queuedLaunch = idleSleepRequested() ? std::string{} : active.launchPath;
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
@@ -1640,7 +1651,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
   nativeTouchDiscardGestures();
-  firmwareActionPending = nativeSettingsDispatchPendingAction(renderer, input, path);
+  firmwareActionPending = !idleSleepRequested() && nativeSettingsDispatchPendingAction(renderer, input, path);
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
   return result;
@@ -1649,7 +1660,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
 bool consumeNativeAppReturn() { const bool value = returned; returned = false; return value; }
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
-  if (resume && homeRequested) return false;
+  if (idleSleepRequested() || (resume && homeRequested)) return false;
   const uint32_t appsBegan = millis();
   // Show feedback before recovery and path resolution, not after all SD work.
   { RenderLock lock; StartupScreen::app(renderer, "Apps", "solid:f00a"); }
@@ -1666,6 +1677,8 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     renderer.displayBuffer(DisplayPresentMode::Clean);
     for (;;) {
       esp_task_wdt_reset(); delay(20); input.update();
+      if (serviceIdleSleep(input.wasAnyPressed() || input.wasAnyReleased() ||
+                           nativeNavigationFrame().buttons || nativeTouchHadActivity())) break;
       MappedInputManager::TouchPoint point{};
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
@@ -1691,6 +1704,7 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
       return false;
     }
+    if (idleSleepRequested()) return false;
     if (firmwareActionPending) return true;
     if (homeRequested || queuedLaunch.empty()) return false;
     const std::string selected = queuedLaunch;
@@ -1703,6 +1717,7 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     const std::string sidecar = selected.substr(3, selected.size() - 7) + ".json";
     if (!Storage.exists(sidecar.c_str())) { showError("Application manifest is missing."); continue; }
     const auto appResult = runNativeApp(selected.c_str(), renderer, input);
+    if (idleSleepRequested()) return false;
     if (firmwareActionPending) return true;
     if (homeRequested) return false;
     if (appResult != ESP_OK) {

@@ -212,6 +212,25 @@ void retained(bool failedAcquire) {
   expectSample(3800, 67, true);
   assert(acquisitions == 2 && reads == 1 && outstanding.grant.generation != token.generation);
 }
+void sleepLifecycle() {
+  nativeBatteryTick();
+  expectSample(3800, 67, true);
+  const auto retained = outstanding.grant;
+  releaseOk = false;
+  assert(!nativeBatterySuspend());
+  expectUnavailable();
+  tickAt(60000);
+  assert(reads == 1 && acquisitions == 1);
+  assert(!nativeBatteryResume());
+  assert(outstanding.grant.slot == retained.slot && outstanding.grant.generation == retained.generation);
+  releaseOk = true;
+  assert(nativeBatteryResume());
+  nativeBatteryTick();
+  assert(reads == 2 && acquisitions == 2 && outstanding.grant.generation != retained.generation);
+  assert(nativeBatterySuspend());
+  tickAt(90000); assert(reads == 2);
+  assert(nativeBatteryResume()); nativeBatteryTick(); assert(reads == 3);
+}
 void concurrentReaders() {
   nativeBatteryTick();
   std::atomic<bool> stop{false};
@@ -282,7 +301,11 @@ int main(int argc, char** argv) {
   else if (!std::strcmp(test, "invalid")) { assert(argc == 3); invalidApi(argv[2]); }
   else if (!std::strcmp(test, "partial")) retained(true);
   else if (!std::strcmp(test, "release")) retained(false);
+  else if (!std::strcmp(test, "sleep")) sleepLifecycle();
   else if (!std::strcmp(test, "threads")) concurrentReaders();
   else assert(false);
   std::printf("native battery %s: PASS\n", test);
 }
+
+bool halStoragePrepareForSleep() { return true; }
+void halStorageMediaUnavailable() {}

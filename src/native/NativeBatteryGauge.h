@@ -20,5 +20,10 @@ void nativeBatteryTick();
 // Returns false and clears out before the first good sample, after a read
 // failure, or once the last sample is 15 seconds old. Zero percent is valid
 // only when this returns true. The generation-qualified lease stays owned by
-// the tick for this boot; X4 sleep is not implemented by this consumer.
+// the tick until checked owner-task sleep suspension.
 bool nativeBatteryReadSnapshot(NativeBatterySnapshot* out);
+
+// Owner-task lifecycle. Failed release retains the exact revoked grant; resume
+// must finish its cleanup before a fresh sample generation can be acquired.
+bool nativeBatterySuspend();
+bool nativeBatteryResume();

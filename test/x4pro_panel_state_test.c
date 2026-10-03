@@ -16,6 +16,9 @@ uint8_t x4_fake_uc_stage;
 uint32_t x4_fake_uc_cmd13;
 uint32_t x4_fake_uc_cmd10;
 uint32_t x4_fake_uc_pon_early;
+uint32_t x4_fake_hold_mask, x4_fake_poweroffs, x4_fake_deep_sleeps;
+bool x4_fake_poweroff_stuck, x4_fake_poweroff_active;
+uint8_t x4_fake_old_pixel, x4_fake_new_pixel, x4_fake_window[9], x4_fake_registers[256][4];
 uint32_t x4_fake_output_mask;
 uint32_t x4_fake_level_before_config;
 int x4_test_probe_mode = 4;
@@ -56,19 +59,37 @@ int main(void) {
     const risc_display_output_api_v1 *api = driver->capability;
     risc_display_surface_v1 surface = {0};
     expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "acquire");
+    expect(!driver->quiesce(), "held frame blocks quiescence");
     risc_display_present_token_v1 token = 0;
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit");
     expect(!api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "locked while queued");
+    expect(!driver->quiesce(), "queued presentation blocks quiescence");
     risc_display_present_status_v1 status = {0};
     expect(api->wait_present(api->context, token, 0, &status), "zero poll");
     expect(status.state == RISC_DISPLAY_PRESENT_QUEUED, "zero does not start");
     uint32_t refreshes = x4_fake_refresh_count;
     x4_fake_busy = 1;
-    expect(api->wait_present(api->context, token, 40, &status), "success wait");
+    expect(api->wait_present(api->context, token, 2000, &status), "success wait");
     expect(status.state == RISC_DISPLAY_PRESENT_COMPLETE, "complete");
+    expect(x4_fake_registers[0x21][0] == 0x40 && x4_fake_registers[0x3C][0] == 0xC0 &&
+           x4_fake_registers[0x22][0] == 0xF7, "SSD full update control and border commands");
     expect(x4_fake_cmd24 == 1 && x4_fake_cmd26 == 1, "full refresh writes both RAM planes");
-    expect(api->wait_present(api->context, token, 40, &status), "repeat");
+    expect(api->wait_present(api->context, token, 2000, &status), "repeat");
     expect(status.state == RISC_DISPLAY_PRESENT_COMPLETE && x4_fake_refresh_count == refreshes + 1, "no retransmit");
+    const risc_display_output_api_v1_history *ssd_history = risc_display_output_history(api);
+    expect(ssd_history && api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "SSD diff acquire");
+    memset(surface.pixels, 0x0F, surface.size_bytes);
+    expect(ssd_history->seed_previous(api->context, surface.frame), "SSD seed previous");
+    memset(surface.pixels, 0xF0, surface.size_bytes);
+    const risc_display_rect_v1 ssd_damage = {16,20,8,4};
+    expect(api->submit(api->context, surface.frame, &ssd_damage, 1, 0, &token), "SSD diff submit");
+    x4_fake_busy = 1; x4_fake_refresh_count = 0; // Model the next activation's BUSY edge.
+    expect(api->wait_present(api->context, token, 2000, &status) && status.state == RISC_DISPLAY_PRESENT_COMPLETE, "SSD diff complete");
+    expect(x4_fake_old_pixel == 0xF0 && x4_fake_new_pixel == 0x0F, "SSD reconstructed old/new plane bytes");
+    expect(x4_fake_registers[0x21][0] == 0x00 && x4_fake_registers[0x3C][0] == 0x80 &&
+           x4_fake_registers[0x22][0] == 0xFC, "SSD differential waveform and parked border");
+    expect(x4_fake_registers[0x44][0] == 16 && x4_fake_registers[0x44][2] == 23 &&
+           x4_fake_registers[0x45][0] == (459u & 255u) && x4_fake_registers[0x45][2] == (456u & 255u), "SSD clipped window uses descending gate coordinates");
     x4_fake_busy = 0;
     expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "reacquire");
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit missing busy");
@@ -79,7 +100,7 @@ int main(void) {
     x4_fake_refresh_count = 0;
     expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "acquire stuck");
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "submit stuck");
-    expect(api->wait_present(api->context, token, 5, &status), "stuck wait");
+    expect(api->wait_present(api->context, token, 500, &status), "stuck wait");
     expect(status.state == RISC_DISPLAY_PRESENT_FAILED, "stuck busy fails");
     expect(!driver->quiesce(), "busy panel remains pinned after timeout");
     char detail[160];
@@ -137,9 +158,38 @@ int main(void) {
     expect(api->submit(api->context, surface.frame, 0, 0, 0, &token), "uc submit");
     expect(api->wait_present(api->context, token, 20000, &status), "uc wait");
     expect(status.state == RISC_DISPLAY_PRESENT_COMPLETE, "uc complete");
+    expect(x4_fake_registers[0x50][0] == 0x97 && x4_fake_registers[0xE5][0] == 0x1E &&
+           x4_fake_registers[0x00][0] == 0x17 && x4_fake_registers[0x00][1] == 0x4D, "UC full waveform and post-PON PSR bytes");
     expect(x4_fake_uc_cmd13 == 1 && x4_fake_uc_cmd10 == 1, "uc new and old planes");
     expect(x4_fake_uc_pon_early == 0, "uc PON settled before PSR");
+    const risc_display_output_api_v1_history *history = risc_display_output_history(api);
+    expect(history != 0, "history extension");
+    expect(api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "diff acquire");
+    memset(surface.pixels, 0x0F, surface.size_bytes);
+    expect(!history->seed_previous(api->context, surface.frame + 1), "foreign history frame refused");
+    expect(history->seed_previous(api->context, surface.frame), "copy reconstructed prior minute");
+    memset(surface.pixels, 0xF0, surface.size_bytes);
+    const risc_display_rect_v1 damage = {16, 20, 8, 4};
+    const risc_display_rect_v1 bad_damage = {799, 479, 8, 4};
+    const risc_display_present_options_v1 opts = {RISC_DISPLAY_PRESENT_QUALITY, RISC_DISPLAY_QUEUE_FIFO, 0};
+    expect(!api->submit(api->context, surface.frame, &bad_damage, 1, &opts, &token), "out-of-bounds damage refused");
+    expect(api->submit(api->context, surface.frame, &damage, 1, &opts, &token), "diff submit");
+    expect(api->wait_present(api->context, token, 20000, &status) && status.state == RISC_DISPLAY_PRESENT_COMPLETE, "diff complete");
+    expect(x4_fake_old_pixel == 0xF0 && x4_fake_new_pixel == 0x0F, "old and current visible planes are distinct and exact");
+    expect(x4_fake_registers[0x50][0] == 0xD7 && x4_fake_registers[0xE5][0] == 0x5A, "UC clipped differential waveform bytes");
+    const uint8_t window[] = {0,16,0,23,0,140,0,143,1};
+    expect(!memcmp(window, x4_fake_window, sizeof(window)), "byte aligned clipped window includes UC gate offset");
+    x4_fake_poweroff_stuck = true;
+    expect(!driver->quiesce(), "POF busy timeout retains provider");
+    expect(x4_fake_poweroffs == 1 && x4_fake_deep_sleeps == 0, "no DSLP or repeated POF before completion");
+    expect(!driver->quiesce() && x4_fake_poweroffs == 1, "retry only observes outstanding POF");
+    expect(!api->acquire(api->context, RISC_DISPLAY_FORMAT_MONO1, &surface), "sleep transition fences new frames");
+    x4_fake_poweroff_stuck = false;
     expect(driver->quiesce(), "uc idle can quiesce");
+    expect(x4_fake_poweroffs == 1 && x4_fake_deep_sleeps == 1 && (x4_fake_hold_mask & (1u<<14)), "one DSLP and RESET hold after power off");
+    expect(driver->quiesce() && x4_fake_deep_sleeps == 1, "quiescence idempotent");
+    driver->stop();
+
     x4_test_probe_mode = 2;
     expect(!driver->start(&dep, 1), "ambiguous rejected");
     expect(diag->last_error(detail, sizeof(detail)) && strstr(detail, "ambiguous-controller"), "ambiguous reason");

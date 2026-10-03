@@ -43,10 +43,14 @@ static inline void x4pro_reg_write(uint32_t address, uint32_t value) {
 static inline uint32_t x4pro_reg_read(uint32_t address) {
     return *(volatile uint32_t *)address;
 }
-static inline void x4pro_epd_reset_unhold(void) {
-    x4pro_reg_write(X4PRO_EPD_RST_HOLD_REG,
-                    x4pro_reg_read(X4PRO_EPD_RST_HOLD_REG) & ~(1u << 14));
+/* RTC GPIO 0..21 use their corresponding PAD_HOLD bit in ESP32-S3 IDF4.4.7.
+ * Called only by each owning ELF during serialized lifecycle transitions. */
+static inline void x4pro_pin_hold(uint32_t pin, bool hold) {
+    if (pin > 21u) return;
+    const uint32_t old = x4pro_reg_read(X4PRO_EPD_RST_HOLD_REG);
+    x4pro_reg_write(X4PRO_EPD_RST_HOLD_REG, hold ? old | (1u << pin) : old & ~(1u << pin));
 }
+static inline void x4pro_epd_reset_unhold(void) { x4pro_pin_hold(14u, false); }
 static inline void x4pro_pin_prepare(uint32_t pin, bool pullup) {
     if (!x4pro_pin_valid(pin) || pin == 19u || pin == 20u) return;
     uint32_t mux = x4pro_reg_read(x4pro_iomux_reg(pin));

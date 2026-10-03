@@ -27,3 +27,6 @@ int main(){
  assert(!BoardX4Pro::readBatteryState(&state));
  assert(batteryReads==1 && !state.gaugeReadOk);
 }
+
+bool halStoragePrepareForSleep() { return true; }
+void halStorageMediaUnavailable() {}

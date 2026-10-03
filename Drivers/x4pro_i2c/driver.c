@@ -23,7 +23,7 @@ static uint64_t next_token = 1;
 static bool started, unsafe_bus;
 static x4_cpu_mutex operation_mutex;
 static x4_cpu_task operation_owner;
-static bool mutex_poisoned, quiesced;
+static bool mutex_poisoned, admission_closed, quiesced;
 static char last_error_text[64];
 static uint64_t began_ms, last_ms, deadline_ms, yielded_ms;
 static unsigned bytes_since_yield;
@@ -31,15 +31,16 @@ static unsigned bytes_since_yield;
 static bool valid_task(void) { return !xPortInIsrContext() && xTaskGetCurrentTaskHandle() != 0; }
 static bool enter(void) {
     if (!valid_task() || !operation_mutex || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
-        __atomic_load_n(&quiesced, __ATOMIC_ACQUIRE)) return false;
+        __atomic_load_n(&admission_closed, __ATOMIC_ACQUIRE)) return false;
     /* A normal, nonrecursive FreeRTOS mutex. Zero ticks means no waiting,
      * retry/spin or scheduler callback on contention (including same task). */
     if (xQueueSemaphoreTake(operation_mutex, 0) != 1) return false;
     if (__atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
-        __atomic_load_n(&quiesced, __ATOMIC_ACQUIRE)) {
+        __atomic_load_n(&admission_closed, __ATOMIC_ACQUIRE)) {
         /* A failed ownership transition may have raced this take. Never enter
          * device state; releasing this temporary take cannot clear poison. */
-        (void)xQueueGenericSend(operation_mutex, 0, 0, 0);
+        if (xQueueGenericSend(operation_mutex, 0, 0, 0) != 1)
+            __atomic_store_n(&mutex_poisoned, true, __ATOMIC_RELEASE);
         return false;
     }
     operation_owner = xTaskGetCurrentTaskHandle();
@@ -237,8 +238,10 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
         if (!operation_mutex) return false; // No pins, claims or running state.
     }
     /* Only the serialized initial/restart callback may reopen admission. */
-    if (__atomic_load_n(&quiesced, __ATOMIC_ACQUIRE))
+    if (__atomic_load_n(&quiesced, __ATOMIC_ACQUIRE)) {
         __atomic_store_n(&quiesced, false, __ATOMIC_RELEASE);
+        __atomic_store_n(&admission_closed, false, __ATOMIC_RELEASE);
+    }
     if (!enter()) return false;
     bool okay = false;
     if (clock_api || started || unsafe_bus || !dependencies || count != 1u) goto done;
@@ -265,9 +268,13 @@ static bool quiesce(void) {
     for (size_t i = 0; i < MAX_CLAIMS; ++i) if (tokens[i]) goto done;
     if (clock_api && !stop_bus()) goto done;
     started = false; clock_api = 0; okay = true;
-    /* Fence new entries before giving the mutex. Failed give poisons the
-     * generation, so an accepted latch can never hide failed ownership. */
+    /* Close admission before give, but publish accepted quiescence only
+     * afterwards. A contender in the final-give window must never see an
+     * accepted latch and delete a still-owned mutex. */
+    __atomic_store_n(&admission_closed, true, __ATOMIC_RELEASE);
+    if (!leave()) return false;
     __atomic_store_n(&quiesced, true, __ATOMIC_RELEASE);
+    return true;
 done:
     return leave() && okay;
 }

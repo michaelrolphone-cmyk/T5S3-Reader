@@ -24,6 +24,7 @@ static bool block_first, blocked, resume_first, reenter, in_reentry;
 static _Thread_local unsigned caller;
 static uint64_t battery_claim, touch_claim;
 static bool first_result;
+static bool block_give, give_blocked, allow_give, quiesce_result;
 static bool fail_allocation, fail_give, isr_context, no_task;
 static unsigned creates, deletes, gives, task_shift;
 static bool shift_during_io;
@@ -42,6 +43,12 @@ int xQueueSemaphoreTake(struct QueueDefinition *queue, uint32_t ticks) {
 int xQueueGenericSend(struct QueueDefinition *queue, const void *item, uint32_t ticks, int position) {
     assert(queue == &cpu_mutex && queue->alive && !item && !ticks && !position);
     ++gives;
+    if (block_give) {
+        pthread_mutex_lock(&mutex);
+        give_blocked = true; pthread_cond_broadcast(&condition);
+        while (!allow_give) pthread_cond_wait(&condition, &mutex);
+        pthread_mutex_unlock(&mutex);
+    }
     if (fail_give) return 0;
     return pthread_mutex_unlock(&queue->lock) == 0;
 }
@@ -136,6 +143,9 @@ static void *battery_thread(void *unused) {
     first_result = bus->transact(0, battery_claim, &reg, 1, &value, 1, 20);
     assert(value == 53); return 0;
 }
+static void *quiesce_thread(void *unused) {
+    (void)unused; caller = 1; quiesce_result = driver->quiesce(); return 0;
+}
 int main(int argc, char **argv) {
     (void)argv;
     driver = t5_driver_get(2); assert(driver && !t5_driver_get(1));
@@ -227,7 +237,16 @@ int main(int argc, char **argv) {
     assert(!bus->release_device(0, battery_claim));
     prepare_read(2, &expected, 1);
     assert(bus->transact(0, touch_claim, touch_reg, 2, &value, 1, 20));
-    assert(bus->release_device(0, touch_claim)); assert(driver->quiesce());
+    assert(bus->release_device(0, touch_claim));
+    block_give = true; give_blocked = allow_give = false;
+    assert(!pthread_create(&thread, 0, quiesce_thread, 0));
+    pthread_mutex_lock(&mutex);
+    while (!give_blocked) pthread_cond_wait(&condition, &mutex);
+    pthread_mutex_unlock(&mutex);
+    assert(!driver->quiesce()); driver->stop(); assert(cpu_mutex.alive);
+    pthread_mutex_lock(&mutex); allow_give = true; pthread_cond_broadcast(&condition); pthread_mutex_unlock(&mutex);
+    pthread_join(thread, 0); block_give = false;
+    assert(quiesce_result && driver->quiesce());
     const unsigned accepted_gives = gives, accepted_io = io_count, accepted_deletes = deletes;
     fail_give = true; driver->stop(); fail_give = false;
     assert(gives == accepted_gives && io_count == accepted_io && deletes == accepted_deletes + 1);
