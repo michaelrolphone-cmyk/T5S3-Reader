@@ -41,6 +41,39 @@ class RuntimeAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(RuntimeError,'provenance'):
                 adapter.unpack(self.archive(),{'id':123,'run_attempt':1},'b'*40,Path(root)/'artifact')
+    def test_status_network_failure_preserves_hardware_evidence(self):
+        class Offline:
+            def call(self,*args):raise OSError('network unavailable')
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'result.json';record={'source_sha':'a'*40,'passed':True,'device':{'heartbeat_restored':True}}
+            with self.assertRaises(OSError):adapter.publish(Offline(),path,record,'success','verified')
+            self.assertTrue(json.loads(path.read_text())['passed'])
+
+    def test_paused_recovery_never_accesses_device(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(adapter.device,'transaction') as transaction:
+            root=Path(tmp);active=root/'runtime-cam/active.json';active.parent.mkdir();active.write_text('{}')
+            pause=root/'pause';pause.touch()
+            reason=adapter.recover_active({'enabled':True},{'pause':str(pause)},root)
+            self.assertIn('paused',reason);transaction.assert_not_called();self.assertTrue(active.exists())
+
+    def test_interrupted_old_head_recovered_independently_of_current_pr(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(adapter.device,'transaction',return_value={'result':'pass','heartbeat_restored':True,'protected_equal':True}),patch.object(adapter.controller,'private_json',return_value={}):
+            root=Path(tmp);folder=root/'runtime-cam'/('a'*40);folder.mkdir(parents=True)
+            active=folder.parent/'active.json';active.write_text(json.dumps({'target':'cam-nosd','source_sha':'a'*40}))
+            job={'pause':str(root/'absent'),'binding':'binding','heartbeat':'heartbeat','heartbeat_sha256':'c'*64}
+            self.assertIsNone(adapter.recover_active({'enabled':True},job,root))
+            self.assertFalse(active.exists())
+            record=json.loads((folder/'result.json').read_text())
+            self.assertTrue(record['recovery_complete']);self.assertFalse(record['passed'])
+
+    def test_failed_recovery_preserves_active_record(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(adapter.device,'transaction',side_effect=RuntimeError('USB absent')),patch.object(adapter.controller,'private_json',return_value={}):
+            root=Path(tmp);active=root/'runtime-cam/active.json';active.parent.mkdir()
+            active.write_text(json.dumps({'target':'cam-nosd','source_sha':'a'*40}))
+            job={'pause':str(root/'absent'),'binding':'binding','heartbeat':'heartbeat','heartbeat_sha256':'c'*64}
+            self.assertIn('USB absent',adapter.recover_active({'enabled':True},job,root))
+            self.assertTrue(active.exists())
+
     def test_disabled_publishes_failure_without_device_access(self):
         repo={'id':adapter.REPOSITORY_ID,'full_name':adapter.REPOSITORY}
         pr={'number':1,'state':'open','user':{'login':adapter.github.OWNER},'head':{'sha':'a'*40,'repo':repo},'base':{'repo':repo}}

@@ -2,6 +2,7 @@
 import io
 import json
 import re
+import time
 import zipfile
 from pathlib import Path
 import heartbeat_policy as device
@@ -62,12 +63,37 @@ def unpack(raw, run, sha, folder, target="cam-nosd"):
 
 def publish(gh, path, record, state, reason):
     reason = reason[:140]
+    # Preserve completed hardware evidence even when GitHub is unreachable.
+    device.save(path,record)
     if record.get('status_state') != state or record.get('status_description') != reason:
         response = gh.call('/statuses/' + record['source_sha'], 'POST',
                            {'context':CONTEXT,'state':state,'description':reason})
         record.update(status_id=response['id'],status_state=state,status_description=reason)
     device.save(path,record)
 
+
+def recover_active(config, job, root):
+    """Recover an interrupted transaction even if its PR moved to a new head."""
+    active = root/'runtime-cam'/'active.json'
+    if not active.exists(): return None
+    if not config['enabled']: return config.get('unavailable_reason','CAM execution disabled')
+    if Path(job['pause']).exists(): return 'CAM execution paused; interrupted cleanup remains queued'
+    prior = json.loads(active.read_text())
+    device.require(prior.get('target') == 'cam-nosd' and github.SHA.fullmatch(prior.get('source_sha','')), 'Active CAM journal invalid')
+    folder = root/'runtime-cam'/prior['source_sha']
+    try:
+        binding = controller.private_json(Path(job['binding']))
+        recovery = device.transaction('cam-nosd',binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/('recovery-'+str(time.time_ns())))
+    except Exception as error:
+        return 'Interrupted CAM cleanup failed: '+str(error)
+    if not (recovery.get('result') == 'pass' and recovery.get('heartbeat_restored') and recovery.get('protected_equal')):
+        return 'Interrupted CAM cleanup failed: '+str(recovery.get('cleanup_error') or recovery.get('error') or 'incomplete evidence')
+    path = folder/'result.json'
+    record = json.loads(path.read_text()) if path.exists() else {'schema':1,'source_sha':prior['source_sha'],'repository':REPOSITORY,'attempted':True,'passed':False}
+    record.update(recovery=recovery,recovery_complete=True)
+    device.save(path,record)
+    active.unlink()
+    return None
 
 def scan(token, config, jobs, root):
     device.require(type(config.get('enabled')) is bool, 'Runtime enabled flag must be boolean')
@@ -80,6 +106,7 @@ def scan(token, config, jobs, root):
     eligible = [p for p in prs if p['user']['login'] == github.OWNER
                 and (p['head'].get('repo') or {}).get('full_name') == REPOSITORY]
     device.require(len(eligible) <= github.MAX_OWNER_PRS, 'Runtime PR count exceeds bound')
+    recovery_error = recover_active(config,job,root)
     outcomes = []
     for pr in eligible:
         sha = github.eligible_source(gh,pr['number'])
@@ -88,9 +115,8 @@ def scan(token, config, jobs, root):
         record = json.loads(path.read_text()) if path.exists() else {'schema':1,'source_sha':sha,'pr':pr['number'],'repository':REPOSITORY}
         device.require(record['source_sha'] == sha and record['repository'] == REPOSITORY, 'Runtime journal identity mismatch')
         if record.get('attempted'):
-            if config['enabled'] and not (record.get('device') or {}).get('heartbeat_restored') and not record.get('recovery_complete'):
+            if not recovery_error and config['enabled'] and not Path(job['pause']).exists() and not (record.get('device') or {}).get('heartbeat_restored') and not record.get('recovery_complete'):
                 binding = controller.private_json(Path(job['binding']))
-                import time
                 try:
                     recovery = device.transaction('cam-nosd',binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/('recovery-'+str(time.time_ns())))
                     record.update(recovery=recovery,recovery_complete=recovery.get('heartbeat_restored') is True)
@@ -102,6 +128,7 @@ def scan(token, config, jobs, root):
             outcomes.append({'sha':sha,'state':state});continue
         try:
             device.require(config['enabled'], config.get('unavailable_reason','CAM execution disabled'))
+            device.require(not recovery_error,recovery_error)
             device.require(not Path(job['pause']).exists(), 'CAM execution paused')
             found = controller._candidate(gh,pr['number'],sha,'cam-nosd','cam-hardware-build.yml','cam-app-candidate-'+sha)
             device.require(found is not None,'Exact-head CAM artifact unavailable or build incomplete')
@@ -118,9 +145,13 @@ def scan(token, config, jobs, root):
             device.save(path,record)
             publish(gh,path,record,'pending','Exact-head CAM candidate accepted; bounded hardware test running')
             binding = controller.private_json(Path(job['binding']))
+            active = root/'runtime-cam'/'active.json'
+            device.save(active,{'schema':1,'target':'cam-nosd','source_sha':sha})
             result = device.transaction('cam-nosd',binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/'device',
                                         dest/'candidate.bin',manifest['firmware']['sha256'],candidate_profile='runtime-heartbeat')
             record['device'] = result
+            device.save(path,record)
+            if result.get('heartbeat_restored') and result.get('protected_equal'): active.unlink()
             record['passed'] = (result['result'] == 'pass' and result.get('candidate_readback_equal') is True
                                 and result.get('protected_equal') is True and result.get('heartbeat_restored') is True
                                 and result.get('heartbeat_readback_equal') is True and bool(result.get('candidate_checks')))
