@@ -1,14 +1,28 @@
 # Xteink X4 Pro integration
 
+## External-driver correction (in progress)
+
+The earlier `dcaa6ed5` device boot used firmware-embedded ELF arrays. Its successful boot and subsequent Settings/book observations are historical evidence of that route, **not acceptance of external driver loading**. The arrays and generator are now removed. The first software milestone reads independently provisioned ordinary packages from `/bootfs`, verifies package payloads/import declarations, and registers them with the normal installed-provider graph. X4 touch/navigation use normal graph leases. No embedded fallback exists.
+
+The minimal ESP32 flash module-store port mounts the existing `spiffs` partition as LittleFS with `read_only=true`, formatting disabled and growth disabled. POSIX reads are bounded to one live descriptor, JSON 64 KiB, relative paths 192 bytes, ELF 8 MiB, 15 seconds per file and 45 seconds checked between packages. The board/profile files select versioned packages; package hashes are integrity checks, not independent privilege grants. Existing executor/import/relocation checks remain in force. Reader still enters its shared firmware Home; the `default_app` field is retained for the common boot-store contract but is not launched by this Reader composition.
+
+`stage_x4pro_packages.py` creates independent ordinary `.rte.zip` packages and a boot-store directory. Building a separate filesystem image does not authorize writing it. The existing region is `0xc90000`, size `0x360000`; there is no partition-layout change or automatic format. Provisioning replaces the contents of that entire region and needs separate review of prior contents and exact paired hashes. Current CI app-only deployment cannot provision this store.
+
+Parity is not complete: materially different T5 display and SPI-SD implementations still need real ELF extraction behind `display.output@1` and `storage.volume@1`; a firmware chip proxy is not that extraction. Frontlight uses `display.frontlight@1`. Existing external T5 I2C/touch/navigation stay external; shared UI and loader logic remain shared. Battery integration remains pending.
+
+Follow-up versions: firmware `1.3.77`, Springboard `1.3.1 → 1.3.2`, X4 SD `0.2.0 → 0.2.1`. Frontlight Settings now reflects a bound provider and restores the saved preference (zero off, nonzero on; current X4 provider is on/off, not PWM). Springboard requests fast display takeover only when a suitable provider and frame geometry exist; otherwise it uses static ordinary UI pages.
+
+The real SD provider/HAL wire-model profile for a 256 KiB read performs 517 sector reads. The prior code makes 4,653 waits; the revised 4 KiB-or-4 ms cooperation makes 65. A deliberately coarse 10 ms scheduling model gives 46,594 versus 714 modeled milliseconds; these are not measured device timings. The current target SDK uses 1 kHz ticks. The coarse baseline later exceeded a recursive-removal budget; the revised full four-case storage suite passes. This X4 overhead is not established as the shared post-U1 regression root cause. U1 merge boundary is `f7f006f7` (PR96), first parent `ca66db29`. Shared launch phase logs and transaction-only recovery reduce/identify repeated metadata work without removing selected-app admission.
+
 ## Shared Reader software
 
 X4 uses the same `HomeActivity`, `RecentBooksActivity`, `SettingsActivity`, native Springboard/app launcher and Reader dispatch as T5S3. There is no X4-specific Home selection branch or TXT application. Recent books opens the shared recents screen; Apps enters the normal verified Springboard resolution/launch flow; Settings enters the normal Settings workflow, including its required-app install/retry UI. Pinned apps and OPDS use the same Home logic. This describes connected software paths, **not successful app installation or execution on X4 media**.
 
-`X4DiagnosticSetup` remains the board composition entry point. It attaches the embedded display, navigation, touch and storage providers, initializes the shared power-lock service, and calls the shared display/font and Reader-state setup. It loads settings, language, theme, recents and app state through the normal storage facade. It no longer selects a fixed theme, registers a reduced font set, or scans a TXT file during boot. The provider display remains portrait 480×800 over the panel's 800×480 physical raster. A bounded startup present remains distinct from the first Home present.
+`X4DiagnosticSetup` remains the board composition entry point. It binds independently installed display, navigation, touch and storage providers, initializes the shared power-lock service, and calls the shared display/font and Reader-state setup. It loads settings, language, theme, recents and app state through the normal storage facade. It no longer selects a fixed theme, registers a reduced font set, or scans a TXT file during boot. The provider display remains portrait 480×800 over the panel's 800×480 physical raster. A bounded startup present remains distinct from the first Home present.
 
 Home and native apps call the same `MappedInputManager::update`. On X4 that consumes the boot-owned navigation/touch providers without polling the legacy GPIO facade or applying the external-controller preference to physical buttons. `ActivityManager` runs the ordinary activity stack and shared render/power lock. X4 still skips the T5S3 startup animation and hardware setup. `HalSystem::begin()` and legacy SdFat/SPI initialization remain outside the X4 boot path. The MONO1 Home-card and absent battery-indicator adaptations remain board-specific pending capability abstraction.
 
-Firmware version: `1.3.63` → `1.3.74` for the cumulative shared Home/filesystem correction. The separate CI work uses `1.3.70`, PR372 uses `1.3.72`, and consolidation reserves `1.3.73`; integration must preserve monotonic versions. Provider `x4pro-sd` changes from `0.1.8` to `0.2.0`. No app package changed. JPEGDEC's existing abbreviated pin is expanded to the same full commit `86282979224c8a32fd51e091ed5a35b0c699a52b` for clean dependency fetches.
+The original shared Home/filesystem correction used firmware `1.3.74` and SD provider `0.2.0`; the active external-driver milestone versions are listed above. JPEGDEC's existing abbreviated pin is expanded to the same full commit `86282979224c8a32fd51e091ed5a35b0c699a52b` for clean dependency fetches.
 
 ## Provider filesystem and shared storage
 
@@ -24,7 +38,7 @@ Host tests compile the actual provider, FatFs and HAL against an in-memory nativ
 
 ## Remaining device limitations
 
-Frontlight stays off at startup. Battery/RTC integration, sleep/wake and shutdown policy remain incomplete. No hardware validation, device access, flashing, resets, serial probes or hardware tests were performed for this software change. Hardware qualification is intentionally deferred to the separate CI/hardware task.
+Frontlight restores the saved level at startup (on/off only). Battery/RTC integration, sleep/wake and shutdown policy remain incomplete. No hardware validation has been performed for the external-file milestone. The earlier embedded route passed automated boot and some owner interactions, but those do not qualify this corrected route. Device ownership remains with the separate CI/hardware task.
 
 ## Provider and board facts
 

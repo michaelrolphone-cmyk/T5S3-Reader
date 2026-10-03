@@ -18,7 +18,8 @@ uint64_t card_time;
 const risc_driver_v2 *t5_driver_get(uint32_t);
 }
 static uint64_t now(void*) { return card_time; }
-static void sleep(void*, uint32_t ms) { card_time += ms; }
+static unsigned sleeps;
+static void sleep(void*, uint32_t ms) { ++sleeps; card_time += ((ms + 9u) / 10u) * 10u; }
 static void put16(uint8_t *p, uint16_t n) { p[0] = n; p[1] = n >> 8; }
 static void put32(uint8_t *p, uint32_t n) { for (int i=0;i<4;++i) p[i] = n >> (i*8); }
 static void format(bool partitioned) {
@@ -67,6 +68,22 @@ int main(int argc, char **argv) {
     file.flush();assert(!file.getError());assert(file.fileSize64()==262144);
     assert(file.seek64(180003));uint8_t bytes[33];assert(file.read(bytes,sizeof(bytes))==sizeof(bytes));assert(bytes[0]==(180003%256));
     assert(file.close());const auto closed=Storage.generation();assert(closed.quiescent);
+    // Deterministic scheduler-cost profile of the real provider/HAL path.
+    // Model a 10 ms OS tick. The former per-64-byte sleeps exceed 4600
+    // waits for this 256 KiB read alone; batching must retain cooperation.
+    auto throughput = Storage.open("/Apps/springboard/springboard.elf"); assert(throughput);
+    const unsigned beforeSleeps = sleeps, beforeReads = card_reads;
+    const uint64_t beforeTime = card_time;
+    for (unsigned i=0; i<64; ++i) {
+        assert(throughput.read(block.data(),block.size()) == (int)block.size());
+        for(size_t j=0;j<block.size();++j) assert(block[j] == (uint8_t)j);
+    }
+    assert(throughput.close());
+    const unsigned waits = sleeps-beforeSleeps;
+    std::printf("PROFILE 256KiB: sectors=%u waits=%u modeled_ms=%llu\n",
+                card_reads-beforeReads, waits, (unsigned long long)(card_time-beforeTime));
+    assert(waits > 0 && waits < 512); // bounded real yields, no tiny-read sleep tax
+
     assert(Storage.writeFile("/Apps/springboard/springboard.json",String(R"({"file_name":"springboard.elf","display_name":"Apps","version":"1.0.0","min_firmware_version":"1.3.0","icon":"solid:f00a"})")));
 #ifdef TEST_APP_PARSER
     t5_app_manifest_t parsed{};

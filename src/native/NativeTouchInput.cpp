@@ -387,7 +387,7 @@ bool stopWorker() {
 
 bool activate() {
   if (api) return startWorker();
-  if (!enabled || quarantined || !Storage.ready()) return false;
+  if (!enabled || quarantined) return false; // Graph may use the read-only boot store.
   const uint32_t now = millis();
   if (lastAttemptMs && static_cast<uint32_t>(now - lastAttemptMs) < kRetryMs) return false;
   lastAttemptMs = now;

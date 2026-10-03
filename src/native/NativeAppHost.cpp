@@ -1136,6 +1136,7 @@ bool appCatalogDownloadLastError(char* out, size_t capacity) {
 }
 
 bool installedRefresh() {
+  const uint32_t inventoryBegan = millis();
   auto* s = current();
   if (!s) return false;
   s->installed.clear();
@@ -1171,6 +1172,8 @@ bool installedRefresh() {
     s->installed.push_back(manifest);
   }
   dir.close();
+  LOG_INF("APP", "Inventory count=%u ms=%lu", (unsigned)s->installed.size(),
+          (unsigned long)(millis()-inventoryBegan));
   std::sort(s->installed.begin(), s->installed.end(), [](const t5_app_manifest_t& a, const t5_app_manifest_t& b) {
     return std::strcmp(a.display_name, b.display_name) < 0;
   });
@@ -1409,6 +1412,12 @@ static bool validateLooseAdmissionSidecar(const std::string& json,const std::str
 }
 
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
+  const uint32_t launchBegan = millis();
+  const auto launchStage = [&](const char* stage) {
+    LOG_INF("APP", "Launch stage=%s elapsed_ms=%lu path=%s", stage,
+            (unsigned long)(millis()-launchBegan), path ? path : "null");
+  };
+  launchStage("begin");
   lastLaunchError.clear();
   if (risc_runtime_retention_required()) {
     lastLaunchError = "Storage unavailable; resources retained. Manual reboot required.";
@@ -1449,6 +1458,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   }
   nativeTouchDiscardGestures();
   StartupScreen::app(renderer, displayName.c_str(), icon);
+  launchStage("loading-screen");
   // Keep the render lock through launch so an outstanding activity repaint
   // cannot overwrite this frame during package recovery or dependency loading.
   // Nested /Apps/<id>/<artifact> entries are independently verified against
@@ -1528,6 +1538,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   const bool admissionReady = resourcesReady && (canonicalRoot.empty()
       ? RuntimePackages::beginLooseAppAdmission(path,validateLooseAdmissionSidecar)
       : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
+  launchStage(admissionReady ? "admitted" : "admission-failed");
   const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
   if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
@@ -1577,6 +1588,10 @@ bool consumeNativeAppReturn() { const bool value = returned; returned = false; r
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
   if (resume && homeRequested) return false;
+  const uint32_t appsBegan = millis();
+  // Show feedback before recovery and path resolution, not after all SD work.
+  { RenderLock lock; StartupScreen::app(renderer, "Apps", "solid:f00a"); }
+  LOG_INF("APP", "Apps loading frame ms=%lu", (unsigned long)(millis()-appsBegan));
   auto showError = [&](const char* message) {
     RenderLock lock;
     renderer.clearScreen();
@@ -1608,6 +1623,7 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       showError("Install Springboard or copy springboard.elf and .json to /Apps.");
       return false;
     }
+    LOG_INF("APP", "Apps resolved ms=%lu", (unsigned long)(millis()-appsBegan));
     const auto result = runNativeApp(springboard.c_str(), renderer, input);
     if (result != ESP_OK) {
       showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());

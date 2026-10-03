@@ -39,6 +39,9 @@ RuntimeProviders::GraphV2* graph = nullptr;
 char pinned[kMaxProviders][96]{};
 size_t pinCount = 0;
 char loadError[160]{};
+struct BootstrapSelection { char id[64]; char capability[64]; uint32_t api; };
+BootstrapSelection bootstrap[16]{};
+size_t bootstrapCount=0;
 
 struct Root {
     const char* path;
@@ -406,6 +409,23 @@ void undoPins() {
 }
 } // namespace
 
+bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate) {
+    if (bootstrapCount==16 || !candidate.driverId || !candidate.provides ||
+        std::strlen(candidate.driverId)>=64 || std::strlen(candidate.provides)>=64) return false;
+    for(size_t i=0;i<bootstrapCount;++i)
+        if(!std::strcmp(bootstrap[i].id,candidate.driverId) ||
+           !std::strcmp(bootstrap[i].capability,candidate.provides)) return false;
+    if(!graph) {
+        graph=new(std::nothrow) RuntimeProviders::GraphV2(nativeProviderStreamHost());
+        if(graph) nativeProviderSetOwnerPoll(poll);
+    }
+    if(!graph || !DeviceProviderExecutorV2::registerManagerValidated(*graph,candidate)) return false;
+    auto& selected=bootstrap[bootstrapCount++];
+    std::strcpy(selected.id,candidate.driverId);std::strcpy(selected.capability,candidate.provides);
+    selected.api=candidate.providesApi;
+    return true;
+}
+
 bool prepare() {
     if (RuntimePackages::cdcMigrationPendingOnSd()) {
         RuntimePackages::ScopedPackageMutation mutation;
@@ -562,6 +582,11 @@ bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* o
     if (out) *out = {};
     loadError[0] = 0;
     if (!out || !capability || !minimumVersion || !prepare()) return false;
+    // Board profile selections share this graph with ordinary SD providers.
+    // Never discover a second owner of an already selected boot capability.
+    for(size_t i=0;i<bootstrapCount;++i)
+        if(bootstrap[i].api>=minimumVersion && !std::strcmp(bootstrap[i].capability,capability))
+            return acquire(bootstrap[i].id,capability,bootstrap[i].api,out);
     std::unique_ptr<InstalledCapabilitySnapshot, void(*)(InstalledCapabilitySnapshot*)>
         verified(captureInstalledCapabilities(), releaseInstalledCapabilities);
     std::unique_ptr<ProviderAncestry> ancestry(new (std::nothrow) ProviderAncestry{});
@@ -582,6 +607,7 @@ bool shutdown() {
     if (!graph->shutdown()) return false;
     delete graph;
     graph = nullptr;
+    bootstrapCount=0;
     undoPins();
     return true;
 }

@@ -7,7 +7,9 @@
 #include "RiscInputNavigationV1.h"
 #include "RiscPlatformClockV1.h"
 #include "RiscStorageVolumeV1.h"
-#include "x4pro_embedded.h"
+#include "FlashModuleStore.h"
+#include "runtime/drivers/BootstrapModuleStore.h"
+#include "runtime/drivers/InstalledProviderGraph.h"
 #include "fontIds.h"
 #include "runtime/display/ProviderDisplaySurface.h"
 
@@ -43,36 +45,19 @@ extern MappedInputManager mappedInputManager;
 extern ActivityManager activityManager;
 
 namespace {
-RuntimeProviders::ModuleV2 clock_mod;
-RuntimeProviders::ModuleV2 panel_mod;
-RuntimeProviders::ModuleV2 buttons_mod;
-RuntimeProviders::ModuleV2 light_mod;
-RuntimeProviders::ModuleV2 sd_mod;
-RuntimeProviders::ModuleV2 i2c_mod;
-RuntimeProviders::ModuleV2 touch_mod;
+RuntimeInstalledProviders::Lease display_lease, light_lease, storage_lease;
 const risc_display_output_api_v1 *display_api = nullptr;
-const risc_input_navigation_api_v1 *nav_api = nullptr;
 const risc_frontlight_api_v1 *light_api = nullptr;
 uint8_t surface[48000];
 std::unique_ptr<ProviderDisplaySurface> provider_surface;
 bool ready = false;
 bool showing_home = false;
 
-void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
-    LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
-}
-bool load_one(RuntimeProviders::ModuleV2 &mod, const x4_embedded_provider &provider,
-              const risc_provider_dependency_v1 *deps, size_t count) {
-    static const char *none[] = {""};
-    const char *const *imports = provider.imports ? provider.imports : none;
-    if (!mod.loadVerifiedBytes(provider.bytes, provider.size, provider.sha256, imports,
-                               provider.import_count, provider.id, provider.capability,
-                               provider.api, deps, count)) {
-        log_fail(provider.id, mod);
-        return false;
-    }
-    LOG_INF("X4", "loaded %s %s", provider.id, provider.version);
-    return true;
+bool acquire(const char* capability, RuntimeInstalledProviders::Lease& lease) {
+    if (RuntimeInstalledProviders::acquireCapability(capability,1,&lease)) return true;
+    LOG_ERR("X4", "External capability %s unavailable: %s",capability,
+            RuntimeInstalledProviders::lastError());
+    return false;
 }
 }
 
@@ -82,50 +67,27 @@ void x4DiagnosticSetup() {
     if (psramFound()) heap_caps_malloc_extmem_enable(1024);
     RuntimeNetwork::enablePsramTlsAllocations();
     LOG_INF("X4", "diagnostic boot %s flash=16MB app0=0x10000", Board::firmwareMarker());
-    const x4_embedded_provider *clock = x4_embedded_find("platform-clock-v1");
-    const x4_embedded_provider *panel = x4_embedded_find("x4pro-panel");
-    const x4_embedded_provider *buttons = x4_embedded_find("x4pro-buttons");
-    const x4_embedded_provider *light = x4_embedded_find("x4pro-frontlight");
-    const x4_embedded_provider *sd = x4_embedded_find("x4pro-sd");
-    const x4_embedded_provider *i2c = x4_embedded_find("x4pro-i2c");
-    const x4_embedded_provider *touch = x4_embedded_find("x4pro-gt911");
-    if (!clock || !panel || !buttons || !light) {
-        LOG_ERR("X4", "embedded provider missing");
+    if (!mountFlashModuleStore() ||
+        !RuntimeInstalledProviders::loadBootstrapPackages("/bootfs",Board::id())) {
+        LOG_ERR("X4", "External boot packages unavailable or invalid; no embedded fallback");
         return;
     }
-    if (!load_one(clock_mod, *clock, nullptr, 0)) return;
-    risc_provider_dependency_v1 dep{clock->capability, 1, clock_mod.capability()};
-    if (!load_one(panel_mod, *panel, &dep, 1)) return;
-    if (!load_one(buttons_mod, *buttons, nullptr, 0)) return;
-    if (!load_one(light_mod, *light, nullptr, 0)) return;
-    if (sd && load_one(sd_mod, *sd, &dep, 1)) {
-        auto *volume = static_cast<const risc_storage_volume_api_v1 *>(sd_mod.capability());
-        if (volume && volume->api_version == RISC_STORAGE_VOLUME_API_V1 &&
-            volume->struct_size >= sizeof(*volume) && volume->ready) {
-            const bool storage_mounted = Storage.bindVolume(volume);
-            char reason[80] = "none";
-            if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
-            LOG_INF("X4", "storage.volume mounted=%d reason=%s", storage_mounted ? 1 : 0, reason);
-
-        }
-    }
-    if (i2c && touch && load_one(i2c_mod, *i2c, &dep, 1)) {
-        const risc_provider_dependency_v1 touch_deps[] = {
-            {"i2c.bus", 1, i2c_mod.capability()},
-            {"platform.clock", 1, clock_mod.capability()}
-        };
-        if (load_one(touch_mod, *touch, touch_deps, 2)) {
-            const auto *touch_api = static_cast<const risc_touch_api_v1 *>(touch_mod.capability());
-            LOG_INF("X4", "input.touch ready=%d", nativeTouchAttachBootstrap(touch_api) ? 1 : 0);
-        }
-    }
-    display_api = static_cast<const risc_display_output_api_v1 *>(panel_mod.capability());
-    nav_api = static_cast<const risc_input_navigation_api_v1 *>(buttons_mod.capability());
-    if (!nativeNavigationAttachBootstrap(nav_api)) {
-        LOG_ERR("X4", "input.navigation bootstrap handoff rejected");
-        nav_api = nullptr;
-    }
-    light_api = static_cast<const risc_frontlight_api_v1 *>(light_mod.capability());
+    if (!acquire("storage.volume",storage_lease)) return;
+    auto* volume=static_cast<const risc_storage_volume_api_v1*>(storage_lease.interface);
+    if (!volume || volume->api_version!=1 || volume->struct_size<sizeof(*volume)) return;
+    const bool storage_mounted=Storage.bindVolume(volume);
+    char reason[80]="none";
+    if(volume->last_error) (void)volume->last_error(volume->context,reason,sizeof(reason));
+    LOG_INF("X4","storage.volume mounted=%d reason=%s",storage_mounted?1:0,reason);
+    if (!acquire("display.output",display_lease) || !acquire("display.frontlight",light_lease)) return;
+    display_api=static_cast<const risc_display_output_api_v1*>(display_lease.interface);
+    light_api=static_cast<const risc_frontlight_api_v1*>(light_lease.interface);
+    if (!Board::attachFrontlight(light_api)) return;
+    // Shared input consumers acquire real graph leases, with the same normal
+    // dependency/lifecycle path as T5. No bootstrap pointer attachment bypass.
+    nativeNavigationTick();
+    nativeTouchTick();
+    LOG_INF("X4","input.touch ready=%d",nativeTouchAvailable()?1:0);
     risc_display_info_v1 info{};
     if (!display_api || !display_api->get_info(display_api->context, &info) ||
         info.width != 800 || info.height != 480 ||
@@ -160,7 +122,7 @@ void x4DiagnosticSetup() {
         LOG_ERR("X4", "Reader portrait geometry rejected");
         return;
     }
-    if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
+    Board::restoreBacklightLevel(SETTINGS.backlightLevel);
     // E-paper retains its previous frame across reset. Present a brief
     // startup frame so a fresh boot is visible before an identical Home
     // image is drawn. This is X4-only and adds no NVS or storage write.

@@ -28,7 +28,14 @@ bool recoverAppInventory() {
   candidates.reserve(128);
   bool complete = true;
   size_t entries = 0;
+  const uint32_t began = millis();
+  uint32_t yielded = began;
   for (;;) {
+    const uint32_t now = millis();
+    if (now - began >= 30000u) { complete = false; break; }
+    if ((entries && (entries & 15u) == 0) || now - yielded >= 8u) {
+      esp_task_wdt_reset(); vTaskDelay(1); yielded = millis();
+    }
     HalFile file = directory.openNextFile();
     if (!file.isOpen()) break;
     if (++entries > 1024) {
@@ -64,6 +71,8 @@ bool recoverAppInventory() {
     return false;
   }
 
+  LOG_INF("APPSTORE", "Recovery scan entries=%u transactions=%u ms=%lu",
+          (unsigned)entries, (unsigned)candidates.size(), (unsigned long)(millis()-began));
   bool allRecovered = true;
   for (const auto& elf : candidates) {
     const std::string target = std::string("/Apps/") + elf;

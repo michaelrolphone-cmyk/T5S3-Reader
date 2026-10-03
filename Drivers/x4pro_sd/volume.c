@@ -34,7 +34,8 @@ static bool enter(void) {
 static void leave(void) { __atomic_clear(&operation_busy, __ATOMIC_RELEASE); }
 int risc_fatfs_checkpoint(void) {
     if (!clock_api || io_failed) return 0;
-    if ((++operation_steps & 255u) == 0) clock_api->sleep_ms(clock_api->context, 1);
+    if ((++operation_steps & 255u) == 0) cooperate(4096);
+    else cooperate(0);
     if (operation_steps > 1048576u ||
         clock_api->monotonic_ms(clock_api->context) - operation_start >= OP_BUDGET_MS) {
         fail("filesystem operation budget exceeded"); io_failed = true; mounted = false; return 0;
@@ -45,7 +46,7 @@ static bool disk_budget(void) {
     if (++operation_sectors > OP_SECTOR_LIMIT || !risc_fatfs_checkpoint()) {
         fail("filesystem I/O budget exceeded"); io_failed = true; mounted = false; return false;
     }
-    clock_api->sleep_ms(clock_api->context, 1);
+    cooperate(0);
     return true;
 }
 DSTATUS disk_initialize(BYTE drive) { return drive || !card_ready || io_failed ? STA_NOINIT : 0; }

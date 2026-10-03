@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Stage independent ordinary X4 driver packages; never embed firmware bytes.
+
+Consumes already-built, source-versioned ELF artifacts and uses the ordinary
+package metadata/ZIP validator. This is a local artifact operation, not install.
+"""
+import hashlib
+import json
+from pathlib import Path
+import shutil
+from generate_provider_package_inputs_v1 import prepare
+from pack_rte_zip import pack_directory
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCES = ['platform_clock_v1', 'x4pro_panel', 'x4pro_buttons', 'x4pro_frontlight',
+           'x4pro_sd', 'x4pro_i2c', 'x4pro_gt911', 'x4pro_battery']
+
+def stage():
+    output = ROOT / 'dist/x4-independent-packages'
+    output.mkdir(parents=True, exist_ok=True)
+    records = []
+    for name in SOURCES:
+        source = ROOT / 'Drivers' / name / 'manifest.json'
+        manifest = json.loads(source.read_text())
+        identity = manifest['id']
+        built = ROOT / 'dist/experimental' / identity
+        observed = json.loads((built / 'manifest.json').read_text())
+        if observed['version'] != manifest['version']:
+            raise ValueError(f'Rebuild {identity}: artifact version differs from source')
+        destination = output / identity
+        if destination.exists():
+            shutil.rmtree(destination)
+        destination.mkdir()
+        shutil.copyfile(built / 'driver.elf', destination / 'driver.elf')
+        shutil.copyfile(source, destination / 'manifest.json')
+        prepare(destination / 'driver.elf', source, destination)
+        entries=[]
+        for path in sorted(destination.iterdir()):
+            data=path.read_bytes()
+            entries.append(dict(name=path.name, size_bytes=len(data),
+                                sha256=hashlib.sha256(data).hexdigest(),
+                                executable=path.name=='driver.elf'))
+        package=dict(schema=1, kind='driver', id=identity, version=manifest['version'],
+                     artifact='driver.elf', architecture='xtensa-esp32s3', min_runtime_api=2,
+                     entries=entries, requires=[dict(capability=r['capability'], min_api=r['api'])
+                                                for r in manifest['requires']])
+        (destination / '.package.json').write_text(json.dumps(package,separators=(',',':'))+'\n')
+        archive=pack_directory(destination)
+        filename=f"{identity}-{manifest['version']}.rte.zip"
+        (output / filename).write_bytes(archive)
+        records.append(dict(id=identity, version=manifest['version'], file=filename,
+                            bytes=len(archive), sha256=hashlib.sha256(archive).hexdigest()))
+    bootfs=output/'bootfs'
+    if bootfs.exists(): shutil.rmtree(bootfs)
+    bootfs.mkdir()
+    (bootfs/'Drivers').mkdir(exist_ok=True)
+    selections=[]
+    for record in records:
+        if record['id']=='x4pro-battery': continue # battery UI integration remains pending
+        shutil.copytree(output/record['id'],bootfs/'Drivers'/record['id'],dirs_exist_ok=True)
+        selections.append({'manifest':f"Drivers/{record['id']}/manifest.json"})
+    (bootfs/'boot.json').write_text(json.dumps(dict(board='board.json',default_app='default.elf',drivers=selections),indent=2)+'\n')
+    (bootfs/'board.json').write_text(json.dumps(dict(schema='riscrte.board-hardware',schema_version=1,board_id='xteink-x4-pro',revision='reader-profile',buses=[],devices=[]),indent=2)+'\n')
+    (output/'artifacts.json').write_text(json.dumps(records,indent=2)+'\n')
+    print(f'Staged and validated {len(records)} external packages in {output}')
+
+if __name__ == '__main__':
+    stage()

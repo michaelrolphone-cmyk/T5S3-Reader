@@ -6,6 +6,7 @@
 // Generic firmware-only bridge. No hardware-specific provider interfaces,
 // controller knowledge, or direct peripheral operations belong in this layer.
 // All methods execute on the serialized invocation-owner task.
+namespace RuntimePackages { struct ManagerProviderCandidateV2; }
 namespace RuntimeInstalledProviders {
 struct Lease {
     RuntimeProviders::GrantV2 grant{};
@@ -16,6 +17,8 @@ struct Lease {
 // Exact provider/dependency chains are admitted lazily by acquire().
 // Installs alone do not call this function and do not grant privileges.
 bool prepare();
+// Trusted read-only module-store admission; no runtime hardware starts here.
+bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate);
 // Generic owner-loop work; never scans storage or loads a provider.
 void poll();
 // Enumerate verified candidates for one semantic capability and API version.

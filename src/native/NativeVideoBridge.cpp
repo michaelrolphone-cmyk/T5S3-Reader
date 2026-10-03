@@ -1274,7 +1274,8 @@ const t5_video_api_v1 s_api = {
 }  // namespace
 
 extern "C" const t5_video_api_v1 *t5_video_get_api(uint32_t api_version) {
-  if (api_version != T5_VIDEO_API_VERSION || !native_hardware_display_is_borrowed()) return nullptr;
+  // Capability discovery is safe before takeover; start_format still enforces ownership.
+  if (api_version != T5_VIDEO_API_VERSION) return nullptr;
   return &s_api;
 }
 

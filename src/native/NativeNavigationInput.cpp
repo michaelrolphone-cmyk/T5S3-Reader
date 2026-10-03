@@ -18,7 +18,7 @@ uint32_t lastPoll = 0, heldSince = 0, lastAttemptMs = 0;
 void clearFrame() { frame = {}; heldSince = millis(); }
 bool ready() {
     if (api) return true;
-    if (quarantined || !Storage.ready()) return false;
+    if (quarantined) return false; // The graph may be backed by the read-only boot store.
     const uint32_t now = millis();
     if (attempted && static_cast<uint32_t>(now - lastAttemptMs) < kActivationRetryMs)
         return false;

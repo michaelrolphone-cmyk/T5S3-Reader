@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <BoardCapabilities.h>
+#include <RiscFrontlightV1.h>
 
 namespace BoardX4Pro {
 const char* id();
@@ -18,6 +19,7 @@ class ScopedI2CLock {
 
 void begin();
 void beginI2C();
+bool attachFrontlight(const risc_frontlight_api_v1* api);
 void initBacklight();
 void setBacklightLevel(uint8_t level);
 void restoreBacklightLevel(uint8_t level);

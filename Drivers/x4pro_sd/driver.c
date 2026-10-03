@@ -16,6 +16,21 @@ static char error[80];
 static bool mounted, card_ready, io_failed;
 static uint32_t card_rca;
 static bool mount_filesystem(void);
+static uint64_t last_cooperate;
+static unsigned cooperate_bytes;
+/* usleep(1000) can consume a scheduler tick. Sleeping every 64 bytes
+ * imposed 16384 waits/MiB before protocol work. Check elapsed time every
+ * 64 bytes, but yield only after 4 KiB or 4 ms, whichever arrives first.
+ * State spans API calls so small metadata reads also cooperate. */
+static void cooperate(unsigned bytes) {
+    cooperate_bytes += bytes;
+    const uint64_t now = clock_api->monotonic_ms(clock_api->context);
+    if (cooperate_bytes >= 4096u || now - last_cooperate >= 4u) {
+        clock_api->sleep_ms(clock_api->context, 1);
+        last_cooperate = clock_api->monotonic_ms(clock_api->context);
+        cooperate_bytes = 0;
+    }
+}
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -88,7 +103,7 @@ static bool read_sector(uint32_t lba, uint8_t out[512]) {
             tick();
         }
         out[byte] = value;
-        if ((byte & 63u) == 63u) clock_api->sleep_ms(clock_api->context, 1);
+        if ((byte & 63u) == 63u) cooperate(64);
     }
     uint16_t received_crc = 0;
     for (unsigned bit = 0; bit < 16u; ++bit) {
@@ -158,7 +173,7 @@ static bool write_sector(uint32_t lba, const uint8_t data[512]) {
         for (int bit = 7; bit >= 0; --bit) {
             x4pro_pin_output(X4PRO_PIN_SD_DAT0, (data[i] >> bit) & 1u); tick();
         }
-        if ((i & 63u) == 63u) clock_api->sleep_ms(clock_api->context, 1);
+        if ((i & 63u) == 63u) cooperate(64);
     }
     const uint16_t crc = x4pro_sd_crc16(data, 512);
     for (int bit = 15; bit >= 0; --bit) {

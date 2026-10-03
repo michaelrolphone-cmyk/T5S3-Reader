@@ -6,6 +6,8 @@
 
 namespace RuntimePackages {
 
+// Index only transaction remnants; intact pairs are inspected at discovery and
+// admission, not repeatedly reopened during every inventory recovery.
 // Translate only files belonging to the legacy managed /Apps pair transaction
 // into a validated ELF basename. An orphan .json alone is intentionally not
 // sufficient: other applications may keep unrelated JSON data in /Apps.
@@ -15,7 +17,7 @@ inline bool appRecoveryCandidate(const char* storedName, std::string& elfName) {
   if (!storedName) return false;
   const size_t length = std::strlen(storedName);
   constexpr const char* suffixes[] = {
-      ".elf.bak", ".json.bak", ".elf.part", ".json.part", ".elf"};
+      ".elf.bak", ".json.bak", ".elf.part", ".json.part"};
   for (const char* suffix : suffixes) {
     const size_t suffixLength = std::strlen(suffix);
     if (length <= suffixLength || std::strcmp(storedName + length - suffixLength, suffix)) continue;

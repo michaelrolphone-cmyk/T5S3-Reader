@@ -2,7 +2,8 @@
 
 namespace BoardX4Pro {
 namespace {
-const BoardCapabilities kCaps{};
+BoardCapabilities kCaps{};
+const risc_frontlight_api_v1* frontlight = nullptr;
 const BatteryProfile kProfile{};
 }
 const char* id() { return "xteink-x4-pro"; }
@@ -11,9 +12,20 @@ const char* firmwareMarker() { return "RISCRTE_BOARD_ID:xteink-x4-pro"; }
 const BoardCapabilities& capabilities() { return kCaps; }
 void begin() {}
 void beginI2C() {}
+bool attachFrontlight(const risc_frontlight_api_v1* api) {
+  if (!api || api->api_version != RISC_FRONTLIGHT_API_V1 ||
+      api->struct_size < sizeof(*api) || !api->set_level || !api->get_level) return false;
+  frontlight = api;
+  kCaps.hasBacklight = true;
+  return true;
+}
 void initBacklight() {}
-void setBacklightLevel(uint8_t) {}
-void restoreBacklightLevel(uint8_t) {}
+void setBacklightLevel(uint8_t level) {
+  // The current board provider supports on/off only. Keep the shared saved
+  // 0..10 preference intact; any nonzero preference turns the light on.
+  if (frontlight) (void)frontlight->set_level(frontlight->context, level ? 1 : 0, 1);
+}
+void restoreBacklightLevel(uint8_t level) { setBacklightLevel(level); }
 void prepareSdBus() {}
 void disableGpsLora() {}
 void deinitForSleep() {}
