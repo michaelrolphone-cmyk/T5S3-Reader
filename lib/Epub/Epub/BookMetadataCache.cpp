@@ -9,9 +9,9 @@
 #include "FsHelpers.h"
 
 namespace {
-// Rebuild TOCs whose NCX links were resolved against the OPF directory,
-// and invalidate guide-start targets cached before the start/text fallback fix.
-constexpr uint8_t BOOK_CACHE_VERSION = 7;
+// Rebuild metadata whose dotted EPUB paths produced missing TOC links or
+// zero chapter sizes, retaining the earlier NCX/guide cache invalidations.
+constexpr uint8_t BOOK_CACHE_VERSION = 8;
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";

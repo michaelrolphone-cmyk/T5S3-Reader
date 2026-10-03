@@ -11,3 +11,12 @@
 - Plan: minimal current-directory omission, production-linked unit and OPF-stream regressions, relevant failure/retry/cleanup cases, target compilation, applicable aggregate checks, draft PR and exact-head hosted CI. Preserve existing parent-path policy and path-root conventions; no URL/percent-decoding redesign.
 - Baseline compiler needed `-Wno-unused-variable` for two pre-existing unused sort locals; no unrelated sort cleanup. No hardware/device verification.
 - No master write, merge, release, deployment, flash, signing, or unrelated repository action.
+
+## Implemented, hosted verification pending — 2026-10-03 17:44 UTC
+
+- Omit exact `.` components at separators and at end-of-input. Preserve existing parent-component/root conventions; hidden filenames, literal dots and percent-encoded bytes remain unchanged.
+- Metadata cache generation 7→8 forces a one-time rebuild. Old dotted hrefs could have persisted zero chapter sizes and missing TOC/spine associations; normalizing later read calls alone cannot repair those derived cached fields. The existing guide harness only advances its cache-generation fixture; its production guide behavior was already identical on current master and open #379.
+- Independent baseline failures: linked helper returns the dotted pathname; production OPF parser caches a dotted chapter instead of the existing member name; old cache loader accepts version 7 when the new contract must reject it.
+- PASS: strict C++17 and ASan/UBSan (`detect_leaks=0`) on 72 direct path checks plus idempotence, 15 full production OPF parses (1/7/4096-byte chunks, manifest/spine/CSS/NCX/nav/guide), malformed XML, repeated parse retry and temporary-store cleanup. Adjacent guide/cache generations 5/6/7/8 and NCX path/error/retry regressions pass with sanitizers. Host filename-sort regression, package-source version guard, shell/Python syntax and whitespace checks pass. Target Xtensa ESP32-S3 helper compilation passes.
+- Local full Springboard/native-app aggregate passed before the cache-generation follow-on; final-tree repeat is running. Full hosted board/integration checks have not run yet. Storage/ZIP member I/O is modeled at the fixture boundary; no physical reader, SD, font/render or hardware verification claimed.
+- Next: publish one draft PR, verify remote SHA, inspect exact-head hosted CI, repair attributable failures, and mark ready only after final checks. Shared ledger remains untouched; its reconciliation is deferred.
