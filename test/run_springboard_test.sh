@@ -9,6 +9,11 @@ python3 "$repo_dir/test/activities/confirmation_touch_test.py"
 python3 "$repo_dir/test/epub_toc/path_test.py"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
+# Keep the standalone Board/frontlight fixture linked as the CI provider step is.
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/test/bootstrap_store/stubs" \
+  -I"$repo_dir/lib/Board" -I"$repo_dir/lib/Board_X4Pro" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/bootstrap_store/frontlight_test.cpp" "$repo_dir/lib/Board_X4Pro/BoardX4Pro.cpp" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/activities/footnotes_viewport_test.py" --sanitize
 python3 "$repo_dir/test/native_apps/hollow_trail_memory_test.py"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/lib/NativeApps/include" \
