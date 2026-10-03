@@ -3,11 +3,12 @@
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
 
 #include <Board.h>
+#include <HalStorageLifecycle.h>
 #include <Logging.h>
 #include <M5GFX.h>
 #include <lgfx/v1/platforms/esp32/Bus_EPD.h>
 #include <lgfx/v1/platforms/esp32/Panel_EPD.hpp>
-#include <Wire.h>
+#include <PlatformDisplayPower.h>
 #include <esp_heap_caps.h>
 #include <esp_lcd_panel_io.h>
 
@@ -21,246 +22,64 @@ namespace {
 constexpr uint32_t kEpdBusHz = 16000000;
 constexpr uint32_t kMiddleRefreshThreshold = 8;
 constexpr uint32_t kQualityRefreshThreshold = 18;
-constexpr int kDefaultVcomMv = -1600;
 constexpr int kReaderTurnStandardSliceCount = 24;
 constexpr int kReaderTurnFastSliceCount = 30;
 constexpr int kReaderTurnMinSliceHeight = 6;
-
-constexpr uint8_t kTpsRegEnable = 0x01;
-constexpr uint8_t kTpsRegVcom = 0x03;
-constexpr uint8_t kTpsRegPowerGood = 0x0F;
-constexpr uint8_t kTpsEnableOutputs = 0x3F;
 
 constexpr uint8_t kGrayBlack = 0x00;
 constexpr uint8_t kGrayDark = 0x55;
 constexpr uint8_t kGrayLight = 0xAA;
 constexpr uint8_t kGrayWhite = 0xFF;
 
-bool writeTpsRegister(const uint8_t reg, const uint8_t* data, const size_t len) {
-  Board::ScopedI2CLock lock;
-  Wire.beginTransmission(T5S3_TPS65185_ADDR);
-  Wire.write(reg);
-  if (data != nullptr && len > 0) {
-    Wire.write(data, len);
-  }
-  return Wire.endTransmission() == 0;
-}
-
-bool writeTpsRegister8(const uint8_t reg, const uint8_t value) { return writeTpsRegister(reg, &value, 1); }
-
-bool readTpsRegister(const uint8_t reg, uint8_t* data, const size_t len) {
-  if (data == nullptr || len == 0) {
-    return false;
-  }
-
-  Board::ScopedI2CLock lock;
-  Wire.beginTransmission(T5S3_TPS65185_ADDR);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) {
-    return false;
-  }
-
-  const uint8_t requested = static_cast<uint8_t>(len);
-  if (Wire.requestFrom(static_cast<uint8_t>(T5S3_TPS65185_ADDR), requested) != requested) {
-    while (Wire.available()) {
-      Wire.read();
-    }
-    return false;
-  }
-
-  for (size_t i = 0; i < len; ++i) {
-    data[i] = Wire.read();
-  }
-  return true;
-}
-
-bool waitForPcaPinHigh(const uint8_t pin, const uint32_t timeoutMs) {
-  const uint32_t start = millis();
-  bool high = false;
-  while (millis() - start < timeoutMs) {
-    if (Board::readPca9535Pin(pin, &high) && high) {
-      return true;
-    }
-    delay(1);
-  }
-  return false;
-}
-
-bool waitForTpsReady(const uint32_t timeoutMs) {
-  const uint32_t start = millis();
-  uint8_t powerGood = 0;
-  while (millis() - start < timeoutMs) {
-    if (readTpsRegister(kTpsRegPowerGood, &powerGood, 1) && (powerGood & 0xFA) == 0xFA) {
-      return true;
-    }
-    delay(1);
-  }
-  return false;
-}
-
 class T5S3BusEPD : public lgfx::Bus_EPD {
  public:
   bool init() override {
-    if (!preparePowerPins()) {
-      LOG_ERR("DSP", "Failed to configure PCA9535 power pins");
-      return false;
-    }
+    power_ = platformDisplayPower();
+    if (!power_ || power_->api_version != 1 || power_->struct_size < sizeof(*power_) ||
+        !power_->acquire || !power_->release) return false;
     return lgfx::Bus_EPD::init();
   }
-
-  bool powerControl(const bool powerOn) override {
-    if (panelOutputSuppressed_) {
-      // Advance Panel_EPD's software history while the real e-paper rails and
-      // output-enable remain inactive. Used to reconstruct retained panel state
-      // after deep sleep without visibly changing the screen.
-      _pwr_on = powerOn;
-      return true;
-    }
-
-    if (_pwr_on == powerOn) {
-      return true;
-    }
-
+  bool powerControl(bool on) override {
+    if (panelOutputSuppressed_) { _pwr_on = on; return true; }
     wait();
-    if (powerOn) {
-      return powerOnSequence();
+    if (on) {
+      if (_pwr_on) return true;
+      if (powerGrant_) return false; // Failed power-up retains its grant.
+      lgfx::gpio_hi(config().pin_spv);
+      if (!power_->acquire(power_->context, &powerGrant_)) return false;
+      _pwr_on = true;
+      return true;
     }
-
-    powerOffSequence();
+    if (powerGrant_ && !power_->release(power_->context, powerGrant_)) return false;
+    powerGrant_ = 0;
+    lgfx::gpio_lo(config().pin_spv);
+    _pwr_on = false;
     return true;
   }
-
-  void setPanelOutputSuppressed(const bool suppressed) {
+  bool setPanelOutputSuppressed(bool suppressed) {
     wait();
+    if (powerGrant_ && !powerControl(false)) return false;
     panelOutputSuppressed_ = suppressed;
-    if (suppressed) {
-      if (_pwr_on) {
-        powerOffSequence();
-      }
-      _pwr_on = false;
-    }
+    _pwr_on = false;
+    return true;
   }
-
-  // M5GFX 0.2.20 Bus_EPD inherits Bus_NULL::release(), which does NOTHING.
-  // Explicitly destroy the panel I/O before the i80 bus; otherwise the next
-  // hardware-owning ELF cannot claim GPIO, LCD peripheral or GDMA resources.
   void release() override {
     wait();
-    if (_pwr_on) (void)powerControl(false);
+    if (powerGrant_ && !powerControl(false)) return;
     if (_io_handle) {
-      const esp_err_t err = esp_lcd_panel_io_del(_io_handle);
-      if (err == ESP_OK) {
-        _io_handle = nullptr;
-      } else {
-        LOG_ERR("DSP", "EPD panel I/O release failed: %d", static_cast<int>(err));
-        return;  // Never destroy the bus while its I/O still owns it.
-      }
+      if (esp_lcd_panel_io_del(_io_handle) != ESP_OK) return;
+      _io_handle = nullptr;
     }
     if (_i80_bus_handle) {
-      const esp_err_t err = esp_lcd_del_i80_bus(_i80_bus_handle);
-      if (err == ESP_OK) {
-        _i80_bus_handle = nullptr;
-      } else {
-        LOG_ERR("DSP", "EPD i80 bus release failed: %d", static_cast<int>(err));
-      }
+      if (esp_lcd_del_i80_bus(_i80_bus_handle) != ESP_OK) return;
+      _i80_bus_handle = nullptr;
     }
   }
-
-  bool released() const { return _io_handle == nullptr && _i80_bus_handle == nullptr; }
-
+  bool released() const { return !powerGrant_ && !_io_handle && !_i80_bus_handle; }
  private:
+  const risc_display_power_api_v1* power_ = nullptr;
+  uint64_t powerGrant_ = 0;
   bool panelOutputSuppressed_ = false;
-
-  bool preparePowerPins() {
-    // Each PCA9535 helper serializes its own atomic read-modify-write. Do not
-    // hold the board-wide I2C mutex across this whole sequence: touch input
-    // shares the bus and must remain pollable while the render task works.
-    bool ok = true;
-    ok &= Board::setPca9535PinMode(PCA9535_IO10_EP_OE, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO11_EP_MODE, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO13_TPS_PWRUP, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO14_VCOM_CTRL, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO15_TPS_WAKEUP, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO16_TPS_PWR_GOOD, INPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO17_TPS_INT, INPUT);
-
-    ok &= Board::writePca9535Pin(PCA9535_IO10_EP_OE, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO11_EP_MODE, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, false);
-    return ok;
-  }
-
-  bool powerOnSequence() {
-    // Serialize each PCA9535/TPS65185 transaction, not the whole power
-    // sequence. The waits below deliberately yield between transactions so
-    // the owner loop can keep polling GT911 while the e-paper refresh lags.
-    const auto& cfg = config();
-
-    lgfx::gpio_hi(cfg.pin_spv);
-
-    bool ok = true;
-    ok &= Board::writePca9535Pin(PCA9535_IO10_EP_OE, true);
-    ok &= Board::writePca9535Pin(PCA9535_IO11_EP_MODE, true);
-    ok &= Board::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, true);
-    ok &= Board::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, true);
-    ok &= Board::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, true);
-    if (!ok) {
-      LOG_ERR("DSP", "Failed to assert EPD power rails");
-      powerOffSequence();
-      return false;
-    }
-
-    delay(1);
-    if (!waitForPcaPinHigh(PCA9535_IO16_TPS_PWR_GOOD, 400)) {
-      LOG_ERR("DSP", "TPS65185 power-good pin did not assert");
-      powerOffSequence();
-      return false;
-    }
-
-    if (!writeTpsRegister8(kTpsRegEnable, kTpsEnableOutputs)) {
-      LOG_ERR("DSP", "TPS65185 enable write failed");
-      powerOffSequence();
-      return false;
-    }
-
-    const uint16_t vcomValue = static_cast<uint16_t>(-kDefaultVcomMv / 10);
-    const uint8_t vcomBytes[2] = {
-        static_cast<uint8_t>(vcomValue & 0xFF),
-        static_cast<uint8_t>(vcomValue >> 8),
-    };
-    if (!writeTpsRegister(kTpsRegVcom, vcomBytes, sizeof(vcomBytes))) {
-      LOG_ERR("DSP", "TPS65185 VCOM write failed");
-      powerOffSequence();
-      return false;
-    }
-
-    if (!waitForTpsReady(400)) {
-      LOG_ERR("DSP", "TPS65185 rails never reached ready state");
-      powerOffSequence();
-      return false;
-    }
-
-    _pwr_on = true;
-    return true;
-  }
-
-  void powerOffSequence() {
-    // As on power-up, keep bus ownership transaction-scoped so input polling
-    // can interleave with panel shutdown instead of waiting for the redraw.
-    const auto& cfg = config();
-
-    Board::writePca9535Pin(PCA9535_IO10_EP_OE, false);
-    Board::writePca9535Pin(PCA9535_IO11_EP_MODE, false);
-    Board::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, false);
-    Board::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, false);
-    delay(1);
-    Board::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, false);
-
-    lgfx::gpio_lo(cfg.pin_spv);
-    _pwr_on = false;
-  }
 };
 
 uint8_t grayscaleValueForBit(const uint8_t baseByte, const uint8_t lsbByte, const uint8_t msbByte, const uint8_t mask) {
@@ -343,19 +162,20 @@ class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
 
   ~T5S3M5GfxDisplay() {
     // Join the panel worker before its bus or backing object disappears.
-    if (!panel_.shutdown()) abort();
-    bus_.release();
+    if (!releaseHardware()) abort();
   }
 
   // Releasability is checked before the host transfers ownership. Normal
   // RiscRTE display initialization and rendering remain unchanged.
+  bool setPowerChecked(bool on) { waitDisplay(); return bus_.powerControl(on); }
+
   bool releaseHardware() {
     if (!panel_.shutdown()) return false;
     bus_.release();
     return bus_.released();
   }
 
-  void setPanelOutputSuppressed(const bool suppressed) { bus_.setPanelOutputSuppressed(suppressed); }
+  bool setPanelOutputSuppressed(const bool suppressed) { return bus_.setPanelOutputSuppressed(suppressed); }
 
   // M5GFX::init() always calls init_impl(true, true), whose second argument
   // clears EPD panels. Timer-wake desk-clock resumes need the same hardware
@@ -386,6 +206,8 @@ uint8_t* HalDisplay::allocatePlane() {
 }
 
 void HalDisplay::releaseBackend() {
+  displayReady = false;
+  if (gfx && !gfx->releaseHardware()) return; // Keep DMA/power owner alive on failure.
   delete panelCanvas;
   panelCanvas = nullptr;
 
@@ -448,6 +270,7 @@ void HalDisplay::begin(const bool clearPanel) {
     return;
   }
   releaseBackend();
+  if (gfx) return; // Previous hardware cleanup remains pending.
   Board::beginI2C();
 
   if (!frameBuffer) {
@@ -474,7 +297,7 @@ void HalDisplay::begin(const bool clearPanel) {
   gfx->setRotation(0);
   gfx->setColorDepth(lgfx::color_depth_t::grayscale_8bit);
   gfx->setEpdMode(lgfx::epd_mode::epd_fastest);
-  gfx->powerSave(false);
+  if (!gfx->setPowerChecked(true)) { releaseBackend(); return; }
 
   if (!initializePanelCanvas()) {
     LOG_ERR("DSP", "Failed to create M5GFX panel canvas");
@@ -815,13 +638,13 @@ void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, HalDisplay::Re
   // history without changing the visible panel.
   renderBwToPanelCanvas(previousBuffer);
   gfx->waitDisplay();
-  gfx->setPanelOutputSuppressed(true);
+  if (!gfx->setPanelOutputSuppressed(true)) { displayReady = false; return; }
   gfx->setEpdMode(lgfx::epd_mode::epd_fastest);
   gfx->setClipRect(clipX, clipY, clipW, clipH);
   panelCanvas->pushSprite(gfx, 0, 0);
   gfx->clearClipRect();
   gfx->waitDisplay();
-  gfx->setPanelOutputSuppressed(false);
+  if (!gfx->setPanelOutputSuppressed(false)) { displayReady = false; return; }
 
   // Replace the canvas with the new complete frame. Only the same dirty
   // rectangle is physically transferred below.
@@ -884,7 +707,10 @@ bool HalDisplay::deepSleep() {
   if (!Board::prepareForSleep()) return false;
   if (gfx) {
     gfx->waitDisplay();
-    gfx->powerSave(true);
+    if (!gfx->setPowerChecked(false)) {
+      (void)halStorageCancelSleep(); // SD pins/rails have not changed.
+      return false;
+    }
     gfx->sleep();
   }
   Board::deinitForSleep();
@@ -894,7 +720,7 @@ bool HalDisplay::deepSleep() {
 void HalDisplay::setIdlePowerSaving(bool enabled) {
   if (gfx) {
     gfx->waitDisplay();
-    gfx->powerSave(enabled);
+    if (!gfx->setPowerChecked(!enabled)) displayReady = false;
   }
 }
 

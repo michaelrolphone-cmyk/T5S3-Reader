@@ -56,23 +56,12 @@ assert "Wire.beginTransmission(T5S3_PCA9535_ADDR)" not in T5_BOARD
 assert "expander->write(expander->context, grant, mask" in T5_BOARD
 assert "expander->read(expander->context, grant" in T5_BOARD
 
-prepare_power = T5_DISPLAY.split("bool preparePowerPins()", 1)[1].split(
-    "bool powerOnSequence()", 1)[0]
-power_on = T5_DISPLAY.split("bool powerOnSequence()", 1)[1].split(
-    "void powerOffSequence()", 1)[0]
-power_off = T5_DISPLAY.split("void powerOffSequence()", 1)[1].split(
-    "uint8_t grayscaleValueForBit", 1)[0]
-for sequence in (prepare_power, power_on, power_off):
-    assert "Board::ScopedI2CLock busLock;" not in sequence
-
-tps_write = T5_DISPLAY.split("bool writeTpsRegister(", 1)[1].split(
-    "bool writeTpsRegister8", 1)[0]
-tps_read = T5_DISPLAY.split("bool readTpsRegister(", 1)[1].split(
-    "bool waitForPcaPinHigh", 1)[0]
-assert "Board::ScopedI2CLock lock;" in tps_write
-assert "Board::ScopedI2CLock lock;" in tps_read
-assert "delay(1);" in power_on
-assert "delay(1);" in power_off
+# Both engines consume the same independently installed power owner. No
+# display consumer retains a second TPS/PCA register implementation.
+assert "writeTpsRegister" not in T5_DISPLAY
+assert "Wire." not in T5_DISPLAY
+assert "platformDisplayPower()" in T5_DISPLAY
+assert "power_->acquire" in T5_DISPLAY and "power_->release" in T5_DISPLAY
 
 # Firmware acquires input.touch.raw and continuously services that opaque
 # provider on a dedicated capture task. UI/render cadence must never be the

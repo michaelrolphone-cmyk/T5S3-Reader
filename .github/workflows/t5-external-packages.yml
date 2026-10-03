@@ -36,6 +36,7 @@ jobs:
           python scripts/probe_i2c_esp32s3_v2.py
           python scripts/audit_i2c_esp32s3_elf.py --strict
           python scripts/build_pca9535_gpio.py
+          python scripts/build_tps65185_power.py
           python scripts/build_spi_esp32s3.py
           python scripts/build_t5s3_sd.py
           python scripts/build_t5s3_frontlight.py
@@ -48,9 +49,15 @@ jobs:
           bash test/run_provider_retained_boundary_test.sh
           python3 test/hal/retired_storage_import_test.py
           python3 test/hal/platform_storage_test.py
+          python3 test/hal/display_power_boundary_test.py
           cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver Drivers/pca9535_gpio/driver.c test/expander/test.c -o /tmp/pca9535-test
           /tmp/pca9535-test
           /tmp/pca9535-test uncertain
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver -Dt5_driver_get=pca_driver_get -c Drivers/pca9535_gpio/driver.c -o /tmp/display-pca.o
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver Drivers/tps65185_power/driver.c test/display_power/test.c /tmp/display-pca.o -o /tmp/display-power
+          /tmp/display-power
+          /tmp/display-power timeout
+          /tmp/display-power write
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -Itest/frontlight/stubs -Isdk/driver test/frontlight/t5_test.cpp -o /tmp/t5-light
           /tmp/t5-light
           for elf in dist/experimental/spi-esp32s3-v1/driver.elf dist/experimental/t5s3-sd/driver.elf dist/experimental/t5s3-frontlight/driver.elf; do

@@ -17,15 +17,12 @@ extern bool beginPlatformBoardProviders();
 namespace BoardT5S3 {
 namespace {
 const risc_gpio_expander_api_v1* expander = nullptr;
-uint64_t radioPins = 0, buttonPins = 0, displayPins = 0;
+uint64_t radioPins = 0, buttonPins = 0;
 bool expanderReady = false;
-// Existing Reader/fast engines temporarily consume this scoped display grant.
-// M3 moves that grant to the external display owner, without a second chip owner.
-constexpr uint16_t kDisplayPins = 0xfb00, kDisplayInputs = 0xc000;
 uint64_t grantForPin(uint8_t pin) {
   if (pin == 0) return radioPins;
   if (pin == 10) return buttonPins;
-  return pin < 16 && ((1u << pin) & kDisplayPins) ? displayPins : 0;
+  return 0; // Display pins belong exclusively to the TPS/EPD power ELF.
 }
 
 constexpr BatteryProfile kBatteryProfile = {
@@ -182,8 +179,7 @@ bool attachExpander(const risc_gpio_expander_api_v1* api) {
   expander = api;
   // Retain all partial grants if any configuration is uncertain.
   expanderReady = api->claim(api->context, 1, 0, 0, &radioPins) &&
-         api->claim(api->context, 0x0400, 0x0400, 0, &buttonPins) &&
-         api->claim(api->context, kDisplayPins, kDisplayInputs, 0, &displayPins);
+         api->claim(api->context, 0x0400, 0x0400, 0, &buttonPins);
   return expanderReady;
 }
 

@@ -3,16 +3,21 @@
 #include "runtime/drivers/BootstrapModuleStore.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include <Board.h>
+#include <PlatformDisplayPower.h>
 #include <HalStorage.h>
 #include <Logging.h>
 
 namespace {
-  RuntimeInstalledProviders::Lease platformLeases[3];
+  RuntimeInstalledProviders::Lease platformLeases[4];
   auto& expanderLease = platformLeases[0];
   auto& frontlightLease = platformLeases[1];
-  auto& storageLease = platformLeases[2];
+  auto& powerLease = platformLeases[2];
+  auto& storageLease = platformLeases[3];
   bool boardAttempted = false, boardComposed = false;
   bool storageAttempted = false, storageComposed = false;
+}
+const risc_display_power_api_v1* platformDisplayPower() {
+    return static_cast<const risc_display_power_api_v1*>(powerLease.interface);
 }
 bool beginPlatformBoardProviders() {
 #if defined(BOARD_T5S3_PRO)
@@ -23,7 +28,8 @@ bool beginPlatformBoardProviders() {
         !RuntimeInstalledProviders::acquireCapability("gpio.expander", 1, &expanderLease) ||
         !Board::attachExpander(static_cast<const risc_gpio_expander_api_v1*>(expanderLease.interface)) ||
         !RuntimeInstalledProviders::acquireCapability("display.frontlight", 1, &frontlightLease) ||
-        !Board::attachFrontlight(static_cast<const risc_frontlight_api_v1*>(frontlightLease.interface))) {
+        !Board::attachFrontlight(static_cast<const risc_frontlight_api_v1*>(frontlightLease.interface)) ||
+        !RuntimeInstalledProviders::acquireCapability("display.power", 1, &powerLease)) {
         LOG_ERR("BOARD", "External board provider unavailable; no peripheral fallback");
         return false;
     }
@@ -50,7 +56,7 @@ bool drainPlatformProvidersForSleep() {
 #if defined(BOARD_T5S3_PRO)
     // Includes partial startup grants, never drops an uncertain chip owner.
     size_t count = 0;
-    while (count < 3 && platformLeases[count].grant.slot) ++count;
+    while (count < 4 && platformLeases[count].grant.slot) ++count;
     if (count) return RuntimeInstalledProviders::drainExcept(platformLeases, count);
 #endif
     return RuntimeInstalledProviders::shutdown();

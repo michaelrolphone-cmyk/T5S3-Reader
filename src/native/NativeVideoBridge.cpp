@@ -12,7 +12,7 @@
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
 
 #include <Arduino.h>
-#include <Wire.h>
+#include <PlatformDisplayPower.h>
 
 namespace t5s3_epd {
 static constexpr uint16_t kPanelWidth = 960;
@@ -21,16 +21,7 @@ static constexpr uint16_t kActiveX = 0;
 static constexpr uint16_t kActiveY = 0;
 static constexpr uint16_t kActiveWidth = 960;
 static constexpr uint16_t kActiveHeight = 540;
-static constexpr uint8_t kI2cSda = T5S3_SDA;
-static constexpr uint8_t kI2cScl = T5S3_SCL;
 static constexpr uint8_t kLoraCs = T5S3_LORA_CS;
-static constexpr uint8_t kPca9535Address = T5S3_PCA9535_ADDR;
-static constexpr uint8_t kTps65185Address = T5S3_TPS65185_ADDR;
-static constexpr uint8_t kPcaBitEpdOe = 0;
-static constexpr uint8_t kPcaBitEpdMode = 1;
-static constexpr uint8_t kPcaBitTpsPwrup = 3;
-static constexpr uint8_t kPcaBitVcomCtrl = 4;
-static constexpr uint8_t kPcaBitTpsWakeup = 5;
 }  // namespace t5s3_epd
 
 #ifndef TARGET_FPS
@@ -45,63 +36,7 @@ static constexpr uint8_t kPcaBitTpsWakeup = 5;
 #ifndef EPD_VIDEO_BOTTOM_DUMMY_LINES
 #define EPD_VIDEO_BOTTOM_DUMMY_LINES 0
 #endif
-#ifndef EPD_VCOM_MV
-#define EPD_VCOM_MV -1600
-#endif
 
-// Keep the GameBoy raw scan engine intact, but route its panel-power helper
-// through RiscRTE's board-level PCA9535 serialization instead of rewriting
-// the whole expander configuration from the app/video path.
-class Pca9535Min {
- public:
-  bool begin(TwoWire&, uint8_t) { return Board::pca9535Present(); }
-
-  bool configureProbeDefaults() {
-    bool ok = true;
-    ok &= Board::setPca9535PinMode(PCA9535_IO10_EP_OE, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO11_EP_MODE, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO13_TPS_PWRUP, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO14_VCOM_CTRL, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO15_TPS_WAKEUP, OUTPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO16_TPS_PWR_GOOD, INPUT);
-    ok &= Board::setPca9535PinMode(PCA9535_IO17_TPS_INT, INPUT);
-    ok &= Board::writePca9535Pin(PCA9535_IO10_EP_OE, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO11_EP_MODE, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, false);
-    return ok;
-  }
-
-  bool readPowerGood(bool& high) {
-    return Board::readPca9535Pin(PCA9535_IO16_TPS_PWR_GOOD, &high);
-  }
-
-  bool setOutputMask(uint8_t port, uint8_t mask, bool high) {
-    if (port != 1U) return false;
-    bool ok = true;
-    for (uint8_t bit = 0; bit < 8; ++bit) {
-      if ((mask & (1U << bit)) != 0U)
-        ok &= Board::writePca9535Pin(static_cast<uint8_t>(8U + bit), high);
-    }
-    return ok;
-  }
-
-  bool safeShutdownOutputs() {
-    bool ok = true;
-    ok &= Board::writePca9535Pin(PCA9535_IO10_EP_OE, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO11_EP_MODE, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO13_TPS_PWRUP, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO14_VCOM_CTRL, false);
-    ok &= Board::writePca9535Pin(PCA9535_IO15_TPS_WAKEUP, false);
-    return ok;
-  }
-};
-
-#include <Arduino.h>
-#include <Wire.h>
-#include <driver/gpio.h>
-#include <esp_heap_caps.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_log.h>
@@ -131,9 +66,6 @@ constexpr size_t kDmaRowBytes = kPanelRowBytes + kLinePaddingBytes;
 constexpr size_t kActiveLeftPadBytes = t5s3_epd::kActiveX / 4U;
 constexpr size_t kActiveRowBytes = t5s3_epd::kActiveWidth / 4U;
 constexpr size_t kActiveRightPadBytes = kPanelRowBytes - kActiveLeftPadBytes - kActiveRowBytes;
-constexpr uint8_t kTpsRegEnable = 0x01;
-constexpr uint8_t kTpsRegVcom = 0x03;
-constexpr uint8_t kTpsRegPowerGood = 0x0F;
 // The i80 driver requires a D/C output although this raw EPD only sends pixel
 // data. Keep GPIO0 free for the BOOT button and use the disabled LoRa CS line
 // as the harmless dummy output. GPIO35 is not used because it can destabilize
@@ -154,13 +86,6 @@ constexpr gpio_num_t kDataGpios[8] = {
     GPIO_NUM_18,
     GPIO_NUM_8,
 };
-constexpr uint8_t kPanelPowerMask =
-    (1U << t5s3_epd::kPcaBitEpdOe) |
-    (1U << t5s3_epd::kPcaBitEpdMode) |
-    (1U << t5s3_epd::kPcaBitTpsPwrup) |
-    (1U << t5s3_epd::kPcaBitVcomCtrl) |
-    (1U << t5s3_epd::kPcaBitTpsWakeup);
-
 static_assert(kStateRowBytes%4U==0, "mono state rows must preserve word alignment");
 static_assert((t5s3_epd::kActiveWidth % 8U) == 0U, "active width must be byte aligned");
 static_assert((t5s3_epd::kPanelWidth % 4U) == 0U, "panel width must be 2bpp packed");
@@ -168,7 +93,8 @@ static_assert(
     (kActiveLeftPadBytes + kActiveRowBytes + kActiveRightPadBytes) == kPanelRowBytes,
     "active area padding must cover the whole panel line");
 
-Pca9535Min *g_expander = nullptr;
+const risc_display_power_api_v1* g_power = nullptr;
+uint64_t g_power_grant = 0;
 TaskHandle_t g_scan_task = nullptr;
 TaskHandle_t g_flip_waiter = nullptr;
 esp_lcd_i80_bus_handle_t g_i80_bus = nullptr;
@@ -312,97 +238,6 @@ bool alloc_video_buffers() {
   memset(g_blank_row, 0x00, kDmaRowBytes);
 
   return true;
-}
-
-bool write_i2c_bytes(uint8_t address, const uint8_t *data, size_t size) {
-  constexpr uint8_t kMaxAttempts = 50;
-  uint8_t last_error = 0xFFU;
-  for (uint8_t attempt = 1; attempt <= kMaxAttempts; ++attempt) {
-    {
-      Board::ScopedI2CLock lock;
-      Wire.beginTransmission(address);
-      if (Wire.write(data, size) == size) {
-        last_error = Wire.endTransmission();
-        if (last_error == 0U) {
-          if (attempt > 1U) {
-            ESP_LOGI(kTag, "I2C address 0x%02X became ready after %u attempts", address, attempt);
-          }
-          return true;
-        }
-      } else {
-        (void)Wire.endTransmission(true);
-        last_error = 0xFEU;
-      }
-    }
-    delay(2);
-  }
-  ESP_LOGE(kTag, "I2C write address=0x%02X failed after %u attempts error=%u",
-           address, kMaxAttempts, last_error);
-  return false;
-}
-
-bool read_i2c_register(uint8_t address, uint8_t reg, uint8_t *data, size_t size) {
-  Board::ScopedI2CLock lock;
-  Wire.beginTransmission(address);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) {
-    return false;
-  }
-  if (Wire.requestFrom(static_cast<int>(address), static_cast<int>(size)) != static_cast<int>(size)) {
-    return false;
-  }
-  for (size_t i = 0; i < size; ++i) {
-    data[i] = static_cast<uint8_t>(Wire.read());
-  }
-  return true;
-}
-
-bool wait_panel_power_good(uint32_t timeout_ms) {
-  const uint32_t deadline = millis() + timeout_ms;
-  while (true) {
-    bool power_good = false;
-    if (g_expander->readPowerGood(power_good) && power_good) {
-      return true;
-    }
-    if (static_cast<int32_t>(millis() - deadline) >= 0) {
-      return false;
-    }
-    delay(1);
-  }
-}
-
-bool tps_enable_outputs() {
-  const uint8_t cmd[2] = {kTpsRegEnable, 0x3F};
-  return write_i2c_bytes(t5s3_epd::kTps65185Address, cmd, sizeof(cmd));
-}
-
-bool tps_set_vcom_mv(int vcom_mv) {
-  if (vcom_mv > 0) {
-    return false;
-  }
-
-  const uint16_t raw = static_cast<uint16_t>((-vcom_mv) / 10);
-  const uint8_t cmd[3] = {
-      kTpsRegVcom,
-      static_cast<uint8_t>(raw & 0xFFU),
-      static_cast<uint8_t>((raw >> 8) & 0xFFU),
-  };
-  return write_i2c_bytes(t5s3_epd::kTps65185Address, cmd, sizeof(cmd));
-}
-
-bool wait_tps_power_good(uint32_t timeout_ms) {
-  const uint32_t deadline = millis() + timeout_ms;
-  while (true) {
-    uint8_t value = 0;
-    if (read_i2c_register(t5s3_epd::kTps65185Address, kTpsRegPowerGood, &value, 1) &&
-        ((value & 0xFAU) == 0xFAU)) {
-      return true;
-    }
-    if (static_cast<int32_t>(millis() - deadline) >= 0) {
-      return false;
-    }
-    delay(1);
-  }
 }
 
 void sanitize_dirty_region(uint16_t dirty_y, uint16_t dirty_height, uint16_t &row_start, uint16_t &row_end) {
@@ -839,12 +674,11 @@ void scan_task(void *unused) {
 
 }  // namespace
 
-bool epd_video_init(Pca9535Min &expander) {
-  if (g_expander != nullptr) {
-    return true;
-  }
-
-  g_expander = &expander;
+bool epd_video_init() {
+  if (g_power) return false;
+  g_power = platformDisplayPower();
+  if (!g_power || g_power->api_version != 1 || g_power->struct_size < sizeof(*g_power) ||
+      !g_power->acquire || !g_power->release) { g_power = nullptr; return false; }
   log_heap_integrity("before bus");
 
   if (!init_panel_bus()) {
@@ -863,38 +697,7 @@ bool epd_video_init(Pca9535Min &expander) {
 }
 
 bool epd_video_power_on() {
-  if (g_expander == nullptr) {
-    return false;
-  }
-
-  bool before_power_good = false;
-  if (g_expander->readPowerGood(before_power_good)) {
-    ESP_LOGI(kTag, "TPS power good before enable: %s", before_power_good ? "high" : "low");
-  }
-
-  if (!g_expander->setOutputMask(1, kPanelPowerMask, true)) {
-    ESP_LOGE(kTag, "failed to enable PCA9535 power outputs");
-    return false;
-  }
-
-  delay(1);
-
-  if (!wait_panel_power_good(400)) {
-    ESP_LOGE(kTag, "timed out waiting for panel power good");
-    return false;
-  }
-  if (!tps_enable_outputs()) {
-    ESP_LOGE(kTag, "failed to enable TPS outputs");
-    return false;
-  }
-  if (!tps_set_vcom_mv(EPD_VCOM_MV)) {
-    ESP_LOGE(kTag, "failed to configure TPS VCOM");
-    return false;
-  }
-  if (!wait_tps_power_good(400)) {
-    ESP_LOGE(kTag, "timed out waiting for TPS internal power good");
-    return false;
-  }
+  if (!g_power || g_power_grant || !g_power->acquire(g_power->context, &g_power_grant)) return false;
 
   memset(g_buffers[0], 0xFF, g_backbuffer_bytes);
   memset(g_buffers[1], 0xFF, g_backbuffer_bytes);
@@ -908,13 +711,7 @@ bool epd_video_power_on() {
   g_drive_pending = false;
   configure_idle_levels();
 
-  bool after_power_good = false;
-  if (!g_expander->readPowerGood(after_power_good)) {
-    ESP_LOGE(kTag, "failed to read TPS power good after enable");
-    return false;
-  }
-  ESP_LOGI(kTag, "TPS power good after enable: %s", after_power_good ? "high" : "low");
-  return after_power_good;
+  return true;
 }
 
 bool epd_video_start() {
@@ -1080,8 +877,9 @@ bool epd_video_shutdown() {
   if (!wait_for_dma()) return false;
   configure_idle_levels();
 
-  if (g_expander != nullptr) {
-    g_expander->safeShutdownOutputs();
+  if (g_power_grant) {
+    if (!g_power || !g_power->release(g_power->context, g_power_grant)) return false;
+    g_power_grant = 0;
   }
   if (g_panel_io != nullptr) {
     const esp_err_t rc = esp_lcd_panel_io_del(g_panel_io);
@@ -1102,7 +900,7 @@ bool epd_video_shutdown() {
     }
   }
   release_allocations();
-  g_expander = nullptr;
+  g_power = nullptr;
   g_dma_done = true;
   g_flip_req = false;
   g_drive_pending = false;
@@ -1110,7 +908,6 @@ bool epd_video_shutdown() {
 }
 
 namespace {
-Pca9535Min s_video_expander;
 bool s_video_started = false;
 
 extern "C" bool native_hardware_display_is_borrowed(void);
@@ -1126,7 +923,7 @@ bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
   if (!s_video_started) {
     // A failed previous teardown retains live handles/buffers. Do not overwrite
     // their format or initialize a second owner on top of them.
-    if (g_scan_task || g_panel_io || g_i80_bus || g_expander) return false;
+    if (g_scan_task || g_panel_io || g_i80_bus || g_power || g_power_grant) return false;
     g_pixel_format = pixel_format;
     g_source_row_bytes = pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
         ? kGrayRowBytes : kSourceRowBytes;
@@ -1136,10 +933,7 @@ bool video_start_format(t5_video_surface_v1 *surface, uint8_t pixel_format) {
         ? t5s3_epd::kActiveWidth : kStateRowBytes;
     g_state_buffer_bytes = pixel_format == T5_VIDEO_PIXEL_GRAY_2BPP_MSB
         ? kGrayStateBytes : kStateBufferBytes;
-    Board::beginI2C();
-    if (!s_video_expander.begin(Wire, t5s3_epd::kPca9535Address) ||
-        !s_video_expander.configureProbeDefaults() ||
-        !epd_video_init(s_video_expander) ||
+    if (!epd_video_init() ||
         !epd_video_power_on()) {
       ESP_LOGE("FAST_VIDEO", "GameBoy-derived raw EPD video start failed");
       epd_video_shutdown();
@@ -1233,7 +1027,7 @@ uint32_t video_frame_counter() {
 }
 
 void video_stop() {
-  if (!s_video_started && g_i80_bus == nullptr && g_panel_io == nullptr) return;
+  if (!s_video_started && !g_i80_bus && !g_panel_io && !g_power && !g_power_grant) return;
   if (epd_video_shutdown()) s_video_started = false;
 }
 
@@ -1281,7 +1075,7 @@ extern "C" const t5_video_api_v1 *t5_video_get_api(uint32_t api_version) {
 
 bool nativeVideoForceStop() {
   video_stop();
-  return !s_video_started && !g_scan_task && !g_panel_io && !g_i80_bus;
+  return !s_video_started && !g_scan_task && !g_panel_io && !g_i80_bus && !g_power && !g_power_grant;
 }
 
 #else
