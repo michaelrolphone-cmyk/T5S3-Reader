@@ -5,9 +5,9 @@ import runtime_cam_adapter as adapter
 
 class RuntimeAdapterTests(unittest.TestCase):
     def archive(self,alter=None):
-        app=bytearray(256);app[0]=0xe9;app[12]=9
-        marker=('RTE_SOURCE='+'a'*40).encode();app[128:128+len(marker)]=marker
-        values={'default.elf':b'\x7fELFtest','board.json':b'{"target":"cam-nosd"}','boot.json':b'{"app":"default.elf"}'}
+        app=bytearray(384);app[0]=0xe9;app[12]=9
+        marker=('RTE_SOURCE='+'a'*40).encode();app[256:256+len(marker)]=marker
+        values={'default.elf':b'\x7fELFtest','board.json':b'{"target":"cam-nosd","buses":[],"devices":[]}','boot.json':b'{"default_app":"default.elf","drivers":[]}'}
         items=[];offset=32
         for name,data in values.items():
             app[offset:offset+len(data)]=data
@@ -22,7 +22,7 @@ class RuntimeAdapterTests(unittest.TestCase):
     def test_valid_embedded_artifact(self):
         with tempfile.TemporaryDirectory() as root:
             dest=Path(root)/'artifact';adapter.unpack(self.archive(),{'id':123,'run_attempt':1},'a'*40,dest)
-            self.assertEqual((dest/'candidate.bin').stat().st_size,256)
+            self.assertEqual((dest/'candidate.bin').stat().st_size,384)
     def test_x4_explicit_target_is_separate(self):
         with tempfile.TemporaryDirectory() as root:
             raw=self.archive(lambda m:m.update(target='x4'))
@@ -41,6 +41,52 @@ class RuntimeAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(RuntimeError,'provenance'):
                 adapter.unpack(self.archive(),{'id':123,'run_attempt':1},'b'*40,Path(root)/'artifact')
+    def test_scheduled_x4_uses_distinct_context_and_runs_exact_head_once(self):
+        repo={'id':adapter.REPOSITORY_ID,'full_name':adapter.REPOSITORY}
+        pr={'number':1,'state':'open','user':{'login':adapter.github.OWNER},'head':{'sha':'a'*40,'repo':repo},'base':{'repo':repo}}
+        raw=self.archive(lambda m:m.update(target='x4'));posts=[]
+        class Client:
+            repository=adapter.REPOSITORY
+            def call(self,path,method='GET',body=None,**kwargs):
+                if method=='POST':posts.append(body);return {'id':len(posts)}
+                if path=='':return repo
+                if path.startswith('/pulls?'):return [pr]
+                if path=='/pulls/1':return pr
+                if path=='/actions/artifacts/7/zip':return raw
+                raise AssertionError(path)
+        run={'id':123,'run_attempt':1,'conclusion':'success'}
+        result={'result':'pass','candidate_readback_equal':True,'protected_equal':True,'heartbeat_restored':True,'heartbeat_readback_equal':True,'candidate_checks':{'count':3}}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(adapter.github,'GitHub',return_value=Client()),patch.object(adapter.controller,'_candidate',return_value=(run,{'id':7})) as candidate,patch.object(adapter.controller,'private_json',return_value={}),patch.object(adapter.device,'Transport'),patch.object(adapter.device,'transaction',return_value=result) as transaction:
+            root=Path(tmp);job={'target':'x4','pause':str(root/'absent'),'binding':'binding','heartbeat':'heartbeat','heartbeat_sha256':'c'*64}
+            for _ in range(2):adapter.scan('unused',{'enabled':True},[job],root,'x4')
+            self.assertEqual(transaction.call_count,1)
+            self.assertEqual(transaction.call_args.args[0],'x4')
+            self.assertEqual(candidate.call_args.args[4],'x4-hardware-build.yml')
+            self.assertTrue((root/'runtime-x4'/('a'*40)/'result.json').exists())
+            self.assertFalse((root/'runtime-cam').exists())
+        self.assertEqual([p['state'] for p in posts],['pending','success'])
+        self.assertTrue(all(p['context']=='X4 hardware / runtime heartbeat cleanup' for p in posts))
+
+    def test_waiting_build_has_terminal_deadline_without_device_access(self):
+        repo={'id':adapter.REPOSITORY_ID,'full_name':adapter.REPOSITORY}
+        pr={'number':1,'state':'open','user':{'login':adapter.github.OWNER},'head':{'sha':'a'*40,'repo':repo},'base':{'repo':repo}}
+        posts=[]
+        class Client:
+            repository=adapter.REPOSITORY
+            def call(self,path,method='GET',body=None):
+                if method=='POST':posts.append(body);return {'id':len(posts)}
+                if path=='':return repo
+                if path.startswith('/pulls?'):return [pr]
+                if path=='/pulls/1':return pr
+                raise AssertionError(path)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(adapter.github,'GitHub',return_value=Client()),patch.object(adapter.controller,'_candidate',return_value=None),patch.object(adapter.controller,'private_json',return_value={}),patch.object(adapter.device,'Transport'),patch.object(adapter.device,'transaction') as transaction:
+            root=Path(tmp);job={'target':'x4','pause':str(root/'absent'),'binding':'binding'}
+            for clock in (1000,1601):
+                with patch.object(adapter.time,'time',return_value=clock):adapter.scan('unused',{'enabled':True},[job],root,'x4')
+            transaction.assert_not_called()
+        self.assertEqual([p['state'] for p in posts],['pending','failure'])
+        self.assertIn('bounded build wait',posts[-1]['description'])
+
     def test_status_network_failure_preserves_hardware_evidence(self):
         class Offline:
             def call(self,*args):raise OSError('network unavailable')

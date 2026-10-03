@@ -50,3 +50,21 @@ unchanged protected flash and verified restoration of the separately pinned
 heartbeat image. The app profile verifies runtime heartbeats rather than the
 Reader no-SD mount diagnostic. The build owns proving its default ELF uses the
 real loader path; hardware acceptance proves the exact accepted image runs.
+
+## Independent new-runtime X4 scheduling
+
+The same pinned adapter accepts an explicit `x4` profile, using
+`x4-hardware-build.yml`, `x4-app-candidate-<sha>`, the X4 app0 limit 0x640000,
+its native USB/MAC binding, and status `X4 hardware / runtime heartbeat cleanup`.
+Opt in through private `runtime_x4: {"enabled": true}` configuration. Journals
+and recovery records live under `runtime-x4`, separately from `runtime-cam`.
+This does not override Reader PR350's external-store deployment hold. The
+immutable heartbeat fixture must have empty drivers/buses/devices; no hardware
+driver packages are embedded or provisioned by this profile.
+
+Device absence fails promptly. A still-building exact-head artifact is pending
+for at most ten minutes, then terminal failure; the independent cloud gate also
+has a deadline. An accepted head is attempted once, with separately pinned
+heartbeat cleanup. Prior X4 evidence is imported only for its exact source SHA,
+never treated as a pass for a newer head. A failed cloud polling job predating a
+new valid receipt must be rerun to reconcile its own job conclusion.

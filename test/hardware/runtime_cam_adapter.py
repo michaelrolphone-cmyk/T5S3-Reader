@@ -1,4 +1,4 @@
-"""Pinned RiscRTE CAM adapter; Actions artifacts are bounded data, never host code."""
+"""Pinned RiscRTE runtime adapter; Actions artifacts are bounded data, never host code."""
 import io
 import json
 import re
@@ -12,6 +12,11 @@ from three_target_controller import github
 REPOSITORY = 'michaelrolphone-cmyk/RiscRTE'
 REPOSITORY_ID = 1402583471
 CONTEXT = 'ESP32-CAM hardware / heartbeat cleanup'
+PROFILES = {
+    'cam-nosd': ('runtime-cam','cam-hardware-build.yml','cam-app-candidate-',CONTEXT),
+    'x4': ('runtime-x4','x4-hardware-build.yml','x4-app-candidate-','X4 hardware / runtime heartbeat cleanup'),
+}
+BUILD_WAIT_SECONDS = 600
 FILES = {'firmware.bin', 'default.elf', 'board.json', 'boot.json', 'manifest.json'}
 LIMIT = 0x1f0000
 
@@ -53,8 +58,10 @@ def unpack(raw, run, sha, folder, target="cam-nosd"):
     ranges.sort()
     device.require(all(a[1] <= b[0] for a,b in zip(ranges,ranges[1:])), 'Embedded payload ranges overlap')
     device.require(payload['default.elf'].startswith(b'\x7fELF'), 'Default payload is not ELF')
-    for name in ('board.json','boot.json'):
-        device.require(isinstance(json.loads(payload[name]),dict), 'Embedded configuration is not an object')
+    board = json.loads(payload['board.json']); boot = json.loads(payload['boot.json'])
+    device.require(isinstance(board,dict) and isinstance(boot,dict), 'Embedded configuration is not an object')
+    device.require(board.get('buses') == [] and board.get('devices') == [] and boot.get('drivers') == []
+                   and boot.get('default_app') == 'default.elf', 'Runtime heartbeat fixture must have an empty hardware graph')
     folder.mkdir(mode=0o700)
     (folder/'candidate.bin').write_bytes(app)
     device.save(folder/'manifest.json',manifest)
@@ -67,37 +74,39 @@ def publish(gh, path, record, state, reason):
     device.save(path,record)
     if record.get('status_state') != state or record.get('status_description') != reason:
         response = gh.call('/statuses/' + record['source_sha'], 'POST',
-                           {'context':CONTEXT,'state':state,'description':reason})
+                           {'context':PROFILES[record.get('target','cam-nosd')][3],'state':state,'description':reason})
         record.update(status_id=response['id'],status_state=state,status_description=reason)
     device.save(path,record)
 
 
-def recover_active(config, job, root):
+def recover_active(config, job, root, target="cam-nosd"):
     """Recover an interrupted transaction even if its PR moved to a new head."""
-    active = root/'runtime-cam'/'active.json'
+    active = root/PROFILES[target][0]/'active.json'
     if not active.exists(): return None
-    if not config['enabled']: return config.get('unavailable_reason','CAM execution disabled')
-    if Path(job['pause']).exists(): return 'CAM execution paused; interrupted cleanup remains queued'
+    if not config['enabled']: return config.get('unavailable_reason','Runtime execution disabled')
+    if Path(job['pause']).exists(): return 'Runtime execution paused; interrupted cleanup remains queued'
     prior = json.loads(active.read_text())
-    device.require(prior.get('target') == 'cam-nosd' and github.SHA.fullmatch(prior.get('source_sha','')), 'Active CAM journal invalid')
-    folder = root/'runtime-cam'/prior['source_sha']
+    device.require(prior.get('target') == target and github.SHA.fullmatch(prior.get('source_sha','')), 'Active runtime journal invalid')
+    folder = root/PROFILES[target][0]/prior['source_sha']
     try:
         binding = controller.private_json(Path(job['binding']))
-        recovery = device.transaction('cam-nosd',binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/('recovery-'+str(time.time_ns())))
+        recovery = device.transaction(target,binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/('recovery-'+str(time.time_ns())))
     except Exception as error:
-        return 'Interrupted CAM cleanup failed: '+str(error)
+        return 'Interrupted runtime cleanup failed: '+str(error)
     if not (recovery.get('result') == 'pass' and recovery.get('heartbeat_restored') and recovery.get('protected_equal')):
-        return 'Interrupted CAM cleanup failed: '+str(recovery.get('cleanup_error') or recovery.get('error') or 'incomplete evidence')
+        return 'Interrupted runtime cleanup failed: '+str(recovery.get('cleanup_error') or recovery.get('error') or 'incomplete evidence')
     path = folder/'result.json'
-    record = json.loads(path.read_text()) if path.exists() else {'schema':1,'source_sha':prior['source_sha'],'repository':REPOSITORY,'attempted':True,'passed':False}
+    record = json.loads(path.read_text()) if path.exists() else {'schema':1,'source_sha':prior['source_sha'],'repository':REPOSITORY,'target':target,'attempted':True,'passed':False}
     record.update(recovery=recovery,recovery_complete=True)
     device.save(path,record)
     active.unlink()
     return None
 
-def scan(token, config, jobs, root):
+def scan(token, config, jobs, root, target="cam-nosd"):
+    device.require(target in PROFILES, "Unknown runtime target")
+    directory,workflow,artifact_prefix,_ = PROFILES[target]
     device.require(type(config.get('enabled')) is bool, 'Runtime enabled flag must be boolean')
-    job = next(j for j in jobs if j['target'] == 'cam-nosd')
+    job = next(j for j in jobs if j['target'] == target)
     gh = github.GitHub(token, repository=REPOSITORY)
     repository = gh.call('')
     device.require(repository['id'] == REPOSITORY_ID and repository['full_name'] == REPOSITORY, 'Runtime repository identity mismatch')
@@ -106,19 +115,20 @@ def scan(token, config, jobs, root):
     eligible = [p for p in prs if p['user']['login'] == github.OWNER
                 and (p['head'].get('repo') or {}).get('full_name') == REPOSITORY]
     device.require(len(eligible) <= github.MAX_OWNER_PRS, 'Runtime PR count exceeds bound')
-    recovery_error = recover_active(config,job,root)
+    recovery_error = recover_active(config,job,root,target)
     outcomes = []
     for pr in eligible:
         sha = github.eligible_source(gh,pr['number'])
-        folder = root/'runtime-cam'/sha; folder.mkdir(mode=0o700,parents=True,exist_ok=True)
+        folder = root/directory/sha; folder.mkdir(mode=0o700,parents=True,exist_ok=True)
         path = folder/'result.json'
-        record = json.loads(path.read_text()) if path.exists() else {'schema':1,'source_sha':sha,'pr':pr['number'],'repository':REPOSITORY}
-        device.require(record['source_sha'] == sha and record['repository'] == REPOSITORY, 'Runtime journal identity mismatch')
+        record = json.loads(path.read_text()) if path.exists() else {'schema':1,'source_sha':sha,'pr':pr['number'],'repository':REPOSITORY,'target':target}
+        record.setdefault('target',target)
+        device.require(record['target'] == target and record['source_sha'] == sha and record['repository'] == REPOSITORY, 'Runtime journal identity mismatch')
         if record.get('attempted'):
             if not recovery_error and config['enabled'] and not Path(job['pause']).exists() and not (record.get('device') or {}).get('heartbeat_restored') and not record.get('recovery_complete'):
                 binding = controller.private_json(Path(job['binding']))
                 try:
-                    recovery = device.transaction('cam-nosd',binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/('recovery-'+str(time.time_ns())))
+                    recovery = device.transaction(target,binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/('recovery-'+str(time.time_ns())))
                     record.update(recovery=recovery,recovery_complete=recovery.get('heartbeat_restored') is True)
                 except Exception as error:
                     record.update(passed=False,terminal_reason='FAILED: cleanup recovery: '+str(error))
@@ -127,27 +137,33 @@ def scan(token, config, jobs, root):
             publish(gh,path,record,state,record.get('terminal_reason','FAILED: interrupted hardware attempt'))
             outcomes.append({'sha':sha,'state':state});continue
         try:
-            device.require(config['enabled'], config.get('unavailable_reason','CAM execution disabled'))
+            device.require(config['enabled'], config.get('unavailable_reason','Runtime execution disabled'))
             device.require(not recovery_error,recovery_error)
-            device.require(not Path(job['pause']).exists(), 'CAM execution paused')
-            found = controller._candidate(gh,pr['number'],sha,'cam-nosd','cam-hardware-build.yml','cam-app-candidate-'+sha)
-            device.require(found is not None,'Exact-head CAM artifact unavailable or build incomplete')
+            device.require(not Path(job['pause']).exists(), 'Runtime execution paused')
+            binding = controller.private_json(Path(job['binding']))
+            device.Transport(binding,target,folder).port()  # Enumeration only; absence fails promptly.
+            found = controller._candidate(gh,pr['number'],sha,target,workflow,artifact_prefix+sha)
+            if found is None:
+                first = record.setdefault('build_wait_started',int(time.time()))
+                device.require(time.time()-first < BUILD_WAIT_SECONDS,'Exact-head artifact unavailable after bounded build wait')
+                publish(gh,path,record,'pending','Waiting for exact-head build; limited to 10 minutes')
+                outcomes.append({'sha':sha,'state':'waiting-for-build'});continue
             run, artifact = found
-            device.require(run['conclusion'] == 'success','Exact-head CAM build failed')
-            raw = gh.call(f"/actions/artifacts/{artifact['id']}/zip",limit=5_000_000)
+            device.require(run['conclusion'] == 'success','Exact-head runtime build failed')
+            raw = gh.call(f"/actions/artifacts/{artifact['id']}/zip",limit=14_000_000)
             if artifact.get('digest'):device.require(artifact['digest'] == 'sha256:'+device.digest(raw),'Runtime ZIP digest mismatch')
             # A previous artifact-only failure never authorizes replacing its evidence.
             dest = folder/('artifact-'+str(run['id'])+'-'+str(run['run_attempt']))
             device.require(not dest.exists(), 'Previous artifact acceptance incomplete; inspect evidence')
-            manifest = unpack(raw,run,sha,dest)
+            manifest = unpack(raw,run,sha,dest,target)
             device.require(github.eligible_source(gh,pr['number']) == sha,'Runtime PR head changed')
             record.update(attempted=True,run_id=run['id'],run_attempt=run['run_attempt'],artifact_id=artifact['id'],firmware_sha256=manifest['firmware']['sha256'])
             device.save(path,record)
-            publish(gh,path,record,'pending','Exact-head CAM candidate accepted; bounded hardware test running')
+            publish(gh,path,record,'pending','Exact-head runtime candidate accepted; bounded hardware test running')
             binding = controller.private_json(Path(job['binding']))
-            active = root/'runtime-cam'/'active.json'
-            device.save(active,{'schema':1,'target':'cam-nosd','source_sha':sha})
-            result = device.transaction('cam-nosd',binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/'device',
+            active = root/PROFILES[target][0]/'active.json'
+            device.save(active,{'schema':1,'target':target,'source_sha':sha})
+            result = device.transaction(target,binding,Path(job['heartbeat']),job['heartbeat_sha256'],folder/'device',
                                         dest/'candidate.bin',manifest['firmware']['sha256'],candidate_profile='runtime-heartbeat')
             record['device'] = result
             device.save(path,record)
@@ -163,4 +179,4 @@ def scan(token, config, jobs, root):
         state = 'success' if record.get('passed') else 'failure'
         publish(gh,path,record,state,record['terminal_reason'])
         outcomes.append({'sha':sha,'state':state})
-    return {'repository':REPOSITORY,'heads':outcomes}
+    return {'repository':REPOSITORY,'target':target,'heads':outcomes}
