@@ -11,6 +11,7 @@
 
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5ReaderEntryApi.h"
 #include "T5ArchiveApi.h"
 #include "T5BatteryApi.h"
 #include "T5ButtonRemapApi.h"
@@ -75,6 +76,8 @@ extern void native_hardware_compat_storage_uncertain(void);
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
 static const char *s_current_path = NULL;
+static atomic_bool s_retained = false;
+bool native_app_loader_retained(void) { return atomic_load(&s_retained); }
 typedef void (*elf_app_main_t)(void);
 
 const char *native_app_current_path(void)
@@ -82,7 +85,7 @@ const char *native_app_current_path(void)
     return s_current_path;
 }
 
-esp_err_t launch_elf_app(const char *sd_path)
+static esp_err_t launch_elf_impl(const char *sd_path, bool reader_entry)
 {
     if (risc_runtime_retention_required()) return ESP_ERR_INVALID_STATE;
     if (sd_path == NULL || strncmp(sd_path, "/sd/", 4) != 0 || sd_path[4] == '\0') {
@@ -118,6 +121,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_ELFSYM_END
 #else
         ESP_ELFSYM_EXPORT(t5_app_get_api),
+        ESP_ELFSYM_EXPORT(t5_reader_entry_get_api),
         ESP_ELFSYM_EXPORT(t5_archive_get_api),
         ESP_ELFSYM_EXPORT(t5_battery_get_api),
         ESP_ELFSYM_EXPORT(t5_button_remap_get_api),
@@ -236,6 +240,11 @@ esp_err_t launch_elf_app(const char *sd_path)
     if (request_error == NULL && request_symbol != NULL) {
         requested = ((t5_hardware_takeover_request_fn)request_symbol)();
     }
+    if (reader_entry && requested != 0U) {
+        result = ESP_ERR_NOT_SUPPORTED;
+        ESP_LOGE(TAG, "Reader entry cannot take over firmware hardware");
+        goto close_module;
+    }
     if (requested != 0U) {
         ESP_LOGI(TAG, "Hardware takeover %s mask=0x%08lx", sd_path, (unsigned long)requested);
         result = native_hardware_takeover_begin(requested);
@@ -292,7 +301,7 @@ close_module:
         unload_failed = true;
         const char *close_error = dlerror();
         ESP_LOGE(TAG, "dlclose(%s): %s", sd_path,
-                 close_error != NULL ? error : "unload failed without a diagnostic");
+                 close_error != NULL ? close_error : "unload failed without a diagnostic");
         result = ESP_FAIL;
     }
 done:
@@ -304,6 +313,12 @@ done:
     }
     native_app_capabilities_release();
     s_current_path = NULL;
-    if (!retain_module) atomic_flag_clear_explicit(&s_running, memory_order_release);
+    if (retain_module || unload_failed) atomic_store(&s_retained, true);
+    if (!retain_module && !unload_failed)
+        atomic_flag_clear_explicit(&s_running, memory_order_release);
     return result;
 }
+
+// Share the same serialization, mapping, lifecycle and cleanup implementation.
+esp_err_t launch_elf_app(const char *sd_path) { return launch_elf_impl(sd_path, false); }
+esp_err_t launch_elf_reader_entry(const char *sd_path) { return launch_elf_impl(sd_path, true); }

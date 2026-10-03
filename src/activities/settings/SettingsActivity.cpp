@@ -24,6 +24,7 @@ void SettingsActivity::onExit() {
 
 void SettingsActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
 
     std::string settingsPath;

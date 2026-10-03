@@ -1,0 +1,8 @@
+{
+  "min_firmware_version": "1.3.90",
+  "version": "1.0.0",
+  "display_name": "PaperSpace",
+  "file_name": "default.elf",
+  "icon": "solid:f02d",
+  "category": ["System", "Reader"]
+}
