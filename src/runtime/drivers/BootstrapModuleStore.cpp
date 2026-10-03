@@ -61,7 +61,9 @@ bool read(const std::string& path,size_t limit,std::vector<uint8_t>& bytes) {
 }
 bool json(const std::string& path,JsonDocument& out) {
   std::vector<uint8_t> bytes;
-  return read(path,kJsonLimit,bytes) && !deserializeJson(out,bytes.data(),bytes.size());
+  return read(path,kJsonLimit,bytes) &&
+      RuntimePackages::safePackageJsonObject(reinterpret_cast<const char*>(bytes.data()),bytes.size()) &&
+      !deserializeJson(out,bytes.data(),bytes.size());
 }
 bool imports(std::vector<uint8_t>& bytes,const char* (&names)[128],size_t& count) {
   count=0;

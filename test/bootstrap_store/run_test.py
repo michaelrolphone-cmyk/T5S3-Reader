@@ -56,6 +56,25 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
  assert 'os_cpu_abi=2' in revision_case(2,2,True)
  for value,profile_revision in [(1,2),(2,1),(3,3),(None,1),(True,1),('2',2)]:
   revision_case(value,profile_revision,False)
+ # Duplicate ABI keys must not silently select the last value, even when
+ # the package digest coherently describes those exact malformed bytes.
+ config['os_cpu_abi']=1
+ malformed=json.dumps(config).replace('"os_cpu_abi": 1','"os_cpu_abi": 2, "os_cpu_abi": 1')
+ manifest.write_text(malformed);profile.write_bytes(original_profile)
+ for entry in metadata['entries']:
+  if entry['name'] in ('manifest.json','provider-abi.v1'):
+   payload=(manifest.parent/entry['name']).read_bytes()
+   entry['size_bytes']=len(payload);entry['sha256']=hashlib.sha256(payload).hexdigest()
+ package.write_text(json.dumps(metadata));run(False)
+ # The shared gate also protects the boot profile itself.
+ manifest.write_text(json.dumps(config))
+ for entry in metadata['entries']:
+  if entry['name']=='manifest.json':
+   payload=manifest.read_bytes();entry['size_bytes']=len(payload);entry['sha256']=hashlib.sha256(payload).hexdigest()
+ package.write_text(json.dumps(metadata));run(True)
+ # Build a deterministic duplicate from parsed JSON, independent of whitespace.
+ boot_config=json.loads(original);boot.write_text(json.dumps(boot_config)[:-1]+',"board":"xteink-x4-pro"}')
+ run(False);boot.write_bytes(original)
  print('Bootstrap revision selection, manifest/profile mismatch and invalid revisions: PASS')
  print('External-file origin, valid packages, corrupt/missing ELF, version mismatch, traversal, independent version update: PASS')
 assert not (root/'src/platform/x4pro_embedded.c').exists()
