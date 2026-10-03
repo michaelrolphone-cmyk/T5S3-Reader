@@ -44,7 +44,12 @@ def check_i2c_sdk_contract():
     include += [sdk / "include/soc/esp32s3", sdk / "include/xtensa/esp32s3/include",
                 sdk / "include/freertos/port/xtensa/include", sdk / "include/freertos/include/esp_additions",
                 sdk / "include/freertos/include/esp_additions/freertos", sdk / "include/esp_rom/include/esp32s3"]
-    subprocess.run([CC, "-std=gnu11", "-fsyntax-only", "-Werror", "-DCONFIG_IDF_TARGET_ESP32S3=1",
+    # GCC14 diagnoses the pinned SDK's repeated IRAM_ATTR inline declarations
+    # with different generated section names. This is a SDK attribute warning,
+    # not a calling-convention/type mismatch. Keep all type errors and static
+    # assertions fatal; production driver compiler flags are unchanged.
+    subprocess.run([CC, "-std=gnu11", "-fsyntax-only", "-Werror", "-Wno-error=attributes",
+                    "-DCONFIG_IDF_TARGET_ESP32S3=1",
                     *["-I" + str(p) for p in include],
                     str(ROOT / "test/drivers/x4pro_i2c_sdk_contract.c")], check=True)
     print("X4 I2C pinned SDK declaration check: PASS")
