@@ -6,6 +6,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 CLOCK = (ROOT / "src/DeskClockSleep.cpp").read_text()
 DISPLAY = (ROOT / "lib/hal/HalDisplay.cpp").read_text()
+DISPLAY_CLIENT = (ROOT / "lib/hal/T5DisplayClient.h").read_text()
+DISPLAY_PROVIDER = (ROOT / "Drivers/display_epd_video/quality.cpp").read_text()
 SYSTEM = (ROOT / "lib/hal/HalSystem.cpp").read_text()
 MAIN = (ROOT / "src/main.cpp").read_text()
 
@@ -55,7 +57,13 @@ class ClockDeepSleepWiring(unittest.TestCase):
         self.assertNotIn("Board::deinitForSleep()", CLOCK)  # Checked display path owns the one-way transition.
         self.assertIn("display.begin(false)", resume)
         self.assertNotIn("display.begin();", resume)
-        self.assertIn("init_impl(true, false)", DISPLAY)
+        self.assertIn("clearPanel ? gfx->init() : gfx->initPreservingPanel()", DISPLAY)
+        self.assertIn("initPreservingPanel(){return init(false);}", DISPLAY_CLIENT)
+        self.assertIn("api_->start(clear)", DISPLAY_CLIENT)
+        start = DISPLAY_PROVIDER.split("bool start(bool clear)", 1)[1].split("bool write_gray", 1)[0]
+        self.assertLess(start.index("if(clear)"), start.index("panel.writeFillRectPreclipped"))
+        for forbidden in ("Board::begin", "Storage.begin", "touch.begin"):
+            self.assertNotIn(forbidden, start)
 
     def test_timer_refresh_reconstructs_previous_frame_and_clips_diff(self):
         self.assertIn("displayedMinuteEpoch", CLOCK)
