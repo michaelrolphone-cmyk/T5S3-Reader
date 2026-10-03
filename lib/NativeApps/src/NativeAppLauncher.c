@@ -71,8 +71,9 @@ extern bool native_hardware_display_is_borrowed(void);
 extern int native_hardware_compat_register(void);
 extern void native_hardware_compat_unregister(void);
 extern void native_hardware_compat_storage_uncertain(void);
-extern const char *native_hardware_compat_last_error(void);
-extern void native_hardware_compat_clear_error(void);
+// Optional diagnostics: headless ports have no Reader compatibility table.
+__attribute__((weak)) const char *native_hardware_compat_last_error(void) { return NULL; }
+__attribute__((weak)) void native_hardware_compat_clear_error(void) {}
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
