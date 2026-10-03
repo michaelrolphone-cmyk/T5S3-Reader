@@ -9,8 +9,9 @@
 #include "FsHelpers.h"
 
 namespace {
-// Rebuild TOCs whose NCX links were resolved against the OPF directory.
-constexpr uint8_t BOOK_CACHE_VERSION = 6;
+// Rebuild TOCs whose NCX links were resolved against the OPF directory,
+// and invalidate guide-start targets cached before the start/text fallback fix.
+constexpr uint8_t BOOK_CACHE_VERSION = 7;
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
