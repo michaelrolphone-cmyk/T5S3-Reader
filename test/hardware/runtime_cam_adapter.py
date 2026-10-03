@@ -15,17 +15,19 @@ FILES = {'firmware.bin', 'default.elf', 'board.json', 'boot.json', 'manifest.jso
 LIMIT = 0x1f0000
 
 
-def unpack(raw, run, sha, folder):
-    device.require(len(raw) <= 5_000_000, 'Runtime archive exceeds bound')
+def unpack(raw, run, sha, folder, target="cam-nosd"):
+    device.require(target in ("cam-nosd","x4"), "Unknown runtime target")
+    limit = device.BOARDS[target][2]
+    device.require(len(raw) <= 14_000_000, 'Runtime archive exceeds bound')
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         entries = archive.infolist()
         device.require(len(entries) == 5 and {x.filename for x in entries} == FILES, 'Runtime archive entries invalid')
         device.require(all(not x.is_dir() and (x.external_attr >> 16) & 0o170000 != 0o120000
-                           and not x.flag_bits & 1 and 0 < x.file_size <= (16384 if x.filename.endswith('.json') else LIMIT)
+                           and not x.flag_bits & 1 and 0 < x.file_size <= (16384 if x.filename.endswith('.json') else limit)
                            for x in entries), 'Unsafe runtime archive entry')
         payload = {x.filename: archive.read(x) for x in entries}
     manifest = json.loads(payload['manifest.json'])
-    device.require(manifest['schema'] == 1 and manifest['target'] == 'cam-nosd'
+    device.require(manifest['schema'] == 1 and manifest['target'] == target
                    and manifest['source_sha'] == sha and manifest['run_id'] == run['id']
                    and manifest['run_attempt'] == run['run_attempt']
                    and manifest['boot_backend'] == 'embedded-readonly'
@@ -33,7 +35,8 @@ def unpack(raw, run, sha, folder):
                    'Runtime manifest provenance/profile mismatch')
     app = payload['firmware.bin']
     device.require(len(app) > 24 and app[0] == 0xe9 and int.from_bytes(app[12:14], 'little') == 9
-                   and (len(app) + 4095) // 4096 * 4096 <= LIMIT, 'Runtime app chip/range invalid')
+                   and (len(app) + 4095) // 4096 * 4096 <= limit, 'Runtime app chip/range invalid')
+    device.require(('RTE_SOURCE='+sha).encode() in app, 'Runtime source marker mismatch')
     device.require(manifest['firmware'] == {'file':'firmware.bin','bytes':len(app),
                    'sha256':device.digest(app),'offset':0x10000}, 'Runtime app hash/offset mismatch')
     items = manifest['payloads']

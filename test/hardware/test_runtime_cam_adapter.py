@@ -6,6 +6,7 @@ import runtime_cam_adapter as adapter
 class RuntimeAdapterTests(unittest.TestCase):
     def archive(self,alter=None):
         app=bytearray(256);app[0]=0xe9;app[12]=9
+        marker=('RTE_SOURCE='+'a'*40).encode();app[128:128+len(marker)]=marker
         values={'default.elf':b'\x7fELFtest','board.json':b'{"target":"cam-nosd"}','boot.json':b'{"app":"default.elf"}'}
         items=[];offset=32
         for name,data in values.items():
@@ -22,6 +23,12 @@ class RuntimeAdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             dest=Path(root)/'artifact';adapter.unpack(self.archive(),{'id':123,'run_attempt':1},'a'*40,dest)
             self.assertEqual((dest/'candidate.bin').stat().st_size,256)
+    def test_x4_explicit_target_is_separate(self):
+        with tempfile.TemporaryDirectory() as root:
+            raw=self.archive(lambda m:m.update(target='x4'))
+            adapter.unpack(raw,{'id':123,'run_attempt':1},'a'*40,Path(root)/'x4',target='x4')
+            with self.assertRaisesRegex(RuntimeError,'provenance'):
+                adapter.unpack(raw,{'id':123,'run_attempt':1},'a'*40,Path(root)/'cam')
     def test_payload_offset_must_match_actual_firmware(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaisesRegex(RuntimeError,'Embedded payload'):

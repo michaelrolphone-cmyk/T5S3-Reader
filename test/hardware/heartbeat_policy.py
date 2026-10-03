@@ -214,7 +214,7 @@ class Transport:
         return lines
 
 def transaction(target, binding, heartbeat, heartbeat_sha, folder, candidate=None, candidate_sha=None, candidate_profile="reader"):
-    require(candidate_profile in ('reader','runtime-heartbeat') and (candidate_profile == 'reader' or target == 'cam-nosd'), 'Unknown candidate profile')
+    require(candidate_profile in ('reader','runtime-heartbeat') and (candidate_profile == 'reader' or target in ('cam-nosd','x4')), 'Unknown candidate profile')
     require(target in BOARDS and binding['mac'].lower() == BOARDS[target][0], 'Unqualified target identity')
     hb = image_bytes(heartbeat, heartbeat_sha, target, True)
     app = image_bytes(candidate, candidate_sha, target) if candidate else None
