@@ -44,7 +44,7 @@ jobs:
       - name: Build exact X4 application
         if: steps.support.outputs.available == 'true'
         run: |
-          python -m pip install platformio==6.1.19 pyelftools==0.32
+          python -m pip install platformio==6.1.19 pyelftools==0.32 intelhex==2.3.0
           pio pkg install -e xteink-x4-pro
           bash test/hardware/x4/install_ci_toolchain.sh
           export X4_ELF_TOOLCHAIN="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin"
