@@ -21,7 +21,9 @@ import zlib
 from device_locks import locks
 
 BOARDS = {
-    'cam-sd': ('28:84:85:4b:57:98', '0bcf1787e46f4bf1ce9ad28bd22c2257e715987e913add5008c0265d3feb2fcd', 0x300000, 0x1a86, 0x7523),
+    # Requalified after the owner installed MicroPython on 2026-10-03:
+    # same verified chip, factory app at 0x10000; preserve its new table.
+    'cam-sd': ('28:84:85:4b:57:98', 'a9c077430aa2b37e4c6ecd3d1265cdf38391d76d8e959fd8f2e3404174b850cc', 0x1f0000, 0x1a86, 0x7523),
     'cam-nosd': ('28:84:85:4b:a1:1c', 'a9c077430aa2b37e4c6ecd3d1265cdf38391d76d8e959fd8f2e3404174b850cc', 0x1f0000, 0x1a86, 0x7523),
     'x4': ('84:c7:bb:79:e2:ac', '9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60', 0x640000, 0x303a, 0x1001),
 }
@@ -52,7 +54,7 @@ def check_layout(prefix, target, length):
     require(len(prefix) == 0x10000, 'Protected-region read truncated')
     require(digest(prefix[0x8000:0x9000]) == BOARDS[target][1], 'Partition layout changed; review required')
     require(0 < length <= BOARDS[target][2], 'Erase range exceeds qualified app')
-    if target != 'cam-nosd':
+    if target == 'x4':
         entries = []
         for offset in (0xe000, 0xf000):
             seq = struct.unpack_from('<I', prefix, offset)[0]

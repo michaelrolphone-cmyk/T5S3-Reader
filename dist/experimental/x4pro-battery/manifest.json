@@ -1,7 +1,7 @@
 {
   "type": "driver",
   "id": "x4pro-battery",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "driver_abi": 2,
   "architecture": "xtensa-esp32s3",
   "file_name": "driver.elf",
@@ -19,6 +19,6 @@
     }
   ],
   "status": "experimental-unpublished",
-  "size_bytes": 3840,
-  "sha256": "49dbb2d85630a43212d12ec9430a32d3ba8c56ed3e57f558c1533e5d2fe81356"
+  "size_bytes": 4328,
+  "sha256": "05ed6f3f81981f0a98ca401186ccdb509c7bf1aa41632332b8602becf02d5846"
 }

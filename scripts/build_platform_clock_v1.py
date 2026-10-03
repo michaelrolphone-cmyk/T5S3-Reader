@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from native_app_symbols import firmware_exports, validate_imports
 from normalize_xtensa_relocations import normalize
+from validate_xtensa_relative_targets import validate as validate_relative_targets
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Drivers/platform_clock_v1'
@@ -34,7 +35,7 @@ def build(cc=None):
     # when garbage-collecting a small PIC shared object. Keep complete tiny
     # clock sections and use the same proven flags as the other small ELFs.
     subprocess.run([
-        cc, '-std=c11', '-D_DEFAULT_SOURCE', '-Os', '-fPIC',
+        cc, '-std=c11', '-D_DEFAULT_SOURCE', '-D_USE_LONG_TIME_T', '-Os', '-fPIC',
         '-mtext-section-literals', '-mlongcalls', '-fvisibility=hidden',
         '-nostdlib', '-nostartfiles', '-shared',
         '-I' + str(ROOT / 'sdk/driver'),
@@ -47,6 +48,7 @@ def build(cc=None):
     # slots, updating .rela.dyn and DT_RELASZ consistently without touching
     # any real relocation, address or code. All ELF validator checks remain.
     removed = normalize(elf)
+    validate_relative_targets(elf)
     print('Clock link: excluded trailing zero relocation slots:', removed)
     readelf = str(Path(cc).with_name(Path(cc).name.replace('gcc', 'readelf')))
     symbols = subprocess.check_output([readelf, '--dyn-syms', '--wide', str(elf)], text=True)

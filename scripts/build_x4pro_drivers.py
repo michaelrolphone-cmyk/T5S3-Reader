@@ -12,6 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from normalize_xtensa_relocations import normalize
+from validate_xtensa_relative_targets import validate as validate_relative_targets
 
 def compiler():
     env = os.environ.get("NATIVE_DRIVER_CC")
@@ -47,8 +48,13 @@ def build_one(name):
     stable_link = name == "x4pro_sd" or profile == "esp14-no-relax"
     optimization = "-O2" if stable_link else "-Os"
     link_flags = ["-Wl,--no-relax"] if stable_link else []
+    # Loop induction optimization pre-biases frame by -12000 for the UC
+    # transfer loop. That legal compiler transform emits an ELF-relative
+    # pointer outside mapped sections, which our loader correctly refuses.
+    # Keep the pointer based inside frame rather than weakening relocation.
+    compile_flags = ["-fno-ivopts"] if profile == "esp14-no-relax" and name == "x4pro_panel" else []
     subprocess.run([
-        CC, "-std=c11", optimization,
+        CC, "-std=c11", optimization, *compile_flags,
         "-fPIC", "-mtext-section-literals", "-mlongcalls",
         "-fvisibility=hidden", "-fno-builtin", "-nostdlib", "-nostartfiles", "-shared",
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
@@ -64,6 +70,7 @@ def build_one(name):
             if "Missing required section" not in str(exc):
                 raise
     symbols = subprocess.check_output([readelf, "--dyn-syms", "--wide", str(elf)], text=True)
+    validate_relative_targets(elf)
     exported = {fields[7] for line in symbols.splitlines()
                 if len(fields := line.split()) >= 8 and fields[4] == "GLOBAL"
                 and fields[6] != "UND" and fields[3] == "FUNC"}
