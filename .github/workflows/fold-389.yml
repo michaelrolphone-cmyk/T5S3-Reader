@@ -1,1 +1,25 @@
-PLACEHOLDER_WILL_FIX
+name: Fold 389 into rollup
+# fold-389 v6 script runner
+on:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-389.yml'
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run fold script
+        run: |
+          set -euo pipefail
+          cat .fold-staging/fold-389.sh.p0 .fold-staging/fold-389.sh.p1 > /tmp/fold-389.sh
+          chmod +x /tmp/fold-389.sh
+          bash /tmp/fold-389.sh
