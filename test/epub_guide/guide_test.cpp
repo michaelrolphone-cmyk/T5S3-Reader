@@ -60,7 +60,7 @@ int main() {
   require(Storage.files.empty(), "malformed parser temporary cache cleaned");
   run("fresh retry after parse failure", text + start, "OPS/body.xhtml", 3);
   for (int i = 0; i < 3; ++i) run("repeat open", start, "OPS/fallback.xhtml", 7);
-  for (uint8_t version : {5, 6, 7}) {
+  for (uint8_t version : {5, 6, 7, 8, 9, 10}) {
     FsFile file;
     Storage.openFileForWrite("fixture", "/cache/book.bin", file);
     serialization::writePod(file, version);
@@ -70,11 +70,11 @@ int main() {
     for (const char* field : {"Title", "Author", "en", "OPS/cover.xhtml", "OPS/body.xhtml"})
       serialization::writeString(file, field);
     BookMetadataCache cache;
-    require(cache.load() == (version == 7), "cache generation acceptance");
-    require(cache.loaded == (version == 7), "old cache not published");
-    if (version != 7) require(!cache.bookFile, "old cache handle closed");
+    require(cache.load() == (version == 10), "cache generation acceptance");
+    require(cache.loaded == (version == 10), "old cache not published");
+    if (version != 10) require(!cache.bookFile, "old cache handle closed");
     else require(cache.coreMetadata.textReferenceHref == "OPS/body.xhtml", "current target restored");
     Storage.files.clear();
   }
-  std::cout << "34 guide cases, malformed XML, retry, cleanup and cache generations 5/6/7 passed\n";
+  std::cout << "34 guide cases, malformed XML, retry, cleanup and cache generations 5 through 10 passed\n";
 }
