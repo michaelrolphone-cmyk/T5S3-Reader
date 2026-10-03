@@ -19,8 +19,9 @@ with tempfile.TemporaryDirectory() as temp:
         objects.append(str(out))
     extra = []
     if len(sys.argv) > 1:
+        # Keep -Werror on our sources; upstream ArduinoJson is a system header.
         extra = ['-DTEST_APP_PARSER', '-DCROSSPOINT_VERSION="1.3.74"',
-                 '-I'+sys.argv[1], '-Isrc', '-Ilib/NativeApps/include', 'src/native/AppManifest.cpp']
+                 '-isystem', sys.argv[1], '-Isrc', '-Ilib/NativeApps/include', 'src/native/AppManifest.cpp']
     binary=build/'storage'
     subprocess.run(['c++','-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-fsanitize='+SANITIZER,'-DBOARD_XTEINK_X4_PRO','-Wno-overloaded-virtual',
                     '-Itest/storage_volume/stubs','-Ilib/hal','-Isdk/driver',
