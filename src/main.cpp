@@ -1,12 +1,12 @@
-#if defined(BOARD_T5S3_PRO)
-#include <BoardPowerPort.h>
-#endif
-#include "platform/PlatformStorage.h"
 #if defined(RISCRTE_PROFILE_HEADLESS)
 #include "runtime/boot/HeadlessRuntime.h"
 void setup() { RuntimeBoot::setup(); }
 void loop() { RuntimeBoot::loop(); }
 #else
+#if defined(BOARD_T5S3_PRO)
+#include <BoardPowerPort.h>
+#endif
+#include "platform/PlatformStorage.h"
 #include <Arduino.h>
 #include <Board.h>
 #include <Epub.h>

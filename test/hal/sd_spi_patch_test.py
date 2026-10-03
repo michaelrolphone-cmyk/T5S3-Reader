@@ -91,14 +91,19 @@ print('Actual raw VFS close: fault precedes free/stdio teardown; ordinary close 
 
 if overlay:
     selected=json.loads((overlay/'build-selection.json').read_text())['compiled_units']
-    assert set(selected)=={path.name for path in paths.values()}
+    required={paths[k].name for k in ('hal','spi','vfs')}
+    assert set(selected) in (required, required|{paths['sd'].name})
+    # The retired raw SDFS adapter is no longer a Reader link dependency.
+    # If another profile does compile it, its exact guarded bytes still apply.
     for kind,path in paths.items():
         assert MARK not in path.read_text(), 'Shared SDK is still patched: '+str(path)
         data=(overlay/path.name).read_bytes()
-        assert data.decode()==texts[kind] and hashlib.sha256(data).hexdigest()==selected[path.name]
+        assert data.decode()==texts[kind]
+        if path.name in selected:
+            assert hashlib.sha256(data).hexdigest()==selected[path.name]
     for name in ('SdSpiFault.h','RuntimeFaultRetention.h'):
         assert not (framework/'cores/esp32'/name).exists(), 'Private header leaked into shared SDK'
-    print('Build selected all four isolated units; shared SDK sources/headers are clean PASS')
+    print('Build selected guarded SPI/VFS units; optional raw SD guarded when linked; shared SDK clean PASS')
 
 # Simulate the actual pre-script environment for both a fresh SDK and the exact
 # older U1-patched cache. No unverified package or unrelated file is removed.

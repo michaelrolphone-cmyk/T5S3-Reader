@@ -38,6 +38,7 @@ jobs:
           python scripts/build_t5s3_frontlight.py
           python scripts/stage_t5s3_packages.py
           pio run -e t5s3-pro
+          python test/hal/external_storage_elf_test.py .pio/build/t5s3-pro/firmware.elf
       - name: Check storage, frontlight and retained-provider lifecycle
         run: |
           STORAGE_TRANSPORT=spi python3 test/storage_volume/run_test.py
