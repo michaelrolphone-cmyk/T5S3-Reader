@@ -53,3 +53,12 @@ The GT911 provider controls master enable GPIO1 and active-low touch power GPIO2
 Pinned FreeInk source `111fdcc7f0176c3ee38391a160ee296bf492dbd8` supplies SSD1677 full refresh and UC8279 800×480 visible/800×600 addressed, 120-gate-offset GC waveform sequences. The provider requires a repeated UC8279 `VER[2]=0x68` identity and idle BUSY before issuing UC commands. Other UC81xx variants remain unsupported. Panel transfers have bounded waits and terminal failure rather than automatic retransmission.
 
 Partition layout remains app0 `0x10000`/size `0x640000`, app1 `0x650000`. The build emits an app image and a merged image; no image was installed in this task. Historical owner observations established visible UC8279 text, and the earlier `5e1f8343` merged image produced mounted-storage/Home/heartbeat logs but a malformed landscape Home. Later source corrected portrait layout and input routing; those observations do not validate this revision. The separate hardware task owns the recovery evidence, USB stability investigation, controller state and future qualification.
+
+## Shared T5 extraction follow-through
+
+The T5 storage/frontlight cutover now uses independent SPI, SD/FatFs and native
+LEDC frontlight ELFs. X4 and T5 share the provider-backed filesystem adapter and
+FatFs implementation; neither active board has a firmware SD filesystem fallback.
+See [T5 extraction and sleep ownership](t5s3-external-storage.md) for lifecycle,
+legacy-import compatibility, separate package artifacts and remaining M3 work.
+The X4 SD package remains the cumulative unreleased `0.2.1` update.

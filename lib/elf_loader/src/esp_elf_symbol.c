@@ -67,6 +67,7 @@ static const char *TAG = "ELF_SYMBOL";
 // Ordinary app relocations receive invocation-owned allocators. Privileged
 // provider relocations retain libc/OS allocators for their independent lifetime.
 extern uintptr_t native_app_memory_symbol(const char *name);
+extern bool native_app_import_allowed(const char *name) __attribute__((weak));
 
 /** @brief Libc public functions symbols look-up table */
 
@@ -238,6 +239,9 @@ uintptr_t elf_find_sym_default(const char *sym_name)
     }
 
     if (!privileged_scope) {
+        // Retired application ABI names must not fall through to another
+        // registered table or module. The provider resolver stays independent.
+        if (native_app_import_allowed && !native_app_import_allowed(sym_name)) return 0;
         uintptr_t app_memory = native_app_memory_symbol(sym_name);
         if (app_memory) return app_memory;
     }

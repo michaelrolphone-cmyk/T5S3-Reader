@@ -13,6 +13,11 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
   '-I'+str(root/'test/bootstrap_store/stubs'),'-I'+str(root/'test/storage_volume/stubs'),
   '-I'+str(root/'src'),'-I'+str(root/'sdk/driver'),'-I'+str(include),
   str(root/'test/bootstrap_store/test.cpp'),str(root/'src/runtime/drivers/BootstrapModuleStore.cpp'),*flags,'-o',str(binary)],check=True)
+ # Both board profiles pass the same production reader; no ELF execution here.
+ t5=root/'dist/t5s3-independent-packages/bootfs'
+ if t5.exists():
+  t5fixture=d/'t5boot';shutil.copytree(t5,t5fixture)
+  subprocess.run([str(binary),str(t5fixture),'t5s3-pro'],check=True,timeout=20)
  fixture=d/'bootfs';shutil.copytree(root/'dist/x4-independent-packages/bootfs',fixture)
  def run(ok):
   p=subprocess.run([str(binary),str(fixture),'xteink-x4-pro'],capture_output=True,text=True,timeout=20)

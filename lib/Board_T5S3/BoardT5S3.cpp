@@ -1,3 +1,4 @@
+#include <RiscFrontlightV1.h>
 #include <HalStorageLifecycle.h>
 #include <SdSpiFault.h>
 #include "BoardT5S3.h"
@@ -16,9 +17,6 @@ namespace {
 constexpr uint8_t PCA_REG_INPUT0 = 0x00;
 constexpr uint8_t PCA_REG_OUTPUT0 = 0x02;
 constexpr uint8_t PCA_REG_CONFIG0 = 0x06;
-constexpr uint8_t kBacklightPwmChannel = 0;
-constexpr uint8_t kBacklightPwmResolutionBits = 8;
-constexpr uint32_t kBacklightPwmFrequencyHz = 5000;
 
 constexpr BatteryProfile kBatteryProfile = {
     .inputLimitMa = 1000,
@@ -45,7 +43,7 @@ bool gaugeInitAttempted = false;
 bool chargerConfigured = false;
 bool bq27220Ready = false;
 BQ27220 bq27220;
-bool backlightInitialized = false;
+const risc_frontlight_api_v1* frontlight = nullptr;
 SemaphoreHandle_t i2cMutex = nullptr;
 
 void prepareTouchControllerForProvider() {
@@ -132,18 +130,6 @@ bool readReg16LE(uint8_t addr, uint8_t reg, uint16_t* value) {
 i2c_master_bus_handle_t i2cMasterBusHandle() { return reinterpret_cast<i2c_master_bus_handle_t>(&Wire); }
 
 
-uint8_t backlightDutyForLevel(uint8_t level) {
-  if (level == 0) {
-    return 0;
-  }
-  if (level > 10) {
-    level = 10;
-  }
-
-  const uint32_t levelSquared = static_cast<uint32_t>(level) * static_cast<uint32_t>(level);
-  const uint32_t duty = (levelSquared * 255U + 50U) / 100U;
-  return static_cast<uint8_t>(duty > 255U ? 255U : duty);
-}
 
 bool configureBq27220() {
   if (!bq27220.begin(i2cMasterBusHandle(), T5S3_BQ27220_ADDR, T5S3_I2C_FREQ)) {
@@ -195,39 +181,29 @@ void beginI2C() {
   Wire.setTimeOut(50);
 }
 
-void initBacklight() {
-  if (backlightInitialized) {
-    return;
-  }
-
-  ledcSetup(kBacklightPwmChannel, kBacklightPwmFrequencyHz, kBacklightPwmResolutionBits);
-  ledcAttachPin(T5S3_BL_EN, kBacklightPwmChannel);
-  backlightInitialized = true;
-  ledcWrite(kBacklightPwmChannel, 0);
+bool attachFrontlight(const risc_frontlight_api_v1* api) {
+  if (!api || api->api_version != 1 || api->struct_size < sizeof(*api) ||
+      !api->set_level || !api->get_level) return false;
+  frontlight = api;
+  return true;
 }
-
+void initBacklight() {} // No firmware PWM owner or fallback.
 void setBacklightLevel(uint8_t level) {
-  if (!backlightInitialized) {
-    initBacklight();
-  }
-  ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
+  if (frontlight) (void)frontlight->set_level(frontlight->context, level > 10 ? 10 : level, 10);
 }
-
-void restoreBacklightLevel(uint8_t level) {
-  // The guest may have attached the same GPIO to another LEDC channel.
-  ledcSetup(kBacklightPwmChannel, kBacklightPwmFrequencyHz, kBacklightPwmResolutionBits);
-  ledcAttachPin(T5S3_BL_EN, kBacklightPwmChannel);
-  backlightInitialized = true;
-  ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
-}
+void restoreBacklightLevel(uint8_t level) { setBacklightLevel(level); }
 
 void prepareSdBus() {
   risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
+  // Initial setup precedes providers; later LoRa initialization must not
+  // toggle SD CS during an installed storage session on this shared controller.
+  SPI.begin(T5S3_SPI_SCLK, T5S3_SPI_MISO, T5S3_SPI_MOSI, T5S3_SD_CS);
+  SPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
   pinMode(T5S3_LORA_CS, OUTPUT);
   digitalWrite(T5S3_LORA_CS, HIGH);
   pinMode(T5S3_SD_CS, OUTPUT);
   digitalWrite(T5S3_SD_CS, HIGH);
-  SPI.begin(T5S3_SPI_SCLK, T5S3_SPI_MISO, T5S3_SPI_MOSI, T5S3_SD_CS);
+  SPI.endTransaction();
 }
 
 void disableGpsLora() {
@@ -264,14 +240,12 @@ void begin() {
   (void)setPca9535PinMode(PCA9535_IO12_BUTTON, INPUT);
 }
 
+bool prepareForSleep() { return halStoragePrepareForSleep(); }
+
 void deinitForSleep() {
   risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
-  // Pin the installed owner while SD is still available.
-  (void)BoardPowerPort::prepareShutdown();
   halStorageMediaUnavailable(); // Existing SD bus shutdown invalidates retained metadata.
   setBacklightLevel(0);
-  pinMode(T5S3_BL_EN, OUTPUT);
-  digitalWrite(T5S3_BL_EN, LOW);
   disableGpsLora();
   pinMode(T5S3_SD_CS, INPUT);
   pinMode(T5S3_GPS_RXD, INPUT);

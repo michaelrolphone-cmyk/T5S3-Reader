@@ -134,7 +134,7 @@ class HalDisplay : public DisplaySurface {
   void suppressInitialFullRefresh();
 
   // Power management
-  void deepSleep();
+  bool deepSleep();
   // Gate panel drive power between clock updates without deinitializing SD,
   // touch or the framebuffer, as deepSleep() does.
   void setIdlePowerSaving(bool enabled);

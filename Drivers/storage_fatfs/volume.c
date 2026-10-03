@@ -10,6 +10,7 @@ static FATFS filesystem;
 static uint64_t operation_start;
 static uint32_t operation_steps, operation_sectors;
 static bool operation_busy;
+static bool power_down_prepared;
 static uint32_t next_generation = 1;
 typedef struct {
     FIL object;
@@ -25,13 +26,18 @@ static bool has_handles(void) {
     for (unsigned i = 0; i < DIR_SLOTS; ++i) if (dirs[i].handle) return true;
     return false;
 }
-static bool enter(void) {
+static bool enter_lifecycle(void) {
     if (__atomic_test_and_set(&operation_busy, __ATOMIC_ACQUIRE)) return false;
     operation_start = clock_api ? clock_api->monotonic_ms(clock_api->context) : 0;
     operation_steps = operation_sectors = 0;
     return true;
 }
 static void leave(void) { __atomic_clear(&operation_busy, __ATOMIC_RELEASE); }
+static bool enter(void) {
+    if (!enter_lifecycle()) return false;
+    if (power_down_prepared) { leave(); return false; }
+    return true;
+}
 int risc_fatfs_checkpoint(void) {
     if (!clock_api || io_failed) return 0;
     if ((++operation_steps & 255u) == 0) cooperate(4096);
@@ -72,7 +78,7 @@ DRESULT disk_write(BYTE drive, const BYTE *buffer, LBA_t lba, UINT count) {
 DRESULT disk_ioctl(BYTE drive, BYTE command_code, void *buffer) {
     (void)buffer;
     if (disk_status(drive)) return RES_NOTRDY;
-    return command_code == CTRL_SYNC && wait_dat0(true, 262144, 1000) ? RES_OK : RES_ERROR;
+    return command_code == CTRL_SYNC && sync_card() ? RES_OK : RES_ERROR;
 }
 static bool result_ok(FRESULT result) {
     if (result == FR_OK) return true;
@@ -133,11 +139,11 @@ static bool refresh(void *context) {
     leave();
     return started;
 }
-static bool ready(void *context) { (void)context; return mounted && !io_failed; }
+static bool ready(void *context) { (void)context; return mounted && !io_failed && !__atomic_load_n(&power_down_prepared, __ATOMIC_ACQUIRE); }
 static bool label(void *context, char *out, size_t size) {
     (void)context;
-    if (!ready(0) || !out || size < 6) return false;
-    memcpy(out, "X4PRO", 6); return true;
+    if (!ready(0) || !out || size < sizeof(STORAGE_VOLUME_LABEL)) return false;
+    memcpy(out, STORAGE_VOLUME_LABEL, sizeof(STORAGE_VOLUME_LABEL)); return true;
 }
 static bool stat_path(void *context, const char *path, uint64_t *size, bool *directory) {
     (void)context;
@@ -376,10 +382,35 @@ static bool last_error_api(void *context, char *out, size_t capacity) {
     size_t i = 0; while (error[i] && i + 1 < capacity) { out[i] = error[i]; ++i; }
     out[i] = 0; return error[0] != 0;
 }
-static const risc_storage_volume_api_v1_ext api = {
+static bool prepare_power_down(void *context) {
+    (void)context;
+    if (!enter_lifecycle()) return false;
+    if (power_down_prepared) { leave(); return true; }
+    if (io_failed || !transport_idle()) { leave(); return false; }
+    for (unsigned i = 0; i < FILE_SLOTS; ++i) {
+        if (files[i].handle && (files[i].flags & RISC_STORAGE_OPEN_WRITE)) {
+            fail("power down refused with live writer"); leave(); return false;
+        }
+    }
+    // Read handles carry only RAM metadata; keep their ELF and dependencies
+    // pinned. No filesystem operation or active transport survives this barrier.
+    if (card_ready && !sync_card()) { fail("power down media sync failed"); leave(); return false; }
+    __atomic_store_n(&power_down_prepared, true, __ATOMIC_RELEASE);
+    leave(); return true;
+}
+static bool cancel_power_down(void *context) {
+    (void)context;
+    if (!enter_lifecycle()) return false;
+    const bool safe = !io_failed && transport_idle();
+    if (safe) __atomic_store_n(&power_down_prepared, false, __ATOMIC_RELEASE);
+    leave(); return safe;
+}
+static const risc_storage_volume_api_v1_power api = {
+  {
     {RISC_STORAGE_VOLUME_API_V1, sizeof(api), 0, refresh, ready, label, stat_path,
      dir_open, dir_next, dir_close, file_open_read, file_read, file_open_write,
      file_write, file_close, remove_path, last_error_api},
     file_open, file_seek, file_info, file_sync, dir_rewind, dir_close_checked,
     handle_error, mkdir_path, rename_path
+  }, prepare_power_down, cancel_power_down
 };

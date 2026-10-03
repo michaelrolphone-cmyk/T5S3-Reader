@@ -193,16 +193,21 @@ static bool write_sector(uint32_t lba, const uint8_t data[512]) {
     return !(final_status & 0xfdffe008u);
 }
 
-#include "volume.c"
+static bool sync_card(void) { return wait_dat0(true, 262144, 1000); }
+// All native one-bit transfers are synchronous; failed I/O stays quarantined.
+static bool transport_idle(void) { return true; }
+#define STORAGE_VOLUME_LABEL "X4PRO"
+#include "../storage_fatfs/volume.c"
 
 static bool start(const risc_provider_dependency_v1 *dependencies, size_t count) {
+    if (started || has_handles()) return false;
     clock_api = 0;
     for (size_t i = 0; i < count; ++i)
         if (equal(dependencies[i].capability_id, "platform.clock") && dependencies[i].api_version == 1)
             clock_api = dependencies[i].api;
     if (!clock_api || clock_api->api_version != RISC_PLATFORM_CLOCK_API_V1 ||
         clock_api->struct_size < sizeof(*clock_api) || !clock_api->monotonic_ms ||
-        !clock_api->sleep_ms) { fail("platform.clock missing or invalid"); return false; }
+        !clock_api->sleep_ms) { clock_api = 0; fail("platform.clock missing or invalid"); return false; }
     x4pro_pin_output(X4PRO_PIN_SD_CLK, false);
     started = true;
     return refresh(0);
@@ -217,11 +222,11 @@ static void stop_locked(void) {
         x4pro_pin_release(X4PRO_PIN_SD_CMD);
         x4pro_pin_release(X4PRO_PIN_SD_DAT0);
     }
-    started = card_ready = mounted = false;
+    started = card_ready = mounted = power_down_prepared = false;
 }
-static void stop(void) { if (!enter()) return; stop_locked(); leave(); }
+static void stop(void) { if (!enter_lifecycle()) return; stop_locked(); leave(); }
 static bool quiesce(void) {
-    if (!enter()) return false;
+    if (!enter_lifecycle()) return false;
     const bool safe = !has_handles();
     if (safe) stop_locked();
     leave(); return safe && !started;

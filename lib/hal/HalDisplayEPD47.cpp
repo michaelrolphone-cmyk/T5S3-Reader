@@ -243,9 +243,11 @@ void HalDisplay::requestNextDisplayEffect(const DisplayEffect effect) { pendingD
 
 void HalDisplay::suppressInitialFullRefresh() { forceFullRefresh = false; }
 
-void HalDisplay::deepSleep() {
+bool HalDisplay::deepSleep() {
+  if (!Board::prepareForSleep()) return false;
   epd_poweroff_all();
   Board::deinitForSleep();
+  return true;
 }
 
 void HalDisplay::setIdlePowerSaving(bool enabled) {

@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 #define RISC_FRONTLIGHT_API_V1 1u
-typedef struct {
+typedef struct risc_frontlight_api_v1 {
     uint32_t api_version;
     uint32_t struct_size;
     void *context;

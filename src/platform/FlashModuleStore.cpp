@@ -1,5 +1,5 @@
 #include "FlashModuleStore.h"
-#if defined(BOARD_XTEINK_X4_PRO)
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
 #include <esp_littlefs.h>
 #include <Logging.h>
 bool mountFlashModuleStore() {

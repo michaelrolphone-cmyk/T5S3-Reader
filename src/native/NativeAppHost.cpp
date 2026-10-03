@@ -56,6 +56,8 @@
 #define CROSSPOINT_COMPAT_VERSION CROSSPOINT_VERSION
 #endif
 
+extern "C" const char* native_hardware_compat_last_error();
+
 namespace {
 constexpr const char* kLatestReleaseApi =
     "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest";
@@ -1551,7 +1553,9 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     char message[80];
     std::snprintf(message, sizeof(message), "ELF loader failed with error 0x%lX.",
                   static_cast<unsigned long>(result));
-    lastLaunchError = message;
+    const char* compatibilityError = admissionReady && result == ESP_ERR_NOT_SUPPORTED
+        ? native_hardware_compat_last_error() : nullptr;
+    lastLaunchError = compatibilityError ? compatibilityError : message;
   }
   const auto systemNavigation = nativeSystemUiTakeNavigation();
   homeRequested = homeRequested || systemNavigation == NativeSystemUiNavigation::Home;

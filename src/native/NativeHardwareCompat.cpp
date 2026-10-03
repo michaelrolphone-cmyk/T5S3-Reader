@@ -3,6 +3,32 @@
 // It binds ONLY the exact ABI names listed in NativeHardwareCompatSymbols.def.
 #include "esp_elf.h"
 #include <errno.h>
+#include <cstring>
+#include <Logging.h>
+
+namespace {
+bool retiredStorageImport = false;
+}
+extern "C" bool native_app_import_allowed(const char* name) {
+    if (!name) return false;
+    static const char* const retired[] = {
+#define RISC_RETIRED_STORAGE_IMPORT(symbol) #symbol,
+#include "RetiredStorageImports.def"
+#undef RISC_RETIRED_STORAGE_IMPORT
+    };
+    for (const auto* symbol : retired) {
+        if (std::strcmp(name, symbol)) continue;
+        if (!retiredStorageImport)
+            LOG_ERR("APP", "Retired raw SD import %s: rebuild with t5_storage_get_api or /sd VFS", name);
+        retiredStorageImport = true;
+        return false;
+    }
+    return true;
+}
+extern "C" const char* native_hardware_compat_last_error() {
+    return retiredStorageImport ? "Legacy raw SD app unsupported. Update it to use the shared storage API." : nullptr;
+}
+extern "C" void native_hardware_compat_clear_error() { retiredStorageImport = false; }
 
 #if defined(BOARD_T5S3_PRO)
 // Make the Arduino libraries actual firmware link dependencies: relying only
@@ -11,7 +37,6 @@
 #include <HalStorage.h>
 #include "NativeStorageImportPolicy.h"
 #include <FS.h>
-#include <SD.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Preferences.h>
@@ -50,6 +75,7 @@ extern "C" void esp_elf_registered_symbol_used(const void* table, const char* na
     }
 }
 extern "C" int native_hardware_compat_register(void) {
+    retiredStorageImport = false;
     const int result = esp_elf_register_symbol(native_hardware_compat_symbols);
     if (!result) { compat_registered = true; raw_storage_imported = false; }
     return result;
@@ -65,7 +91,7 @@ extern "C" void native_hardware_compat_unregister(void) {
 }
 #else
 // No ESP32-S3/T5S3 direct hardware ABI exists on other board variants.
-extern "C" int native_hardware_compat_register(void) { return 0; }
+extern "C" int native_hardware_compat_register(void) { retiredStorageImport = false; return 0; }
 extern "C" void native_hardware_compat_unregister(void) {}
 extern "C" void native_hardware_compat_storage_uncertain(void) {}
 #endif

@@ -602,6 +602,16 @@ bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* o
     *out = {grant, interface};
     return true;
 }
+bool drainExcept(const Lease* retained, size_t count) {
+    if (count > RuntimeProviders::GraphV2::kMaxGrants || (count && !retained)) return false;
+    if (!graph) return count == 0;
+    RuntimeProviders::GrantV2 grants[RuntimeProviders::GraphV2::kMaxGrants]{};
+    for (size_t i = 0; i < count; ++i) {
+        if (!retained[i].interface || graph->interfaceFor(retained[i].grant) != retained[i].interface) return false;
+        grants[i] = retained[i].grant;
+    }
+    return graph->drainExcept(grants, count);
+}
 bool shutdown() {
     if (!graph) return true;
     if (!graph->shutdown()) return false;

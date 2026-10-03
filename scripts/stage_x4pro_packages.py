@@ -15,11 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ['platform_clock_v1', 'x4pro_panel', 'x4pro_buttons', 'x4pro_frontlight',
            'x4pro_sd', 'x4pro_i2c', 'x4pro_gt911', 'x4pro_battery']
 
-def stage():
-    output = ROOT / 'dist/x4-independent-packages'
+def stage(sources=SOURCES, board="xteink-x4-pro", output=None, omitted=("x4pro-battery",)):
+    output = output or ROOT / "dist/x4-independent-packages"
     output.mkdir(parents=True, exist_ok=True)
     records = []
-    for name in SOURCES:
+    for name in sources:
         source = ROOT / 'Drivers' / name / 'manifest.json'
         manifest = json.loads(source.read_text())
         identity = manifest['id']
@@ -59,11 +59,11 @@ def stage():
     (bootfs/'Drivers').mkdir(exist_ok=True)
     selections=[]
     for record in records:
-        if record['id']=='x4pro-battery': continue # battery UI integration remains pending
+        if record['id'] in omitted: continue # Not selected in this board profile
         shutil.copytree(output/record['id'],bootfs/'Drivers'/record['id'],dirs_exist_ok=True)
         selections.append({'manifest':f"Drivers/{record['id']}/manifest.json"})
     (bootfs/'boot.json').write_text(json.dumps(dict(board='board.json',default_app='default.elf',drivers=selections),indent=2)+'\n')
-    (bootfs/'board.json').write_text(json.dumps(dict(schema='riscrte.board-hardware',schema_version=1,board_id='xteink-x4-pro',revision='reader-profile',buses=[],devices=[]),indent=2)+'\n')
+    (bootfs/'board.json').write_text(json.dumps(dict(schema='riscrte.board-hardware',schema_version=1,board_id=board,revision='reader-profile',buses=[],devices=[]),indent=2)+'\n')
     (output/'artifacts.json').write_text(json.dumps(records,indent=2)+'\n')
     print(f'Staged and validated {len(records)} external packages in {output}')
 

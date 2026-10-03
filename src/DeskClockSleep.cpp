@@ -122,8 +122,11 @@ void sleepUntilNextMinute() {
   gettimeofday(&now, nullptr);
   const uint64_t waitUs = DeskClockTime::untilNextMinuteUs(now.tv_sec, now.tv_usec);
 
-  display.deepSleep();                 // Turn off the e-paper power rails, retain the image.
-  Board::deinitForSleep();             // Also leave backlight, GPS/LoRa and SD bus inactive.
+  if (!display.deepSleep()) {
+    clockState.magic = 0;
+    LOG_ERR("CLOCK", "Storage power-down barrier refused clock sleep");
+    return;
+  }
   pinMode(BoardPins::PowerButton, INPUT_PULLUP);
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   const esp_err_t timerResult = esp_sleep_enable_timer_wakeup(waitUs);

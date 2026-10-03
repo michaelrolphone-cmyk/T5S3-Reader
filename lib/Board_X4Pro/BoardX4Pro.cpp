@@ -28,6 +28,7 @@ void setBacklightLevel(uint8_t level) {
 void restoreBacklightLevel(uint8_t level) { setBacklightLevel(level); }
 void prepareSdBus() {}
 void disableGpsLora() {}
+bool prepareForSleep() { return false; }
 void deinitForSleep() {}
 const BatteryProfile& batteryProfile() { return kProfile; }
 bool beginBatteryManagement() { return false; }

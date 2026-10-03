@@ -1,0 +1,65 @@
+name: T5 external software pair
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  t5-external-pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-t5-external-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-t5-external-
+      - name: Build firmware and independent providers
+        run: |
+          python -m pip install platformio==6.1.19 pyelftools==0.32
+          pio pkg install -e t5s3-pro
+          bash scripts/install_x4_provider_toolchain.sh
+          export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+          export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_spi_esp32s3.py
+          python scripts/build_t5s3_sd.py
+          python scripts/build_t5s3_frontlight.py
+          python scripts/stage_t5s3_packages.py
+          pio run -e t5s3-pro
+      - name: Check storage, frontlight and retained-provider lifecycle
+        run: |
+          STORAGE_TRANSPORT=spi python3 test/storage_volume/run_test.py
+          bash test/run_provider_retained_boundary_test.sh
+          python3 test/hal/retired_storage_import_test.py
+          python3 test/hal/platform_storage_test.py
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -Itest/frontlight/stubs -Isdk/driver test/frontlight/t5_test.cpp -o /tmp/t5-light
+          /tmp/t5-light
+          for elf in dist/experimental/spi-esp32s3-v1/driver.elf dist/experimental/t5s3-sd/driver.elf dist/experimental/t5s3-frontlight/driver.elf; do
+            bash test/run_native_app_test.sh "$elf"
+          done
+      - name: Build separately reviewed module-store pair
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          pio pkg install --global --tool 'platformio/tool-mklittlefs@1.203.210628'
+          python scripts/build_x4_module_store.py --board t5s3-pro \
+            --tool "$HOME/.platformio/packages/tool-mklittlefs/mklittlefs" \
+            --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/t5-external-deployment"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t5-external-deployment-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/t5-external-deployment/
+          retention-days: 7
+          if-no-files-found: error

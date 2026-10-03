@@ -208,6 +208,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   // never import the firmware transport themselves. This runs before mapping.
   bool importsFirmwareI2c = false;
   bool importsFirmwareDisplay = false;
+  unsigned importsFirmwareSpi = 0;
   for (size_t i = 0; i < declaredImportCount; ++i) {
     if (!declaredImports[i]) {
       report(expectedId, "invalid-provider-import");
@@ -217,12 +218,23 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
       importsFirmwareI2c = true;
     if (std::strcmp(declaredImports[i], "t5_video_get_api") == 0)
       importsFirmwareDisplay = true;
+    if (std::strcmp(declaredImports[i], "risc_fw_spi_begin_v1") == 0 ||
+        std::strcmp(declaredImports[i], "risc_fw_spi_select_v1") == 0 ||
+        std::strcmp(declaredImports[i], "risc_fw_spi_transfer_v1") == 0 ||
+        std::strcmp(declaredImports[i], "risc_fw_spi_end_v1") == 0)
+      ++importsFirmwareSpi;
   }
   const bool isFirmwareI2cAdapter =
       std::strcmp(expectedId, "i2c-esp32s3-v2") == 0 &&
       std::strcmp(expectedCapability, "i2c.bus") == 0 && expectedApi == 1;
   if (importsFirmwareI2c != isFirmwareI2cAdapter) {
     report(expectedId, "i2c-firmware-compat-import-policy");
+    return false;
+  }
+  const bool isSpiAdapter = std::strcmp(expectedId, "spi-esp32s3-v1") == 0 &&
+      std::strcmp(expectedCapability, "spi.bus") == 0 && expectedApi == 1;
+  if (isSpiAdapter ? importsFirmwareSpi != 4 : importsFirmwareSpi != 0) {
+    report(expectedId, "spi-firmware-compat-import-policy");
     return false;
   }
   const bool isDisplayAdapter =

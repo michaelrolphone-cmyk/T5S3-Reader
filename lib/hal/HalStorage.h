@@ -8,7 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#if defined(BOARD_XTEINK_X4_PRO)
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
 #include "RiscStorageVolumeV1.h"
 #endif
 
@@ -18,8 +18,8 @@ class HalStorage {
  public:
   HalStorage();
   bool begin();
-#if defined(BOARD_XTEINK_X4_PRO)
-  // Borrowed from the X4 boot owner; it retains the provider module for the
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  // Borrowed from the platform boot owner; it retains the provider module for the
   // whole Reader session. No SPI transport or filesystem implementation here.
   bool bindVolume(const risc_storage_volume_api_v1* volume);
 #endif
@@ -40,6 +40,8 @@ class HalStorage {
   // Known media/power transitions mark unavailable without resetting
   // an active filesystem or closing another owner's handles.
   void markUnavailable();
+  bool prepareForSleep();
+  bool cancelSleep();
   std::vector<String> listFiles(const char* path = "/", int maxFiles = 200);
   // Read the entire file at `path` into a String. Returns empty string on failure.
   String readFile(const char* path);

@@ -25,6 +25,7 @@ void setBacklightLevel(uint8_t level);
 void restoreBacklightLevel(uint8_t level);
 void prepareSdBus();
 void disableGpsLora();
+bool prepareForSleep();
 void deinitForSleep();
 
 struct BatteryProfile {

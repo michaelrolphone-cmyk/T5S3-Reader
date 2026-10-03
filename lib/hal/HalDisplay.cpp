@@ -880,13 +880,15 @@ void HalDisplay::requestNextDisplayEffect(const DisplayEffect effect) { pendingD
 
 void HalDisplay::suppressInitialFullRefresh() { forceFullRefresh = false; }
 
-void HalDisplay::deepSleep() {
+bool HalDisplay::deepSleep() {
+  if (!Board::prepareForSleep()) return false;
   if (gfx) {
     gfx->waitDisplay();
     gfx->powerSave(true);
     gfx->sleep();
   }
   Board::deinitForSleep();
+  return true;
 }
 
 void HalDisplay::setIdlePowerSaving(bool enabled) {

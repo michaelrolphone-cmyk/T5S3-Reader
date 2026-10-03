@@ -45,7 +45,8 @@ def build_one(name):
     profile = os.environ.get("RISCRTE_X4_LINK_PROFILE", "legacy")
     if profile not in ("legacy", "esp14-no-relax"):
         raise ValueError("Unknown X4 linker profile")
-    stable_link = name == "x4pro_sd" or profile == "esp14-no-relax"
+    storage = name in ("x4pro_sd", "t5s3_sd")
+    stable_link = storage or profile == "esp14-no-relax"
     optimization = "-O2" if stable_link else "-Os"
     link_flags = ["-Wl,--no-relax"] if stable_link else []
     # Loop induction optimization pre-biases frame by -12000 for the UC
@@ -60,7 +61,8 @@ def build_one(name):
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
         "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL", *link_flags,
         str(source / "driver.c"),
-        *([str(source / "fatfs/ff.c"), str(source / "fatfs/ffunicode.c")] if name == "x4pro_sd" else []),
+        *([str(ROOT / "Drivers/storage_fatfs/fatfs/ff.c"),
+           str(ROOT / "Drivers/storage_fatfs/fatfs/ffunicode.c")] if storage else []),
         "-lgcc", "-o", str(elf),
     ], check=True)
     readelf = CC.replace("gcc", "readelf")

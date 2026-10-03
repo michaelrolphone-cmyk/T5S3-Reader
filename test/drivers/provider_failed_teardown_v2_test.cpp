@@ -14,6 +14,8 @@ int main(int argc, char **argv) {
   assert(!graph.release(grant));
   assert(!graph.interfaceFor(grant) && graph.liveGrants() == 1);
   assert(!graph.shutdown()); // A caller MUST reconcile a failed release.
+  assert(!graph.drainExcept(&grant, 1)); // Retention cannot bless a failed release.
+  assert(!graph.drainExcept(nullptr, 0));
   assert(!graph.acquire("cap.retry", 1).slot); // No regrant while quarantined.
   assert(!graph.addVerified({"unsafe", argv[1], "cap.other", 1, nullptr, 0}));
   assert(graph.release(grant)); // Second quiesce succeeds; unload only NOW.

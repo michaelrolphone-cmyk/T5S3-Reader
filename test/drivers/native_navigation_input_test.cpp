@@ -37,6 +37,7 @@ bool shutdown() { ++shutdowns; return shutdownOkay; }
 bool hasLiveGrants() { return sharedGrant; }
 const char* lastError() { return "fixture unavailable"; }
 }
+bool drainPlatformProvidersForSleep() { return RuntimeInstalledProviders::shutdown(); }
 int main() {
     nativeNavigationTick();
     assert(acquisitions == 1);

@@ -1,0 +1,145 @@
+[
+  {
+    "release": "app-wifi_settings-v1.0.3",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-wifi_settings-v1.0.3/application-wifi_settings-1.0.3-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "d382883cf73e7d1969d38b6470001e36f81677f629216e21d190d8826f7ec8d6",
+    "elfs": [
+      {
+        "file": "wifi_settings.elf",
+        "bytes": 3084,
+        "sha256": "e50adecc5308600b5637db6806aa933d24e70686ad86c77e34b755afd9998f32",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-web_server-v1.0.1",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-web_server-v1.0.1/application-web_server-1.0.1-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "15fc46dc9cd09b098bdd47bd5ce1232929fe20468d7f832e7ce4e9cee22d2362",
+    "elfs": [
+      {
+        "file": "web_server.elf",
+        "bytes": 3988,
+        "sha256": "8248fdb0c3113143029a30183ce078fff0a1bad1b31fab82395f95aa7d9f14cd",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-usb_debug-v0.1.3",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-usb_debug-v0.1.3/application-usb_debug-0.1.3-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "8722d42eac0bc4e57f911dbd7deda10d7b2aec9615f4c9f1ef3f06e1af4548e3",
+    "elfs": [
+      {
+        "file": "usb_debug.elf",
+        "bytes": 21048,
+        "sha256": "3df90a6c36f9781518bfff3bc6507f5b0288b01fab703aa3c2cfa15264b04b31",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-usb_debug-v0.1.2",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-usb_debug-v0.1.2/application-usb_debug-0.1.2-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "079840015b2faea20cdaba710fd43b4e03e7d91c3ecff7328747ecad9a6c6cf4",
+    "elfs": [
+      {
+        "file": "usb_debug.elf",
+        "bytes": 21048,
+        "sha256": "09d8498d744293ada2cc3bed9443b3158fb0da5c91bcf41a0324b6cbdcc18985",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-timecard-v1.0.4",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-timecard-v1.0.4/application-timecard-1.0.4-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "5b95019fb2fbd2f95737a02af14b0c3abbbefcc89174d1fbc74fa98a5346558c",
+    "elfs": [
+      {
+        "file": "timecard.elf",
+        "bytes": 14572,
+        "sha256": "80d6c1dbeae61fb322601c227a10cac15d64b652573632fd3847d5888fcd4047",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-timecard-v1.0.3",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-timecard-v1.0.3/application-timecard-1.0.3-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "d517aeadb13204865fdd1606926c66d77b62efbb987d8da751b238b54bf9f2f2",
+    "elfs": [
+      {
+        "file": "timecard.elf",
+        "bytes": 14016,
+        "sha256": "38ea52335fcb8adf0ea7b31768e1162623c5c95d8dadb5e181f1f065fd95c33f",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-time_zone-v1.0.1",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-time_zone-v1.0.1/application-time_zone-1.0.1-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "6d2ce40503961940f6afeb1fd262aac2a18ceda315d30c751b46e0ed72ae8249",
+    "elfs": [
+      {
+        "file": "time_zone.elf",
+        "bytes": 3404,
+        "sha256": "c6092d550e9f50a6454ce448e390f6aef735eb7831357ae31ea98b13497e313f",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-text_editor-v0.2.3",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-text_editor-v0.2.3/application-text_editor-0.2.3-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "6d3963b8e42460ed80a877b60796a93fadd72d44c4447b45fb7965a678798df0",
+    "elfs": [
+      {
+        "file": "text_editor.elf",
+        "bytes": 18256,
+        "sha256": "54f609bf6e38190f5c5cde8b40da55420af4e3e354da42b182ccf99acb60e36f",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-status_bar_settings-v1.0.3",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-status_bar_settings-v1.0.3/application-status_bar_settings-1.0.3-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "ff035cd74f8810ea30dacb364ea37df2d0863628c9db39558b2a08405e76c69b",
+    "elfs": [
+      {
+        "file": "status_bar_settings.elf",
+        "bytes": 2920,
+        "sha256": "ef294e50c5007b301245b0a5aaf3e2abcfb19328a91ce24ab718af7325ad4e0b",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-springboard-v1.3.1",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-springboard-v1.3.1/application-springboard-1.3.1-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "d2c16c687ec3f8f3040323feb71b2287ad38fb1c552e705c815228c0de926780",
+    "elfs": [
+      {
+        "file": "springboard.elf",
+        "bytes": 12020,
+        "sha256": "6863a4a8f08b5cc5c518a0dec212e9817fce13c5dcd318ca26bc0eeb9a69a150",
+        "retired_imports": []
+      }
+    ]
+  },
+  {
+    "release": "app-settings-v1.0.1",
+    "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/download/app-settings-v1.0.1/application-settings-1.0.1-xtensa-esp32s3.rte.zip",
+    "archive_sha256": "4759acc4cee47963f7f46bdf323eae8eaf91a8cbc4761bb7191d7ee9e258fa1c",
+    "elfs": [
+      {
+        "file": "settings.elf",
+        "bytes": 2652,
+        "sha256": "57353530d9d8233fce0686a8fb94e3407e3a36292b5a2a5778b1df769bf99ff2",
+        "retired_imports": []
+      }
+    ]
+  }
+]

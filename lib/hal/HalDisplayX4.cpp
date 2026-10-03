@@ -53,7 +53,7 @@ void HalDisplay::requestNextDisplayEffect(DisplayEffect effect) {
   if (isReady()) providerSurface->requestNextDisplayEffect(effect);
 }
 void HalDisplay::suppressInitialFullRefresh() {}
-void HalDisplay::deepSleep() {}
+bool HalDisplay::deepSleep() { return false; }
 void HalDisplay::setIdlePowerSaving(bool) {}
 uint8_t* HalDisplay::getFrameBuffer() const {
   return providerSurface ? providerSurface->getFrameBuffer() : nullptr;

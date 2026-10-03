@@ -41,6 +41,10 @@ static bool permitted(const char *name)
     /* Temporary physical backends are scoped by the manager to their exact
      * installed provider identities before relocation. */
     if (strcmp(name, "risc_fw_i2c_transact_v1") == 0) return true;
+    if (strcmp(name, "risc_fw_spi_begin_v1") == 0 ||
+        strcmp(name, "risc_fw_spi_select_v1") == 0 ||
+        strcmp(name, "risc_fw_spi_transfer_v1") == 0 ||
+        strcmp(name, "risc_fw_spi_end_v1") == 0) return true;
     if (strcmp(name, "t5_video_get_api") == 0) return true;
 #endif
     for (size_t i = 0; i < sizeof(s_public_libc) / sizeof(s_public_libc[0]); ++i)

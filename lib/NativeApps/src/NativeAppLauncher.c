@@ -71,6 +71,8 @@ extern bool native_hardware_display_is_borrowed(void);
 extern int native_hardware_compat_register(void);
 extern void native_hardware_compat_unregister(void);
 extern void native_hardware_compat_storage_uncertain(void);
+extern const char *native_hardware_compat_last_error(void);
+extern void native_hardware_compat_clear_error(void);
 
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
@@ -93,6 +95,7 @@ esp_err_t launch_elf_app(const char *sd_path)
         ESP_LOGE(TAG, "An ELF application is already running");
         return ESP_ERR_INVALID_STATE;
     }
+    native_hardware_compat_clear_error();
     bool compat_registered = false;
     bool unload_failed = false;
     bool module_initialized = false;
@@ -183,6 +186,7 @@ esp_err_t launch_elf_app(const char *sd_path)
     void *handle = dlopen(sd_path, RTLD_NOW);
     native_app_memory_relocation(false);
     if (handle == NULL) {
+        if (native_hardware_compat_last_error()) result = ESP_ERR_NOT_SUPPORTED;
         const char *error = dlerror();
         ESP_LOGE(TAG, "dlopen(%s): %s", sd_path,
                  error != NULL ? error : "loader returned NULL without a diagnostic");

@@ -1,3 +1,7 @@
+#if defined(BOARD_T5S3_PRO)
+#include <BoardPowerPort.h>
+#endif
+#include "platform/PlatformStorage.h"
 #if defined(RISCRTE_PROFILE_HEADLESS)
 #include "runtime/boot/HeadlessRuntime.h"
 void setup() { RuntimeBoot::setup(); }
@@ -238,6 +242,13 @@ void resumeInputProvidersAfterSleep() {
   (void)nativeTouchResume();
 }
 
+static void resumeAfterSleepRefused() {
+  resumeInputProvidersAfterSleep();
+  Board::restoreBacklightLevel(SETTINGS.backlightLevel);
+  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  activityManager.goHome();
+}
+
 // Enter deep sleep mode
 void enterDeepSleep() {
   const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
@@ -271,7 +282,7 @@ void enterDeepSleep() {
   }
 
   halTiltSensor.deepSleep();
-  display.deepSleep();
+  if (!display.deepSleep()) { resumeAfterSleepRefused(); return; }
   LOG_DBG("MAIN", "Entering deep sleep");
 
   powerManager.startDeepSleep(gpio);
@@ -285,7 +296,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 
   Board::setBacklightLevel(0);
   halTiltSensor.deepSleep();
-  display.deepSleep();
+  if (!display.deepSleep()) { resumeAfterSleepRefused(); return; }
   LOG_DBG("MAIN", "Entering deep sleep with current screen preserved, wakeOnTouch=%d", wakeOnTouch ? 1 : 0);
 
   powerManager.startDeepSleep(gpio, wakeOnTouch);
@@ -304,8 +315,23 @@ void enterPowerOffKeepingScreen(const char* status) {
     // to read (e.g. custom/cover images).
     activityManager.goToSleep(/*poweringOff=*/true);
     Board::setBacklightLevel(0);
-    display.deepSleep();
-    if (Board::capabilities().hasHardPowerOff) {
+#if defined(BOARD_T5S3_PRO)
+    // Only hard power-off needs this reservation. Ordinary sleep must not
+    // introduce another SD-backed grant after its checked graph barrier.
+    const bool powerReserved = BoardPowerPort::prepareShutdown();
+    if (!powerReserved && (!BoardPowerPort::cancelShutdown() || !drainPlatformProvidersForSleep())) {
+      resumeAfterSleepRefused(); return;
+    }
+#else
+    const bool powerReserved = true;
+#endif
+    if (!display.deepSleep()) {
+#if defined(BOARD_T5S3_PRO)
+      (void)BoardPowerPort::cancelShutdown();
+#endif
+      resumeAfterSleepRefused(); return;
+    }
+    if (powerReserved && Board::capabilities().hasHardPowerOff) {
       if (Board::shutdownBatteryPower()) {
         delay(1500);
         LOG_DBG("MAIN", "Battery power shutdown returned; falling back to deep sleep");
@@ -317,7 +343,9 @@ void enterPowerOffKeepingScreen(const char* status) {
     }
   }
 
-  enterDeepSleepKeepingScreen(false);
+  // Display/storage already crossed the one-way barrier. Do not remount,
+  // save files, or attempt another graph drain through the normal entry path.
+  powerManager.startDeepSleep(gpio, false);
 }
 
 // Set by activities (e.g. the reader menu's Shut Down button) to request a full
@@ -474,7 +502,7 @@ void setup() {
 
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
-  if (!Storage.begin()) {
+  if (!beginPlatformStorage()) {
     LOG_ERR("MAIN", "SD card initialization failed");
     if (!setupDisplayAndFonts()) {
       g_displayBootFailed = true;

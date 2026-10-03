@@ -84,6 +84,26 @@ typedef struct {
     bool (*rename)(void *context, const char *source, const char *destination);
 } risc_storage_volume_api_v1_ext;
 
+/* Optional power-down barrier. Retains the mapped provider and read handles;
+ * this is NOT permission to unload it. prepare rejects writers/uncertain I/O,
+ * finishes synchronous media work, and blocks every subsequent volume operation.
+ * cancel is legal only BEFORE the board changes pins, rails or media. Actual
+ * deep sleep restarts the process and reacquires a fresh provider generation.
+ * A failed prepare leaves normal admission unchanged and permits a checked retry.
+ */
+typedef struct {
+    risc_storage_volume_api_v1_ext volume;
+    bool (*prepare_power_down)(void *context);
+    bool (*cancel_power_down)(void *context);
+} risc_storage_volume_api_v1_power;
+
+static inline const risc_storage_volume_api_v1_power *risc_storage_volume_power(
+    const risc_storage_volume_api_v1 *api) {
+    return api && api->api_version == RISC_STORAGE_VOLUME_API_V1 &&
+        api->struct_size >= sizeof(risc_storage_volume_api_v1_power)
+        ? (const risc_storage_volume_api_v1_power *)api : NULL;
+}
+
 static inline const risc_storage_volume_api_v1_ext *risc_storage_volume_extension(
     const risc_storage_volume_api_v1 *api) {
     return api && api->api_version == RISC_STORAGE_VOLUME_API_V1 &&

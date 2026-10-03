@@ -1,4 +1,4 @@
-#if !defined(BOARD_XTEINK_X4_PRO)
+#if !defined(BOARD_XTEINK_X4_PRO) && !defined(BOARD_T5S3_PRO)
 #define HAL_STORAGE_IMPL
 #include "HalStorage.h"
 
@@ -227,6 +227,10 @@ void HalStorage::markUnavailable() {
   initialized = false;
   storageGeneration.mutationAttempt();
 }
+bool HalStorage::prepareForSleep() { return !storageBackendUnavailable(); }
+bool HalStorage::cancelSleep() { return !storageBackendUnavailable(); }
+bool halStoragePrepareForSleep() { return Storage.prepareForSleep(); }
+bool halStorageCancelSleep() { return Storage.cancelSleep(); }
 void halStorageMediaUnavailable() { Storage.markUnavailable(); }
 
 std::vector<String> HalStorage::listFiles(const char* path, int maxFiles) {

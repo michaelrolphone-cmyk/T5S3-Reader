@@ -17,6 +17,9 @@ unsigned card_reads, card_writes;
 uint64_t card_time;
 const risc_driver_v2 *t5_driver_get(uint32_t);
 }
+#ifdef TEST_SPI_TRANSPORT
+#include "spi_card_model.h"
+#endif
 static uint64_t now(void*) { return card_time; }
 static unsigned sleeps;
 static void sleep(void*, uint32_t ms) { ++sleeps; card_time += ((ms + 9u) / 10u) * 10u; }
@@ -39,16 +42,26 @@ int main(int argc, char **argv) {
     const auto *driver=t5_driver_get(RISC_PROVIDER_DRIVER_ABI_V2);
     const auto *api=static_cast<const risc_storage_volume_api_v1*>(driver->capability);
     const auto *ext=risc_storage_volume_extension(api);assert(ext);
+    const auto *power=risc_storage_volume_power(api);assert(power);
     auto old=*api;old.struct_size=sizeof(old);assert(!risc_storage_volume_extension(&old));
     risc_platform_clock_api_v1 clock={1,sizeof(clock),nullptr,now,sleep};
-    risc_provider_dependency_v1 dep={"platform.clock",1,&clock};
+    risc_provider_dependency_v1 deps[]={{"platform.clock",1,&clock}
+#ifdef TEST_SPI_TRANSPORT
+        ,{"spi.bus",1,&SpiCardFixture::api}
+#endif
+    };
+    auto invalidClock=clock;invalidClock.monotonic_ms=nullptr;
+    deps[0].api=&invalidClock;
+    assert(!driver->start(deps,sizeof(deps)/sizeof(deps[0])));
+    assert(driver->quiesce()); // Failed dependency validation must be safe to unwind.
+    deps[0].api=&clock;
     std::fprintf(stderr,"mount\n");
     // Invalid BPB fails closed without automatic formatting or writes.
     const size_t boot=(argc>1 && std::strcmp(argv[1],"mbr")==0 ? 2048u : 0u)*512u;
     card_image[boot+510]=0;
-    assert(driver->start(&dep,1)); assert(!api->ready(nullptr)); assert(!card_writes);
+    assert(driver->start(deps,sizeof(deps)/sizeof(deps[0]))); assert(!api->ready(nullptr)); assert(!card_writes);
     assert(driver->quiesce()); card_image[boot+510]=0x55;
-    assert(driver->start(&dep,1));
+    assert(driver->start(deps,sizeof(deps)/sizeof(deps[0])));
     char error[80];api->last_error(nullptr,error,sizeof(error));if(!api->ready(nullptr))std::fprintf(stderr,"mount: %s\n",error);
     assert(api->ready(nullptr));assert(Storage.bindVolume(api));
     std::fprintf(stderr,"mkdir\n");
@@ -60,10 +73,22 @@ int main(int argc, char **argv) {
     std::fprintf(stderr,"settings\n");
     assert(Storage.writeFile("/.crosspoint/settings.json",String("{\"language\":0}")));
     assert(Storage.readFile("/.crosspoint/settings.json")=="{\"language\":0}");
+    // Retain read metadata across a cancelled sleep; never unload a live handle.
+    uint64_t sleepSize=0;
+    auto sleepHandle=api->file_open_read(nullptr,"/.crosspoint/settings.json",&sleepSize);
+    assert(sleepHandle);
+    assert(power->prepare_power_down(nullptr));assert(power->prepare_power_down(nullptr));
+    assert(!api->ready(nullptr));assert(!api->refresh(nullptr));assert(!driver->quiesce());
+    char sleepByte=0;assert(!api->file_read(nullptr,sleepHandle,&sleepByte,1));
+    assert(!api->file_close(nullptr,sleepHandle,true));
+    assert(power->cancel_power_down(nullptr));assert(api->ready(nullptr));
+    assert(api->file_read(nullptr,sleepHandle,&sleepByte,1)==1 && sleepByte=='{');
+    assert(api->file_close(nullptr,sleepHandle,true));
     std::fprintf(stderr,"large file\n");
     std::vector<uint8_t> block(4096);for(size_t i=0;i<block.size();++i)block[i]=i;
     auto file=Storage.open("/Apps/springboard/springboard.elf",O_RDWR|O_CREAT|O_EXCL);assert(file);
     const auto writing=Storage.generation();assert(!writing.quiescent);
+    assert(!power->prepare_power_down(nullptr));assert(api->ready(nullptr));
     for(unsigned i=0;i<64;++i)assert(file.write(block.data(),block.size())==block.size());
     file.flush();assert(!file.getError());assert(file.fileSize64()==262144);
     assert(file.seek64(180003));uint8_t bytes[33];assert(file.read(bytes,sizeof(bytes))==sizeof(bytes));assert(bytes[0]==(180003%256));
@@ -164,6 +189,7 @@ int main(int argc, char **argv) {
     const auto began=card_time;
     assert(writer.write(block.data(),block.size())<block.size());assert(writer.getError()); assert(card_time-began<16000);
     assert(!writer.close());assert(!Storage.begin());assert(!driver->quiesce());
+    assert(!power->prepare_power_down(nullptr));assert(!power->cancel_power_down(nullptr));
     assert(!card_bad_pin);assert(card_reads&&card_writes);
     std::puts("production FatFs + native SD wire + HalStorage: PASS");
     // Deliberately retain the failed writer until process exit, like reboot.

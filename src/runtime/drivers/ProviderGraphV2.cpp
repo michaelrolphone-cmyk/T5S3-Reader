@@ -334,6 +334,56 @@ size_t GraphV2::liveGrants() const {
   return total;
 }
 
+bool GraphV2::drainExcept(const GrantV2* retained, size_t count) {
+  if (count > kMaxGrants || (count && !retained) || polling_) return false;
+  bool keep[kMaxModules]{};
+  for (size_t i = 0; i < count; ++i) {
+    if (!interfaceFor(retained[i])) return false; // Includes stale/pending grants.
+    for (size_t j = 0; j < i; ++j)
+      if (retained[i].slot == retained[j].slot) return false;
+    keep[grants_[retained[i].slot - 1].node] = true;
+  }
+  for (size_t i = 0; i < kMaxGrants; ++i) {
+    if (!grants_[i].occupied) continue;
+    bool allowed = false;
+    for (size_t j = 0; j < count; ++j)
+      if (retained[j].slot == i + 1 &&
+          retained[j].generation == grants_[i].generation) allowed = true;
+    if (!allowed || grants_[i].pendingRelease) return false;
+  }
+  // The graph is acyclic, but iterate with an explicit module bound rather
+  // than recursion. Only dependencies actually acquired belong to the closure.
+  for (size_t pass = 0; pass < count_; ++pass)
+    for (size_t i = 0; i < count_; ++i)
+      if (keep[i])
+        for (size_t j = 0; j < nodes_[i].acquired; ++j)
+          keep[nodes_[i].dependencies[j]] = true;
+  for (size_t pass = 0; pass <= count_; ++pass) {
+    bool progress = false;
+    for (size_t i = 0; i < count_; ++i) {
+      Node& node = nodes_[i];
+      if (keep[i] || node.module.consumers()) continue;
+      if (node.visit == Visit::Active ||
+          (node.visit == Visit::Idle && node.module.state() == ModuleV2::State::Failed)) {
+        if (!node.module.unload()) return false;
+        node.visit = Visit::Idle;
+        releaseDependencies(i);
+        progress = true;
+      }
+    }
+    if (!progress) break;
+  }
+  for (size_t i = 0; i < count_; ++i) {
+    const Node& node = nodes_[i];
+    if (keep[i]) {
+      if (node.visit != Visit::Active || node.module.state() != ModuleV2::State::Active ||
+          !node.module.consumers()) return false;
+    } else if (node.visit != Visit::Idle || node.acquired ||
+               node.module.state() != ModuleV2::State::Absent || node.module.consumers()) return false;
+  }
+  return true;
+}
+
 bool GraphV2::shutdown() {
   if (liveGrants()) return false;
   for (size_t pass = 0; pass <= count_; ++pass) {

@@ -1,4 +1,5 @@
 #include "NativeNavigationInput.h"
+#include "platform/PlatformStorage.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include "runtime/input/NavigationFocus.h"
 #include <Arduino.h>
@@ -105,9 +106,9 @@ static bool releaseNavigation(bool requireGraphShutdown) {
         }
         // Failed activation can retain a physical dependency even though no
         // navigation API was returned. Absence of our grant is not quiescence.
-        if (!attempted && !quarantined) return true;
+        if (!attempted && !quarantined) return !requireGraphShutdown || drainPlatformProvidersForSleep();
         if (!requireGraphShutdown && !quarantined && RuntimeInstalledProviders::hasLiveGrants()) return true;
-        quarantined = !RuntimeInstalledProviders::shutdown();
+        quarantined = !(requireGraphShutdown ? drainPlatformProvidersForSleep() : RuntimeInstalledProviders::shutdown());
         return !quarantined;
     }
     if (!api->reset(api->context)) return false;
@@ -118,7 +119,7 @@ static bool releaseNavigation(bool requireGraphShutdown) {
     // Releasing this composite can leave a failed lower dependency pinned.
     // Prove the whole graph quiescent before sleep, not just our top-level ELF.
     const bool shared = !requireGraphShutdown && RuntimeInstalledProviders::hasLiveGrants();
-    quarantined = !released || (!shared && !RuntimeInstalledProviders::shutdown());
+    quarantined = !released || (!shared && !(requireGraphShutdown ? drainPlatformProvidersForSleep() : RuntimeInstalledProviders::shutdown()));
     return !quarantined;
 }
 bool nativeNavigationSuspend() { return releaseNavigation(true); }

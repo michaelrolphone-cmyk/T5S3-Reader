@@ -1,6 +1,6 @@
 // Generic storage.volume backend. X4 selects it instead of the legacy SdFat
 // backend; no board pins, FAT internals, or device protocol live in this adapter.
-#if defined(BOARD_XTEINK_X4_PRO)
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
 #define HAL_STORAGE_IMPL
 #include "HalStorage.h"
 #include <Arduino.h>
@@ -64,6 +64,22 @@ bool HalStorage::reconcileExternalStorage() {
   return begin();
 }
 void HalStorage::markUnavailable() { StorageLock lock; if (lock) { initialized = false; generations.mutationAttempt(); } }
+bool HalStorage::prepareForSleep() {
+  StorageLock lock;
+  if (!lock) return false;
+  if (!volume) return !initialized; // Early timer wake has never mounted storage.
+  const auto* power = risc_storage_volume_power(volume);
+  return power && power->prepare_power_down && power->prepare_power_down(volume->context);
+}
+bool HalStorage::cancelSleep() {
+  StorageLock lock;
+  if (!lock) return false;
+  if (!volume) return !initialized;
+  const auto* power = risc_storage_volume_power(volume);
+  return power && power->cancel_power_down && power->cancel_power_down(volume->context);
+}
+bool halStoragePrepareForSleep() { return Storage.prepareForSleep(); }
+bool halStorageCancelSleep() { return Storage.cancelSleep(); }
 void halStorageMediaUnavailable() { Storage.markUnavailable(); }
 
 class HalFile::Impl {

@@ -11,6 +11,7 @@
 /* Temporary physical backends, never part of the generic OS/CPU inventory.
  * Provider admission restricts each import to its exact installed identity. */
 #include "RiscFirmwareI2cCompatV1.h"
+#include "RiscFirmwareSpiCompatV1.h"
 #include "T5VideoApi.h"
 #endif
 
@@ -164,6 +165,14 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
      * privileged_os_cpu_symbols_v1.def inventory. */
     if (strcmp(symbol, "risc_fw_i2c_transact_v1") == 0)
         return (uintptr_t)&risc_fw_i2c_transact_v1;
+    if (strcmp(symbol, "risc_fw_spi_begin_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_begin_v1;
+    if (strcmp(symbol, "risc_fw_spi_select_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_select_v1;
+    if (strcmp(symbol, "risc_fw_spi_transfer_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_transfer_v1;
+    if (strcmp(symbol, "risc_fw_spi_end_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_end_v1;
     if (strcmp(symbol, "t5_video_get_api") == 0)
         return (uintptr_t)&t5_video_get_api;
 #endif

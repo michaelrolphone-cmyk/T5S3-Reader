@@ -62,4 +62,5 @@ const char* lastError();
 // Refuses destruction while any provider is still granted or not quiescent.
 // An unsuccessful shutdown deliberately retains every ELF and package pin.
 bool shutdown();
+bool drainExcept(const Lease* retained, size_t count);
 }

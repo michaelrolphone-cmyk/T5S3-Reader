@@ -80,7 +80,7 @@ int main(int argc,char** argv){
      assert(Storage.tracker.needsReconcile()&&Storage.tracker.mountAttempt());
      Storage.tracker.mounted(true);assert(Storage.tracker.stamp(true).quiescent);
    }
-   assert(classified==11&&Storage.begins==classified&&Storage.ends==classified);
+   assert(classified==8&&Storage.begins==classified&&Storage.ends==classified);
    assert(!nativeRawStorageImport("_ZN2fs4File5writeEPKhj_spoof"));
  }else{
    assert(native_hardware_compat_register()==0);assert(esp_elf_find_symbol("_ZN2fs2FS4openEPKcS2_b"));
@@ -91,7 +91,7 @@ int main(int argc,char** argv){
  puts("Actual registered storage import/lifetime boundary PASS");
 }
 '''
-cpp=cpp.replace('#include <cstdio>','#include <cstdio>\n#include <initializer_list>')
+cpp=cpp.replace('#include <cstdio>','#include <cstdio>\n#include <initializer_list>\nstatic bool retiredStorageImport=false;')
 with tempfile.TemporaryDirectory(prefix='u1-storage-import-') as temp:
     directory=Path(temp);c=directory/'lookup.c';c.write_text(c_prefix+registered)
     body=directory/'boundary.cpp';body.write_text(cpp)

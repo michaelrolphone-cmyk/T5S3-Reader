@@ -139,7 +139,7 @@ jobs:
             test/x4pro_panel_state_test.c Drivers/x4pro_panel/driver.c -o /tmp/x4panel
           /tmp/x4panel
           cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_sd_fake -I Drivers/x4pro_board \
-            test/x4pro_sd_absent_test.c Drivers/x4pro_sd/driver.c Drivers/x4pro_sd/fatfs/ff.c Drivers/x4pro_sd/fatfs/ffunicode.c -o /tmp/x4sd-absent
+            test/x4pro_sd_absent_test.c Drivers/x4pro_sd/driver.c Drivers/storage_fatfs/fatfs/ff.c Drivers/storage_fatfs/fatfs/ffunicode.c -o /tmp/x4sd-absent
           /tmp/x4sd-absent
           python3 test/storage_volume/run_test.py
 

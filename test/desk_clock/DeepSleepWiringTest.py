@@ -51,7 +51,8 @@ class ClockDeepSleepWiring(unittest.TestCase):
         for forbidden in ("Storage.begin", "touch.begin", "activityManager", "WiFi.begin"):
             self.assertNotIn(forbidden, resume)
         self.assertIn("display.deepSleep()", CLOCK)
-        self.assertIn("Board::deinitForSleep()", CLOCK)
+        self.assertIn("if (!display.deepSleep())", CLOCK)
+        self.assertNotIn("Board::deinitForSleep()", CLOCK)  # Checked display path owns the one-way transition.
         self.assertIn("display.begin(false)", resume)
         self.assertNotIn("display.begin();", resume)
         self.assertIn("init_impl(true, false)", DISPLAY)

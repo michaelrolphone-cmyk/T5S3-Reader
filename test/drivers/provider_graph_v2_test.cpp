@@ -32,7 +32,17 @@ int main(int argc, char** argv) {
   auto otherGrant = graph.acquire("cap.other", 1);
   assert(otherGrant.slot && graph.liveGrants() == 2);
   assert(!graph.shutdown());
+  assert(!graph.drainExcept(&childGrant, 1)); // Other live grant is not silently ignored.
+  RuntimeProviders::GrantV2 retained[] = {childGrant, otherGrant};
+  assert(graph.drainExcept(retained, 2));
+  assert(graph.interfaceFor(childGrant) && graph.interfaceFor(otherGrant));
+  retained[1] = childGrant;
+  assert(!graph.drainExcept(retained, 2)); // Duplicate is not a second authorization.
+  retained[1] = otherGrant; ++retained[1].generation;
+  assert(!graph.drainExcept(retained, 2));
   assert(graph.release(childGrant));
+  assert(graph.drainExcept(&otherGrant, 1));
+  assert(!graph.drainExcept(&childGrant, 1));
   assert(!graph.release(childGrant) && !graph.interfaceFor(childGrant));
   auto replacement = graph.acquire("cap.child", 1);
   assert(replacement.slot && replacement.generation != childGrant.generation);
