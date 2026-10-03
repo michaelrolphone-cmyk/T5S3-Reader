@@ -1,6 +1,9 @@
 name: fold-385-finish
 on:
-  workflow_dispatch:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-385-finish.yml'
 jobs:
   apply:
     runs-on: ubuntu-latest
@@ -18,10 +21,11 @@ jobs:
           curl -fsSL "$BASE/lib/Epub/Epub.cpp" -o lib/Epub/Epub.cpp
           curl -fsSL "$BASE/lib/Epub/Epub/css/CssParser.cpp" -o lib/Epub/Epub/css/CssParser.cpp
           rm -f .fold-encoding-probe.txt .fold-size-probe.txt .fold-size-probe-15k.txt .fold-size-probe-25k.txt || true
-          git config user.name "michaelrolphone-cmyk"
-          git config user.email "michael.rol.phone@gmail.com"
+          rm -f .github/workflows/fold-385-finish.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add lib/Epub/Epub.cpp lib/Epub/Epub/css/CssParser.cpp
-          git add -u .fold-encoding-probe.txt .fold-size-probe.txt 2>/dev/null || true
+          git add -u .fold-encoding-probe.txt .fold-size-probe.txt .github/workflows/fold-385-finish.yml 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No changes"
             exit 0
