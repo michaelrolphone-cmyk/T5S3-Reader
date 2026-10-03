@@ -1,0 +1,60 @@
+X4 ordinary-SD readback and optional repair
+Source: PR350 67d0fd3e9f4012eae681e7d284d2d0bb39732dfb (firmware 1.3.79)
+Prepared 2026-10-03. Run later when you are at the Mac.
+
+The earlier session reported copying the corrected drivers/profile but did not
+finish a verified readback receipt. Start with the read-only check. If all 50
+files match, no copy is needed.
+
+Requirements: macOS, Python 3.7 or newer, and the X4 card removed from the
+powered-off device and mounted through an SD/card reader. Close other apps using
+the card. You choose its exact /Volumes/NAME mount point; the helper never picks
+a volume. It refuses system/internal/ambiguous/non-FAT32 media, links and unsafe
+paths. An unrecognized reader or unsupported macOS safety operation causes a
+safe refusal; do not remove those safeguards.
+
+1. Open Terminal in this extracted folder. Substitute the actual mounted name:
+
+python3 stage_x4_sd_card.py --artifact "$PWD/x4-sd-deployment-11276691611.zip" --volume "/Volumes/EXACT_SD_NAME"
+
+This is read-only. Save or return the JSON output. all_50_matching=true means
+all 50 declared files, including eight hidden .package.json files, read back
+exactly. Hardware validation is reported FAILED/unavailable because this helper
+performs no candidate boot, display, touch or device test.
+
+2. Only if the preflight lists missing/conflicting files and you intend to repair
+this exact card, run the same command with these explicit options. The backup
+folder must be new, its parent must already exist on the Mac's internal drive:
+
+python3 stage_x4_sd_card.py --artifact "$PWD/x4-sd-deployment-11276691611.zip" --volume "/Volumes/EXACT_SD_NAME" --apply --card-offline --backup-dir "$HOME/Desktop/x4-sd-backup-67d0fd3-NEW"
+
+Every conflicting original is durably backed up and read back before card writes
+begin. Only the 50 selected file paths are written; matching files, existing
+Apps, Home pins, books, other Inbox archives and unrelated data remain untouched.
+Driver package metadata and board/boot profiles publish last. There is no card
+format, deletion, automatic rollback, firmware flash or driver-store flash.
+
+Writes are direct and NOT atomic. An interruption can leave a partial selected
+file or mixed driver generation. Keep the card offline if any step fails; retain
+the backup folder, journal.jsonl and receipt.json. Do not boot it until repaired.
+A successful apply produces readback-pass and all_50_matching=true plus hashes.
+Safely eject through macOS after success. Firmware/device testing is a separate
+step; do not flash the firmware in the original artifact using this procedure.
+
+Verified inputs:
+- Original Actions artifact11276691611, run37130259920:
+  SHA256 ca478cf829e2c78b81f3a4f80134119522d4863ea10404d06f6b006adf180efa
+- Exact nested sdcard.zip, 268135 bytes:
+  SHA256 f55daa10cdcc67eceba27b96e1ff17c4e9acf9c75ad55062bc72954d4332a8d8
+- 50 declared SD files; eight hidden ordinary package manifests.
+- Source and verified run:
+  https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/350
+  https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/37130259920
+
+The standalone sdcard.zip is an unchanged convenience copy. The helper reads
+the original pinned outer artifact so it can verify its provenance checksum and
+complete manifest together. Do not use older incomplete artifact11276770866.
+
+Software validation: 36 focused helper tests, artifact/hash/inventory checking
+on the actual hosted input, and broader controller/bridge regressions. macOS
+card/reader behavior has not been physically tested by this preparation.

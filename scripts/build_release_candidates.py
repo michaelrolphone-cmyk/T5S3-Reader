@@ -40,6 +40,11 @@ _BOOTSTRAP_BUILD_RECIPES = {
         ("scripts/audit_usb_controller_elf.py", "--strict"),
     ],
 }
+for _x4_source in ("x4pro_i2c", "x4pro_panel", "x4pro_gt911", "x4pro_buttons",
+                   "x4pro_frontlight", "x4pro_battery", "x4pro_sd"):
+    _BOOTSTRAP_BUILD_RECIPES[_x4_source] = [
+        ("scripts/build_x4pro_drivers.py", "--source", _x4_source)
+    ]
 
 
 def discover_module_sources(root: Path) -> list[dict]:

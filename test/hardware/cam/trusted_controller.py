@@ -36,9 +36,13 @@ class RateLimited(RuntimeError):
 
 
 class GitHub:
-    def __init__(self, token):
+    def __init__(self, token, repository=None):
         if not token:
             raise RuntimeError("GH_TOKEN absent; controller remains inactive")
+        self.repository = repository or REPO
+        if self.repository not in (REPO, "michaelrolphone-cmyk/RiscRTE"):
+            raise ValueError("Repository is not allowlisted")
+        self.api = "https://api.github.com/repos/" + self.repository
         self.token = token
         # Python.org macOS builds may lack their bundled OpenSSL CA file.
         # Keep certificate verification on using the Mac's system CA bundle.
@@ -48,7 +52,7 @@ class GitHub:
 
     def call(self, path, method="GET", body=None, limit=1_000_000):
         data = None if body is None else json.dumps(body).encode()
-        req = urllib.request.Request(API + path, data=data, method=method,
+        req = urllib.request.Request(self.api + path, data=data, method=method,
             headers={"Authorization": "Bearer " + self.token,
                      "Accept": "application/vnd.github+json",
                      "X-GitHub-Api-Version": "2022-11-28",
@@ -97,9 +101,10 @@ class GitHub:
 
 def eligible_source(gh, number):
     pr = gh.call(f"/pulls/{number}")
+    repository = getattr(gh, "repository", REPO)
     head = pr["head"]["sha"]
-    if (pr["state"] != "open" or pr["base"]["repo"]["full_name"] != REPO
-            or pr["head"]["repo"]["full_name"] != REPO
+    if (pr["state"] != "open" or pr["base"]["repo"]["full_name"] != repository
+            or pr["head"]["repo"]["full_name"] != repository
             or pr["head"]["repo"]["id"] != pr["base"]["repo"]["id"]
             or pr["user"]["login"] != OWNER or not SHA.fullmatch(head)):
         raise ValueError("PR is not an open owner-authored same-repository exact head")

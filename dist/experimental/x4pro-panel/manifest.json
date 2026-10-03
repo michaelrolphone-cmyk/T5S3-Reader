@@ -1,0 +1,24 @@
+{
+  "type": "driver",
+  "id": "x4pro-panel",
+  "version": "0.1.13",
+  "driver_abi": 2,
+  "architecture": "xtensa-esp32s3",
+  "file_name": "driver.elf",
+  "board": "xteink-x4-pro",
+  "requires": [
+    {
+      "capability": "platform.clock",
+      "api": 1
+    }
+  ],
+  "provides": [
+    {
+      "capability": "display.output",
+      "api": 1
+    }
+  ],
+  "status": "experimental-unpublished",
+  "size_bytes": 20488,
+  "sha256": "1a40ddcf8b070ed1c2336f55d76cf0ad32b49df802b0c6fef26922d977dc28fa"
+}

@@ -1,0 +1,91 @@
+name: Corrected X4 serial staging software
+on:
+  pull_request:
+    paths:
+      - 'test/hardware/reader/**'
+      - 'test/hardware/*x4*'
+      - '.github/workflows/x4-serial-staging-build.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  staging-build:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 370
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          path: utility
+      - uses: actions/checkout@v4
+        with:
+          ref: 67d0fd3e9f4012eae681e7d284d2d0bb39732dfb
+          persist-credentials: false
+          path: fixture
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-x4-staging-${{ hashFiles('fixture/platformio*.ini') }}
+          restore-keys: ${{ runner.os }}-x4-staging-
+      - name: Fetch separately pinned build inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir "$RUNNER_TEMP/staging-inputs"
+          timeout 180s gh api repos/michaelrolphone-cmyk/T5S3-Reader/actions/artifacts/11276691611/zip > "$RUNNER_TEMP/staging-inputs/deployment.zip"
+          timeout 180s gh api repos/michaelrolphone-cmyk/T5S3-Reader/actions/artifacts/11276886372/zip > "$RUNNER_TEMP/staging-inputs/apps.zip"
+          printf '%s  %s\n' ca478cf829e2c78b81f3a4f80134119522d4863ea10404d06f6b006adf180efa "$RUNNER_TEMP/staging-inputs/deployment.zip" | sha256sum -c -
+          printf '%s  %s\n' c35f159e49202222000e193a3ae08e53d26d5543bdcc6ca703f67519dc778573 "$RUNNER_TEMP/staging-inputs/apps.zip" | sha256sum -c -
+          python - <<'PY'
+          import os,pathlib,zipfile
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'staging-inputs'
+          with zipfile.ZipFile(root/'apps.zip') as archive:
+              for name in ('driver_manager','app_store'):
+                  file=f'application-{name}-1.0.8-xtensa-esp32s3.rte.zip'
+                  info=archive.getinfo('release-app-packages/'+file)
+                  assert info.file_size <= 65536
+                  (root/file).write_bytes(archive.read(info))
+          PY
+      - name: Prepare exact utility head on corrected production base
+        run: |
+          python utility/test/hardware/prepare_x4_serial_staging.py fixture "$RUNNER_TEMP/staging-inputs" --artifact "$RUNNER_TEMP/staging-inputs/deployment.zip"
+      - name: Build corrected SD-bootstrap instrumentation
+        working-directory: fixture
+        run: |
+          python -m pip install platformio==6.1.19 pyelftools==0.32 intelhex==2.3.0
+          pio pkg install -e x4-ci-staging
+          bash scripts/install_x4_provider_toolchain.sh
+          export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+          export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_x4pro_drivers.py
+          python scripts/stage_x4pro_packages.py
+          python test/x4pro_boot_isolation_test.py
+          pio run -e x4-ci-staging
+      - name: Record compile-only provenance
+        env:
+          UTILITY_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path('fixture');record=json.loads((root/'ci-staging-build.json').read_text())
+          data=(root/'.pio/build/x4-ci-staging/firmware.bin').read_bytes()
+          record.update(utility_source_sha=os.environ['UTILITY_SOURCE_SHA'],firmware_sha256=hashlib.sha256(data).hexdigest(),firmware_bytes=len(data),hardware_performed=False,deployment_authorized=False,hardware_validation='failed',hardware_validation_reason='Unavailable: compile-only job; no physical candidate execution')
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'staging-software-evidence';out.mkdir()
+          (out/'compile-evidence.json').write_text(json.dumps(record,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x4-staging-compile-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/staging-software-evidence/
+          retention-days: 30
+          if-no-files-found: error

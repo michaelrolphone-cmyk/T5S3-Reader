@@ -526,9 +526,13 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
       SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
   // Position icon at right edge, drawBatteryRight will place text to the left
   const int batteryX = rect.x + rect.width - 12 - BaseMetrics::values.batteryWidth;
+#if !defined(BOARD_XTEINK_X4_PRO)
   drawBatteryRight(renderer,
                    Rect{batteryX, rect.y + 5, BaseMetrics::values.batteryWidth, BaseMetrics::values.batteryHeight},
                    showBatteryPercentage);
+#else
+  (void)showBatteryPercentage;
+#endif
 
   if (leadingLabel != nullptr && leadingLabel[0] != '\0') {
     renderer.drawText(SMALL_FONT_ID, rect.x + BaseMetrics::values.contentSidePadding, rect.y + 5, leadingLabel);
