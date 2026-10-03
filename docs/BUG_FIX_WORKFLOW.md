@@ -13,15 +13,15 @@ This document defines coordination and evidence rules for the existing bug scan/
 
 ## Scope and batch limits
 
-- Maintain at most two outstanding bugfix code batches. The ledger-only coordination PR does not count as a code batch. Each new batch contains 2–4 related small fixes or one substantial fix; the recovered single #205 repair is the initial exception.
+- There is no fixed numerical cap on outstanding bugfix code batches. Sequence work by user priority, active ownership, overlap, and evidence. The ledger-only coordination PR is not a bugfix code batch. Each batch should remain coherent: 2–4 closely related small fixes or one substantial fix; the recovered single #205 repair was the initial exception.
 - Avoid overlapping open PRs #324, #277, #220, #194, and #96; recheck their state and changed paths before selection. Do not mutate their branches.
 - No direct master writes, merges, auto-merge, release, deployment, or cross-repository edits. Keep ledger changes on the coordination branch and source changes on focused repair branches.
-- Candidate next batch, after revalidation and capacity check: #16 and #17 (Button Remap persistence rollback and misleading Reset/Cancel labels). This restoration does not implement that batch.
+- Select the next candidate only after checking the latest canonical inventory, current-master reachability, active owner claims, existing repair branches, and all open or closed-unmerged PR paths. The former #16/#17 Button Remap batch was completed through merged PR #333 and must not be requeued.
 
 ## One run
 
 1. Resume recorded work first. Inspect the exact repair PR/head and pending checks; repair authorized failures or record a specific blocker. A closed-unmerged PR is unfinished work, not a merged fix.
-2. Reconcile new scan evidence by immutable source commit plus scan-local ID. Compare the affected function, trigger, failure, and repair. Attach duplicate provenance to the existing canonical report; assign a fresh ID only to a distinct failure. The next unused ID in this snapshot is 249.
+2. Reconcile new scan evidence by immutable source commit plus scan-local ID. Compare the affected function, trigger, failure, and repair. Attach duplicate provenance to the existing canonical report; assign a fresh ID only to a distinct failure. The latest reconciled inventory currently ends at canonical ID 260; assign a new canonical ID only after checking the current ledger head.
 3. Select a ready unclaimed report. Revalidate its trigger on current master and check merged/open/closed-unmerged PRs for overlap. Record the checked SHA, source locations, and actual reproduction/test outcome. Historical `Open` is not current confirmation.
 4. Claim the report durably before source changes. Reuse an existing authorized repair branch when recovering its unfinished work; otherwise branch from current master. Implementation PRs target master, never another repair PR.
 5. Implement a focused fix and regression that fails on the original behavior. Honor package version rules for every changed distributable. Check normal, error, retry, and cleanup paths relevant to the defect.
