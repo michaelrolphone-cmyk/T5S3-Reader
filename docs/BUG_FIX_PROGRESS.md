@@ -1,3 +1,14 @@
+## Active repair claim — canonical #261 — 2026-10-03T02:32:18.754508+00:00
+
+- Coordinator/owner `task4_ncx_261_20261003` (delegated hourly fixer); claim active, phase production regression then focused repair. Scanner released its writer role; this run is the sole ledger writer.
+- Baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; captured ledger parent `2257f18b4d14cb853811988f83fec09c539a4cf4`; repair branch `fix/ncx-relative-chapter-path`, isolated task-4 checkout. No owned incomplete repair exists in this checkout.
+- Revalidated caller at Epub.cpp:165 still gives NCX the OPF base; scanner production-parser evidence is retained in #261. Current-master regression is next. All fetched branch history for Epub.cpp contains only the initial commit; current/all-state NCX PR search finds no duplicate. Existing consolidated #373 covers #21/#23/#25/#36/#246 only. Closed-unmerged repairs remain untouched.
+- Reserve firmware `1.3.74` (master/published source `1.3.69`, CI `1.3.70`, Home `1.3.71`, #372 `1.3.72`, consolidation #373 `1.3.73`). No app/driver/provider change planned. Check reservations again before publishing.
+- Scope: correct NCX base directory and production caller/parser regression; no hardware/CI-controller operations, signing, release, merge or master write. Software CI may run; hardware status will be reported separately.
+- Next: baseline regression, minimal repair/version bump, local checks, draft PR targeting master, exact-head CI, terminal checkpoint and claim release.
+
+---
+
 ## Completed report-only scan — canonical #261 — 2026-10-03 02:07 UTC
 
 - Coordinator `scan_reader_defects_20261003_0203`; baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; captured coordination parent `52f26ed47a1eb9c0c6d372d3f4232be1b3f7a37a`. Parent assigned this scan the sole ledger writer role; consolidation retains its separate branch and does not write the ledger. Latest recorded repair claim was released; no active overlapping NCX owner found.
