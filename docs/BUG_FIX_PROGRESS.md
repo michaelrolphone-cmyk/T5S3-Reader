@@ -1,3 +1,13 @@
+## Completed report-only scan — canonical #261 — 2026-10-03 02:07 UTC
+
+- Coordinator `scan_reader_defects_20261003_0203`; baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; captured coordination parent `52f26ed47a1eb9c0c6d372d3f4232be1b3f7a37a`. Parent assigned this scan the sole ledger writer role; consolidation retains its separate branch and does not write the ledger. Latest recorded repair claim was released; no active overlapping NCX owner found.
+- One new ordinary correctness defect confirmed, canonical #261: NCX links use the OPF directory instead of the NCX directory. Production parser/normalizer host reproduction emitted the wrong path and a correct-base control emitted the intended path. Exact source, fixture, observed output, downstream source trace and limitations are in `bugs.md`. No other speculative finding was published. Existing KOReader nested-paragraph observation was recognized as duplicate #211.
+- Read root instructions, platform specification/roadmap and the current ledger/progress/workflow. Deduplicated against current reports, relevant branches, issues and all-state PRs; open coordination PR #332 remains the sole ledger PR.
+- Master remains unchanged. Known #21/#23/#25/#36/#246 repairs are still unmerged in their existing PRs and combined draft #373; this scan does not claim their CI, integration or hardware completion. No implementation claim acquired; coordinator is released on successful publication of this report-only checkpoint.
+- Only `bugs.md` and this progress file change. No implementation, master write, merge, release, device/hardware action, other repository edit or version bump.
+
+---
+
 ## Terminal batch checkpoint — confirmation touch approvals, canonical #246 — 2026-10-02 23:18 UTC
 
 - Claim `confirmation_touch_safety_20261002` released after this checkpoint. Owner `michaelrolphone-cmyk`; baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; branch `fix/confirmation-touch-safety`; draft [PR #372](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/372), directly targeting master. Exact remote head `0ab27a502c0e2aa39ab25f6c95507f17ccc1c839`; compare is 7 ahead / 0 behind; GitHub reports mergeable.
