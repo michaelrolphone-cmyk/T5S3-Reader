@@ -43,5 +43,9 @@ No existing app/driver/provider package payload is changed.
   the firmware-pinned toolchain.
 - Local full firmware attempt is blocked before compile: PlatformIO toolchain
   mirror checksum mismatch, then bounded 180-second timeout. No checksum override.
+- The full existing native-app aggregate passes locally. The Springboard/package
+  aggregate exposed a source-contract test that still located the public launcher
+  wrapper; it now verifies admission/context ordering in both real implementation
+  paths. Re-run results are recorded in the PR.
 - Hosted firmware/native-app/aggregate checks must be read from the exact PR head.
   No hardware test, install, flash, merge or release is claimed.
