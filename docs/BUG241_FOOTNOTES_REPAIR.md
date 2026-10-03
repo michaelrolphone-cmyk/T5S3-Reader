@@ -36,7 +36,24 @@ its existing owner; this task does not edit the ledger or the old bug42 branch.
 
 ## Verification and continuation
 
-In progress: demonstrate the original offscreen selection with actual activity
-methods, share the real viewport calculation between rendering and hit-testing,
-cover orientations, boundary taps, wrapping navigation, cancel/reopen and empty
-lists, then publish one tested draft PR and inspect its terminal software CI.
+- Baseline regression FAIL: the original activity draws rows beyond the list's
+  viewport (`row extends outside the Footnotes viewport`, exit 1). Test uses
+  the complete production class and methods; input, renderer and framework
+  boundaries are fixtures. Reader menu reachability is confirmed at
+  `EpubReaderActivity.cpp`'s FOOTNOTES action and `FootnoteResult` handler.
+- Fix: calculate capacity from the true list top and portrait button-hint bottom,
+  share it between rendering and hit-testing, accept only complete rows, reset
+  scroll on entry, and draw no rows if the viewport cannot fit one.
+- PASS locally: strict C++17 regression, 48 orientation/size/list combinations,
+  complete forward/back wrapping, first/last touch pixels, title/partial-row/hint
+  rejection, correct target returned, cancel/reopen, display rotation, empty
+  lists and tiny viewports. Package-source version guard, adjacent native UI,
+  Home shortcut/global-overlay contracts, Python/shell syntax and diff checks pass.
+- Local ASan/UBSan executable timed out after 30 seconds; this is not a pass.
+  The regression is integrated into the existing Springboard aggregate with
+  sanitizers for Linux CI. Full local board/aggregate builds are deferred to
+  CI to avoid competing with higher-priority tasks. No device operation or
+  physical input/display qualification is claimed.
+- Next: refresh master/claims/version reservations, push this isolated branch,
+  create one draft PR and inspect/repair exact-head CI. The shared ledger update
+  remains queued for its existing owner.
