@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect actual local/released ELF bytes for retired direct-storage imports.
+"""Inspect actual local/released ELF bytes for retired direct-storage/display imports.
 
 Read-only. Never installs, changes or executes any package. Accepts .elf files
 and ordinary ZIP archives; records hashes so results cannot imply another build.
@@ -15,6 +15,9 @@ from elftools.elf.elffile import ELFFile
 ROOT=Path(__file__).resolve().parents[1]
 RETIRED=set(re.findall(r'^RISC_RETIRED_STORAGE_IMPORT\((\w+)\)',
     (ROOT/'lib/NativeApps/include/RetiredStorageImports.def').read_text(),re.M))
+
+RETIRED.update(re.findall(r'^RISC_RETIRED_DISPLAY_IMPORT\((\w+)\)',
+    (ROOT/'lib/NativeApps/include/RetiredDisplayImports.def').read_text(),re.M))
 
 
 def inspect(data,name):

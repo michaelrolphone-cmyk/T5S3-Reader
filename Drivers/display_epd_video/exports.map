@@ -1,0 +1,4 @@
+{
+  global: t5_driver_get;
+  local: *;
+};

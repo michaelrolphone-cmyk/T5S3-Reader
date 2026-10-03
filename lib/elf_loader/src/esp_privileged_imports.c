@@ -36,6 +36,12 @@ static const char *const s_privileged_v2[] = {
 #undef RISC_OS_CPU_SYMBOL
 };
 
+static const char *const s_privileged_v3[] = {
+#define RISC_OS_CPU_SYMBOL(name) #name,
+#include "private/privileged_os_cpu_symbols_v3.def"
+#undef RISC_OS_CPU_SYMBOL
+};
+
 static bool within(size_t length, uint32_t start, uint32_t size)
 {
     return start <= length && size <= length - start;
@@ -52,13 +58,12 @@ static bool permitted(const char *name, unsigned revision)
         strcmp(name, "risc_fw_spi_select_v1") == 0 ||
         strcmp(name, "risc_fw_spi_transfer_v1") == 0 ||
         strcmp(name, "risc_fw_spi_end_v1") == 0) return true;
-    if (strcmp(name, "t5_video_get_api") == 0) return true;
     }
 #endif
     for (size_t i = 0; i < sizeof(s_public_libc) / sizeof(s_public_libc[0]); ++i)
         if (strcmp(name, s_public_libc[i]) == 0) return true;
-    const char *const *inventory=revision==2?s_privileged_v2:s_privileged;
-    const size_t count=revision==2?sizeof(s_privileged_v2)/sizeof(s_privileged_v2[0]):
+    const char *const *inventory=revision==3?s_privileged_v3:revision==2?s_privileged_v2:s_privileged;
+    const size_t count=revision==3?sizeof(s_privileged_v3)/sizeof(s_privileged_v3[0]):revision==2?sizeof(s_privileged_v2)/sizeof(s_privileged_v2[0]):
         sizeof(s_privileged)/sizeof(s_privileged[0]);
     for(size_t i=0;i<count;++i)if(strcmp(name,inventory[i])==0)return true;
     return false;
@@ -146,4 +151,8 @@ bool esp_elf_privileged_imports_valid_v1(const uint8_t *image,size_t length) {
 }
 bool esp_elf_privileged_imports_valid_v2(const uint8_t *image,size_t length) {
     return imports_valid(image,length,2);
+}
+
+bool esp_elf_privileged_imports_valid_v3(const uint8_t *image,size_t length) {
+    return imports_valid(image,length,3);
 }

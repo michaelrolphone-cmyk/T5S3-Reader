@@ -106,7 +106,7 @@ bool add(const std::string& manifestPath) {
     if(!manifest["os_cpu_abi"].is<uint32_t>()) return rejected(manifestPath.c_str(),__LINE__);
     osCpuAbi=manifest["os_cpu_abi"].as<uint32_t>();
   }
-  if(osCpuAbi!=1 && osCpuAbi!=2) return rejected(manifestPath.c_str(),__LINE__);
+  if(osCpuAbi!=1 && osCpuAbi!=2 && osCpuAbi!=3) return rejected(manifestPath.c_str(),__LINE__);
   const char* capability=manifest["provides"][0]["capability"] | "";
   const uint32_t api=manifest["provides"][0]["api"] | 0u;
   if(!safePackageCapability(capability) || !api || !manifest["requires"].is<JsonArrayConst>() ||

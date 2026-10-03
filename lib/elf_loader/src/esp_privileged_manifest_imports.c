@@ -15,7 +15,7 @@ static bool imports_match(
      * symbols in either table. Keep a nonnull metadata pointer so a missing
      * declaration remains distinguishable from an intentional empty list. */
     if (!image || !declared || declared_count > MAX_MANIFEST_IMPORTS ||
-        !(revision==2?esp_elf_privileged_imports_valid_v2(image,length):
+        !(revision==3?esp_elf_privileged_imports_valid_v3(image,length):revision==2?esp_elf_privileged_imports_valid_v2(image,length):
           esp_elf_privileged_imports_valid_v1(image,length))) return false;
 
     for (size_t i = 0; i < declared_count; ++i) {
@@ -63,4 +63,9 @@ bool esp_elf_privileged_manifest_imports_match_v1(
 bool esp_elf_privileged_manifest_imports_match_v2(
     const uint8_t *image,size_t length,const char *const *declared,size_t count) {
     return imports_match(image,length,declared,count,2);
+}
+
+bool esp_elf_privileged_manifest_imports_match_v3(
+    const uint8_t *image,size_t length,const char *const *declared,size_t count) {
+    return imports_match(image,length,declared,count,3);
 }

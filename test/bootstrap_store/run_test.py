@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
   package.write_text(json.dumps(metadata))
   return run(ok)
  assert 'os_cpu_abi=2' in revision_case(2,2,True)
- for value,profile_revision in [(1,2),(2,1),(3,3),(None,1),(True,1),('2',2)]:
+ for value,profile_revision in [(1,2),(2,1),(4,4),(None,1),(True,1),('2',2)]:
   revision_case(value,profile_revision,False)
  # Duplicate ABI keys must not silently select the last value, even when
  # the package digest coherently describes those exact malformed bytes.

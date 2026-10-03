@@ -109,6 +109,13 @@ int main(void) {
     const char *const forbidden[]={"esp_intr_alloc","t5_video_get_api"};
     assert(esp_elf_relocate_privileged_verified_v2(&module,bytes,1024,forbidden,2)==-EINVAL);
     assert(begins==4 && relocations==2);
+    strcpy(names+32,"risc_cpu_dma_release_v3");
+    const char *const dma[]={"esp_intr_alloc","risc_cpu_dma_release_v3"};
+    assert(esp_elf_relocate_privileged_verified_v2(&module,bytes,1024,dma,2)==-EINVAL);
+    assert(esp_elf_relocate_privileged_verified_v3(&module,bytes,1024,dma,1)==-EINVAL);
+    assert(begins==4 && relocations==2);
+    assert(esp_elf_relocate_privileged_verified_v3(&module,bytes,1024,dma,2)==-ENOSYS);
+    assert(revision==3 && begins==5 && relocations==3);
     puts("Privileged relocation entry: exact imports and one-shot module grant before mapping PASS");
     return 0;
 }
@@ -116,3 +123,5 @@ int main(void) {
 bool esp_elf_privileged_os_cpu_begin_v2(void) {
     bool result=esp_elf_privileged_os_cpu_begin_v1();revision=2;return result;
 }
+
+bool esp_elf_privileged_os_cpu_begin_v3(void) { ++begins; revision=3; return allow_scope; }

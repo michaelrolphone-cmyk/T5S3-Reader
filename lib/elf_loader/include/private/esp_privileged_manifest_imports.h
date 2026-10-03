@@ -22,6 +22,9 @@ bool esp_elf_privileged_manifest_imports_match_v1(
 bool esp_elf_privileged_manifest_imports_match_v2(
     const uint8_t *image, size_t length,
     const char *const *declared_imports, size_t declared_count);
+bool esp_elf_privileged_manifest_imports_match_v3(
+    const uint8_t *image, size_t length,
+    const char *const *declared_imports, size_t declared_count);
 
 #ifdef __cplusplus
 }

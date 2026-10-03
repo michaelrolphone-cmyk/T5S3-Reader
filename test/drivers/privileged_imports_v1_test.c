@@ -43,7 +43,12 @@ int main(void)
     strcpy(names+1,"risc_cpu_worker_start_v2");
     assert(!esp_elf_privileged_imports_valid_v1(bytes,length));
     assert(esp_elf_privileged_imports_valid_v2(bytes,length));
+    strcpy(names+1,"risc_cpu_dma_release_v3");
+    assert(!esp_elf_privileged_imports_valid_v1(bytes,length));
+    assert(!esp_elf_privileged_imports_valid_v2(bytes,length));
+    assert(esp_elf_privileged_imports_valid_v3(bytes,length));
     strcpy(names+1,"t5_video_get_api");
+    assert(!esp_elf_privileged_imports_valid_v3(bytes,length));
     assert(!esp_elf_privileged_imports_valid_v2(bytes,length));
     strcpy(names+1,"risc_fw_spi_begin_v1");
     assert(!esp_elf_privileged_imports_valid_v2(bytes,length));

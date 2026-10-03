@@ -19,7 +19,9 @@ extern "C" {
  * At most one privileged relocation scope may exist at a time. */
 bool esp_elf_privileged_os_cpu_begin_v1(void);
 bool esp_elf_privileged_os_cpu_begin_v2(void);
+bool esp_elf_privileged_os_cpu_begin_v3(void);
 size_t esp_elf_privileged_os_cpu_symbol_count_v2(void);
+size_t esp_elf_privileged_os_cpu_symbol_count_v3(void);
 /* The existing end/authorization/lookup entry points use the private scope
  * revision selected by begin. They never upgrade a v1 scope to v2. */
 /* Refuses to release while a relocation remains active or for another task. */

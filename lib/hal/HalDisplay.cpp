@@ -5,12 +5,8 @@
 #include <Board.h>
 #include <HalStorageLifecycle.h>
 #include <Logging.h>
-#include <M5GFX.h>
-#include <lgfx/v1/platforms/esp32/Bus_EPD.h>
-#include <lgfx/v1/platforms/esp32/Panel_EPD.hpp>
-#include <PlatformDisplayPower.h>
+#include <T5DisplayClient.h>
 #include <esp_heap_caps.h>
-#include <esp_lcd_panel_io.h>
 
 #include <algorithm>
 #include <cstring>
@@ -19,7 +15,6 @@
 HalDisplay display;
 
 namespace {
-constexpr uint32_t kEpdBusHz = 16000000;
 constexpr uint32_t kMiddleRefreshThreshold = 8;
 constexpr uint32_t kQualityRefreshThreshold = 18;
 constexpr int kReaderTurnStandardSliceCount = 24;
@@ -30,57 +25,6 @@ constexpr uint8_t kGrayBlack = 0x00;
 constexpr uint8_t kGrayDark = 0x55;
 constexpr uint8_t kGrayLight = 0xAA;
 constexpr uint8_t kGrayWhite = 0xFF;
-
-class T5S3BusEPD : public lgfx::Bus_EPD {
- public:
-  bool init() override {
-    power_ = platformDisplayPower();
-    if (!power_ || power_->api_version != 1 || power_->struct_size < sizeof(*power_) ||
-        !power_->acquire || !power_->release) return false;
-    return lgfx::Bus_EPD::init();
-  }
-  bool powerControl(bool on) override {
-    if (panelOutputSuppressed_) { _pwr_on = on; return true; }
-    wait();
-    if (on) {
-      if (_pwr_on) return true;
-      if (powerGrant_) return false; // Failed power-up retains its grant.
-      lgfx::gpio_hi(config().pin_spv);
-      if (!power_->acquire(power_->context, &powerGrant_)) return false;
-      _pwr_on = true;
-      return true;
-    }
-    if (powerGrant_ && !power_->release(power_->context, powerGrant_)) return false;
-    powerGrant_ = 0;
-    lgfx::gpio_lo(config().pin_spv);
-    _pwr_on = false;
-    return true;
-  }
-  bool setPanelOutputSuppressed(bool suppressed) {
-    wait();
-    if (powerGrant_ && !powerControl(false)) return false;
-    panelOutputSuppressed_ = suppressed;
-    _pwr_on = false;
-    return true;
-  }
-  void release() override {
-    wait();
-    if (powerGrant_ && !powerControl(false)) return;
-    if (_io_handle) {
-      if (esp_lcd_panel_io_del(_io_handle) != ESP_OK) return;
-      _io_handle = nullptr;
-    }
-    if (_i80_bus_handle) {
-      if (esp_lcd_del_i80_bus(_i80_bus_handle) != ESP_OK) return;
-      _i80_bus_handle = nullptr;
-    }
-  }
-  bool released() const { return !powerGrant_ && !_io_handle && !_i80_bus_handle; }
- private:
-  const risc_display_power_api_v1* power_ = nullptr;
-  uint64_t powerGrant_ = 0;
-  bool panelOutputSuppressed_ = false;
-};
 
 uint8_t grayscaleValueForBit(const uint8_t baseByte, const uint8_t lsbByte, const uint8_t msbByte, const uint8_t mask) {
   if (baseByte & mask) {
@@ -117,76 +61,6 @@ lgfx::epd_mode::epd_mode_t epdModeForRefreshMode(const HalDisplay::RefreshMode m
 }
 }  // namespace
 
-class T5S3M5GfxDisplay : public lgfx::LGFX_Device {
- public:
-  T5S3M5GfxDisplay() {
-    auto busCfg = bus_.config();
-    busCfg.bus_speed = kEpdBusHz;
-    busCfg.pin_data[0] = EP_D0;
-    busCfg.pin_data[1] = EP_D1;
-    busCfg.pin_data[2] = EP_D2;
-    busCfg.pin_data[3] = EP_D3;
-    busCfg.pin_data[4] = EP_D4;
-    busCfg.pin_data[5] = EP_D5;
-    busCfg.pin_data[6] = EP_D6;
-    busCfg.pin_data[7] = EP_D7;
-    busCfg.pin_pwr = T5S3_LORA_CS;  // Required by esp_lcd i80 API, not used for real power control.
-    busCfg.pin_sph = EP_STH;
-    busCfg.pin_spv = EP_STV;
-    busCfg.pin_oe = T5S3_LORA_CS;   // Dummy direct GPIO; OE itself is handled through the PCA9535.
-    busCfg.pin_le = EP_LEH;
-    busCfg.pin_cl = EP_CKH;
-    busCfg.pin_ckv = EP_CKV;
-    busCfg.bus_width = 8;
-    bus_.config(busCfg);
-
-    panel_.setBus(&bus_);
-
-    auto detailCfg = panel_.config_detail();
-    detailCfg.line_padding = 8;
-    panel_.config_detail(detailCfg);
-
-    auto panelCfg = panel_.config();
-    panelCfg.memory_width = HalDisplay::DISPLAY_WIDTH;
-    panelCfg.panel_width = HalDisplay::DISPLAY_WIDTH;
-    panelCfg.memory_height = HalDisplay::DISPLAY_HEIGHT;
-    panelCfg.panel_height = HalDisplay::DISPLAY_HEIGHT;
-    panelCfg.offset_rotation = 0;
-    panelCfg.offset_x = 0;
-    panelCfg.offset_y = 0;
-    panelCfg.bus_shared = false;
-    panel_.config(panelCfg);
-
-    setPanel(&panel_);
-  }
-
-  ~T5S3M5GfxDisplay() {
-    // Join the panel worker before its bus or backing object disappears.
-    if (!releaseHardware()) abort();
-  }
-
-  // Releasability is checked before the host transfers ownership. Normal
-  // RiscRTE display initialization and rendering remain unchanged.
-  bool setPowerChecked(bool on) { waitDisplay(); return bus_.powerControl(on); }
-
-  bool releaseHardware() {
-    if (!panel_.shutdown()) return false;
-    bus_.release();
-    return bus_.released();
-  }
-
-  bool setPanelOutputSuppressed(const bool suppressed) { return bus_.setPanelOutputSuppressed(suppressed); }
-
-  // M5GFX::init() always calls init_impl(true, true), whose second argument
-  // clears EPD panels. Timer-wake desk-clock resumes need the same hardware
-  // reset/init but must preserve the image retained by the unpowered panel.
-  bool initPreservingPanel() { return init_impl(true, false); }
-
- private:
-  T5S3BusEPD bus_;
-  lgfx::Panel_EPD panel_;
-};
-
 HalDisplay::HalDisplay() = default;
 
 HalDisplay::~HalDisplay() {
@@ -218,14 +92,8 @@ void HalDisplay::releaseBackend() {
 }
 
 bool HalDisplay::initializePanelCanvas() {
-  panelCanvas = new lgfx::LGFX_Sprite(gfx);
-  if (!panelCanvas) {
-    return false;
-  }
-
-  panelCanvas->setPsram(true);
-  panelCanvas->setColorDepth(lgfx::color_depth_t::grayscale_8bit);
-  return panelCanvas->createSprite(DISPLAY_WIDTH, DISPLAY_HEIGHT) != nullptr;
+  panelCanvas = new T5DisplayCanvas(gfx);
+  return panelCanvas && panelCanvas->create();
 }
 
 bool HalDisplay::suspendForExternalOwner() {
@@ -281,26 +149,24 @@ void HalDisplay::begin(const bool clearPanel) {
     return;
   }
 
-  gfx = new T5S3M5GfxDisplay();
+  gfx = new T5DisplayClient();
   if (!gfx) {
-    LOG_ERR("DSP", "Failed to allocate M5GFX device");
+    LOG_ERR("DSP", "Failed to allocate display provider client");
     return;
   }
 
   const bool initOk = clearPanel ? gfx->init() : gfx->initPreservingPanel();
   if (!initOk) {
-    LOG_ERR("DSP", "M5GFX init failed (clearPanel=%d)", clearPanel ? 1 : 0);
+    LOG_ERR("DSP", "Display provider start failed (clearPanel=%d)", clearPanel ? 1 : 0);
     releaseBackend();
     return;
   }
 
-  gfx->setRotation(0);
-  gfx->setColorDepth(lgfx::color_depth_t::grayscale_8bit);
   gfx->setEpdMode(lgfx::epd_mode::epd_fastest);
   if (!gfx->setPowerChecked(true)) { releaseBackend(); return; }
 
   if (!initializePanelCanvas()) {
-    LOG_ERR("DSP", "Failed to create M5GFX panel canvas");
+    LOG_ERR("DSP", "Failed to create Reader panel canvas");
     releaseBackend();
     return;
   }
@@ -315,7 +181,7 @@ void HalDisplay::begin(const bool clearPanel) {
   refreshCycleCount = 0;
   grayscaleBaseCaptured = false;
 
-  LOG_INF("DSP", "M5GFX T5S3 display initialized: %ux%u visible, %ux%u scan", VISIBLE_WIDTH, VISIBLE_HEIGHT,
+  LOG_INF("DSP", "External T5S3 display initialized: %ux%u visible, %ux%u scan", VISIBLE_WIDTH, VISIBLE_HEIGHT,
           DISPLAY_WIDTH, DISPLAY_HEIGHT);
 }
 
@@ -521,6 +387,7 @@ void HalDisplay::pushPanelCanvas(const RefreshMode mode, const lgfx::epd_mode::e
     pushPanelCanvasWithEffect(effect);
   }
   gfx->waitDisplay();
+  if (gfx->failed()) displayReady = false;
 }
 
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen) {
@@ -676,6 +543,7 @@ void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, HalDisplay::Re
   panelCanvas->pushSprite(gfx, 0, 0);
   gfx->clearClipRect();
   gfx->waitDisplay();
+  if (gfx->failed()) { displayReady = false; return; }
 
   forceFullRefresh = false;
   forcedRefreshPending = false;

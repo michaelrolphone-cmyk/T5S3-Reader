@@ -4,11 +4,11 @@
 #include <DisplaySurface.h>
 
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
-class T5S3M5GfxDisplay;
+class T5DisplayClient;
+class T5DisplayCanvas;
 
 namespace lgfx {
 inline namespace v1 {
-class LGFX_Sprite;
 namespace epd_mode {
 enum epd_mode_t : uint8_t;
 }
@@ -233,8 +233,8 @@ class HalDisplay : public DisplaySurface {
 
  private:
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
-  T5S3M5GfxDisplay* gfx = nullptr;
-  lgfx::LGFX_Sprite* panelCanvas = nullptr;
+  T5DisplayClient* gfx = nullptr;
+  T5DisplayCanvas* panelCanvas = nullptr;
   bool externalOwner = false;
 #elif defined(BOARD_LILYGO_EPD47_S3)
   uint8_t* epdFrameBuffer = nullptr;

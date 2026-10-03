@@ -171,7 +171,7 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
                     if kind != 'application' and not resources and entry['name'] == 'provider-abi.v1':
                         capability, api = source['provides'][0]['capability'], source['provides'][0]['api']
                         revision = source.get('os_cpu_abi', 1)
-                        if type(revision) is not int or revision not in (1, 2):
+                        if type(revision) is not int or revision not in (1, 2, 3):
                             raise ValueError('unsupported source OS/CPU ABI')
                         expected = f'os-cpu-abi={revision}\nprovides={capability}\napi={api}\n'.encode('ascii')
                         if payload != expected:

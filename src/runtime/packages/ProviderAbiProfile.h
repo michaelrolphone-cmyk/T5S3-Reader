@@ -15,7 +15,7 @@ inline bool parseProviderAbiProfile(const char* bytes,size_t size,
     if(!bytes || size>191 || size<sizeof(prefix)+sizeof(middle)+8 ||
        std::memcmp(bytes,prefix,sizeof(prefix)-1))return false;
     size_t at=sizeof(prefix)-1;
-    if(bytes[at]!='1' && bytes[at]!='2')return false;
+    if(bytes[at]!='1' && bytes[at]!='2' && bytes[at]!='3')return false;
     const uint32_t selected=bytes[at++]-'0';
     if(std::memcmp(bytes+at,middle,sizeof(middle)-1))return false;
     at+=sizeof(middle)-1;
@@ -43,7 +43,7 @@ inline bool providerManifestOsCpuAbi(const char* bytes,size_t size,uint32_t& rev
     if(!PackageJsonGuard(bytes,size).topLevelValue("os_cpu_abi",value,length,found))return false;
     // Historical manifests without the field mean ABI 1 only.
     if(!found){revision=1;return true;}
-    if(length!=1 || (*value!='1' && *value!='2'))return false;
+    if(length!=1 || (*value!='1' && *value!='2' && *value!='3'))return false;
     revision=*value-'0';return true;
 }
 }

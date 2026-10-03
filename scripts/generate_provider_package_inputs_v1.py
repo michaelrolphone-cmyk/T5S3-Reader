@@ -26,7 +26,7 @@ def canonical_capability(value: object) -> bool:
 
 def manifest_os_cpu_abi(manifest: dict) -> int:
     revision = manifest.get('os_cpu_abi', 1)
-    if type(revision) is not int or revision not in (1, 2):
+    if type(revision) is not int or revision not in (1, 2, 3):
         raise ValueError('unsupported OS/CPU ABI revision')
     return revision
 

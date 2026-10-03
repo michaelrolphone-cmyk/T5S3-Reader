@@ -40,6 +40,7 @@ jobs:
           python scripts/build_spi_esp32s3.py
           python scripts/build_t5s3_sd.py
           python scripts/build_t5s3_frontlight.py
+          python scripts/build_display_epd_video.py
           python scripts/stage_t5s3_packages.py
           pio run -e t5s3-pro
           python test/hal/external_storage_elf_test.py .pio/build/t5s3-pro/firmware.elf
@@ -50,6 +51,15 @@ jobs:
           python3 test/hal/retired_storage_import_test.py
           python3 test/hal/platform_storage_test.py
           python3 test/hal/display_power_boundary_test.py
+          python3 test/hal/external_display_dispatch_test.py
+          python3 test/hal/external_video_consumer_test.py
+          python3 test/hal/external_i80_teardown_test.py
+          python3 test/hal/cpu_dma_reservation_test.py
+          python3 test/hal/external_dma_teardown_test.py
+          python3 test/hal/external_quality_teardown_test.py
+          python3 test/hal/display_linker_noop_test.py
+          python3 test/hal/external_display_elf_test.py .pio/build/t5s3-pro/firmware.elf
+          bash test/run_native_app_test.sh dist/experimental/display-epd-video/driver.elf
           cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver Drivers/pca9535_gpio/driver.c test/expander/test.c -o /tmp/pca9535-test
           /tmp/pca9535-test
           /tmp/pca9535-test uncertain

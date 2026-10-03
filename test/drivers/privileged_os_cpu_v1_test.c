@@ -9,7 +9,7 @@
 /* Synthetic strong definitions exercise the production 46-symbol inventory. */
 #define RISC_OS_CPU_SYMBOL(name) \
     __attribute__((used)) const unsigned char fake_os_symbol_##name[] __asm__(#name) = { 1 };
-#include "private/privileged_os_cpu_symbols_v2.def"
+#include "private/privileged_os_cpu_symbols_v3.def"
 #undef RISC_OS_CPU_SYMBOL
 
 int risc_provider_diagnostic_printf(const char *format, ...) { (void)format; return 0; }
@@ -111,6 +111,7 @@ int main(void)
     active_task=&task_a;
     assert(esp_elf_privileged_os_cpu_begin_v2());
     assert(esp_elf_privileged_os_cpu_symbol_count_v2()==56);
+    assert(!esp_elf_privileged_os_cpu_lookup_v1("risc_cpu_dma_release_v3"));
     assert(esp_elf_privileged_os_cpu_lookup_v1("risc_cpu_worker_start_v2")==
            (uintptr_t)fake_os_symbol_risc_cpu_worker_start_v2);
     assert(esp_elf_privileged_os_cpu_lookup_v1("esp_intr_alloc_intrstatus")==
@@ -129,6 +130,16 @@ int main(void)
     assert(esp_elf_privileged_os_cpu_end_v1());
     assert(esp_elf_privileged_os_cpu_begin_v1());
     assert(!esp_elf_privileged_os_cpu_lookup_v1("risc_cpu_worker_start_v2"));
+    assert(esp_elf_privileged_os_cpu_end_v1());
+    assert(esp_elf_privileged_os_cpu_begin_v3());
+    assert(esp_elf_privileged_os_cpu_symbol_count_v3()==58);
+    assert(esp_elf_privileged_os_cpu_lookup_v1("risc_cpu_dma_release_v3")==
+           (uintptr_t)fake_os_symbol_risc_cpu_dma_release_v3);
+    assert(!esp_elf_privileged_os_cpu_lookup_v1("t5_video_get_api"));
+    assert(!esp_elf_privileged_os_cpu_lookup_v1("risc_fw_spi_begin_v1"));
+    active_task=&task_b;
+    assert(!esp_elf_privileged_os_cpu_lookup_v1("risc_cpu_dma_release_v3"));
+    active_task=&task_a;
     assert(esp_elf_privileged_os_cpu_end_v1());
     return 0;
 }

@@ -7,6 +7,8 @@ compat=(ROOT/'src/native/NativeHardwareCompat.cpp').read_text()
 loader=(ROOT/'lib/elf_loader/src/esp_elf_symbol.c').read_text()
 retired=re.findall(r'^RISC_RETIRED_STORAGE_IMPORT\((\w+)\)',
                   (ROOT/'lib/NativeApps/include/RetiredStorageImports.def').read_text(),re.M)
+retired+=re.findall(r'^RISC_RETIRED_DISPLAY_IMPORT\((\w+)\)',
+                  (ROOT/'lib/NativeApps/include/RetiredDisplayImports.def').read_text(),re.M)
 exports=set(re.findall(r'^RISC_COMPAT_SYMBOL\((\w+)\)',
                       (ROOT/'lib/NativeApps/include/NativeHardwareCompatSymbols.def').read_text(),re.M))
 assert retired and not set(retired)&exports
@@ -34,13 +36,14 @@ static uintptr_t native_app_memory_symbol(const char*n){(void)n;return 0x1234;}
 static uintptr_t esp_elf_find_symbol(const char*n){(void)n;return 0x5678;}
 extern bool native_app_import_allowed(const char*) __attribute__((weak));
 '''
-policy='''#include <cstring>\n#define LOG_ERR(...) ((void)0)\nstatic bool retiredStorageImport=false;\n'''
+policy='''#include <cstring>\n#define LOG_ERR(...) ((void)0)\nstatic bool retiredStorageImport=false,retiredDisplayImport=false;\n'''
 policy+=function(compat,'extern "C" bool native_app_import_allowed')
 policy+=function(compat,'extern "C" const char* native_hardware_compat_last_error')
 policy+=function(compat,'extern "C" void native_hardware_compat_clear_error')
 main='int main(void){\n'
 for name in retired: main+=f'assert(elf_find_sym_default("{name}")==0);\n'
 main+='assert(elf_find_sym_default("t5_storage_get_api")==0x1234);\n'
+main+='assert(elf_find_sym_default("t5_video_get_api")==0x1234);\n'
 main+='assert(elf_find_sym_default("SD_other")==0x1234);return 0;}\n'
 with tempfile.TemporaryDirectory() as tmp:
     tmp=Path(tmp);c=tmp/'resolve.c';cpp=tmp/'policy.cpp'
@@ -51,4 +54,4 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-I'+str(ROOT/'lib/NativeApps/include'),
                     str(cpp),str(obj),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
-print('Retired SD/SDFS imports rejected before allocator/table/module fallback; shared storage API preserved: PASS')
+print('Retired SD/SDFS/LCD imports rejected before allocator/table/module fallback; shared storage API preserved: PASS')

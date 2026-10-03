@@ -12,7 +12,7 @@ from pathlib import Path
 import struct
 
 
-def normalize(path):
+def normalize(path, *, display_gcc14_noops=False):
     path = Path(path)
     data = bytearray(path.read_bytes())
     if len(data) < 52 or data[:7] != b'\x7fELF\x01\x01\x01':
@@ -66,6 +66,24 @@ def normalize(path):
     zero = b'\0' * 12
     blank = [i for i in range(count)
              if data[start + i * 12:start + (i + 1) * 12] == zero]
+    # GCC14 display links emit two zero placeholders around their RTLD
+    # records, before imported GLOB_DAT entries. Object order changes whether
+    # the zeros surround or follow the RTLD block. Accept only that bounded
+    # pattern in this opt-in profile; all real relocation records stay intact.
+    if display_gcc14_noops and len(blank) == 2:
+        records=[struct.unpack_from('<IIi',data,start+i*12) for i in range(count)]
+        rtld=[i for i,record in enumerate(records) if (record[1]&255)==2]
+        begin=min([*blank,*rtld]);end=max([*blank,*rtld])+1
+        if len(rtld) in (2,4) and end-begin == len(rtld)+2 and end<count and all(
+            address and address%4==0 and (info&255)==5
+            for address,info,addend in records[:begin]) and all(
+            address and address%4==0 and (info&255)==3
+            for address,info,addend in records[end:]) and all(
+            records[i][0] and records[i][0]%4==0 and records[i][2] in (1,2)
+            for i in rtld):
+            kept=[data[start+i*12:start+(i+1)*12] for i in range(count) if i not in blank]
+            data[start:start+size]=b''.join(kept)+zero*2
+            blank=[count-2,count-1]
     # Binutils may put its single placeholder before the two final loader
     # relocations instead of after them. Compact only this observed pattern.
     if blank and blank[-1] == count - 3 and len(blank) == 1:

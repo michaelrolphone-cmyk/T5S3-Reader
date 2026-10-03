@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-source = (ROOT / 'src/native/NativeVideoBridge.cpp').read_text()
+source = (ROOT / 'Drivers/display_epd_video/fast.cpp').read_text()
 start = source[source.index('bool video_start_format('):source.index('uint8_t *video_backbuffer(')]
 prefix = r'''
 #include <cassert>
@@ -56,7 +56,6 @@ bool epd_video_shutdown(){
 main = r'''
 int main(){
  t5_video_surface_v1 s{};
- borrowed=false;assert(!video_start(&s));assert(!starts&&!g_power);borrowed=true;
  assert(!video_start_format(&s,99));assert(!starts);
  for(auto format:{T5_VIDEO_PIXEL_MONO_1BPP_MSB,T5_VIDEO_PIXEL_GRAY_2BPP_MSB}){
    const unsigned prior=starts;assert(video_start_format(&s,format));assert(starts==prior+1);

@@ -14,6 +14,7 @@
       "+<esp_privileged_os_cpu.c>",
       "+<esp_cpu_worker_v2.c>",
       "+<esp_cpu_cache_v2.c>",
+      "+<esp_cpu_dma_v3.c>",
       "+<esp_privileged_elf.c>",
       "+<esp_privileged_imports.c>",
       "+<esp_privileged_manifest_imports.c>",

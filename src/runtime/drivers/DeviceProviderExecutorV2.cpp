@@ -40,7 +40,7 @@ bool DeviceProviderExecutorV2::registerManagerValidated(
     RuntimeProviders::GraphV2& graph, const ManagerProviderCandidateV2& input, bool verifyContents) {
   // A nonnull declaration with count zero denotes an intentionally empty
   // exact import set. The private ELF matcher must find no undefined symbols.
-  if ((input.requiredOsCpuAbi != 1 && input.requiredOsCpuAbi != 2) || !input.driverId || !input.provides ||
+  if ((input.requiredOsCpuAbi != 1 && input.requiredOsCpuAbi != 2 && input.requiredOsCpuAbi != 3) || !input.driverId || !input.provides ||
       !input.providesApi || !input.importedSymbols ||
       input.importedSymbolCount > 128 ||
       input.requirementCount > RuntimeProviders::GraphV2::kMaxModules ||

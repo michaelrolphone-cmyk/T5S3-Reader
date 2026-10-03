@@ -92,7 +92,7 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
                        spec.verifiedElfLength == 0 &&
                        spec.declaredImports == nullptr &&
                        spec.declaredImportCount == 0 && emptyDigest;
-  const bool privileged = (spec.requiredOsCpuAbi == 1 || spec.requiredOsCpuAbi == 2) &&
+  const bool privileged = (spec.requiredOsCpuAbi == 1 || spec.requiredOsCpuAbi == 2 || spec.requiredOsCpuAbi == 3) &&
                           spec.verifiedElfBytes != nullptr &&
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&

@@ -12,7 +12,6 @@
  * Provider admission restricts each import to its exact installed identity. */
 #include "RiscFirmwareI2cCompatV1.h"
 #include "RiscFirmwareSpiCompatV1.h"
-#include "T5VideoApi.h"
 #endif
 
 /* The firmware logger supplies generic printf/puts sinks for privileged
@@ -26,7 +25,7 @@ extern int risc_provider_diagnostic_puts(const char *message) __attribute__((wea
  * The table contains addresses, not forwarding hardware driver functions. */
 #define RISC_OS_CPU_SYMBOL(name) \
     extern const unsigned char risc_os_cpu_link_##name[] __asm__(#name);
-#include "private/privileged_os_cpu_symbols_v2.def"
+#include "private/privileged_os_cpu_symbols_v3.def"
 #undef RISC_OS_CPU_SYMBOL
 
 typedef struct {
@@ -43,6 +42,12 @@ static const risc_os_cpu_symbol_v1 s_privileged_symbols_v1[] = {
 static const risc_os_cpu_symbol_v1 s_privileged_symbols_v2[] = {
 #define RISC_OS_CPU_SYMBOL(name) { #name, risc_os_cpu_link_##name },
 #include "private/privileged_os_cpu_symbols_v2.def"
+#undef RISC_OS_CPU_SYMBOL
+};
+
+static const risc_os_cpu_symbol_v1 s_privileged_symbols_v3[] = {
+#define RISC_OS_CPU_SYMBOL(name) { #name, risc_os_cpu_link_##name },
+#include "private/privileged_os_cpu_symbols_v3.def"
 #undef RISC_OS_CPU_SYMBOL
 };
 
@@ -78,6 +83,7 @@ static bool begin_revision(uint32_t revision)
 
 bool esp_elf_privileged_os_cpu_begin_v1(void) { return begin_revision(1); }
 bool esp_elf_privileged_os_cpu_begin_v2(void) { return begin_revision(2); }
+bool esp_elf_privileged_os_cpu_begin_v3(void) { return begin_revision(3); }
 
 bool esp_elf_privileged_os_cpu_end_v1(void)
 {
@@ -186,13 +192,11 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
         return (uintptr_t)&risc_fw_spi_transfer_v1;
     if (strcmp(symbol, "risc_fw_spi_end_v1") == 0)
         return (uintptr_t)&risc_fw_spi_end_v1;
-    if (strcmp(symbol, "t5_video_get_api") == 0)
-        return (uintptr_t)&t5_video_get_api;
     }
 #endif
-    const risc_os_cpu_symbol_v1 *symbols = s_scope_revision == 2
+    const risc_os_cpu_symbol_v1 *symbols = s_scope_revision == 3 ? s_privileged_symbols_v3 : s_scope_revision == 2
         ? s_privileged_symbols_v2 : s_privileged_symbols_v1;
-    const size_t count = s_scope_revision == 2
+    const size_t count = s_scope_revision == 3 ? sizeof(s_privileged_symbols_v3)/sizeof(s_privileged_symbols_v3[0]) : s_scope_revision == 2
         ? sizeof(s_privileged_symbols_v2)/sizeof(s_privileged_symbols_v2[0])
         : sizeof(s_privileged_symbols_v1)/sizeof(s_privileged_symbols_v1[0]);
     for (size_t i = 0; i < count; ++i) {
@@ -209,4 +213,8 @@ size_t esp_elf_privileged_os_cpu_symbol_count_v1(void)
 
 size_t esp_elf_privileged_os_cpu_symbol_count_v2(void) {
     return sizeof(s_privileged_symbols_v2)/sizeof(s_privileged_symbols_v2[0]);
+}
+
+size_t esp_elf_privileged_os_cpu_symbol_count_v3(void) {
+    return sizeof(s_privileged_symbols_v3)/sizeof(s_privileged_symbols_v3[0]);
 }

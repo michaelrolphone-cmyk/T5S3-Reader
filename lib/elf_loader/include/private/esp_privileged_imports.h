@@ -17,6 +17,7 @@ extern "C" {
  * structural ELF validation is a separate mandatory predecessor. */
 bool esp_elf_privileged_imports_valid_v1(const uint8_t *image, size_t length);
 bool esp_elf_privileged_imports_valid_v2(const uint8_t *image, size_t length);
+bool esp_elf_privileged_imports_valid_v3(const uint8_t *image, size_t length);
 
 #ifdef __cplusplus
 }

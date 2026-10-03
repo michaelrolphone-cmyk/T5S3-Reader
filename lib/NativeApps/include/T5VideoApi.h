@@ -31,7 +31,7 @@ typedef struct {
     uint16_t reserved;
 } t5_video_scan_stats_v1;
 
-typedef struct {
+typedef struct t5_video_api_v1 {
     uint32_t api_version;
     uint32_t struct_size;
 

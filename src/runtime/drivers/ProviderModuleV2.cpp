@@ -194,7 +194,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
 #ifdef ESP_PLATFORM
   // Nonnull import metadata and an exact zero count is valid for a truly
   // self-contained ELF. The private matcher checks both symbol tables.
-  if ((osCpuAbi != 1 && osCpuAbi != 2) || handle_ || !candidateBytes || !contentSha256 || !length ||
+  if ((osCpuAbi != 1 && osCpuAbi != 2 && osCpuAbi != 3) || handle_ || !candidateBytes || !contentSha256 || !length ||
       !declaredImports || declaredImportCount > 128 ||
       length > 8u * 1024u * 1024u ||
       !validRequest(expectedId, expectedCapability, expectedApi, deps, count)) {
@@ -237,10 +237,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     report(expectedId, "spi-firmware-compat-import-policy");
     return false;
   }
-  const bool isDisplayAdapter =
-      std::strcmp(expectedId, "display-epd-video") == 0 &&
-      std::strcmp(expectedCapability, "display.output") == 0 && expectedApi == 1;
-  if (osCpuAbi == 1 ? importsFirmwareDisplay != isDisplayAdapter : importsFirmwareDisplay) {
+  if (importsFirmwareDisplay) {
     report(expectedId, "display-firmware-compat-import-policy");
     return false;
   }
@@ -293,7 +290,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     report(expectedId, "elf-handle-oom");
     return false;
   }
-  const int result = (osCpuAbi == 2 ? esp_elf_relocate_privileged_verified_v2 :
+  const int result = (osCpuAbi == 3 ? esp_elf_relocate_privileged_verified_v3 : osCpuAbi == 2 ? esp_elf_relocate_privileged_verified_v2 :
                       esp_elf_relocate_privileged_verified_v1)(
       image, snapshot, length, declaredImports, declaredImportCount);
   heap_caps_free(snapshot);

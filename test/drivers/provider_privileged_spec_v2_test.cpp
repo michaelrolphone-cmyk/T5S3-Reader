@@ -55,9 +55,16 @@ int main() {
   assert(!revision2.acquire("cap.generic",1).slot);
   assert(revision2.shutdown());
 
+  GraphV2 revision3;
+  privileged.requiredOsCpuAbi=3;
+  assert(!revision3.addVerified(privileged));
+  assert(RuntimePackages::DeviceProviderExecutorV2::admitForFixture(revision3,privileged));
+  assert(!revision3.acquire("cap.generic",1).slot);
+  assert(revision3.shutdown());
+
   GraphV2 malformed;
   privileged.contentSha256[0] = 0xa5;
-  privileged.requiredOsCpuAbi = 3;
+  privileged.requiredOsCpuAbi = 4;
   assert(!RuntimePackages::DeviceProviderExecutorV2::admitForFixture(malformed, privileged));
   privileged.requiredOsCpuAbi = 1;
   privileged.declaredImports = duplicate;
