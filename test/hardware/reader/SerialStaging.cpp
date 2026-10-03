@@ -41,15 +41,25 @@ std::string root(int i){return std::string("/Apps/")+stageApps[i].id;}
 bool expired(){return active&&(millis()-began>180000||millis()-last>30000);}
 void desc(JsonObject o,const Info& info){o["bytes"]=info.bytes;o["sha256"]=info.hash;}
 
-bool fileInfo(const std::string& path,size_t limit,Info& info,std::string* bytes=nullptr){
+bool fileInfo(const std::string& path,size_t limit,Info& info,std::string* bytes=nullptr,uint32_t budgetStart=0,bool sharedBudget=false){
+ if(sharedBudget&&millis()-budgetStart>=10000)return false;
  auto f=Storage.open(path.c_str(),O_RDONLY);if(!f||f.isDirectory()){if(f)(void)f.close();return false;}
  const uint64_t size=f.fileSize64();if(size>limit){(void)f.close();return false;}
  mbedtls_sha256_context ctx;mbedtls_sha256_init(&ctx);bool ok=!mbedtls_sha256_starts_ret(&ctx,0);
- const uint32_t start=millis();uint8_t block[512],hash[32];size_t at=0;if(bytes)bytes->clear();
+ const uint32_t start=sharedBudget?budgetStart:millis();uint8_t block[512],hash[32];size_t at=0;if(bytes)bytes->clear();
  while(ok&&at<size){size_t n=std::min<size_t>(sizeof(block),size-at);ok=millis()-start<10000&&f.read(block,n)==int(n);
   if(ok){ok=!mbedtls_sha256_update_ret(&ctx,block,n);if(bytes)bytes->append(reinterpret_cast<char*>(block),n);at+=n;}vTaskDelay(1);}
- ok=f.close()&&ok;if(ok)ok=!mbedtls_sha256_finish_ret(&ctx,hash);mbedtls_sha256_free(&ctx);if(!ok)return false;
+ ok=f.close()&&ok&&millis()-start<10000;if(ok)ok=!mbedtls_sha256_finish_ret(&ctx,hash);mbedtls_sha256_free(&ctx);if(!ok)return false;
  char text[65];for(int i=0;i<32;i++)snprintf(text+i*2,3,"%02x",hash[i]);info={size_t(size),text};return true;
+}
+bool sdInventoryMatches(){
+ // Read through the already initialized provider VFS only. No mount, fallback,
+ // raw controller, driver mutation or ELF payload is embedded in this utility.
+ const uint32_t start=millis();
+ return ReaderStage::verifyInventory(stageSdFiles,
+   [&](const auto& expected){Info observed;return fileInfo(expected.name,expected.bytes,observed,nullptr,start,true)&&
+      observed.bytes==expected.bytes&&observed.hash==expected.sha;},
+   [&](){return millis()-start;},[](){vTaskDelay(1);});
 }
 bool pinsInfo(Info& info,std::string* bytes=nullptr){if(!Storage.exists("/Apps/.home_apps")){info={0,digest(nullptr,0)};if(bytes)bytes->clear();return true;}return fileInfo("/Apps/.home_apps",pinsMax,info,bytes);}
 bool noMarkers(int i){P::OrdinaryTransactionPaths p{};return P::ordinaryTransactionPaths(P::Kind::Application,stageApps[i].id,p)&&!Storage.exists(p.stage)&&!Storage.exists(p.backup)&&!Storage.exists(p.removing);}
@@ -159,10 +169,10 @@ void dispatch(char* bytes,size_t n){
  auto q=request.as<JsonObjectConst>();if(!fields(q,{"session","sequence","op","args"})||!q["sequence"].is<uint32_t>()||!q["args"].is<JsonObjectConst>())return;
  const char* sid=q["session"],*op=q["op"];const uint32_t seq=q["sequence"];if(!hex(sid,32)||!op)return;
  auto args=q["args"].as<JsonObjectConst>();auto result=reply["result"].to<JsonObject>();bool ok=false;
- if(!strcmp(op,"hello")&&!active&&seq==1&&Storage.ready()&&fields(args,{"source_sha","store_sha256","utility_id"})&&
-   !strcmp(args["source_sha"]|"",stageBase)&&!strcmp(args["store_sha256"]|"",stageStore)&&!strcmp(args["utility_id"]|"",stageUtility)){
+ if(!strcmp(op,"hello")&&!active&&seq==1&&Storage.ready()&&fields(args,{"source_sha","sd_archive_sha256","utility_id"})&&
+   !strcmp(args["source_sha"]|"",stageBase)&&!strcmp(args["sd_archive_sha256"]|"",stageSdArchive)&&!strcmp(args["utility_id"]|"",stageUtility)&&sdInventoryMatches()){
   active=true;session=sid;sequence=1;began=last=millis();received=0;snapshot.clear();for(auto& u:uploads)u=Upload{};
-  result["source_sha"]=stageBase;result["store_sha256"]=stageStore;result["utility_id"]=stageUtility;result["protocol"]=1;
+  result["source_sha"]=stageBase;result["sd_archive_sha256"]=stageSdArchive;result["utility_id"]=stageUtility;result["protocol"]=1;result["sd_verified_files"]=sizeof(stageSdFiles)/sizeof(stageSdFiles[0]);
   auto scope=result["scope"].to<JsonArray>();for(auto& app:stageApps)scope.add(app.id);ok=true;
  }else if(active&&session==sid&&seq==sequence+1&&seq<=512&&!expired()&&Storage.ready()){
   sequence=seq;last=millis();ok=operation(op,args,result);

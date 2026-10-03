@@ -28,7 +28,7 @@ class Endpoint:
     def write(self, raw):
         r=s.decode(raw);self.requests.append(r);op=r['op'];a=r['args'];ok=True
         if self.partial:return len(raw)-1
-        if op=='hello': result={**a,'protocol':1,'scope':list(s.IDS)}
+        if op=='hello': result={**a,'protocol':1,'sd_verified_files':s.SD_FILES,'scope':list(s.IDS)}
         elif op=='inventory':result=self.inventory()
         elif op=='read':
             if a['selector']=='pins': data=self.pins
@@ -64,6 +64,18 @@ class StagingTest(unittest.TestCase):
         self.pin=patch.object(s,'ARCHIVES',{n:(len(d),s.sha(d)) for n,d in self.archives.items()});self.pin.start();self.addCleanup(self.pin.stop)
     def stage(self,e,save=lambda *_:True):
         c=e.client();c.hello();i=c.inventory();b=c.backup(i);return c.stage(i,b,self.archives,save)
+    def test_corrected_sd_handshake_and_explicit_verified_count(self):
+        e=Endpoint();c=e.client();c.hello()
+        self.assertEqual(e.requests[0]['args'],{'source_sha':s.SOURCE,'sd_archive_sha256':s.SD_ARCHIVE,'utility_id':'a'*64})
+        self.assertNotIn('store_sha256',e.requests[0]['args'])
+    def test_old_unverified_handshake_refused(self):
+        e=Endpoint();write=e.write
+        def old(raw):
+            count=write(raw)
+            e.output=e.output.replace(b'"sd_verified_files":50,',b'')
+            return count
+        e.write=old
+        with self.assertRaisesRegex(s.ProtocolError,'SD verification'):e.client().hello()
     def test_install_readback_preserve_and_idempotent(self):
         e=Endpoint();saved=[]
         final=self.stage(e,lambda i,b:saved.append((i,b)) or True)

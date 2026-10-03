@@ -1,88 +1,60 @@
-# Offline X4 paired deployment review
+# Offline X4 firmware / ordinary-SD deployment review
 
-`x4_deployment_plan.py` validates the separate `x4-external-deployment-<sha>`
-artifact and writes a dry-run plan. It has no serial imports, device discovery,
-flash command or provisioning option. Never pass this bundle to app-only CI.
+`x4_deployment_plan.py` now accepts only the corrected schema-2 firmware/SD
+bundle. Schema-1 internal-flash driver stores are retired. The old
+`x4_paired_cycle.py` executable and callable entrypoints fail closed before any
+artifact/device access, even with old approval flags. Nothing erases old flash.
+Historical ec0c099 hardware results do not qualify the corrected SD handoff.
 
-Supply the expected PR head and archive SHA256 from independently verified
-Actions custody (repository, owner, workflow, run/head and artifact identity).
-The manifest alone cannot prove that firmware was built from the claimed source.
-The validator checks that custody-bound source, paired image hashes and geometry,
-ordinary package inventories, and the actual decoded LittleFS bytes agree.
-It runs a separately pinned local mklittlefs binary inside a macOS filesystem
-sandbox with network denied, writes confined to a temporary decoding directory,
-and file-size/CPU/time limits. It never executes code from the artifact.
-
-Example invocation (substitute the reviewed paths and hashes):
+Supply the expected PR head and outer archive SHA-256 from independently
+verified Actions custody (repository, owner, workflow, run/head and artifact).
+The manifest alone cannot establish that build provenance. The validator checks
+source/board identity, firmware hash and app-only offset, fixed partition
+geometry, complete nested SD archive hash/inventory, ordinary driver package
+hashes/ELF identity, installed bytes and Inbox copies. Hidden `.package.json`
+files are mandatory. No external decoder, serial port or device is used.
 
 ```sh
 python3 test/hardware/x4_deployment_plan.py \
   --artifact artifact.zip --expected-sha FULL_SOURCE_SHA \
-  --artifact-sha256 VERIFIED_ARCHIVE_SHA256 \
-  --decoder /absolute/path/to/mklittlefs --decoder-sha256 TRUSTED_TOOL_SHA256 \
-  --output dry-run-plan.json
+  --artifact-sha256 VERIFIED_ARCHIVE_SHA256 --output dry-run-plan.json
 ```
 
-A validation pass is **not deployment authorization**. The output retains
-`provisioning_authorized: false`, `deployment_state: failure`, and a reason.
-Missing stores, mismatched package/store payloads, changed partition geometry,
-unsafe archive paths or claimed authorization fail validation. No status is
-posted to GitHub by this offline command.
+Validation is not permission to stage or flash. The result keeps
+`provisioning_authorized: false`, `deployment_state: pending`,
+`physical_binding_established: false` and `hardware_access_performed: false`.
+Only app0 at `0x10000` can appear in `proposed_regions`. Boot/table/NVS/OTA,
+app1, the former internal driver-store region and coredump are protected.
+No firmware array, internal driver image or flash driver offset is accepted.
 
-The proposed existing regions are app0 at 0x10000 (maximum 0x640000) and the full
-module-store region at 0xc90000 (exactly 0x360000). The plan preserves boot/table/
-NVS/OTA metadata below 0x10000, app1 at 0x650000..0xc8ffff, and coredump at
-0xff0000..0xffffff. A future separately authorized executor must reverify the
-physical X4 MAC and pinned binary partition table, preserve/review current store
-contents and rollback evidence, obtain explicit approval for the exact image
-pair, and verify bounded writes/readback and protected regions. Building a fresh
-LittleFS image does not authorize formatting or replacing an existing region.
+The boot profile selects ordinary `/Drivers/<id>/manifest.json` generations.
+All distributed generations are checked, including the currently unselected
+battery package. Validation does not claim they have been physically loaded.
+The same read-only tool accepts explicit `--board t5s3-pro` for its schema-2
+bundle; it does not borrow the X4 physical identity or partition-table binding.
 
-The selected boot-store drivers must match ordinary package bytes exactly.
-Unselected packages (currently the battery driver) may be distributed alongside
-the selected set but are not treated as installed or hardware-validated.
+## Frozen X4 input independently checked on 2026-10-03
 
-## Explicit T5 software-pair validation
+- PR350 source: `67d0fd3e9f4012eae681e7d284d2d0bb39732dfb`, firmware 1.3.79.
+- Actions run: `37130259920`; artifact: `11276691611`.
+- Outer ZIP SHA-256: `ca478cf829e2c78b81f3a4f80134119522d4863ea10404d06f6b006adf180efa`.
+- `sdcard.zip`: 268135 bytes, SHA-256 `f55daa10cdcc67eceba27b96e1ff17c4e9acf9c75ad55062bc72954d4332a8d8`.
+- `firmware.bin`: 5943936 bytes, SHA-256 `ace416336c25308de46bb865aa952cb0baeab69c90b71f3361b0d8d4071017f1`.
+- Exact SD inventory: 50 files, eight hidden package manifests, eight installed
+  ordinary driver generations, eight matching Inbox archives and two profiles.
 
-The same offline tool accepts `--board t5s3-pro` for the separately published
-`t5-external-deployment-<sha>` artifact. Default identity remains
-`xteink-x4-pro`; deployment manifest, firmware marker and decoded board profile
-must all match the explicitly selected board. Unknown boards and cross-board
-pairs fail. Package integrity, decoded payload equality and fixed partition
-geometry checks are unchanged.
+Reject incomplete older artifact `11276770866`. The nested `sdcard.zip` is the
+sole staging input, not an uploader-filtered raw directory tree.
 
-A T5 software pass reports no expected MAC or qualified binary partition-table
-hash and `physical_binding_established: false`. It cannot borrow the X4 device
-binding or backup. Physical T5 identity, live layout and prior-store preservation
-remain unverified; this option adds no controller dispatch or hardware access.
+## Physical boundary
 
-## Prepared one-shot ec0c099 X4 cycle
+Mounted-card copying is a separate explicit offline action, with an exact
+user-supplied mount path, prior-file backup and readback. It must preserve Apps,
+Home pins, books, unrelated Inbox archives and all other user data. Never modify
+active driver generations through the test endpoint, bypass the package manager
+on a running device, format a card, or guess a volume.
 
-`x4_paired_cycle.py --artifact /path/to/artifact.zip` only checks the frozen
-`ec0c09991f8f7babc69b3da0681b0b3f1e99c3ab` archive and prints its external provider
-inventory. It performs no device discovery or access. It is not installed in or
-called by the automatic scheduler. The archive and both image hashes are fixed;
-it cannot substitute a newer PR head.
-
-Only after actual human approval may the operator supply `--approval-sha` with
-that exact SHA, `--runtime-root` pointing to the existing pinned CI installation,
-and a fresh `--out` directory. The runner verifies installed pins and obtains
-scheduler/device locks, honors manual ownership pauses, verifies physical MAC,
-partition/OTA prefix, heartbeat app, and original store hash, and saves a fresh
-private full-store backup before writes. A changed prior store refuses writes.
-
-Both bounded app0/store payloads must verify before candidate boot. The 90-second
-observation requires all seven external BOOTFS origins/versions/ELF lengths,
-provider relocation/start phases, storage mount, touch readiness and shared Home
-presentation. It reports device-millisecond phase timing and host command
-elapsed times; serial-only results are not visual or interaction qualification.
-Raw serial output is not persisted.
-
-Cleanup installs the approved heartbeat firmware and verifies it boots. **The
-new candidate store remains installed.** The old unknown store is retained as a
-recovery backup, not routinely restored. No automatic original-store write is
-implemented. Incomplete store writes, altered protected state or cleanup errors
-produce failure with recovery evidence; they cannot be reported as success.
-No partition-table change, whole-chip erase, SD wipe or optional app-fixture
-staging is performed by this runner. App0 cleanup restores the heartbeat
-executable, not unused historical bytes in the app0 tail.
+A later app-only device operation requires separate authorization, fresh device
+identity/partition checks, exclusive serial ownership, exact image readback,
+protected-region verification and bounded cleanup. SD readback and serial
+handshakes alone are not physical display/touch/app qualification.

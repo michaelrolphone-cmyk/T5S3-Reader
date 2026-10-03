@@ -37,11 +37,11 @@ jobs:
       - name: Detect separately owned X4 firmware support
         id: support
         run: |
-          if grep -q '^\[env:xteink-x4-pro\]' platformio.ini; then
+          if grep -q '^\[env:xteink-x4-pro\]' platformio.ini && test -f src/platform/SdPackageBoot.cpp && test -f scripts/stage_x4pro_packages.py; then
             echo 'available=true' >> "$GITHUB_OUTPUT"
           else
             echo 'available=false' >> "$GITHUB_OUTPUT"
-            echo 'X4 firmware environment absent on this head. No X4 candidate or hardware qualification produced.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Corrected ordinary-SD X4 source absent on this utility head. No X4 candidate or hardware qualification produced.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Build exact X4 application
         if: steps.support.outputs.available == 'true'

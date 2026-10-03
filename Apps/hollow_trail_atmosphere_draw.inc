@@ -15,8 +15,9 @@ static void ht_signal(int x,int y,const ht_game *g) {
     ht_rect(ht_scene,x-2,y-63,4,63,220);
     ht_rect(ht_scene,x-6,y-65,12,21,255);
     ht_rect(ht_scene,x-4,y-63,8,17,95);
-    /* Three flashes, then a long pause. The same circuit exists at the end. */
-    unsigned phase=g->ticks%144u;bool lit=phase<54u && phase%18u<9u;
+    /* Oil Fields service lamps burn steadily in daylight. Other chapters
+     * retain the three-flash signal, including the final circuit. */
+    unsigned phase=g->ticks%144u;bool lit=g->level==2 || (phase<54u && phase%18u<9u);
     if(g->level==9 && g->verdict==1) lit=false;
     ht_disk(ht_scene,x,y-57,3,lit?0:195);
     ht_rect(ht_scene,x-7,y-68,14,3,255);

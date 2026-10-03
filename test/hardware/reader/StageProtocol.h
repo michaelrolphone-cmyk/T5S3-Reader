@@ -4,6 +4,21 @@
 
 namespace ReaderStage {
 constexpr size_t kLineBytes=3072,kPinsBytes=16384;
+// One bounded read-only inventory pass. Hash readers must share this deadline
+// and yield within their chunk loop; this helper also yields per item.
+template<class Entry,size_t N,class Read,class Elapsed,class Yield>
+bool verifyInventory(const Entry (&files)[N],Read read,Elapsed elapsed,Yield yield){
+ if(N==0||N>128)return false;
+ size_t total=0;
+ for(const auto& file:files){
+  if(elapsed()>=10000||file.bytes>1024u*1024u||file.bytes>4u*1024u*1024u-total)return false;
+  total+=file.bytes;
+  if(!read(file))return false;
+  yield();
+  if(elapsed()>=10000)return false;
+ }
+ return true;
+}
 // Retains at most one bounded line. After overflow discard until newline;
 // never reinterpret its suffix as a new command.
 class Line {

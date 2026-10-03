@@ -22,8 +22,10 @@ MAX_REQUESTS = 512
 MAX_SESSION_SECONDS = 180
 MAX_PINS = 16384
 IDS = ("driver_manager", "app_store")
-SOURCE = "ec0c09991f8f7babc69b3da0681b0b3f1e99c3ab"
-STORE = "41602792e679248568b8ea88e4dc8a0d2c02fd8730e573d978ba8cd98f53cc72"
+SOURCE = "67d0fd3e9f4012eae681e7d284d2d0bb39732dfb"
+SD_ARCHIVE = "f55daa10cdcc67eceba27b96e1ff17c4e9acf9c75ad55062bc72954d4332a8d8"
+DEPLOYMENT_ARCHIVE = "ca478cf829e2c78b81f3a4f80134119522d4863ea10404d06f6b006adf180efa"
+SD_FILES = 50
 ARCHIVES = {
     "driver_manager": (12949, "30591aed79ba0e85cd51235fd031cb6549ac23701f7f7737c46e4f138b48460e"),
     "app_store": (10077, "bd05715b3d7e1177f9c2c399c6bdbf78367838f44e3a3455171614db63694d47"),
@@ -172,11 +174,11 @@ class Client:
             raise UncertainOperation(str(error)) from error
 
     def hello(self):
-        value = self._request("hello", {"source_sha": SOURCE, "store_sha256": STORE,
+        value = self._request("hello", {"source_sha": SOURCE, "sd_archive_sha256": SD_ARCHIVE,
                                         "utility_id": self.utility_id})
-        require(value == {"source_sha": SOURCE, "store_sha256": STORE,
-                          "utility_id": self.utility_id, "protocol": 1,
-                          "scope": list(IDS)}, "Utility/build/store mismatch")
+        require(value == {"source_sha": SOURCE, "sd_archive_sha256": SD_ARCHIVE,
+                          "utility_id": self.utility_id, "protocol": 1, "sd_verified_files": SD_FILES,
+                          "scope": list(IDS)}, "Utility/build/SD verification mismatch")
         self.ready = True
 
     def inventory(self):

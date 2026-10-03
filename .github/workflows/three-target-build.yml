@@ -49,14 +49,25 @@ jobs:
           else
             pio run -c platformio.cam-runtime.ini -e cam-nosd-ci
           fi
-      - name: X4 candidate
+      - name: Detect corrected ordinary-SD X4 source
         if: matrix.target == 'x4'
+        id: x4-support
+        run: |
+          if test -f src/platform/SdPackageBoot.cpp && test -f scripts/stage_x4pro_packages.py; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'Corrected ordinary-SD X4 source absent on this utility head; no obsolete X4 candidate emitted.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: X4 candidate
+        if: matrix.target == 'x4' && steps.x4-support.outputs.available == 'true'
         run: |
           pio pkg install -e xteink-x4-pro
           bash test/hardware/x4/install_ci_toolchain.sh
           export X4_ELF_TOOLCHAIN="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin"
           bash test/hardware/x4/build_candidate.sh
       - name: Freeze exact-head images and provenance
+        if: matrix.target != 'x4' || steps.x4-support.outputs.available == 'true'
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_ID: ${{ github.run_id }}
@@ -65,6 +76,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           python test/hardware/three_target_manifest.py '${{ matrix.target }}' "$RUNNER_TEMP/ci-target" "$SOURCE_SHA" "$RUN_ID" "$RUN_ATTEMPT"
       - uses: actions/upload-artifact@v4
+        if: matrix.target != 'x4' || steps.x4-support.outputs.available == 'true'
         with:
           name: ci-target-${{ matrix.target }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/ci-target/
