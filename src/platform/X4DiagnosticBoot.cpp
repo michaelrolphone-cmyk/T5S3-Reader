@@ -7,7 +7,7 @@
 #include "RiscInputNavigationV1.h"
 #include "RiscPlatformClockV1.h"
 #include "RiscStorageVolumeV1.h"
-#include "FlashModuleStore.h"
+#include "SdBootReader.h"
 #include "runtime/drivers/BootstrapModuleStore.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include "fontIds.h"
@@ -67,8 +67,7 @@ void x4DiagnosticSetup() {
     if (psramFound()) heap_caps_malloc_extmem_enable(1024);
     RuntimeNetwork::enablePsramTlsAllocations();
     LOG_INF("X4", "diagnostic boot %s flash=16MB app0=0x10000", Board::firmwareMarker());
-    if (!mountFlashModuleStore() ||
-        !RuntimeInstalledProviders::loadBootstrapPackages("/bootfs",Board::id())) {
+    if (!loadPlatformSdPackages()) {
         LOG_ERR("X4", "External boot packages unavailable or invalid; no embedded fallback");
         return;
     }

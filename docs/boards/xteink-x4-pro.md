@@ -1,16 +1,24 @@
 # Xteink X4 Pro integration
 
-## External-driver correction (in progress)
+## SD driver placement correction
 
-The earlier `dcaa6ed5` device boot used firmware-embedded ELF arrays. Its successful boot and subsequent Settings/book observations are historical evidence of that route, **not acceptance of external driver loading**. The arrays and generator are now removed. The first software milestone reads independently provisioned ordinary packages from `/bootfs`, verifies package payloads/import declarations, and registers them with the normal installed-provider graph. X4 touch/navigation use normal graph leases. No embedded fallback exists.
+The owner rejected the internal `/bootfs` placement at `ec0c099`. X4 and T5S3
+now use an isolated read-only SD bootstrap, load verified ordinary `/Drivers`
+packages into the existing graph, release bootstrap filesystem/controller
+ownership, and only then activate normal external providers. No internal-flash
+package path or embedded ELF fallback remains. The previous embedded and flash
+store boot results are historical, not validation of the corrected SD handoff.
+See [SD driver bootstrap](sd-driver-bootstrap.md) for source flow, exact SD
+layout, bounds, failure retention, package visibility and update limitations.
 
-The minimal ESP32 flash module-store port mounts the existing `spiffs` partition as LittleFS with `read_only=true`, formatting disabled and growth disabled. POSIX reads are bounded to one live descriptor, JSON 64 KiB, relative paths 192 bytes, ELF 8 MiB, 15 seconds per file and 45 seconds checked between packages. The board/profile files select versioned packages; package hashes are integrity checks, not independent privilege grants. Existing executor/import/relocation checks remain in force. Reader still enters its shared firmware Home; the `default_app` field is retained for the common boot-store contract but is not launched by this Reader composition.
-
-`stage_x4pro_packages.py` creates independent ordinary `.rte.zip` packages and a boot-store directory. `build_x4_module_store.py` builds and unpacks the LittleFS image, checks every extracted file against the source bytes, and freezes the paired firmware/store/package hashes in `deployment.json`. CI publishes this separately as `x4-external-deployment-<sha>`; the app-only controller does not consume it. Building a separate filesystem image does not authorize writing it. The existing region is `0xc90000`, size `0x360000`; there is no partition-layout change or automatic format. Provisioning replaces the contents of that entire region and needs separate review of prior contents and exact paired hashes. Current CI app-only deployment cannot provision this store.
+The board builder stages installed generations plus matching Inbox archives and
+board configuration onto a local `sdcard` tree. The existing artifact CLI now
+freezes a firmware/SD bundle, without a flash module-store image. No device
+write or deletion of old internal-flash contents is performed.
 
 The T5 SPI-SD implementation now lives behind the same `storage.volume@1` contract. T5 display extraction behind `display.output@1` is connected locally with one shared SDK DMA reservation authority; see `t5s3-external-storage.md`. A firmware chip proxy is not accepted as the final extraction. Frontlight uses `display.frontlight@1`. Existing external T5 I2C/touch/navigation stay external; shared UI and loader logic remain shared. Battery integration remains pending.
 
-Follow-up versions: firmware `1.3.77`, Springboard `1.3.1 → 1.3.2`, X4 SD `0.2.0 → 0.2.1`. Frontlight Settings now reflects a bound provider and restores the saved preference (zero off, nonzero on; current X4 provider is on/off, not PWM). Springboard requests fast display takeover only when a suitable provider and frame geometry exist; otherwise it uses static ordinary UI pages.
+Follow-up versions: firmware `1.3.78`, Springboard `1.3.1 → 1.3.2`, X4 SD `0.2.0 → 0.2.1`. Frontlight Settings now reflects a bound provider and restores the saved preference (zero off, nonzero on; current X4 provider is on/off, not PWM). Springboard requests fast display takeover only when a suitable provider and frame geometry exist; otherwise it uses static ordinary UI pages.
 
 The real SD provider/HAL wire-model profile for a 256 KiB read performs 517 sector reads. The prior code makes 4,653 waits; the revised 4 KiB-or-4 ms cooperation makes 65. A deliberately coarse 10 ms scheduling model gives 46,594 versus 714 modeled milliseconds; these are not measured device timings. The current target SDK uses 1 kHz ticks. The coarse baseline later exceeded a recursive-removal budget; the revised full four-case storage suite passes. This X4 overhead is not established as the shared post-U1 regression root cause. U1 merge boundary is `f7f006f7` (PR96), first parent `ca66db29`. Shared launch phase logs and transaction-only recovery reduce/identify repeated metadata work without removing selected-app admission.
 
@@ -26,9 +34,9 @@ The original shared Home/filesystem correction used firmware `1.3.74` and SD pro
 
 ## Provider filesystem and shared storage
 
-`x4pro-sd` now owns FatFs R0.15 and native one-bit SD reads/writes inside its ELF. Firmware does not implement X4 filesystem or card protocol. FatFs supports FAT12/16/32 superfloppy and MBR media, UTF-8 long names, ordinary file creation/update/truncation/append/sync, directory enumeration/rewind, mkdir/remove, and rename without replacement. CMD24 validates data acceptance, bounded busy completion and CMD13 status; uncertain writes are never retried automatically. Formatting and exFAT are unsupported.
+`x4pro-sd` now owns FatFs R0.15 and native one-bit SD reads/writes inside its ELF. Normal filesystem and card operations live in the ELF; the isolated firmware boot reader is read-only and releases ownership first. FatFs supports FAT12/16/32 superfloppy and MBR media, UTF-8 long names, ordinary file creation/update/truncation/append/sync, directory enumeration/rewind, mkdir/remove, and rename without replacement. CMD24 validates data acceptance, bounded busy completion and CMD13 status; uncertain writes are never retried automatically. Formatting and exFAT are unsupported.
 
-`storage.volume@1` retains its original prefix and adds a size-checked extension for ordinary file modes, direct seek/info/sync, checked directory close/errors, mkdir and rename. The generic `HalStorageVolume.cpp` adapter uses that contract for every shared `HalStorage`/`HalFile` operation. X4 selects it; T5S3 retains its existing SdFat backend and SPI ownership. This removes the prototype's read-only 8.3, four-component, single-cursor and 128 KiB seek restrictions without cloning app or package logic. Ordinary inventory, app manifest parsing, ELF file access and package staging use the same existing consumers.
+`storage.volume@1` retains its original prefix and adds a size-checked extension for ordinary file modes, direct seek/info/sync, checked directory close/errors, mkdir and rename. The generic `HalStorageVolume.cpp` adapter uses that contract for every shared `HalStorage`/`HalFile` operation. Both X4 and T5S3 select it; T5 normal SD protocol remains in its ELF behind the shared SPI provider. This removes the prototype's read-only 8.3, four-component, single-cursor and 128 KiB seek restrictions without cloning app or package logic. Ordinary inventory, app manifest parsing, ELF file access and package staging use the same existing consumers.
 
 Bounds are explicit: 12 independent file handles, 8 directory handles, 511-byte absolute paths with at most 24 components, 127 UTF-16-unit long names (directory entries must fit the existing 127-byte UTF-8 API field), and 4096-byte provider reads/writes. Seek supports existing offsets through the FAT file-size range; callers extend files by writing, not by seeking into uninitialized holes. Each provider operation has a 15-second, 2048-sector and 1,048,576-traversal-step budget with scheduler yields. HAL reads/writes are capped at 16 MiB/20 seconds per call; recursive removal at 6 levels/4096 entries/20 seconds. Larger streams continue incrementally.
 

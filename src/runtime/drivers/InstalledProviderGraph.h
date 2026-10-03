@@ -18,7 +18,10 @@ struct Lease {
 // Installs alone do not call this function and do not grant privileges.
 bool prepare();
 // Trusted read-only module-store admission; no runtime hardware starts here.
-bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate);
+bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate,
+                              const char* packageRoot = nullptr);
+// Called only after the isolated SD bootstrap confirms controller release.
+bool finishBootstrapHandoff();
 // Generic owner-loop work; never scans storage or loads a provider.
 void poll();
 // Enumerate verified candidates for one semantic capability and API version.

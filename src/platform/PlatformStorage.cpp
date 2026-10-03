@@ -1,6 +1,6 @@
 #include <T5VideoApi.h>
 #include "PlatformStorage.h"
-#include "FlashModuleStore.h"
+#include "SdBootReader.h"
 #include "runtime/drivers/BootstrapModuleStore.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include <Board.h>
@@ -43,8 +43,7 @@ bool beginPlatformBoardProviders() {
 #if defined(BOARD_T5S3_PRO)
     if (boardAttempted) return boardComposed;
     boardAttempted = true;
-    if (!mountFlashModuleStore() ||
-        !RuntimeInstalledProviders::loadBootstrapPackages("/bootfs", Board::id()) ||
+    if (!loadPlatformSdPackages() ||
         !RuntimeInstalledProviders::acquireCapability("gpio.expander", 1, &expanderLease) ||
         !Board::attachExpander(static_cast<const risc_gpio_expander_api_v1*>(expanderLease.interface)) ||
         !RuntimeInstalledProviders::acquireCapability("display.frontlight", 1, &frontlightLease) ||

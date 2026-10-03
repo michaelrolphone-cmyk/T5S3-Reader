@@ -7,9 +7,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <Logging.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <cstring>
 #include <algorithm>
 #include <memory>
@@ -19,7 +16,7 @@
 namespace RuntimeInstalledProviders {
 namespace {
 using namespace RuntimePackages;
-constexpr size_t kJsonLimit=65536, kElfLimit=8u*1024u*1024u;
+constexpr size_t kJsonLimit=65536, kElfLimit=1024u*1024u;
 constexpr PackageRuntimePolicy policy{"xtensa-esp32s3",2,kElfLimit,16u*1024u*1024u};
 bool relative(const char* path) {
   if (!path || !*path || std::strlen(path)>192 || *path=='/') return false;
@@ -36,29 +33,15 @@ bool relative(const char* path) {
 }
 // One descriptor at a time (below the four-descriptor bootstrap budget).
 // Bytes are owned before parsing/relocation; bounded reads yield on time/work.
+BootPackageReader packageReader=nullptr;
+size_t admittedBytes=0;
+uint32_t loadBegan=0;
 bool read(const std::string& path,size_t limit,std::vector<uint8_t>& bytes) {
-  bytes.clear();
-  const int fd=::open(path.c_str(),O_RDONLY);
-  if(fd<0) return false;
-  struct stat st{};
-  bool good=!::fstat(fd,&st) && S_ISREG(st.st_mode) && st.st_size>0 &&
-            static_cast<uint64_t>(st.st_size)<=limit;
-  if(good) bytes.resize(static_cast<size_t>(st.st_size));
-  const uint32_t began=millis(); uint32_t yielded=began; size_t checkpoint=0;
-  for(size_t at=0;good && at<bytes.size();) {
-    if(millis()-began>=15000u) {good=false;break;}
-    const size_t n=std::min<size_t>(4096,bytes.size()-at);
-    const ssize_t got=::read(fd,bytes.data()+at,n);
-    if(got<=0 || static_cast<size_t>(got)>n) {good=false;break;}
-    at+=static_cast<size_t>(got);
-    if(at-checkpoint>=4096 || millis()-yielded>=8u) {
-      delay(1); yielded=millis();checkpoint=at;
-    }
-  }
-  if(::close(fd)) good=false;
-  if(!good) bytes.clear();
-  return good;
+  if(packageReader && millis()-loadBegan<45000u)
+    return packageReader(path,limit,bytes) && millis()-loadBegan<45000u;
+  return false; // No implicit POSIX/internal-flash storage route.
 }
+
 bool json(const std::string& path,JsonDocument& out) {
   std::vector<uint8_t> bytes;
   return read(path,kJsonLimit,bytes) &&
@@ -80,7 +63,7 @@ bool imports(std::vector<uint8_t>& bytes,const char* (&names)[128],size_t& count
   return count && start==bytes.size();
 }
 bool rejected(const char* path,int line) {
-  LOG_ERR("BOOTFS","Rejected external package %s validation line=%d",path,line);
+  LOG_ERR("SDBOOT","Rejected external package %s validation line=%d",path,line);
   return false;
 }
 bool add(const std::string& manifestPath) {
@@ -146,22 +129,27 @@ bool add(const std::string& manifestPath) {
   candidate.requirements=needs;candidate.requirementCount=plan->requirementCount;
   candidate.elfBytes=elf.data();candidate.elfLength=elf.size();
   candidate.importedSymbols=symbols;candidate.importedSymbolCount=count;
-  // Boot store is independently read-only, not an SD package generation.
-  // Keep SD receipt/resource lookup disabled; executor and loader each verify
-  // the owned snapshot. These bootstrap packages declare no resource imports.
+  // Boot admission owns a verified snapshot before the SD controller handoff.
+  // Resource imports remain disabled until provider-backed storage exists.
+  // Pin the real SD generation through graph teardown, exactly like lazy loads.
   if(plan->resourceImportCount) return rejected(manifestPath.c_str(),__LINE__);
-  if(!registerBootstrapPackage(candidate)) return rejected(manifestPath.c_str(),__LINE__);
-  LOG_INF("BOOTFS","registered origin=%s/%s id=%s version=%s bytes=%u",directory.c_str(),filename,id,version,(unsigned)elf.size());
+  const std::string packageRoot=std::string("/Drivers/")+id;
+  if(elf.size()>2u*1024u*1024u-admittedBytes) return rejected(manifestPath.c_str(),__LINE__);
+  if(!registerBootstrapPackage(candidate,packageRoot.c_str())) return rejected(manifestPath.c_str(),__LINE__);
+  admittedBytes+=elf.size();
+  LOG_INF("SDBOOT","registered origin=%s/%s id=%s version=%s bytes=%u",directory.c_str(),filename,id,version,(unsigned)elf.size());
   return true;
 }
 }
-bool loadBootstrapPackages(const char* root,const char* expectedBoard) {
-  if(!root || root[0]!='/' || std::strlen(root)>64 || !expectedBoard) return false;
+bool loadBootstrapPackages(const char* root,const char* expectedBoard,BootPackageReader reader) {
+  packageReader=reader;
+  admittedBytes=0;
+  loadBegan=millis();
+  if(!reader || !root || root[0]!='/' || std::strlen(root)>64 || !expectedBoard) return false;
   JsonDocument boot,board;
-  if(!json(std::string(root)+"/boot.json",boot)) return false;
+  if(!json(std::string(root)+"/System/Config/boot.json",boot)) return false;
   const char* boardPath=boot["board"] | "";
-  const char* defaultApp=boot["default_app"] | "";
-  if(!relative(boardPath) || !relative(defaultApp) || !json(std::string(root)+"/"+boardPath,board) ||
+  if(!relative(boardPath) || !json(std::string(root)+"/"+boardPath,board) ||
      std::strcmp(board["board_id"] | "",expectedBoard) || !boot["drivers"].is<JsonArrayConst>() ||
      !boot["drivers"].size() || boot["drivers"].size()>16) return false;
   const uint32_t began=millis();
@@ -170,7 +158,18 @@ bool loadBootstrapPackages(const char* root,const char* expectedBoard) {
   for(JsonObjectConst selected:boot["drivers"].as<JsonArrayConst>()) {
     if(millis()-began>=45000u) return false;
     const char* path=selected["manifest"] | "";
-    if(!relative(path) || !add(std::string(root)+"/"+path)) return false;
+    // Profile selects an ordinary installed ID, never an alternate copy or ELF.
+    if(!relative(path) || std::strncmp(path,"Drivers/",8)) return false;
+    const char* slash=std::strchr(path+8,'/');
+    if(!slash || std::strcmp(slash,"/manifest.json")) return false;
+    const std::string id(path+8,slash);
+    if(!safeId(id.c_str())) return false;
+    const std::string target=std::string(root)+"/Drivers/"+id;
+    JsonDocument selectedManifest;
+    if(!json(target+"/manifest.json",selectedManifest) ||
+       std::strcmp(selectedManifest["id"] | "",id.c_str()) ||
+       !add(target+"/manifest.json")) return false;
+    delay(1);
   }
   return true;
 }

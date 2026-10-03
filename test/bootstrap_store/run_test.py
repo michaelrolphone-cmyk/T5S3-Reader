@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise production POSIX bootstrap reads and ordinary-package validation."""
+"""Exercise production SD boot package validation with a host file reader."""
 import hashlib,json,os,shutil,subprocess,tempfile,sys
 from pathlib import Path
 root=Path(__file__).resolve().parents[2]
@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
   '-I'+str(root/'src'),'-I'+str(root/'sdk/driver'),'-I'+str(include),
   str(root/'test/bootstrap_store/test.cpp'),str(root/'src/runtime/drivers/BootstrapModuleStore.cpp'),*flags,'-o',str(binary)],check=True)
  # Both board profiles pass the same production reader; no ELF execution here.
- t5=root/'dist/t5s3-independent-packages/bootfs'
+ t5=root/'dist/t5s3-independent-packages/sdcard'
  if t5.exists():
   t5fixture=d/'t5boot';shutil.copytree(t5,t5fixture)
   subprocess.run([str(binary),str(t5fixture),'t5s3-pro'],check=True,timeout=20)
@@ -29,13 +29,13 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
    rejected=subprocess.run([str(binary),str(t5fixture),'t5s3-pro'],capture_output=True,timeout=20)
    assert rejected.returncode!=0,'ABI3 ordinary package admitted without its source manifest'
    print('Ordinary catalog ABI3 package admission and missing-manifest rejection: PASS')
- fixture=d/'bootfs';shutil.copytree(root/'dist/x4-independent-packages/bootfs',fixture)
+ fixture=d/'sdcard';shutil.copytree(root/'dist/x4-independent-packages/sdcard',fixture)
  def run(ok):
   p=subprocess.run([str(binary),str(fixture),'xteink-x4-pro'],capture_output=True,text=True,timeout=20)
   assert (p.returncode==0)==ok,p.stdout+p.stderr
   return p.stdout
  print(run(True).strip())
- boot=fixture/'boot.json'; original=boot.read_bytes(); config=json.loads(original)
+ boot=fixture/'System/Config/boot.json'; original=boot.read_bytes(); config=json.loads(original)
  config['drivers'][0]['manifest']='../escape.json';boot.write_text(json.dumps(config));run(False);boot.write_bytes(original)
  driver=fixture/'Drivers/x4pro-sd/driver.elf'; data=driver.read_bytes();driver.write_bytes(data[:-1]+bytes([data[-1]^1]));run(False);driver.write_bytes(data)
  driver.rename(driver.with_suffix('.missing'));run(False);driver.with_suffix('.missing').rename(driver)
@@ -90,4 +90,4 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
  print('External-file origin, valid packages, corrupt/missing ELF, version mismatch, traversal, independent version update: PASS')
 assert not (root/'src/platform/x4pro_embedded.c').exists()
 assert 'x4_embedded' not in (root/'src/platform/X4DiagnosticBoot.cpp').read_text()
-assert 'loadBootstrapPackages' in (root/'src/platform/X4DiagnosticBoot.cpp').read_text()
+assert 'loadPlatformSdPackages' in (root/'src/platform/X4DiagnosticBoot.cpp').read_text()

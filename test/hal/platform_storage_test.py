@@ -43,7 +43,7 @@ struct StorageStub {
 namespace RuntimeInstalledProviders {
 struct Grant{unsigned slot;unsigned generation;};
 struct Lease{Grant grant{};const void* interface=nullptr;};
-bool loadBootstrapPackages(const char* path,const char* board){assert(!std::strcmp(path,"/bootfs")&&!std::strcmp(board,"t5s3-pro"));++loads;return !is("packages");}
+
 bool acquireCapability(const char* cap,unsigned version,Lease* out){
  assert(version==1);++acquires;
  if(!std::strcmp(cap,"display.output")){
@@ -75,12 +75,12 @@ bool drainExcept(const Lease* leases,size_t count){
 }
 bool shutdown(){return true;}
 }
-bool mountFlashModuleStore(){++mounts;return !is("store");}
+bool loadPlatformSdPackages(){++mounts;if(is("store"))return false;++loads;return !is("packages");}
 '''
 main=r'''
 int main(int argc,char**argv){
  assert(argc==2);scenario=argv[1];
- // Early clock/board path mounts only immutable packages, not SD.
+ // Early clock/board path reads SD packages, releases bootstrap, then acquires providers.
  bool board=beginPlatformBoardProviders();
  assert(board==(is("okay")||is("media")||is("storage")||is("timer")));
  assert(!binds);

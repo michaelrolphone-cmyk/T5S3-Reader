@@ -1,13 +1,12 @@
 # T5 shared storage and frontlight cutover
 
-This software milestone selects independently installed `spi-esp32s3-v1@0.1.0`,
-`t5s3-sd@0.1.0`, `t5s3-frontlight@0.1.0` and `platform-clock-v1@0.1.1` from the
-read-only `/bootfs` store. There is no T5 SdFat/SDFS fallback. Missing or invalid
-packages stop composition and use the existing Reader error path. Ordinary
-Reader, application and `/sd` VFS consumers use the same `HalStorageVolume`
-adapter as X4. SD protocol and the shared FatFs implementation live in the SD
-ELFs. The SPI bus ELF alone imports the temporary raw firmware controller port;
-the resident LoRa adapter shares its existing SPIClass transaction lock.
+The authoritative placement is ordinary SD packages, not the historical
+internal `/bootfs` route at `ec0c099`. See [SD driver bootstrap](sd-driver-bootstrap.md)
+for the checked read-only bootstrap-to-provider handoff and installation limits.
+Existing extracted SPI, SD, frontlight, I2C, expander, power, clock and display
+ELFs are reused; shared Reader/application storage uses `HalStorageVolume`.
+Missing/invalid packages stop composition. The firmware bootstrap cannot serve
+normal reads/writes after handoff or rescue an absent external provider.
 
 The T5 frontlight ELF owns GPIO11 and LEDC timer0/channel0. It preserves the
 0–10 quadratic brightness curve, 5 kHz frequency, 8-bit resolution and full-on
@@ -57,13 +56,11 @@ not a claim about all historical or user-built applications. The read-only
 
 ## Artifacts and validation
 
-`stage_t5s3_packages.py` emits ordinary independent package archives and a T5
-boot-store tree. The `T5 external software pair` workflow builds both firmware
-and providers, round-trips the LittleFS image, and publishes a separate
-`t5-external-deployment-<sha>` bundle. Its deployment manifest marks provisioning
-unauthorized. The X4 and T5 profiles are distinct; never interchange their images.
-Both retain the existing partition geometry, offset `0xc90000`, size `0x360000`.
-Prior device contents are not inferred from these build artifacts.
+`stage_t5s3_packages.py` emits independent ordinary archives, installed SD
+package roots, matching Inbox archives and the board profile. The historical
+`build_x4_module_store.py` CLI now produces a firmware/SD bundle with schema 2;
+no internal flash driver image is emitted. Existing partition geometry is
+unchanged and old internal-flash contents are neither mounted nor erased.
 
 Local checks cover both firmware targets; real provider/FatFs/HAL operations on
 native one-bit and SPI card models; ELF imports/relocations; released import
@@ -85,7 +82,7 @@ The T5 bootstrap profile now also contains `i2c-esp32s3-v2@0.1.6` and
 `pca9535-gpio@0.1.0`. The latter claims address 0x20 once and owns PCA9535
 register transactions. Board startup resolves that provider before expander
 controls; absent or partially started providers fail closed. Early desk-clock
-startup loads the immutable bootstrap inventory but does not activate SD.
+startup reads the SD bootstrap inventory, releases it, and does not activate the normal storage provider.
 
 The board holds two nonoverlapping, generation-bound pin grants: radio enable
 IO00 and button IO12. `tps65185-power@0.1.0` owns the display IO10/11/13–17
@@ -117,7 +114,7 @@ failed partial starts/stops. Platform composition pins its exact lease, includin
 timer boot before storage starts. This is the eighth T5 bootstrap package. It replaces the old ABI-1
 0.1.4 video proxy, which cannot run against this firmware after its private
 `t5_video_get_api` import exception is removed. Firmware and the independently
-built module-store package set must be paired.
+built SD package set must be paired.
 
 Pinned IDF 4.4.7 LCD code is staged into the provider. Its TX mechanics use
 OS/CPU ABI 3 to reserve a channel and trigger from the resident SDK allocator,

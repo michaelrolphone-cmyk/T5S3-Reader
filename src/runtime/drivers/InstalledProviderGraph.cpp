@@ -43,6 +43,7 @@ char loadError[160]{};
 struct BootstrapSelection { char id[64]; char capability[64]; uint32_t api; };
 BootstrapSelection bootstrap[16]{};
 size_t bootstrapCount=0;
+bool bootstrapHandoffComplete=true;
 
 struct Root {
     const char* path;
@@ -411,7 +412,8 @@ void undoPins() {
 }
 } // namespace
 
-bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate) {
+bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate, const char* packageRoot) {
+    bootstrapHandoffComplete=false;
     if (bootstrapCount==16 || !candidate.driverId || !candidate.provides ||
         std::strlen(candidate.driverId)>=64 || std::strlen(candidate.provides)>=64) return false;
     for(size_t i=0;i<bootstrapCount;++i)
@@ -421,14 +423,27 @@ bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2&
         graph=new(std::nothrow) RuntimeProviders::GraphV2(nativeProviderStreamHost());
         if(graph) nativeProviderSetOwnerPoll(poll);
     }
-    if(!graph || !DeviceProviderExecutorV2::registerManagerValidated(*graph,candidate)) return false;
+    if(!graph || !packageRoot || pinCount==kMaxProviders || std::strlen(packageRoot)>=sizeof(pinned[0]) ||
+       !systemPackageUseGate().pin(packageRoot)) return false;
+    if(!DeviceProviderExecutorV2::registerManagerValidated(*graph,candidate)) {
+        (void)systemPackageUseGate().unpin(packageRoot);
+        return false;
+    }
+    std::strcpy(pinned[pinCount++],packageRoot);
     auto& selected=bootstrap[bootstrapCount++];
     std::strcpy(selected.id,candidate.driverId);std::strcpy(selected.capability,candidate.provides);
     selected.api=candidate.providesApi;
     return true;
 }
 
+bool finishBootstrapHandoff() {
+    if(!graph || !bootstrapCount) return false;
+    bootstrapHandoffComplete=true;
+    return true;
+}
+
 bool prepare() {
+    if(!bootstrapHandoffComplete) return false;
     if (RuntimePackages::cdcMigrationPendingOnSd()) {
         RuntimePackages::ScopedPackageMutation mutation;
         RuntimePackages::Identity recovered{};
@@ -620,6 +635,7 @@ bool shutdown() {
     delete graph;
     graph = nullptr;
     bootstrapCount=0;
+    bootstrapHandoffComplete=true;
     undoPins();
     return true;
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build and round-trip a separately provisioned X4 module-store artifact.
+"""Freeze firmware and ordinary SD packages for X4/T5; local artifacts only.
 
-This command only writes local files. It does not discover or access devices.
-The output explicitly requires separate approval before replacing the existing
-data partition; the app-only hardware controller must not consume this bundle.
+Historical CLI name retained for existing build jobs. Never constructs an
+internal flash driver image or accesses a device. No-SD targets use their own
+separate packaging path.
 """
 import argparse
 import hashlib
@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-import tempfile
+from pack_rte_zip import pack_directory
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,34 +42,17 @@ def build(tool, output, source_sha, board="xteink-x4-pro"):
     observed = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     if observed != source_sha:
         raise ValueError('Checkout does not match source SHA')
-    # Derive geometry from this Reader checkout, never another port's layout.
-    rows = [line.split(',') for line in (ROOT/'partitions.csv').read_text().splitlines()
-            if line.strip() and not line.lstrip().startswith('#')]
-    stores = [row for row in rows if row[0].strip() == 'spiffs']
-    if len(stores) != 1:
-        raise ValueError('Expected one existing module-store partition')
-    offset, size = (int(stores[0][i].strip(), 0) for i in (3, 4))
-    if (offset, size) != (0xc90000, 0x360000):
-        raise ValueError('Partition layout changed; review required')
     packages = ROOT/'dist'/profiles[board]
-    expected = inventory(packages/'bootfs')
+    expected = inventory(packages/'sdcard')
     firmware = ROOT/'.pio/build'/board/'firmware.bin'
     payload = firmware.read_bytes()
     if not payload or payload[0] != 0xe9 or len(payload) > 0x640000 or ('RISCRTE_BOARD_ID:'+board).encode() not in payload:
         raise ValueError('Invalid paired board firmware')
     # Refuse stale output rather than silently mix runs.
     output.mkdir(parents=True, exist_ok=False)
-    image = output/'module-store.bin'
-    geometry = ['-b', '4096', '-p', '256', '-s', str(size)]
-    subprocess.run([str(tool), '-c', str(packages/'bootfs'), *geometry, str(image)], check=True, timeout=120)
-    if image.stat().st_size != size:
-        raise ValueError('Unexpected module-store image length')
-    with tempfile.TemporaryDirectory() as temporary:
-        extracted = Path(temporary)/'extracted'
-        extracted.mkdir()
-        subprocess.run([str(tool), '-u', str(extracted), *geometry, str(image)], check=True, timeout=120)
-        if inventory(extracted) != expected:
-            raise ValueError('Module-store image round-trip differs from package files')
+    shutil.copytree(packages/'sdcard',output/'sdcard')
+    if inventory(output/'sdcard') != expected:
+        raise ValueError('SD package snapshot differs from staged files')
     shutil.copyfile(firmware, output/'firmware.bin')
     shutil.copyfile(ROOT/'partitions.csv', output/'partitions.csv')
     archive_records = json.loads((packages/'artifacts.json').read_text())
@@ -78,25 +61,33 @@ def build(tool, output, source_sha, board="xteink-x4-pro"):
         name = record['file']
         if Path(name).name != name or digest(packages/name) != {k: record[k] for k in ('bytes', 'sha256')}:
             raise ValueError('Package archive custody mismatch')
+        identity=record['id']
+        if not re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,62}',identity):
+            raise ValueError('Invalid installed package ID')
+        packed=pack_directory(output/'sdcard/Drivers'/identity)
+        if dict(bytes=len(packed),sha256=hashlib.sha256(packed).hexdigest()) != digest(packages/name):
+            raise ValueError('Installed SD generation differs from its ordinary archive')
+        if digest(output/'sdcard/Packages/Inbox'/name) != digest(packages/name):
+            raise ValueError('SD inbox archive differs from approved package')
         shutil.copyfile(packages/name, output/'packages'/name)
-    manifest = dict(schema=1, board=board, source_sha=source_sha,
-                    provisioning_authorized=False, prior_partition_contents='unknown; whole region would be replaced',
+    manifest = dict(schema=2, board=board, source_sha=source_sha,
+                    provisioning_authorized=False, driver_medium='sd',
                     firmware=dict(file='firmware.bin', offset=0x10000, **digest(output/'firmware.bin')),
-                    module_store=dict(file=image.name, offset=offset, **digest(image)),
-                    partition_table=digest(output/'partitions.csv'), files=expected, packages=archive_records)
+                    sd_root='sdcard', partition_table=digest(output/'partitions.csv'),
+                    files=expected, packages=archive_records)
     (output/'deployment.json').write_text(json.dumps(manifest, indent=2)+'\n')
     (output/'README.txt').write_text(
         'Software artifact only; no device validation or provisioning performed.\n'
-        'Firmware requires the matching external module store.\n'
-        'Do not give this bundle to the app-only automatic controller.\n'
-        'Provisioning replaces the entire existing data partition; prior contents are unknown.\n'
-        'Review/backup of that region and separate approval are required before provisioning.\n')
+        'Firmware requires ordinary driver generations and the board profile on SD.\n'
+        'Stage sdcard/ paths with checked ordinary package installation; preserve unrelated data.\n'
+        'Active driver generations refuse replacement; no hot-update claim.\n'
+        'No internal-flash driver image is supplied or required. Do not erase old flash contents.\n')
     return manifest
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--tool', type=Path, required=True)
+    parser.add_argument('--tool', type=Path, help='Legacy compatibility argument; unused for SD artifacts')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--source-sha', required=True)
     parser.add_argument('--board', choices=['xteink-x4-pro', 't5s3-pro'], default='xteink-x4-pro')
