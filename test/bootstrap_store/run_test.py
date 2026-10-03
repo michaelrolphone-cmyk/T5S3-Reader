@@ -18,6 +18,17 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
  if t5.exists():
   t5fixture=d/'t5boot';shutil.copytree(t5,t5fixture)
   subprocess.run([str(binary),str(t5fixture),'t5s3-pro'],check=True,timeout=20)
+  # The ordinary catalog route must retain the same ABI3 source selection as
+  # board staging; exercise the actual loader, not only archive hash checks.
+  catalog_display=root/'dist/packages/display-epd-video'
+  if (catalog_display/'manifest.json').exists():
+   target=t5fixture/'Drivers/display-epd-video'
+   shutil.rmtree(target);shutil.copytree(catalog_display,target)
+   subprocess.run([str(binary),str(t5fixture),'t5s3-pro'],check=True,timeout=20)
+   (target/'manifest.json').unlink()
+   rejected=subprocess.run([str(binary),str(t5fixture),'t5s3-pro'],capture_output=True,timeout=20)
+   assert rejected.returncode!=0,'ABI3 ordinary package admitted without its source manifest'
+   print('Ordinary catalog ABI3 package admission and missing-manifest rejection: PASS')
  fixture=d/'bootfs';shutil.copytree(root/'dist/x4-independent-packages/bootfs',fixture)
  def run(ok):
   p=subprocess.run([str(binary),str(fixture),'xteink-x4-pro'],capture_output=True,text=True,timeout=20)

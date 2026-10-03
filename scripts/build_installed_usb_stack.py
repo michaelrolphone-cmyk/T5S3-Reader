@@ -229,8 +229,14 @@ def build(identities: set[str] | None = None) -> list[dict]:
         provider_inputs(executable, candidate['source'], target)
         dependencies = [{'capability': required['capability'], 'min_api': required['api']}
                         for required in metadata['requires']]
-        entries = [entry(target / name, name == 'driver.elf') for name in
-                   ('driver.elf', 'provider-abi.v1', 'privileged-imports.v1')]
+        names = ['driver.elf', 'provider-abi.v1', 'privileged-imports.v1']
+        # Revision >1 must carry its digest-bound source selection. Both the
+        # installed resolver and graph deliberately reject a newer profile
+        # without this manifest; a profile alone cannot upgrade legacy ABI1.
+        if metadata.get('os_cpu_abi', 1) > 1:
+            shutil.copyfile(candidate['source'], target / 'manifest.json')
+            names.append('manifest.json')
+        entries = [entry(target / name, name == 'driver.elf') for name in names]
         package = {'schema': 1, 'kind': metadata['type'], 'id': identity,
                    'version': candidate['version'], 'artifact': 'driver.elf',
                    'architecture': metadata['architecture'], 'min_runtime_api': 2,

@@ -143,7 +143,11 @@ def run(identities=None):
                 identity, requirement)
         entries = manifest['entries']
         names = {e['name'] for e in entries}
-        assert names == {'driver.elf', 'provider-abi.v1', 'privileged-imports.v1'}
+        expected_names = {'driver.elf', 'provider-abi.v1', 'privileged-imports.v1'}
+        if source.get('os_cpu_abi', 1) > 1:
+            expected_names.add('manifest.json')
+            assert json.loads((folder / 'manifest.json').read_text()) == source
+        assert names == expected_names
         assert {path.name for path in folder.iterdir()} == names | {'.package.json'}
         for item in entries:
             name = item['name']
