@@ -152,16 +152,23 @@ bool Epub::parseTocNcxFile() const {
 
   const auto tmpNcxPath = getCachePath() + "/toc.ncx";
   FsFile tempNcxFile;
+  const auto finish = [&](const bool ok) {
+    const bool closed = tempNcxFile.close();
+    Storage.remove(tmpNcxPath.c_str());
+    return ok && closed;
+  };
   if (!Storage.openFileForWrite("EBP", tmpNcxPath, tempNcxFile)) {
-    return false;
+    return finish(false);
   }
-  readItemContentsToStream(tocNcxItem, tempNcxFile, 1024);
-  // Explicitly close() file before reopening for reading
-  tempNcxFile.close();
+  const bool extracted = readItemContentsToStream(tocNcxItem, tempNcxFile, 1024);
+  // Refuse even a parseable prefix if extraction or its final write failed.
+  const bool written = tempNcxFile.close();
+  if (!extracted || !written) return finish(false);
   if (!Storage.openFileForRead("EBP", tmpNcxPath, tempNcxFile)) {
-    return false;
+    return finish(false);
   }
   const auto ncxSize = tempNcxFile.size();
+  if (ncxSize == 0) return finish(false);
 
   // NCX content references are relative to the NCX file, which may be outside the OPF directory.
   const std::string ncxContentBasePath = tocNcxItem.substr(0, tocNcxItem.find_last_of('/') + 1);
@@ -169,34 +176,49 @@ bool Epub::parseTocNcxFile() const {
 
   if (!ncxParser.setup()) {
     LOG_ERR("EBP", "Could not setup toc ncx parser");
-    return false;
+    return finish(false);
   }
 
   const auto ncxBuffer = static_cast<uint8_t*>(malloc(1024));
   if (!ncxBuffer) {
     LOG_ERR("EBP", "Could not allocate memory for toc ncx parser");
-    return false;
+    return finish(false);
   }
 
-  while (tempNcxFile.available()) {
-    const auto readSize = tempNcxFile.read(ncxBuffer, 1024);
-    if (readSize == 0) break;
-    const auto processedSize = ncxParser.write(ncxBuffer, readSize);
-
-    if (processedSize != readSize) {
+  // Expat finalizes only when all of the advertised bytes have been supplied.
+  // A zero/error/short terminal read must not turn an incomplete parse into success.
+  size_t remaining = ncxSize;
+  const uint32_t started = millis();
+  uint32_t lastYield = started;
+  size_t bytesSinceYield = 0;
+  while (remaining > 0) {
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= 30000) {
+      LOG_ERR("EBP", "TOC ncx parse deadline exceeded");
+      free(ncxBuffer);
+      return finish(false);
+    }
+    if (bytesSinceYield >= 16384 || static_cast<uint32_t>(now - lastYield) >= 20) {
+      vTaskDelay(1);
+      lastYield = millis();
+      bytesSinceYield = 0;
+    }
+    const size_t requested = remaining < 1024 ? remaining : 1024;
+    const int readSize = tempNcxFile.read(ncxBuffer, requested);
+    if (readSize <= 0 || static_cast<size_t>(readSize) > requested ||
+        ncxParser.write(ncxBuffer, static_cast<size_t>(readSize)) != static_cast<size_t>(readSize)) {
       LOG_ERR("EBP", "Could not process all toc ncx data");
       free(ncxBuffer);
-      return false;
+      return finish(false);
     }
+    remaining -= static_cast<size_t>(readSize);
+    bytesSinceYield += static_cast<size_t>(readSize);
   }
 
   free(ncxBuffer);
-  // Explicitly close() file before calling Storage.remove()
-  tempNcxFile.close();
-  Storage.remove(tmpNcxPath.c_str());
 
   LOG_DBG("EBP", "Parsed TOC items");
-  return true;
+  return finish(true);
 }
 
 bool Epub::parseTocNavFile() const {
@@ -210,16 +232,23 @@ bool Epub::parseTocNavFile() const {
 
   const auto tmpNavPath = getCachePath() + "/toc.nav";
   FsFile tempNavFile;
+  const auto finish = [&](const bool ok) {
+    const bool closed = tempNavFile.close();
+    Storage.remove(tmpNavPath.c_str());
+    return ok && closed;
+  };
   if (!Storage.openFileForWrite("EBP", tmpNavPath, tempNavFile)) {
-    return false;
+    return finish(false);
   }
-  readItemContentsToStream(tocNavItem, tempNavFile, 1024);
-  // Explicitly close() file before reopening for reading
-  tempNavFile.close();
+  const bool extracted = readItemContentsToStream(tocNavItem, tempNavFile, 1024);
+  // Refuse even a parseable prefix if extraction or its final write failed.
+  const bool written = tempNavFile.close();
+  if (!extracted || !written) return finish(false);
   if (!Storage.openFileForRead("EBP", tmpNavPath, tempNavFile)) {
-    return false;
+    return finish(false);
   }
   const auto navSize = tempNavFile.size();
+  if (navSize == 0) return finish(false);
 
   // Note: We can't use `contentBasePath` here as the nav file may be in a different folder to the content.opf
   // and the HTMLX nav file will have hrefs relative to itself
@@ -228,33 +257,49 @@ bool Epub::parseTocNavFile() const {
 
   if (!navParser.setup()) {
     LOG_ERR("EBP", "Could not setup toc nav parser");
-    return false;
+    return finish(false);
   }
 
   const auto navBuffer = static_cast<uint8_t*>(malloc(1024));
   if (!navBuffer) {
     LOG_ERR("EBP", "Could not allocate memory for toc nav parser");
-    return false;
+    return finish(false);
   }
 
-  while (tempNavFile.available()) {
-    const auto readSize = tempNavFile.read(navBuffer, 1024);
-    const auto processedSize = navParser.write(navBuffer, readSize);
-
-    if (processedSize != readSize) {
+  // Expat finalizes only when all of the advertised bytes have been supplied.
+  // A zero/error/short terminal read must not turn an incomplete parse into success.
+  size_t remaining = navSize;
+  const uint32_t started = millis();
+  uint32_t lastYield = started;
+  size_t bytesSinceYield = 0;
+  while (remaining > 0) {
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= 30000) {
+      LOG_ERR("EBP", "TOC nav parse deadline exceeded");
+      free(navBuffer);
+      return finish(false);
+    }
+    if (bytesSinceYield >= 16384 || static_cast<uint32_t>(now - lastYield) >= 20) {
+      vTaskDelay(1);
+      lastYield = millis();
+      bytesSinceYield = 0;
+    }
+    const size_t requested = remaining < 1024 ? remaining : 1024;
+    const int readSize = tempNavFile.read(navBuffer, requested);
+    if (readSize <= 0 || static_cast<size_t>(readSize) > requested ||
+        navParser.write(navBuffer, static_cast<size_t>(readSize)) != static_cast<size_t>(readSize)) {
       LOG_ERR("EBP", "Could not process all toc nav data");
       free(navBuffer);
-      return false;
+      return finish(false);
     }
+    remaining -= static_cast<size_t>(readSize);
+    bytesSinceYield += static_cast<size_t>(readSize);
   }
 
   free(navBuffer);
-  // Explicitly close() file before calling Storage.remove()
-  tempNavFile.close();
-  Storage.remove(tmpNavPath.c_str());
 
   LOG_DBG("EBP", "Parsed TOC nav items");
-  return true;
+  return finish(true);
 }
 
 void Epub::parseCssFiles() const {
@@ -413,12 +458,16 @@ bool Epub::load(const bool buildIfMissing, const bool skipLoadingCss) {
   if (!tocNavItem.empty()) {
     LOG_DBG("EBP", "Attempting to parse EPUB 3 nav document");
     tocParsed = parseTocNavFile();
+    // A failed XML parse may already have emitted entries. Never mix its prefix
+    // with the fallback NCX or publish it as a successful empty-TOC recovery.
+    if (!tocParsed && !bookMetadataCache->resetTocEntries()) return false;
   }
 
   // Fall back to NCX if nav parsing failed or wasn't available
   if (!tocParsed && !tocNcxItem.empty()) {
     LOG_DBG("EBP", "Falling back to NCX TOC");
     tocParsed = parseTocNcxFile();
+    if (!tocParsed && !bookMetadataCache->resetTocEntries()) return false;
   }
 
   if (!tocParsed) {
