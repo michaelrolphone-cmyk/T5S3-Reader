@@ -186,6 +186,10 @@ python3 "$repo_dir/test/native_apps/timecard_clock_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_clock_failure_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/firmware_flasher_pagination_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
 python3 "$repo_dir/test/native_apps/timecard_store_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_store_failure_test.c" -o "$binary"
