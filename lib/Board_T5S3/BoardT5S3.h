@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 struct risc_frontlight_api_v1;
+struct risc_gpio_expander_api_v1;
 
 #include <BoardCapabilities.h>
 #include "pin.hpp"
@@ -29,6 +30,7 @@ class ScopedI2CLock {
 
 void begin();
 void beginI2C();
+bool attachExpander(const risc_gpio_expander_api_v1* api);
 bool attachFrontlight(const risc_frontlight_api_v1* api);
 void initBacklight();
 void setBacklightLevel(uint8_t level);

@@ -10,6 +10,7 @@ fixture=r'''
 #include <cstdio>
 #include <RiscStorageVolumeV1.h>
 #include <RiscFrontlightV1.h>
+#include <RiscGpioExpanderV1.h>
 #define BOARD_T5S3_PRO 1
 #define LOG_ERR(...) ((void)0)
 static const char* scenario;
@@ -17,8 +18,11 @@ static unsigned mounts,loads,acquires,binds,fallbacks,attaches;
 static bool is(const char* value){return !std::strcmp(scenario,value);}
 static risc_storage_volume_api_v1 volume;
 static risc_frontlight_api_v1 light;
+static risc_gpio_expander_api_v1 expander;
+static unsigned held;
 namespace Board {
 const char* id(){return "t5s3-pro";}
+bool attachExpander(const risc_gpio_expander_api_v1* api){assert(api==&expander);return !is("pins");}
 bool attachFrontlight(const risc_frontlight_api_v1* api){assert(api==&light);++attaches;return true;}
 }
 struct StorageStub {
@@ -34,15 +38,19 @@ bool acquireCapability(const char* cap,unsigned version,Lease* out){
  assert(version==1);++acquires;
  if(!std::strcmp(cap,"storage.volume")){
   if(is("storage"))return false;
-  *out={{1,12},&volume};return true;
+  ++held;*out={{3,14},&volume};return true;
+ }
+ if(!std::strcmp(cap,"gpio.expander")){
+  if(is("expander"))return false;
+  ++held;*out={{1,12},&expander};return true;
  }
  assert(!std::strcmp(cap,"display.frontlight"));
  if(is("light"))return false;
- *out={{2,13},&light};return true;
+ ++held;*out={{2,13},&light};return true;
 }
 bool drainExcept(const Lease* leases,size_t count){
- assert(count==(is("light")?1u:2u));assert(leases[0].grant.slot==1&&leases[0].grant.generation==12);
- if(count==2)assert(leases[1].grant.slot==2&&leases[1].grant.generation==13);
+ assert(count==held);
+ for(size_t i=0;i<count;++i)assert(leases[i].grant.slot==i+1 && leases[i].grant.generation==i+12);
  return true;
 }
 bool shutdown(){return true;}
@@ -52,14 +60,22 @@ bool mountFlashModuleStore(){++mounts;return !is("store");}
 main=r'''
 int main(int argc,char**argv){
  assert(argc==2);scenario=argv[1];
+ // Early clock/board path mounts only immutable packages, not SD.
+ bool board=beginPlatformBoardProviders();
+ assert(board==(is("okay")||is("media")||is("storage")||is("timer")));
+ assert(!binds);
+ if(is("timer")){assert(acquires==2);assert(drainPlatformProvidersForSleep());return 0;}
  bool okay=beginPlatformStorage();assert(okay==is("okay"));
  unsigned before=acquires;assert(beginPlatformStorage()==okay);assert(acquires==before);
+ assert(beginPlatformBoardProviders()==board && acquires==before);
  assert(mounts==1 && !fallbacks);
  if(is("store"))assert(!loads&&!acquires&&!binds);
  if(is("packages"))assert(loads==1&&!acquires&&!binds);
- if(is("storage"))assert(acquires==1&&!binds&&!attaches);
- if(is("light"))assert(acquires==2&&binds==1&&!attaches);
- if(is("okay")||is("media"))assert(acquires==2&&binds==1&&attaches==1);
+ if(is("expander"))assert(acquires==1&&!binds&&!attaches);
+ if(is("pins"))assert(acquires==1&&held==1&&!binds&&!attaches);
+ if(is("light"))assert(acquires==2&&!binds&&!attaches);
+ if(is("storage"))assert(acquires==3&&!binds&&attaches==1);
+ if(is("okay")||is("media"))assert(acquires==3&&binds==1&&attaches==1);
  assert(drainPlatformProvidersForSleep());
  puts("Platform storage: missing provider fails closed; exact persistent leases retained PASS");
 }
@@ -67,4 +83,4 @@ int main(int argc,char**argv){
 with tempfile.TemporaryDirectory() as tmp:
  path=Path(tmp)/'test.cpp';binary=Path(tmp)/'test';path.write_text(fixture+source+main)
  subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=undefined','-I'+str(root/'sdk/driver'),str(path),'-o',str(binary)],check=True)
- for scenario in ('store','packages','storage','light','media','okay'):subprocess.run([str(binary),scenario],check=True)
+ for scenario in ('store','packages','expander','pins','storage','light','media','okay','timer'):subprocess.run([str(binary),scenario],check=True)

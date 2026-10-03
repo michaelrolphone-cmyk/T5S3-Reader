@@ -80,3 +80,27 @@ performance investigation. The old display ELF still proxies firmware and is
 not accepted as the final extraction. No hardware validation, flashing,
 formatting or provisioning was performed for this milestone. Physical validation
 and review of the paired deployment remain separate owner steps.
+
+### M3 expander prerequisite (software integration)
+
+The T5 bootstrap profile now also contains `i2c-esp32s3-v2@0.1.6` and
+`pca9535-gpio@0.1.0`. The latter claims address 0x20 once and owns PCA9535
+register transactions. Board startup resolves that provider before expander
+controls; absent or partially started providers fail closed. Early desk-clock
+startup loads the immutable bootstrap inventory but does not activate SD.
+
+The board currently holds three nonoverlapping, generation-bound pin grants:
+radio enable IO00, button IO12, and the existing display's IO10/11/13–17.
+Output grants initialize safe low levels before direction changes. Button and
+power-good/interrupt pins remain inputs. Writes outside a grant and stale
+handles are rejected; release restores only that grant's safe output bits.
+Unconfirmed writes retain chip ownership and dependencies until reboot rather
+than retrying or restoring a stale bank. Retained platform sleep grants include
+the expander and its I2C dependency, including partially acquired grants.
+
+This is the expander prerequisite, **not completed display extraction**: the
+Reader quality engine and fast app engine still consume the board's scoped
+display grant. They must move into the actual external display implementation
+before M3 is complete. No physical pin, waveform, sleep or timing validation is
+claimed. The profile expands from four to six ordinary packages; older paired
+artifacts do not represent this new source.

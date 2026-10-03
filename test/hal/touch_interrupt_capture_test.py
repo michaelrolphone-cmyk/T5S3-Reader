@@ -49,9 +49,12 @@ assert "digitalWrite(EPD47_TOUCH_INT, HIGH);" in EPD_BOARD
 # T5S3. Panel power sequencing must never monopolize that bus across its waits:
 # each transaction locks independently, while PCA9535 bit updates retain an
 # atomic read-modify-write critical section.
-pca_update = T5_BOARD.split("bool updatePca9535Bit", 1)[1].split(
-    "bool readReg16LE", 1)[0]
-assert "ScopedI2CLock lock;" in pca_update
+# The independent chip owner now serializes RMW and grants pins. Board
+# consumers must not bypass it through a second raw PCA transaction path.
+assert "updatePca9535Bit" not in T5_BOARD
+assert "Wire.beginTransmission(T5S3_PCA9535_ADDR)" not in T5_BOARD
+assert "expander->write(expander->context, grant, mask" in T5_BOARD
+assert "expander->read(expander->context, grant" in T5_BOARD
 
 prepare_power = T5_DISPLAY.split("bool preparePowerPins()", 1)[1].split(
     "bool powerOnSequence()", 1)[0]

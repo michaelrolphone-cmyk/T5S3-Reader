@@ -33,6 +33,9 @@ jobs:
           export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
           export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
           python scripts/build_platform_clock_v1.py
+          python scripts/probe_i2c_esp32s3_v2.py
+          python scripts/audit_i2c_esp32s3_elf.py --strict
+          python scripts/build_pca9535_gpio.py
           python scripts/build_spi_esp32s3.py
           python scripts/build_t5s3_sd.py
           python scripts/build_t5s3_frontlight.py
@@ -45,6 +48,9 @@ jobs:
           bash test/run_provider_retained_boundary_test.sh
           python3 test/hal/retired_storage_import_test.py
           python3 test/hal/platform_storage_test.py
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver Drivers/pca9535_gpio/driver.c test/expander/test.c -o /tmp/pca9535-test
+          /tmp/pca9535-test
+          /tmp/pca9535-test uncertain
           c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -Itest/frontlight/stubs -Isdk/driver test/frontlight/t5_test.cpp -o /tmp/t5-light
           /tmp/t5-light
           for elf in dist/experimental/spi-esp32s3-v1/driver.elf dist/experimental/t5s3-sd/driver.elf dist/experimental/t5s3-frontlight/driver.elf; do

@@ -1,4 +1,6 @@
 #include <RiscFrontlightV1.h>
+#include <RiscGpioExpanderV1.h>
+extern bool beginPlatformBoardProviders();
 #include <HalStorageLifecycle.h>
 #include <SdSpiFault.h>
 #include "BoardT5S3.h"
@@ -14,9 +16,17 @@
 
 namespace BoardT5S3 {
 namespace {
-constexpr uint8_t PCA_REG_INPUT0 = 0x00;
-constexpr uint8_t PCA_REG_OUTPUT0 = 0x02;
-constexpr uint8_t PCA_REG_CONFIG0 = 0x06;
+const risc_gpio_expander_api_v1* expander = nullptr;
+uint64_t radioPins = 0, buttonPins = 0, displayPins = 0;
+bool expanderReady = false;
+// Existing Reader/fast engines temporarily consume this scoped display grant.
+// M3 moves that grant to the external display owner, without a second chip owner.
+constexpr uint16_t kDisplayPins = 0xfb00, kDisplayInputs = 0xc000;
+uint64_t grantForPin(uint8_t pin) {
+  if (pin == 0) return radioPins;
+  if (pin == 10) return buttonPins;
+  return pin < 16 && ((1u << pin) & kDisplayPins) ? displayPins : 0;
+}
 
 constexpr BatteryProfile kBatteryProfile = {
     .inputLimitMa = 1000,
@@ -99,25 +109,6 @@ bool i2cReadReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
   return true;
 }
 
-bool updatePca9535Bit(uint8_t baseReg, uint8_t pin, bool high) {
-  // PCA9535 bit writes are read-modify-write operations. Keep that pair
-  // atomic, but release the shared bus immediately afterwards so unrelated
-  // clients such as the GT911 touch provider are not starved by display work.
-  ScopedI2CLock lock;
-  const uint8_t port = pin / 8;
-  const uint8_t bit = pin % 8;
-  uint8_t value = 0;
-  if (!i2cReadReg(T5S3_PCA9535_ADDR, baseReg + port, &value, 1)) {
-    return false;
-  }
-  if (high) {
-    value |= static_cast<uint8_t>(1U << bit);
-  } else {
-    value &= static_cast<uint8_t>(~(1U << bit));
-  }
-  return i2cWriteReg(T5S3_PCA9535_ADDR, baseReg + port, &value, 1);
-}
-
 bool readReg16LE(uint8_t addr, uint8_t reg, uint16_t* value) {
   uint8_t data[2] = {0, 0};
   if (!i2cReadReg(addr, reg, data, sizeof(data))) {
@@ -175,10 +166,25 @@ ScopedI2CLock::~ScopedI2CLock() {
 }
 
 void beginI2C() {
+  static bool initialized = false;
+  if (initialized) return;
+  initialized = true;
   ensureI2CMutex();
   Wire.begin(T5S3_SDA, T5S3_SCL);
   Wire.setClock(T5S3_I2C_FREQ);
   Wire.setTimeOut(50);
+}
+
+bool attachExpander(const risc_gpio_expander_api_v1* api) {
+  if (expander) return expander == api && expanderReady;
+  if (!api || api->api_version != 1 || api->struct_size < sizeof(*api) ||
+      !api->claim || !api->read || !api->write || !api->release) return false;
+  expander = api;
+  // Retain all partial grants if any configuration is uncertain.
+  expanderReady = api->claim(api->context, 1, 0, 0, &radioPins) &&
+         api->claim(api->context, 0x0400, 0x0400, 0, &buttonPins) &&
+         api->claim(api->context, kDisplayPins, kDisplayInputs, 0, &displayPins);
+  return expanderReady;
 }
 
 bool attachFrontlight(const risc_frontlight_api_v1* api) {
@@ -223,6 +229,7 @@ void disableGpsLora() {
 
 void begin() {
   beginI2C();
+  if (!beginPlatformBoardProviders()) return;
   prepareTouchControllerForProvider();
   initBacklight();
   setBacklightLevel(0);
@@ -313,31 +320,30 @@ bool readBatteryState(BatteryState* state) {
 }
 
 bool pca9535Present() {
-  ScopedI2CLock lock;
-  Wire.beginTransmission(T5S3_PCA9535_ADDR);
-  return Wire.endTransmission() == 0;
+  uint16_t levels = 0;
+  return expander && buttonPins && expander->read(expander->context, buttonPins, &levels);
 }
 
 bool setPca9535PinMode(uint8_t pin, uint8_t mode) {
-  const bool inputMode = mode != OUTPUT;
-  return updatePca9535Bit(PCA_REG_CONFIG0, pin, inputMode);
+  // Directions are established atomically by the expander claim, once. No
+  // runtime consumer can alter another consumer's input/output ownership.
+  const uint64_t grant = grantForPin(pin);
+  const bool input = pin == 10 || pin == 14 || pin == 15;
+  return expander && grant && input == (mode != OUTPUT);
 }
 
 bool writePca9535Pin(uint8_t pin, bool high) {
-  return updatePca9535Bit(PCA_REG_OUTPUT0, pin, high);
+  const uint64_t grant = grantForPin(pin);
+  if (!expander || !grant) return false;
+  const uint16_t mask = static_cast<uint16_t>(1u << pin);
+  return expander->write(expander->context, grant, mask, high ? mask : 0);
 }
 
 bool readPca9535Pin(uint8_t pin, bool* high) {
-  if (!high) {
-    return false;
-  }
-  const uint8_t port = pin / 8;
-  const uint8_t bit = pin % 8;
-  uint8_t value = 0;
-  if (!i2cReadReg(T5S3_PCA9535_ADDR, PCA_REG_INPUT0 + port, &value, 1)) {
-    return false;
-  }
-  *high = (value & (1U << bit)) != 0;
+  const uint64_t grant = grantForPin(pin);
+  uint16_t levels = 0;
+  if (!high || !expander || !grant || !expander->read(expander->context, grant, &levels)) return false;
+  *high = (levels & (1u << pin)) != 0;
   return true;
 }
 
