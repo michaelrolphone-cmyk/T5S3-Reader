@@ -38,7 +38,10 @@ assert "static ModalResult runFirmwareModal" in MENU_H
 assert "RuntimeMemory::PsramBuffer snapshot(renderer.getBufferSize(), false)" in MENU
 assert "std::memcpy(snapshot.data(), renderer.getFrameBuffer(), renderer.getBufferSize())" in MENU
 assert "std::memcpy(renderer.getFrameBuffer(), snapshot.data(), renderer.getBufferSize())" in MENU
-assert "modalShutdownConfirmed(renderer, mappedInput)" in MENU
+assert "modalShutdownConfirmed(menu, renderer, mappedInput)" in MENU
+assert "menu.resolveTouchButtonHint(point.x, point.y, button)" in MENU
+assert "if (button == MappedInputManager::Button::Right) return true;" in MENU
+assert "if (button == MappedInputManager::Button::Left || button == MappedInputManager::Button::Back) return false;" in MENU
 assert "requestShutdown();" in MENU
 
 assert "bool nativeHardwareTakeoverDisplayActive()" in TAKEOVER
