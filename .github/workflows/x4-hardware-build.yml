@@ -61,3 +61,17 @@ jobs:
           path: ${{ runner.temp }}/x4-candidate/
           retention-days: 7
           if-no-files-found: error
+      - name: Build separately reviewed external-store deployment bundle
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          pio pkg install --global --tool 'platformio/tool-mklittlefs@1.203.210628'
+          python scripts/build_x4_module_store.py \
+            --tool "$HOME/.platformio/packages/tool-mklittlefs/mklittlefs" \
+            --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/x4-external-deployment"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x4-external-deployment-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/x4-external-deployment/
+          retention-days: 7
+          if-no-files-found: error

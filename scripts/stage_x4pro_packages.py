@@ -25,8 +25,11 @@ def stage():
         identity = manifest['id']
         built = ROOT / 'dist/experimental' / identity
         observed = json.loads((built / 'manifest.json').read_text())
-        if observed['version'] != manifest['version']:
-            raise ValueError(f'Rebuild {identity}: artifact version differs from source')
+        if any(observed.get(key) != value for key, value in manifest.items()):
+            raise ValueError(f'Rebuild {identity}: artifact manifest differs from source')
+        payload = (built / 'driver.elf').read_bytes()
+        if observed.get('size_bytes') != len(payload) or observed.get('sha256') != hashlib.sha256(payload).hexdigest():
+            raise ValueError(f'Rebuild {identity}: ELF custody mismatch')
         destination = output / identity
         if destination.exists():
             shutil.rmtree(destination)
