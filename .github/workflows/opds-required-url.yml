@@ -1,0 +1,37 @@
+name: OPDS server URL admission regression
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/opds-required-url.yml"
+      - "Apps/opds_settings.c"
+      - "src/native/NativeOpdsBridge.cpp"
+      - "src/OpdsServerStore.cpp"
+      - "test/native_apps/opds_settings_test.c"
+      - "test/native_bridges/opds_url_admission_test.cpp"
+      - "test/run_opds_url_admission_test.sh"
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/opds-required-url.yml"
+      - "Apps/opds_settings.c"
+      - "src/native/NativeOpdsBridge.cpp"
+      - "src/OpdsServerStore.cpp"
+      - "test/native_apps/opds_settings_test.c"
+      - "test/native_bridges/opds_url_admission_test.cpp"
+      - "test/run_opds_url_admission_test.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  opds-required-url:
+    name: Reject incomplete OPDS server records
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run OPDS URL admission and app cancel/retry regressions
+        run: bash test/run_opds_url_admission_test.sh
