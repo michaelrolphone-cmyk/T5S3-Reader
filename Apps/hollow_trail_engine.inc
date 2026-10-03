@@ -1570,6 +1570,8 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
         }
     return floor;
 }
+/* Precipitation-only cover: ht_weather_floor also bounds character contrast. */
+static int ht_rain_tank_weather_floor(const ht_game *g,int x0,int x1,int floor);
 static void ht_weather(const ht_game *g) {
     const ht_climate *c=&ht_climates[g->level];int exposure=ht_exposure(g);
     if(!exposure || !(c->rain+c->leaves+c->dust+c->sleet)) return;
@@ -1580,7 +1582,7 @@ static void ht_weather(const ht_game *g) {
         int x=(int)(seed%HT_W)+drift-g->camera/512;
         x=((x%HT_W)+HT_W)%HT_W;
         int y=(int)((seed/HT_W+(g->ticks%HT_H)*(i%2+3))%HT_H);
-        int floor=ht_weather_floor(g,x);
+        int floor=ht_rain_tank_weather_floor(g,x,x+wind/9,ht_weather_floor(g,x));
         if(y<floor) ht_limb(ht_scene,x,y,x+wind/9,ht_min(floor-1,y+(c->sleet?2:4)+(int)(i%3)),0,0,c->sleet?180:125);
         if((i&15)==15) ht_checkpoint();
     }
