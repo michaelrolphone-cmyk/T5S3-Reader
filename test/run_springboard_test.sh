@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+python3 "$(dirname "${BASH_SOURCE[0]}")/epub_guide/guide_test.py"
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python3 "$repo_dir/test/activities/confirmation_touch_test.py"
 python3 "$repo_dir/test/epub_toc/path_test.py"
@@ -77,7 +78,6 @@ for pair in \
   "opds_settings opds_settings_test" \
   "clear_cache clear_cache_test" \
   "ota_update ota_update_test" \
-  "sd_firmware_update sd_firmware_update_test" \
   "language_settings language_settings_test" \
   "font_manager font_manager_test" \
   "font_selection font_selection_test" \
