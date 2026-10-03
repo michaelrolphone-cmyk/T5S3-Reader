@@ -51,6 +51,46 @@ typedef struct {
     bool (*last_error)(void *context, char *out, size_t capacity);
 } risc_storage_volume_api_v1;
 
+/* Optional, prefix-compatible extension. Check base.struct_size before access.
+ * V1 consumers keep the exact layout above; API/version identity stays 1.
+ * All handles are provider-owned, generation checked, and revoked on unmount.
+ * dir_next false is EOF only when handle_error(directory=true) returns zero.
+ * rename must reject an existing destination; callers own staging/rollback.
+ * file_open handles are ordinary files: close(commit=false) still closes them;
+ * abort/remove semantics apply only to the legacy exclusive file_open_write.
+ * Each read/write transfers at most IO_MAX; callers loop and inspect errors.
+ * Seek does not extend files. APPEND applies to every write, not just open.
+ * A failed checked close retains ownership; callers must retain the provider.
+ * Providers serialize operations and bound work/time with scheduler yields.
+ */
+enum {
+    RISC_STORAGE_OPEN_READ = 1u, RISC_STORAGE_OPEN_WRITE = 2u,
+    RISC_STORAGE_OPEN_CREATE = 4u, RISC_STORAGE_OPEN_TRUNCATE = 8u,
+    RISC_STORAGE_OPEN_EXCLUSIVE = 16u, RISC_STORAGE_OPEN_APPEND = 32u
+};
+#define RISC_STORAGE_VOLUME_PATH_MAX 512u
+#define RISC_STORAGE_VOLUME_IO_MAX 4096u
+
+typedef struct {
+    risc_storage_volume_api_v1 base;
+    risc_storage_file_t (*file_open)(void *context, const char *path, uint32_t flags);
+    bool (*file_seek)(void *context, risc_storage_file_t file, uint64_t offset);
+    bool (*file_info)(void *context, risc_storage_file_t file, uint64_t *size, uint64_t *offset);
+    bool (*file_sync)(void *context, risc_storage_file_t file);
+    bool (*dir_rewind)(void *context, risc_storage_dir_t directory);
+    bool (*dir_close_checked)(void *context, risc_storage_dir_t directory);
+    uint32_t (*handle_error)(void *context, uint32_t handle, bool directory);
+    bool (*mkdir)(void *context, const char *path);
+    bool (*rename)(void *context, const char *source, const char *destination);
+} risc_storage_volume_api_v1_ext;
+
+static inline const risc_storage_volume_api_v1_ext *risc_storage_volume_extension(
+    const risc_storage_volume_api_v1 *api) {
+    return api && api->api_version == RISC_STORAGE_VOLUME_API_V1 &&
+        api->struct_size >= sizeof(risc_storage_volume_api_v1_ext)
+        ? (const risc_storage_volume_api_v1_ext *)api : NULL;
+}
+
 #ifdef __cplusplus
 }
 #endif

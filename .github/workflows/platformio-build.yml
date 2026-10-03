@@ -133,14 +133,15 @@ jobs:
             test/x4pro_panel_state_test.c Drivers/x4pro_panel/driver.c -o /tmp/x4panel
           /tmp/x4panel
           cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_sd_fake -I Drivers/x4pro_board \
-            test/x4pro_sd_absent_test.c Drivers/x4pro_sd/driver.c -o /tmp/x4sd-absent
+            test/x4pro_sd_absent_test.c Drivers/x4pro_sd/driver.c Drivers/x4pro_sd/fatfs/ff.c Drivers/x4pro_sd/fatfs/ffunicode.c -o /tmp/x4sd-absent
           /tmp/x4sd-absent
-          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_sd_card_fake -I Drivers/x4pro_board \
-            test/x4pro_sd_sector_test.c Drivers/x4pro_sd/driver.c -o /tmp/x4sd-sector
-          /tmp/x4sd-sector
+          python3 test/storage_volume/run_test.py
 
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
+
+      - name: Verify provider filesystem through the real app manifest reader
+        run: python3 test/storage_volume/run_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
 
       - name: Preserve bounded SDK source-drift diagnostic on build failure
         if: failure()

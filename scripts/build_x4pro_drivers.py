@@ -46,7 +46,9 @@ def build_one(name):
         "-fvisibility=hidden", "-fno-builtin", "-nostdlib", "-nostartfiles", "-shared",
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
         "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL", *link_flags,
-        str(source / "driver.c"), "-lgcc", "-o", str(elf),
+        str(source / "driver.c"),
+        *([str(source / "fatfs/ff.c"), str(source / "fatfs/ffunicode.c")] if name == "x4pro_sd" else []),
+        "-lgcc", "-o", str(elf),
     ], check=True)
     readelf = CC.replace("gcc", "readelf")
     sections = subprocess.check_output([readelf, "-S", str(elf)], text=True)
