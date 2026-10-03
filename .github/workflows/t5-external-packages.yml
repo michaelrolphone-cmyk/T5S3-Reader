@@ -54,6 +54,7 @@ jobs:
           python3 test/hal/external_display_dispatch_test.py
           python3 test/hal/external_video_consumer_test.py
           python3 test/hal/external_i80_teardown_test.py
+          python3 test/resources/cdc_prepare_performance_test.py --current-only
           python3 test/hal/cpu_dma_reservation_test.py
           python3 test/hal/external_dma_teardown_test.py
           python3 test/hal/external_quality_teardown_test.py

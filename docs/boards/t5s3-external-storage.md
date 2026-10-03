@@ -74,9 +74,8 @@ Host fixtures do not execute Xtensa code or prove device timing. The graph suite
 passed with UBSan locally; the host ASan run stalled during startup, so no local
 ASan pass is claimed.
 
-The full architecture correction remains in progress. The current local M3
-cutover and its shared DMA reservation boundary are described below. The pre/post-U1
-performance investigation remains subsequent work. No hardware validation,
+The M3 cutover, shared DMA reservation boundary and measured pre/post-U1
+warm-provider correction are described below. Hosted CI is checked separately. No hardware validation,
 flashing, formatting or provisioning was performed. Physical validation and
 review of the paired deployment remain separate owner steps.
 
@@ -107,7 +106,7 @@ sequencing is external. No physical pin, waveform, sleep or timing validation is
 claimed. The expander/power prerequisite expanded the profile from four to seven
 ordinary packages; older paired artifacts do not represent that source.
 
-### M3 display extraction checkpoint — not complete
+### M3 display extraction — software implementation
 
 The local `display-epd-video@0.1.5` package now contains the existing M5GFX
 0.2.20 Reader waveform/history engine, Wisp path and the existing fast mono/gray
@@ -157,3 +156,37 @@ consumer. Eleven preserved release archives were rechecked against their prior
 release digests and neither raw SD nor LCD imports were found; exact results are
 in `released-display-import-audit.json`. This sample does not establish safety
 for every historical or user-built application.
+
+### Shared pre/post-U1 warm-provider scan measurement
+
+The source-backed fixture in `test/resources/cdc_prepare_performance_test.py`
+compares `prepare()` from pre-U1 `ca66db298` with the current shared path and
+compiles the actual CDC migration adapter against a filesystem-backed fixture.
+With an already allocated graph, 128 ordinary directories and 64 queries:
+
+| Path | Directory-entry reads | Host elapsed time |
+| --- | ---: | ---: |
+| Pre-U1 warm prepare | 0 | 0.0002 ms |
+| Post-U1 before cache, warm | 8,256 | about 138 ms |
+| Corrected first query plus 63 warm | 129 | about 2.30 ms |
+| Corrected 64 warm queries | 0 | about 0.0006 ms |
+
+These are one local host run's measurements, not ESP32/SD timings or a proof of
+the reported freeze's cause. The reliable regression is repeated directory work:
+current `prepare()` checks CDC recovery before its existing-graph return, and
+candidate filtering repeats that check. The scan yields after each item on the
+device; avoiding identical rescans also avoids those repeated scheduler waits.
+
+`cdcMigrationPendingOnSd()` now reuses only a healthy negative observation bound
+to unchanged, quiescent `HalStorage` mount/mutation generations. Active writers,
+external-access uncertainty, mutation during a scan, remounts and failed reads or
+closes prevent reuse. The tiny observation mutex never covers filesystem calls.
+Pending/recovery states are never cached, and transaction/recovery scans remain
+independent. Package content hashing, exact imports, immutable ELF verification,
+manager authority and failed-teardown retention are unchanged.
+
+The fixture asserts read counts and exercises invalidation/failure cases. The
+existing actual SD migration wrapper test passes intent SHA, serialization,
+rename restart and close/partial-write preservation. Run the historical
+comparison with `--baseline c136021e2`; `--current-only` runs the durable current
+regression without requiring historical commits in a shallow CI checkout.
