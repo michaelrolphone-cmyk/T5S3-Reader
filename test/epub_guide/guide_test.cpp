@@ -63,7 +63,7 @@ int main() {
     runAuthors("single creator", "<dc:creator>Jane Doe</dc:creator>", "Jane Doe", chunk);
     runAuthors("multiple creators", "<dc:creator>Jane Doe</dc:creator><dc:creator>John Smith</dc:creator>",
                "Jane Doe, John Smith", chunk);
-    runAuthors("entities and UTF-8", "<dc:creator>José &amp; Zoë &#x1F642;</dc:creator>", "José & Zoë \U0001F642", chunk);
+    runAuthors("entities and UTF-8", "<dc:creator>Jos\u00e9 &amp; Zo\u00eb &#x1F642;</dc:creator>", "Jos\u00e9 & Zo\u00eb \U0001F642", chunk);
     runAuthors("CDATA and comment boundaries", "<dc:creator>Jane<![CDATA[ & ]]><!-- split -->Doe</dc:creator>",
                "Jane & Doe", chunk);
     runAuthors("empty creators", "<dc:creator/><dc:creator>Jane</dc:creator><dc:creator></dc:creator>"
