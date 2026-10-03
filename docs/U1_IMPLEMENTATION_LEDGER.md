@@ -1582,7 +1582,7 @@ Historical green GitHub workflow `35427506383` ran at old `7bffec3`, NOT these c
 
 **Implementation In Progress.**
 
-## SD placement correction (firmware 1.3.78)
+## SD placement correction (firmware 1.3.79)
 
 Owner rejected ec0c099 internal-flash driver placement for X4/T5S3. Both now
 read/verify ordinary SD generations through an isolated read-only bootstrap,

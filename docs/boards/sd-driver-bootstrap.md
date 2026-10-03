@@ -80,7 +80,7 @@ ordinary generation against its archive and records hashes. It emits no
 integration remains owned by the separate CI task. No filesystem formatting,
 partition erasure or device write is performed by these builders.
 
-Firmware changes from 1.3.77 to 1.3.78. Existing external ELF payloads/manifests
+Firmware changes from 1.3.77 to 1.3.79. Existing external ELF payloads/manifests
 are reused unchanged; the boot-only FatFs configuration does not alter their
 normal preprocessor configuration. Physical SD handoff validation remains
 outstanding on both boards.
