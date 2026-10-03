@@ -30,11 +30,11 @@ def private_json(path):
                    and not path.stat().st_mode&0o077,'Configuration must be private regular JSON')
     return json.loads(path.read_text())
 
-def candidate(gh,number,sha,target):
+def _candidate(gh,number,sha,target,workflow_name,artifact_name):
     repository=gh.call('')
-    workflow=gh.call('/actions/workflows/'+WORKFLOW)
-    device.require(workflow['path']=='.github/workflows/'+WORKFLOW,'Wrong build workflow')
-    data=gh.call(f'/actions/workflows/{WORKFLOW}/runs?event=pull_request&head_sha={sha}&per_page=100')
+    workflow=gh.call('/actions/workflows/'+workflow_name)
+    device.require(workflow['path']=='.github/workflows/'+workflow_name,'Wrong build workflow')
+    data=gh.call(f'/actions/workflows/{workflow_name}/runs?event=pull_request&head_sha={sha}&per_page=100')
     device.require(data['total_count']<=100,'Workflow history exceeds bound')
     runs=[r for r in data['workflow_runs'] if r['head_sha']==sha and r['event']=='pull_request'
           and r['workflow_id']==workflow['id'] and r['repository']['id']==repository['id']
@@ -49,13 +49,50 @@ def candidate(gh,number,sha,target):
     # A failed sibling matrix job does not erase a completed target artifact.
     artifacts=gh.call(f"/actions/runs/{run['id']}/artifacts?per_page=100")
     device.require(artifacts['total_count']<=100,'Artifact count exceeds bound')
-    matches=[a for a in artifacts['artifacts'] if a['name']==f'ci-target-{target}-{sha}' and not a['expired']
+    matches=[a for a in artifacts['artifacts'] if a['name']==artifact_name and not a['expired']
              and 0<a['size_in_bytes']<=MAX_ARCHIVE]
     device.require(len(matches)==1,'Target build artifact absent or ambiguous')
     return run,matches[0]
 
+def candidate(gh,number,sha,target):
+    found=_candidate(gh,number,sha,target,WORKFLOW,f'ci-target-{target}-{sha}')
+    if found is not None or target!='x4': return found
+    # The separately owned X4 software branch publishes this app-only contract.
+    # Provenance gates are identical; host execution and cleanup remain pinned.
+    found=_candidate(gh,number,sha,target,'x4-hardware-build.yml',f'x4-app-candidate-{sha}')
+    if found is None: return None
+    run,artifact=found
+    device.require(run['conclusion']=='success','X4 app-only build failed')
+    return run,dict(artifact,_format='x4-app-v1')
+
+def unpack_x4_app(raw,run,sha,target,folder):
+    device.require(target=='x4','X4 app artifact cannot target another fixture')
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        entries=archive.infolist()
+        device.require(len(entries)==2 and {x.filename for x in entries}=={'firmware.bin','manifest.json'},'Unexpected X4 app entries')
+        device.require(all(not x.is_dir() and (x.external_attr>>16)&0o170000 != 0o120000 and not x.flag_bits&1
+                           and 0<x.file_size<=(4096 if x.filename=='manifest.json' else device.BOARDS['x4'][2]) for x in entries),'Unsafe X4 app entry')
+        manifest=json.loads(archive.read('manifest.json')); data=archive.read('firmware.bin')
+    info=manifest['firmware']
+    device.require(manifest['schema']==1 and manifest['board']=='xteink-x4-pro' and manifest['source_sha']==sha
+                   and manifest['run_id']==run['id'] and manifest['run_attempt']==run['run_attempt']
+                   and info=={'file':'firmware.bin','offset':0x10000,'bytes':len(data),'sha256':device.digest(data)},'X4 app provenance/hash mismatch')
+    device.require(len(data)>24 and data[0]==0xe9 and int.from_bytes(data[12:14],'little')==9
+                   and b'RISCRTE_BOARD_ID:xteink-x4-pro' in data,'X4 app chip/board mismatch')
+    folder.mkdir(mode=0o700)
+    path=folder/'candidate.bin'; path.write_bytes(data)
+    device.save(folder/'source-manifest.json',manifest)
+    normalized={'schema':1,'target':'x4','source_sha':sha,'run_id':run['id'],'run_attempt':run['run_attempt'],
+                'images':{'candidate':dict(info,file='candidate.bin')},'artifact_format':'x4-app-v1'}
+    device.save(folder/'manifest.json',normalized)
+    return normalized
+
 def unpack(gh,run,artifact,sha,target,folder):
     raw=gh.call(f"/actions/artifacts/{artifact['id']}/zip",limit=MAX_ARCHIVE)
+    device.require(len(raw)<=MAX_ARCHIVE,'Archive exceeds bound')
+    if artifact.get('digest'):
+        device.require(artifact['digest']=='sha256:'+device.digest(raw),'Artifact ZIP digest mismatch')
+    if artifact.get('_format')=='x4-app-v1': return unpack_x4_app(raw,run,sha,target,folder)
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         entries=archive.infolist()
         device.require(len(entries)==3 and {x.filename for x in entries}=={'candidate.bin','heartbeat.bin','manifest.json'},'Unexpected archive entries')

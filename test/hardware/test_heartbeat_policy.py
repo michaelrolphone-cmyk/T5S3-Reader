@@ -15,6 +15,17 @@ def lines(target='cam-nosd'):
     return [f'RTE_HEARTBEAT version=1.0.0 target={target} mac={policy.BOARDS[target][0]} sequence={i} uptime_ms={i*2000} heap=1000 app=0x10000' for i in range(1,5)]
 
 class PolicyTests(unittest.TestCase):
+    def test_x4_boot_requires_all_providers_touch_and_stable_readiness(self):
+        providers=('platform-clock-v1','x4pro-panel','x4pro-buttons','x4pro-frontlight',
+                   'x4pro-sd','x4pro-i2c','x4pro-gt911')
+        boot=[f'[X4] loaded {name} 1.0.0' for name in providers]
+        boot+=['[X4] input.touch ready=1','[X4] heartbeat ready=0']+['[X4] heartbeat ready=1']*3
+        with patch.dict('sys.modules',{'x4_ci_device':types.SimpleNamespace(validate_boot=lambda rows:{'home_present':True})}):
+            self.assertTrue(policy.candidate_result(boot,'x4')['touch_provider_ready'])
+            for bad in [boot[1:],[row for row in boot if 'input.touch' not in row],
+                        boot+['[X4] heartbeat ready=0'],boot+['Task watchdog got triggered']]:
+                with self.assertRaises(RuntimeError):policy.candidate_result(bad,'x4')
+
     def test_slow_serial_open_does_not_consume_heartbeat_window(self):
         clock = [0]
         samples = iter(lines())
