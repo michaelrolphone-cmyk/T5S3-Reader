@@ -1,0 +1,77 @@
+name: X4 hardware candidate
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  x4-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-x4-candidate-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-x4-candidate-
+      - name: Build exact-head X4 app
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -m pip install platformio==6.1.19 pyelftools==0.32
+          python3 test/hardware/x4/test_x4_controller.py
+          pio pkg install -e xteink-x4-pro
+          bash scripts/install_x4_provider_toolchain.sh
+          export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+          export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_x4pro_drivers.py
+          python scripts/stage_x4pro_packages.py
+          python3 test/x4pro_boot_isolation_test.py
+          python3 test/x4pro_panel_sequence_test.py
+          python3 test/x4pro_import_match_test.py
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_touch_fake -I Drivers/x4pro_board \
+            test/x4pro_gt911_state_test.c Drivers/x4pro_gt911/driver.c -o /tmp/x4touch
+          /tmp/x4touch
+          pio run -e xteink-x4-pro
+      - name: Freeze app-only artifact provenance
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/x4-candidate"
+          cp .pio/build/xteink-x4-pro/firmware.bin "$RUNNER_TEMP/x4-candidate/firmware.bin"
+          python3 test/hardware/x4/make_manifest.py "$RUNNER_TEMP/x4-candidate" "$SOURCE_SHA" "$RUN_ID" "$RUN_ATTEMPT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x4-app-candidate-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/x4-candidate/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Build separately reviewed external-store deployment bundle
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          pio pkg install --global --tool 'platformio/tool-mklittlefs@1.203.210628'
+          python scripts/build_x4_module_store.py \
+            --tool "$HOME/.platformio/packages/tool-mklittlefs/mklittlefs" \
+            --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/x4-external-deployment"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x4-external-deployment-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/x4-external-deployment/
+          retention-days: 7
+          if-no-files-found: error

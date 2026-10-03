@@ -68,6 +68,25 @@ static void queue(uint8_t kind, uint16_t x=100, uint16_t y=200) {
 int main(int argc, char**) {
   api = &provider; subscription = 1; nowMs = 100;
   NativeTouchPoint p{}, end{};
+  // Home presses retain provider capture times through delayed UI delivery.
+  risc_touch_event_v1 home{};
+  home.kind = RISC_TOUCH_EVENT_BUTTON_DOWN; home.id = 0;
+  for (unsigned i=0; i<20; ++i) {
+    home.sequence = ++serial; home.timestamp_ms = 100 + i * 200;
+    process(home);
+  }
+  unsigned long captured = 0;
+  nowMs = 10000;
+  for (unsigned i=0; i<16; ++i) {
+    assert(nativeTouchTakeHomePress(captured) && captured == 100 + i * 200);
+  }
+  assert(!nativeTouchTakeHomePress(captured));
+  // Ring wrap and focus reset must not replay old Home events.
+  home.sequence=++serial; home.timestamp_ms=12345; process(home);
+  assert(nativeTouchTakeHomePress(captured) && captured==12345);
+  home.sequence=++serial; process(home);
+  nativeTouchDiscardGestures(); assert(!nativeTouchTakeHomePress(captured));
+  serviceProvider(); nowMs=100;
   if (argc > 1) {
     // A batch can publish events and then fail. Deliver the completed tap now.
     queue(RISC_TOUCH_EVENT_DOWN); queue(RISC_TOUCH_EVENT_UP);
@@ -80,6 +99,32 @@ int main(int argc, char**) {
   pollOk=true; queue(RISC_TOUCH_EVENT_UP); serviceProvider();
   assert(nativeTouchGetTap(p) && p.x==100 && p.y==200);
   assert(!nativeTouchGetTap(p));
+  // An unresolved display transform blocks coordinate delivery, not capture/Home.
+  nativeTouchSuppressCoordinates(true);serviceProvider();
+  const auto suppressFocus=focusRequested;
+  nativeTouchSuppressCoordinates(true);assert(focusRequested==suppressFocus);
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);serviceProvider();
+  unsigned long suppressedHeld=0;
+  assert(!nativeTouchGetContact(p)&&!nativeTouchGetHold(p,suppressedHeld));
+  queue(RISC_TOUCH_EVENT_MOVE,180,200);queue(RISC_TOUCH_EVENT_UP,180,200);serviceProvider();
+  assert(!nativeTouchGetSwipe(p,end));
+  home.sequence=++serial;home.timestamp_ms=22345;process(home);
+  assert(nativeTouchTakeHomePress(captured)&&captured==22345);
+  // Unblock is atomic with discarding the captured queue and fencing raw backlog.
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);
+  nativeTouchSuppressCoordinates(false);serviceProvider();
+  assert(!nativeTouchGetTap(p)&&!nativeTouchGetSwipe(p,end));
+  queue(RISC_TOUCH_EVENT_DOWN);serviceProvider();
+  nativeTouchSuppressCoordinates(true);serviceProvider();
+  nativeTouchSuppressCoordinates(false);serviceProvider();
+  assert(!nativeTouchGetContact(p)&&!nativeTouchGetHold(p,suppressedHeld));
+  queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  const auto releasedFocus=focusRequested;
+  nativeTouchSuppressCoordinates(false);assert(focusRequested==releasedFocus);
+  assert(nativeTouchGetTap(p));
   // Boot handoff drops completed/held loading-screen gestures, then accepts new taps.
   queue(RISC_TOUCH_EVENT_DOWN); queue(RISC_TOUCH_EVENT_UP); serviceProvider();
   queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();
@@ -213,3 +258,21 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run(['c++','-std=c++17',*flags,'-I'+str(ROOT/'src/native'),
                     str(cpp),str(obj),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
+
+# Compile complete production lifecycle code, rather than sliced gesture code,
+# to exercise retained leases/subscriptions and RTOS stop-before-release rules.
+with tempfile.TemporaryDirectory() as temp:
+    temp = Path(temp)
+    (temp/'freertos').mkdir()
+    for header in ('Arduino.h', 'HalStorage.h', 'Logging.h',
+                   'freertos/FreeRTOS.h', 'freertos/task.h'):
+        (temp/header).write_text('#pragma once\n')
+    binary = temp/'touch-lifetime-test'
+    for board in ('BOARD_T5S3_PRO', 'BOARD_XTEINK_X4_PRO'):
+        subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                        '-D'+board, '-I'+str(temp), '-I'+str(ROOT/'sdk/driver'),
+                        '-I'+str(ROOT/'src'),
+                        str(ROOT/'test/drivers/native_touch_input_test.cpp'),
+                        '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)

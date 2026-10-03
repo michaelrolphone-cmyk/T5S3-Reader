@@ -1,0 +1,18 @@
+{
+  "type": "driver",
+  "id": "platform-clock-v1",
+  "version": "0.1.1",
+  "driver_abi": 2,
+  "architecture": "xtensa-esp32s3",
+  "file_name": "driver.elf",
+  "requires": [],
+  "provides": [
+    {
+      "capability": "platform.clock",
+      "api": 1
+    }
+  ],
+  "status": "experimental-unpublished",
+  "size_bytes": 12120,
+  "sha256": "f98e54c3384d7e5eb458cd275d0aacd2ca6009818cb9620f73ffd71a332b240d"
+}

@@ -9,6 +9,8 @@ on:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
       - "Drivers/**"
+      - "Services/**"
+      - "Providers/**"
       - "sdk/**"
       - "SD_fonts/FAClassic*/**"
       - "src/**"
@@ -24,6 +26,8 @@ on:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
       - "Drivers/**"
+      - "Services/**"
+      - "Providers/**"
       - "sdk/**"
       - "SD_fonts/FAClassic*/**"
       - "src/**"
@@ -41,6 +45,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  global-home-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify captured Home timing and paused ELF overlay behavior
+        run: |
+          python3 test/native_apps/global_home_overlay_contract_test.py
+          python3 test/native_apps/global_home_overlay_behavior_test.py
+          python3 test/hal/touch_interrupt_capture_test.py
+          python3 test/hal/touch_capture_behavior_test.py
+
+  package-source-versions:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject changed package sources with unchanged versions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [ "$HEAD_REF" = "impl/u1-riscrte" ]; then
+            python3 scripts/check_changed_package_versions.py --base "$BASE_SHA" --zip-transition
+          else
+            python3 scripts/check_changed_package_versions.py --base "$BASE_SHA"
+          fi
+
   build:
     name: Build RiscRTE ${{ matrix.environment }}
     runs-on: ubuntu-latest
@@ -54,6 +90,11 @@ jobs:
             firmware_name: riscrte-t5s3-pro.bin
             merged_firmware_name: riscrte-t5s3-pro-merged.bin
             elf_name: riscrte-t5s3-pro.elf
+          - environment: xteink-x4-pro
+            board_id: xteink-x4-pro
+            firmware_name: riscrte-xteink-x4-pro.bin
+            merged_firmware_name: riscrte-xteink-x4-pro-merged.bin
+            elf_name: riscrte-xteink-x4-pro.elf
           - environment: lilygo-epd47-s3
             board_id: lilygo-epd47-s3
             firmware_name: riscrte-lilygo-epd47-s3.bin
@@ -82,10 +123,68 @@ jobs:
             ${{ runner.os }}-platformio-
 
       - name: Install PlatformIO
-        run: python -m pip install platformio==6.1.19
+        run: python -m pip install platformio==6.1.19 pyelftools==0.32
+
+      - name: Build independent X4 provider packages
+        run: |
+          pio pkg install -e xteink-x4-pro
+          bash scripts/install_x4_provider_toolchain.sh
+          export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+          export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_x4pro_drivers.py
+          python scripts/stage_x4pro_packages.py
+          python3 test/bootstrap_store/run_test.py
+          c++ -std=c++17 -Wall -Wextra -Werror -Itest/bootstrap_store/stubs -Ilib/Board -Ilib/Board_X4Pro -Isdk/driver test/bootstrap_store/frontlight_test.cpp lib/Board_X4Pro/BoardX4Pro.cpp -o /tmp/x4-frontlight
+          /tmp/x4-frontlight
+          python3 test/x4pro_provider_link_test.py
+          cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
+          /tmp/x4gpio
+          cc -std=c11 -Wall -Wextra -Werror -I Drivers/x4pro_board \
+            test/x4pro_proto_test.c -o /tmp/x4proto
+          /tmp/x4proto
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_touch_fake -I Drivers/x4pro_board \
+            test/x4pro_gt911_state_test.c Drivers/x4pro_gt911/driver.c -o /tmp/x4touch
+          /tmp/x4touch
+          python3 test/x4pro_boot_isolation_test.py
+          python3 test/x4pro_panel_sequence_test.py
+          python3 test/x4pro_import_match_test.py
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_panel_fake -I Drivers/x4pro_board \
+            test/x4pro_panel_state_test.c Drivers/x4pro_panel/driver.c -o /tmp/x4panel
+          /tmp/x4panel
+          bash test/storage_volume/run_gate_test.sh
+          python3 test/storage_volume/run_test.py
 
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
+
+      - name: Verify provider filesystem through the real app manifest reader
+        run: python3 test/storage_volume/run_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
+
+      - name: Preserve bounded SDK source-drift diagnostic on build failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-sdk-source-drift-${{ matrix.board_id }}
+          path: dist/u1-sdk-source-drift.json
+          if-no-files-found: ignore
+
+      - name: Verify the actual pinned SD SPI port fault patch
+        run: python3 test/hal/sd_spi_patch_test.py "$HOME/.platformio/packages/framework-arduinoespressif32" ".pio/build/${{ matrix.environment }}/u1-sdk-sources"
+
+      - name: Verify actual runtime sidecar parser and owned app admission
+        run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
+
+      - name: Verify actual Arduino HTTP body-loop termination
+        run: python3 test/runtime_network/http_client_body_budget_test.py "$HOME/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src/HTTPClient.cpp"
+      - name: Record production serial and USB target references
+        run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --profile "${{ matrix.board_id == 'xteink-x4-pro' && 'x4-diagnostic' || 'firmware' }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
+      - name: Preserve compact target reference evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-target-references-${{ matrix.board_id }}
+          path: dist/u1-target-references-${{ matrix.board_id }}.json
+          if-no-files-found: error
 
       - name: Build and validate native ELFs
         run: |
@@ -101,13 +200,24 @@ jobs:
 
       - name: Build and validate installable USB CDC driver
         run: |
-          python scripts/build_usb_cdc_driver.py
-          bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
+          python scripts/build_usb_cdc_v2.py
+          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm/driver.elf
 
       - name: Build and validate all released apps and manifests
         run: |
-          python scripts/build_all_apps.py
+          python scripts/build_all_apps.py --export-bundles
           python test/native_apps/risc_strike_release_test.py
+
+      - name: Measure verification work on actual built app pairs
+        run: |
+          bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" dist/apps "dist/u1-app-verification-work-${{ matrix.board_id }}.json"
+          python3 scripts/stamp_u1_app_work_report.py "dist/u1-app-verification-work-${{ matrix.board_id }}.json" dist/apps "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Preserve compact app verification work evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-app-verification-work-${{ matrix.board_id }}
+          path: dist/u1-app-verification-work-${{ matrix.board_id }}.json
+          if-no-files-found: error
 
       - name: Stage board-qualified RiscRTE firmware
         run: |
@@ -126,6 +236,7 @@ jobs:
             dist/${{ matrix.merged_firmware_name }}
             dist/${{ matrix.elf_name }}
             dist/apps/*
+            dist/release-app-packages/*
             dist/drivers/*.t5driver.zip
             dist/timecard.elf
             dist/timecard.json
@@ -156,11 +267,31 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Verify target reference report decoding
+        run: python3 test/resources/target_reference_report_test.py
+
+      - name: Verify approved SD SPI retained-fault behavior
+        run: bash test/run_sd_spi_fault_test.sh
+
+      - name: Verify storage generations and retained inventory
+        run: bash test/run_storage_generation_test.sh
+
       - name: Verify lab target and partition guards
         run: python3 -B test/lab/test_esp32_lab.py
 
       - name: Verify boot animation choreography
         run: python3 test/boot_animation_contract_test.py
+
+      - name: Verify X4 boot, panel and button contracts
+        run: |
+          python3 test/x4pro_boot_isolation_test.py
+          python3 test/x4pro_panel_sequence_test.py
+          cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
+          /tmp/x4gpio
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_buttons_fake -I Drivers/x4pro_board \
+            test/x4pro_buttons_state_test.c Drivers/x4pro_buttons/driver.c -o /tmp/x4buttons
+          /tmp/x4buttons
+          python3 test/shared_home_dispatch_test.py
 
       - name: Verify Home reading card rendering and cache behavior
         run: python3 test/home_reading_card_test.py
@@ -179,6 +310,9 @@ jobs:
 
       - name: Run desk clock minute alignment tests
         run: bash test/run_desk_clock_test.sh
+
+      - name: Run clock sync RTC retry regression
+        run: bash test/run_clock_sync_retry_test.sh
 
       - name: Run driver module and package tests
         run: bash test/run_driver_test.sh
@@ -201,11 +335,14 @@ jobs:
       - name: Verify display abstraction contract
         run: python3 test/native_apps/display_abstraction_contract_test.py
 
-      - name: Exercise display surface metadata validation
+      - name: Exercise display surface and provider adapter contracts
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -Ilib/DisplaySurface \
             test/display/display_surface_validation_test.cpp -o /tmp/display-surface-validation
           /tmp/display-surface-validation
+          c++ -std=c++17 -Wall -Wextra -Werror -I. -Ilib/DisplaySurface -Isdk/driver \
+            test/display/provider_display_surface_test.cpp -o /tmp/provider-display-surface
+          /tmp/provider-display-surface
 
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh
@@ -216,6 +353,8 @@ jobs:
       - name: Run release index and GameBoy provider tests
         run: |
           python3 test/release_index_test.py
+          python3 test/product_release_test.py
+          python3 test/release_plan_verification_test.py
           python3 test/bulk_release_test.py
           python3 test/release_workflow_trigger_test.py
           python3 test/sync_gameboy_app_test.py

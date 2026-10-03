@@ -1,0 +1,11 @@
+/* Retired at external storage.volume cutover (firmware 1.3.77).
+ * These names are rejection policy, not exported functions or proxy stubs.
+ * Rebuild legacy apps against t5_storage_get_api or the shared /sd VFS.
+ */
+RISC_RETIRED_STORAGE_IMPORT(SD)
+RISC_RETIRED_STORAGE_IMPORT(_ZN2fs4SDFS10totalBytesEv)
+RISC_RETIRED_STORAGE_IMPORT(_ZN2fs4SDFS3endEv)
+RISC_RETIRED_STORAGE_IMPORT(_ZN2fs4SDFS5beginEhR8SPIClassjPKchb)
+RISC_RETIRED_STORAGE_IMPORT(_ZN2fs4SDFS8cardSizeEv)
+RISC_RETIRED_STORAGE_IMPORT(_ZN2fs4SDFS8cardTypeEv)
+RISC_RETIRED_STORAGE_IMPORT(_ZN2fs4SDFS9usedBytesEv)

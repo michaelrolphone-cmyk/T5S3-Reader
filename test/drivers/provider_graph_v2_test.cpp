@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstring>
 #include <cstdio>
+#include <cstring>
 
 using RuntimeProviders::GraphV2;
 using RuntimeProviders::RequirementV2;
@@ -31,7 +32,17 @@ int main(int argc, char** argv) {
   auto otherGrant = graph.acquire("cap.other", 1);
   assert(otherGrant.slot && graph.liveGrants() == 2);
   assert(!graph.shutdown());
+  assert(!graph.drainExcept(&childGrant, 1)); // Other live grant is not silently ignored.
+  RuntimeProviders::GrantV2 retained[] = {childGrant, otherGrant};
+  assert(graph.drainExcept(retained, 2));
+  assert(graph.interfaceFor(childGrant) && graph.interfaceFor(otherGrant));
+  retained[1] = childGrant;
+  assert(!graph.drainExcept(retained, 2)); // Duplicate is not a second authorization.
+  retained[1] = otherGrant; ++retained[1].generation;
+  assert(!graph.drainExcept(retained, 2));
   assert(graph.release(childGrant));
+  assert(graph.drainExcept(&otherGrant, 1));
+  assert(!graph.drainExcept(&childGrant, 1));
   assert(!graph.release(childGrant) && !graph.interfaceFor(childGrant));
   auto replacement = graph.acquire("cap.child", 1);
   assert(replacement.slot && replacement.generation != childGrant.generation);
@@ -61,6 +72,21 @@ int main(int argc, char** argv) {
   assert(competing.addVerified(alternate));
   assert(competing.addVerified(child));
   assert(competing.moduleCount() == 3);
+  // Enumeration must inspect admitted metadata only. No fixture ELF is
+  // opened and no capability is granted before explicit acquireFrom().
+  assert(competing.liveGrants() == 0);
+  assert(std::strcmp(competing.matchingProviderId(0, "cap.root", 1),
+                     "fixture-root") == 0);
+  assert(std::strcmp(competing.matchingProviderId(1, "cap.root", 1),
+                     "fixture-root-alt") == 0);
+  assert(!competing.matchingProviderId(2, "cap.root", 1));
+  assert(!competing.matchingProviderId(GraphV2::kMaxModules, "cap.root", 1));
+  assert(!competing.matchingProviderId(0, "cap.root", 2));
+  assert(!competing.matchingProviderId(0, nullptr, 1));
+  assert(!competing.matchingProviderId(0, "cap.root", 0));
+  assert(std::strcmp(competing.matchingProviderId(2, "cap.child", 1),
+                     "fixture-child") == 0);
+  assert(competing.liveGrants() == 0);
   assert(!competing.acquire("cap.root", 1).slot);
   assert(!competing.acquire("cap.child", 1).slot); // Ambiguous dependency.
   assert(!competing.acquireFrom("missing", "cap.root", 1).slot);
@@ -100,5 +126,5 @@ int main(int argc, char** argv) {
                                duplicateRequirements, 2}));
   assert(!invalid.addVerified({"invalid", "relative/path", "cap.invalid", 1,
                                nullptr, 0}));
-  std::puts("Generic graph: lazy admission, dependencies, competing provider choice, cycle detection and grants PASS");
+  std::puts("Generic graph: metadata enumeration, dependencies, competing provider choice, cycle detection and grants PASS");
 }

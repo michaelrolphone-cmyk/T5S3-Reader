@@ -2,6 +2,7 @@
 
 #include <Board.h>
 #include <GfxRenderer.h>
+#include <HalDisplay.h>
 #include <I18n.h>
 #include <TimeZoneCatalog.h>
 
@@ -16,6 +17,7 @@
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "NativeAppHost.h"
+#include "NativeTouchInput.h"
 #include "SdCardFontGlobals.h"
 #include "SettingsList.h"
 #include "activities/Activity.h"
@@ -63,6 +65,7 @@ struct BridgeState {
   MappedInputManager* input = nullptr;
   std::array<std::vector<SettingInfo>, kCategoryCount> settings;
   bool built = false;
+  bool flipTouchBoundaryPending = false;
   PendingAction requestedAction = PendingAction::None;
 };
 
@@ -285,12 +288,14 @@ void nativeSettingsBegin(GfxRenderer& renderer, MappedInputManager& input) {
   state.input = &input;
   state.requestedAction = PendingAction::None;
   state.built = false;
+  state.flipTouchBoundaryPending = false;
   for (auto& list : state.settings) list.clear();
 }
 
 void nativeSettingsEnd() {
   for (auto& list : state.settings) list.clear();
   state.built = false;
+  state.flipTouchBoundaryPending = false;
   state.renderer = nullptr;
   state.input = nullptr;
   UITheme::getInstance().reload();
@@ -353,6 +358,13 @@ uint8_t nativeSettingsActivate(uint32_t category, uint32_t index) {
   if (setting.valuePtr == &CrossPointSettings::backlightLevel) {
     Board::setBacklightLevel(SETTINGS.backlightLevel);
   }
+  if (setting.valuePtr == &CrossPointSettings::flipUi) {
+    // Native app execution already owns RenderLock. Apply the same flag used
+    // by touch mapping before the next Settings render, without a reboot.
+    nativeTouchDiscardGestures();
+    display.setFlipOutput(SETTINGS.flipUi != 0);
+    state.flipTouchBoundaryPending = true;
+  }
   SETTINGS.saveToFile();
   return T5_APP_SETTING_UPDATED;
 }
@@ -398,6 +410,13 @@ void nativeSettingsRender(uint32_t category, int32_t selectedIndex) {
                                       I18N.get(StrId::STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer(DisplayPresentMode::Balanced);
+  if (state.flipTouchBoundaryPending) {
+    // Fence taps captured during this render attempt. X4's display owner also
+    // retains coordinate suppression across failed presents and app exit;
+    // this one-shot fence does not assert presentation success or release it.
+    nativeTouchDiscardGestures();
+    state.flipTouchBoundaryPending = false;
+  }
 }
 
 uint8_t nativeSettingsTouch(int16_t x, int16_t y, uint32_t* category, int32_t* selectedIndex) {

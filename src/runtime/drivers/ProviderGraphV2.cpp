@@ -1,4 +1,5 @@
 #include "ProviderGraphV2.h"
+#include "../../../lib/hal/RuntimeFaultRetention.h"
 #include "ProviderOwnedSpecV2.h"
 #include <cstdlib>
 #include <cstdio>
@@ -6,6 +7,18 @@
 #include <new>
 
 namespace RuntimeProviders {
+namespace {
+template <size_t N>
+void copyError(char (&out)[N], const char* input) {
+  size_t count = 0;
+  if (input) while (count + 1 < N && input[count]) ++count;
+  // Both fields may share an enclosing object; do not use restrict-qualified
+  // formatting to copy a module diagnostic into its graph's diagnostic.
+  if (count) std::memmove(out, input, count);
+  out[count] = 0;
+}
+}
+
 namespace {
 bool validName(const char* s) {
   if (!s || !s[0]) return false;
@@ -16,6 +29,7 @@ bool validName(const char* s) {
 }
 
 GraphV2::~GraphV2() {
+  risc_runtime_retention_guard();
   // Bound dependency tables may be retained by mapped ELFs and IRQ callbacks.
   // Never destroy those arrays while a provider refuses verified quiescence.
   if (!shutdown()) std::abort();
@@ -63,27 +77,27 @@ bool GraphV2::addVerified(const SpecV2& spec) {
   return addChecked(spec, false);
 }
 
-bool GraphV2::addAuthenticatedPrivileged(const SpecV2& spec) {
-  // Manager-validated private entry; signing is optional, exact privileged
-  // import validation remains mandatory on relocation; checksums are install-time.
+bool GraphV2::addManagerValidatedPrivileged(const SpecV2& spec) {
+  // Manager-validated private entry. Exact privileged import validation stays
+  // mandatory on relocation; content checksums are installation consistency.
   return addChecked(spec, true);
 }
 
 bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
   bool emptyDigest = true;
-  for (uint8_t byte : spec.authenticatedElfSha256)
+  for (uint8_t byte : spec.contentSha256)
     if (byte) { emptyDigest = false; break; }
   const bool regular = spec.requiredOsCpuAbi == 0 &&
                        spec.verifiedElfBytes == nullptr &&
                        spec.verifiedElfLength == 0 &&
-                       spec.signedImports == nullptr &&
-                       spec.signedImportCount == 0 && emptyDigest;
-  const bool privileged = spec.requiredOsCpuAbi == 1 &&
+                       spec.declaredImports == nullptr &&
+                       spec.declaredImportCount == 0 && emptyDigest;
+  const bool privileged = (spec.requiredOsCpuAbi == 1 || spec.requiredOsCpuAbi == 2 || spec.requiredOsCpuAbi == 3) &&
                           spec.verifiedElfBytes != nullptr &&
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&
-                          spec.signedImports != nullptr &&
-                          spec.signedImportCount <= 128;
+                          spec.declaredImports != nullptr &&
+                          spec.declaredImportCount <= 128;
   if (count_ == kMaxModules || !validName(spec.id) ||
       !validName(spec.provides) || !spec.api ||
       (spec.verifiedElfPath && spec.verifiedElfPath[0] != '/') ||
@@ -93,12 +107,12 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
       spec.requirementCount > kMaxModules ||
       (spec.requirementCount && !spec.requirements)) return false;
   if (privileged) {
-    for (size_t i = 0; i < spec.signedImportCount; ++i) {
-      if (!spec.signedImports[i]) return false;
+    for (size_t i = 0; i < spec.declaredImportCount; ++i) {
+      if (!spec.declaredImports[i]) return false;
       char bounded[OwnedNodeV2::kImportName]{};
       if (!OwnedNodeV2::copyString(bounded, sizeof(bounded),
-                                   spec.signedImports[i])) return false;
-      if (i && std::strcmp(spec.signedImports[i - 1], spec.signedImports[i]) >= 0)
+                                   spec.declaredImports[i])) return false;
+      if (i && std::strcmp(spec.declaredImports[i - 1], spec.declaredImports[i]) >= 0)
         return false;
     }
   }
@@ -119,6 +133,14 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
       if (std::strcmp(spec.requirements[i].capability,
                       spec.requirements[j].capability) == 0) return false;
   }
+  if (spec.resourceIdentity.id[0]) {
+    const auto& identity = spec.resourceIdentity;
+    RuntimePackages::Identity canonical{};
+    if (!RuntimePackages::makeIdentity(identity.kind, identity.id, identity.version,
+          identity.artifact, false, &canonical) || identity.legacyVersion ||
+        identity.kind == RuntimePackages::Kind::Application ||
+        std::strcmp(identity.id, spec.id)) return false;
+  }
   auto* owned = new (std::nothrow) OwnedNodeV2();
   if (!owned) return false;
   if (!owned->snapshot(spec)) {
@@ -128,6 +150,7 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
   Node& node = nodes_[count_++];
   node.owned = owned;
   node.spec = owned->spec;
+  node.module.bindGraphOwnedImage(node.spec.verifiedElfBytes, node.spec.verifiedElfLength);
   return true;
 }
 
@@ -162,12 +185,13 @@ bool GraphV2::activate(size_t index) {
   if (node.visit == Visit::Visiting) return fail("Dependency cycle", node.spec.id);
   if (node.module.state() == ModuleV2::State::Failed) {
     if (node.module.lastError()[0]) {
-      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+      copyError(error_, node.module.lastError());
       return false;
     }
     return fail("Provider failed", node.spec.id);
   }
-  if (node.visit == Visit::Active) return true;
+  if (node.visit == Visit::Active)
+    return node.module.state() == ModuleV2::State::Active;
   node.visit = Visit::Visiting;
   for (size_t i = 0; i < node.spec.requirementCount; ++i) {
     const RequirementV2& requirement = node.spec.requirements[i];
@@ -185,23 +209,26 @@ bool GraphV2::activate(size_t index) {
     node.boundDependencies[i] = {requirement.capability, requirement.api,
                                  nodes_[dependency].module.capability()};
   }
+  (void)node.module.setStreamHost(streamHost_);
+  (void)node.module.setResourceIdentity(node.spec.resourceIdentity);
+  (void)node.module.setPackageAdmission(node.spec.packageManifestSha256, node.spec.packageSourceStamp);
   const bool loaded = node.spec.requiredOsCpuAbi
       ? node.module.loadVerifiedBytes(node.spec.verifiedElfBytes,
                                       node.spec.verifiedElfLength,
-                                      node.spec.authenticatedElfSha256,
-                                      node.spec.signedImports,
-                                      node.spec.signedImportCount,
+                                      node.spec.contentSha256,
+                                      node.spec.declaredImports,
+                                      node.spec.declaredImportCount,
                                       node.spec.id, node.spec.provides,
                                       node.spec.api,
                                       node.spec.requirementCount ? node.boundDependencies : nullptr,
-                                      node.spec.requirementCount)
+                                      node.spec.requirementCount, node.spec.requiredOsCpuAbi)
       : node.module.load(node.spec.verifiedElfPath, node.spec.id,
                          node.spec.provides, node.spec.api,
                          node.spec.requirementCount ? node.boundDependencies : nullptr,
                          node.spec.requirementCount);
   if (!loaded) {
     if (node.module.lastError()[0])
-      std::snprintf(error_, sizeof(error_), "%s", node.module.lastError());
+      copyError(error_, node.module.lastError());
     else fail("Provider load/start failed (no diagnostic)", node.spec.id);
     if (node.module.unload()) {
       releaseDependencies(index);
@@ -234,6 +261,20 @@ GrantV2 GraphV2::acquireIndex(size_t index) {
   return {static_cast<uint32_t>(slot + 1), nextGeneration_};
 }
 
+void GraphV2::poll(uint32_t (*nowMs)(), void (*yield)()) {
+  if (!nowMs || !yield || !count_ || polling_) return;
+  polling_ = true;
+  const uint32_t began = nowMs();
+  unsigned calls = 0;
+  for (size_t visited = 0; visited < count_; ++visited) {
+    const size_t index = nextPoll_;
+    nextPoll_ = (nextPoll_ + 1) % count_;
+    if (nodes_[index].module.poll(2)) ++calls;
+    if (calls >= 4 || static_cast<uint32_t>(nowMs() - began) >= 10) break;
+  }
+  if (calls) yield();
+  polling_ = false;
+}
 GrantV2 GraphV2::acquire(const char* capability, uint32_t api) {
   error_[0] = 0;
   const int target = find(capability, api);
@@ -252,22 +293,95 @@ GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
 const void* GraphV2::interfaceFor(GrantV2 grant) const {
   if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return nullptr;
   const GrantSlot& slot = grants_[grant.slot - 1];
-  if (!slot.occupied || slot.generation != grant.generation) return nullptr;
+  if (!slot.occupied || slot.pendingRelease ||
+      slot.generation != grant.generation) return nullptr;
   return nodes_[slot.node].module.capability();
 }
 
+bool GraphV2::grantStream(GrantV2 grant, uint32_t consumer, uint32_t endpoint, uint32_t rights) {
+  if (!interfaceFor(grant) || !streamHost_ || !streamHost_->grant || !streamHost_->revokeGrant)
+    return false;
+  const uint64_t context = nodes_[grants_[grant.slot - 1].node].module.streamContext();
+  const uint64_t lease = (uint64_t(grant.generation) << 32) | grant.slot;
+  return context && streamHost_->grant(context, lease, consumer, endpoint, rights);
+}
 bool GraphV2::release(GrantV2 grant) {
-  if (!interfaceFor(grant)) return false;
+  if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return false;
   GrantSlot& slot = grants_[grant.slot - 1];
+  if (!slot.occupied || slot.generation != grant.generation) return false;
+  if (!slot.pendingRelease && streamHost_ && streamHost_->revokeGrant) {
+    const uint64_t context = nodes_[slot.node].module.streamContext();
+    if (context) streamHost_->revokeGrant(context, (uint64_t(grant.generation) << 32) | grant.slot);
+  }
   const size_t node = slot.node;
+  if (!slot.pendingRelease) {
+    // Revoke all future interface access and decrement the consumer exactly
+    // once, even if hardware quiescence fails repeatedly.
+    if (!nodes_[node].module.unpinConsumer()) return false;
+    slot.pendingRelease = true;
+  }
+  if (!deactivateIfUnused(node)) return false;
+  // Only a completed teardown (or another still-live consumer) can retire
+  // the slot. Until then retain its original generation for release retries.
   slot.occupied = false;
-  return nodes_[node].module.unpinConsumer() && deactivateIfUnused(node);
+  slot.pendingRelease = false;
+  return true;
 }
 
 size_t GraphV2::liveGrants() const {
   size_t total = 0;
   for (const GrantSlot& grant : grants_) if (grant.occupied) ++total;
   return total;
+}
+
+bool GraphV2::drainExcept(const GrantV2* retained, size_t count) {
+  if (count > kMaxGrants || (count && !retained) || polling_) return false;
+  bool keep[kMaxModules]{};
+  for (size_t i = 0; i < count; ++i) {
+    if (!interfaceFor(retained[i])) return false; // Includes stale/pending grants.
+    for (size_t j = 0; j < i; ++j)
+      if (retained[i].slot == retained[j].slot) return false;
+    keep[grants_[retained[i].slot - 1].node] = true;
+  }
+  for (size_t i = 0; i < kMaxGrants; ++i) {
+    if (!grants_[i].occupied) continue;
+    bool allowed = false;
+    for (size_t j = 0; j < count; ++j)
+      if (retained[j].slot == i + 1 &&
+          retained[j].generation == grants_[i].generation) allowed = true;
+    if (!allowed || grants_[i].pendingRelease) return false;
+  }
+  // The graph is acyclic, but iterate with an explicit module bound rather
+  // than recursion. Only dependencies actually acquired belong to the closure.
+  for (size_t pass = 0; pass < count_; ++pass)
+    for (size_t i = 0; i < count_; ++i)
+      if (keep[i])
+        for (size_t j = 0; j < nodes_[i].acquired; ++j)
+          keep[nodes_[i].dependencies[j]] = true;
+  for (size_t pass = 0; pass <= count_; ++pass) {
+    bool progress = false;
+    for (size_t i = 0; i < count_; ++i) {
+      Node& node = nodes_[i];
+      if (keep[i] || node.module.consumers()) continue;
+      if (node.visit == Visit::Active ||
+          (node.visit == Visit::Idle && node.module.state() == ModuleV2::State::Failed)) {
+        if (!node.module.unload()) return false;
+        node.visit = Visit::Idle;
+        releaseDependencies(i);
+        progress = true;
+      }
+    }
+    if (!progress) break;
+  }
+  for (size_t i = 0; i < count_; ++i) {
+    const Node& node = nodes_[i];
+    if (keep[i]) {
+      if (node.visit != Visit::Active || node.module.state() != ModuleV2::State::Active ||
+          !node.module.consumers()) return false;
+    } else if (node.visit != Visit::Idle || node.acquired ||
+               node.module.state() != ModuleV2::State::Absent || node.module.consumers()) return false;
+  }
+  return true;
 }
 
 bool GraphV2::shutdown() {

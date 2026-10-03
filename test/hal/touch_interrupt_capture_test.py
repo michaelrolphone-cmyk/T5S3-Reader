@@ -49,27 +49,24 @@ assert "digitalWrite(EPD47_TOUCH_INT, HIGH);" in EPD_BOARD
 # T5S3. Panel power sequencing must never monopolize that bus across its waits:
 # each transaction locks independently, while PCA9535 bit updates retain an
 # atomic read-modify-write critical section.
-pca_update = T5_BOARD.split("bool updatePca9535Bit", 1)[1].split(
-    "bool readReg16LE", 1)[0]
-assert "ScopedI2CLock lock;" in pca_update
+# The independent chip owner now serializes RMW and grants pins. Board
+# consumers must not bypass it through a second raw PCA transaction path.
+assert "updatePca9535Bit" not in T5_BOARD
+assert "Wire.beginTransmission(T5S3_PCA9535_ADDR)" not in T5_BOARD
+assert "expander->write(expander->context, grant, mask" in T5_BOARD
+assert "expander->read(expander->context, grant" in T5_BOARD
 
-prepare_power = T5_DISPLAY.split("bool preparePowerPins()", 1)[1].split(
-    "bool powerOnSequence()", 1)[0]
-power_on = T5_DISPLAY.split("bool powerOnSequence()", 1)[1].split(
-    "void powerOffSequence()", 1)[0]
-power_off = T5_DISPLAY.split("void powerOffSequence()", 1)[1].split(
-    "uint8_t grayscaleValueForBit", 1)[0]
-for sequence in (prepare_power, power_on, power_off):
-    assert "Board::ScopedI2CLock busLock;" not in sequence
-
-tps_write = T5_DISPLAY.split("bool writeTpsRegister(", 1)[1].split(
-    "bool writeTpsRegister8", 1)[0]
-tps_read = T5_DISPLAY.split("bool readTpsRegister(", 1)[1].split(
-    "bool waitForPcaPinHigh", 1)[0]
-assert "Board::ScopedI2CLock lock;" in tps_write
-assert "Board::ScopedI2CLock lock;" in tps_read
-assert "delay(1);" in power_on
-assert "delay(1);" in power_off
+# Both engines consume the same independently installed power owner. No
+# display consumer retains a second TPS/PCA register implementation.
+assert "writeTpsRegister" not in T5_DISPLAY
+assert "Wire." not in T5_DISPLAY
+assert "platformDisplayPower()" not in T5_DISPLAY
+for engine in ("quality.cpp", "fast.cpp"):
+    source = (ROOT / "Drivers/display_epd_video" / engine).read_text()
+    assert "writeTpsRegister" not in source and "Wire." not in source
+    power = "display_power" if engine == "quality.cpp" else "g_power"
+    if engine == "fast.cpp": assert "g_power = display_power;" in source
+    assert power + "->acquire" in source and power + "->release" in source
 
 # Firmware acquires input.touch.raw and continuously services that opaque
 # provider on a dedicated capture task. UI/render cadence must never be the
@@ -110,9 +107,12 @@ assert "nativeTouchTakeHomePress" in MAPPED
 for old in ("gpio.getTouchTap", "gpio.getTouchHold", "gpio.getTouchSwipe",
             "gpio.wasTouchHomeButtonPressed"):
     assert old not in MAPPED
-setup_start = MAIN.index("void setup()")
-loop_start = MAIN.index("void loop()", setup_start)
-setup = MAIN[setup_start:loop_start]
+# This assertion constrains graphical boot; do not accidentally inspect the
+# separate headless setup and weaken the no-touch-startup contract.
+graphical_main = MAIN.split("#else\n", 1)[1] if MAIN.startswith("#if defined(RISCRTE_PROFILE_HEADLESS)\n") else MAIN
+setup_start = graphical_main.index("void setup()")
+loop_start = graphical_main.index("void loop()", setup_start)
+setup = graphical_main[setup_start:loop_start]
 assert "(void)nativeTouchResume();" not in setup
 update_start = MAPPED.index("void MappedInputManager::update() const")
 update_end = MAPPED.index("bool MappedInputManager::wasAnyPressed()", update_start)

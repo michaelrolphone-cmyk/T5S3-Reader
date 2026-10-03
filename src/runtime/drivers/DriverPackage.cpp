@@ -1,3 +1,4 @@
+#include "runtime/packages/PackageCdcSdMigration.h"
 #include "DriverPackage.h"
 
 #include <ArduinoJson.h>
@@ -294,6 +295,8 @@ bool verifiedDriverDirectory(const char* path, const char* expectedId) {
 }
 
 bool recoverDriverDirectory(const char* id) {
+    if (RuntimePackages::cdcLineage(RuntimePackages::Kind::Driver, id) &&
+        RuntimePackages::cdcMigrationPendingOnSd()) return false;
     if (!safeDriverId(id) || !Storage.ready() || native_app_register_sd_vfs() != ESP_OK) return false;
     const std::string target = std::string("/Drivers/") + id;
     const std::string legacyStage = std::string("/Drivers/.") + id + ".install";
@@ -373,6 +376,11 @@ bool installStagedDriverPackage(const std::string& manifestJson, const char* sta
     DriverPackageInfo info{};
     if (!validateDriverPayload(manifestJson, stagedElfVfsPath, &info)) {
         LOG_ERR("DRIVER", "Install failed: download/ELF integrity validation");
+        return false;
+    }
+    // CDC's historical ABI-1 bytes are migration inputs, never new installs.
+    if (RuntimePackages::cdcLineage(RuntimePackages::Kind::Driver, info.id)) {
+        LOG_ERR("DRIVER", "CDC updates require the canonical ordinary package");
         return false;
     }
     if (!Storage.ready() || (!Storage.exists("/Drivers") && !Storage.mkdir("/Drivers"))) {

@@ -75,11 +75,15 @@ std::string truncatedPreparedText(const GfxRenderer& renderer, const int fontId,
 }
 
 // Helper: draw battery icon at given position
-void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight, uint16_t percentage) {
+void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight, uint16_t percentage, bool available) {
   // Draw battery outline (shared code)
   BaseTheme::drawBatteryOutline(renderer, x, y, battWidth, rectHeight);
+  if (!available) {
+    BaseTheme::drawBatteryUnknown(renderer, x, y, battWidth, rectHeight);
+    return;
+  }
 
-  const bool charging = gpio.isUsbConnected();
+  const bool charging = powerManager.isBatteryCharging();
 
   // The +1 is to round up, so that we always fill at least one pixel
   const int maxFillWidth = battWidth - 5;
@@ -194,7 +198,8 @@ std::vector<std::string> BaseTheme::wrappedTextForRole(const GfxRenderer& render
       }
     } else {
       lines.push_back(truncatedPreparedText(renderer, fontId, word.c_str(), maxWidth, style));
-      return lines;
+      // The oversized token consumes one line, not the rest of the paragraph.
+      // The next iteration still enforces the remaining line budget.
     }
   }
 
@@ -227,6 +232,13 @@ void BaseTheme::drawCenteredTextForRole(const GfxRenderer& renderer, const int s
   renderer.drawText(fontId, (renderer.getScreenWidth() - textWidth) / 2, y, text, black, style);
 }
 
+void BaseTheme::drawBatteryUnknown(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight) {
+  // A crossed outline is unavailable telemetry, distinct from an empty cell.
+  if (battWidth < 8 || rectHeight < 6) return;
+  renderer.drawLine(x + 3, y + 2, x + battWidth - 5, y + rectHeight - 3);
+  renderer.drawLine(x + 3, y + rectHeight - 3, x + battWidth - 5, y + 2);
+}
+
 void BaseTheme::drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight) {
   // Top line
   renderer.drawLine(x + 1, y, x + battWidth - 3, y);
@@ -255,26 +267,28 @@ void BaseTheme::drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX,
 
 void BaseTheme::drawBatteryLeft(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
   // Left aligned: icon on left, percentage on right (reader mode)
-  const uint16_t percentage = powerManager.getBatteryPercentage();
+  uint16_t percentage = 0;
+  const bool batteryAvailable = powerManager.readBatteryPercentage(&percentage);
   const int y = rect.y + 6;
 
   if (showPercentage) {
-    const auto percentageText = std::to_string(percentage) + "%";
+    const auto percentageText = batteryAvailable ? std::to_string(percentage) + "%" : std::string("--%");
     renderer.drawText(SMALL_FONT_ID, rect.x + BaseTheme::batteryPercentSpacing + BaseMetrics::values.batteryWidth,
                       rect.y, percentageText.c_str());
   }
 
-  drawBatteryIcon(renderer, rect.x, y, BaseMetrics::values.batteryWidth, rect.height, percentage);
+  drawBatteryIcon(renderer, rect.x, y, BaseMetrics::values.batteryWidth, rect.height, percentage, batteryAvailable);
 }
 
 void BaseTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const bool showPercentage) const {
   // Right aligned: percentage on left, icon on right (UI headers)
   // rect.x is already positioned for the icon (drawHeader calculated it)
-  const uint16_t percentage = powerManager.getBatteryPercentage();
+  uint16_t percentage = 0;
+  const bool batteryAvailable = powerManager.readBatteryPercentage(&percentage);
   const int y = rect.y + 6;
 
   if (showPercentage) {
-    const auto percentageText = std::to_string(percentage) + "%";
+    const auto percentageText = batteryAvailable ? std::to_string(percentage) + "%" : std::string("--%");
     const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, percentageText.c_str());
     // Clear the area where we're going to draw the text to prevent ghosting
     const auto textHeight = renderer.getTextHeight(SMALL_FONT_ID);
@@ -285,7 +299,7 @@ void BaseTheme::drawBatteryRight(const GfxRenderer& renderer, Rect rect, const b
   }
 
   // Icon is already at correct position from rect.x
-  drawBatteryIcon(renderer, rect.x, y, BaseMetrics::values.batteryWidth, rect.height, percentage);
+  drawBatteryIcon(renderer, rect.x, y, BaseMetrics::values.batteryWidth, rect.height, percentage, batteryAvailable);
 }
 
 void BaseTheme::drawProgressBar(const GfxRenderer& renderer, Rect rect, const size_t current,
@@ -998,14 +1012,16 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
   const bool showBatteryPercentage =
       SETTINGS.hideBatteryPercentage == CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_NEVER;
   if (SETTINGS.statusBarBattery) {
-    const uint16_t percentage = powerManager.getBatteryPercentage();
+    uint16_t percentage = 0;
+    const bool batteryAvailable = powerManager.readBatteryPercentage(&percentage);
     GUI.drawBatteryLeft(renderer,
                         Rect{leftClusterX + leftClusterWidth, textY, metrics.batteryWidth, metrics.batteryHeight},
                         showBatteryPercentage);
     leftClusterWidth += metrics.batteryWidth;
     if (showBatteryPercentage) {
       leftClusterWidth += batteryPercentSpacing +
-                          renderer.getTextWidth(SMALL_FONT_ID, (std::to_string(percentage) + "%").c_str());
+                          renderer.getTextWidth(SMALL_FONT_ID,
+                              (batteryAvailable ? std::to_string(percentage) + "%" : std::string("--%")).c_str());
     }
   }
 

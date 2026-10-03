@@ -1,8 +1,11 @@
+#include <RuntimeFaultRetention.h>
 #include "NativeUiFrame.h"
 #include "NativeAppMemory.h"
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
+#include "PowerControl.h"
+#include "ManagedAppAdmission.h"
 #include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
@@ -20,6 +23,7 @@
 #include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackagePreflight.h"
 #include "runtime/memory/PsramJson.h"
+#include "runtime/packages/PackageIndependentCatalog.h"
 #include <AppManifestRules.h>
 #include <ArduinoJson.h>
 #include "components/FontAwesomeIcons.h"
@@ -44,6 +48,9 @@
 #include "MappedInputManager.h"
 #include "NativeSettingsBridge.h"
 #include "NativeSystemUiBridge.h"
+#include "CrossPointSettings.h"
+#include "activities/GlobalMenuActivity.h"
+#include "NativeHardwareTakeover.h"
 #include "activities/RenderLock.h"
 #include "fontIds.h"
 #include "network/HttpDownloader.h"
@@ -52,6 +59,8 @@
 #ifndef CROSSPOINT_COMPAT_VERSION
 #define CROSSPOINT_COMPAT_VERSION CROSSPOINT_VERSION
 #endif
+
+extern "C" const char* native_hardware_compat_last_error();
 
 namespace {
 constexpr const char* kLatestReleaseApi =
@@ -63,6 +72,7 @@ constexpr const char* kAggregateAppCatalogName = "app-catalog.json";
 constexpr size_t kMaxCatalogAssets = 128;
 constexpr size_t kMaxManifestBytes = 8 * 1024;
 constexpr size_t kMaxReleaseAssetObjectBytes = 8192;
+constexpr unsigned long kNativeHomeDoubleClickWindowMs = 400;
 
 struct ReleaseCatalogAsset {
   std::string name;
@@ -111,6 +121,8 @@ struct Session {
   bool inputStarted = false;
   bool exiting = false;
   bool presenting = false;
+  bool pendingHomeSingle = false;
+  unsigned long lastHomeEventMs = 0;
 };
 Session* session = nullptr;
 bool returned = false;
@@ -296,6 +308,14 @@ bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   esp_task_wdt_reset();
   if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
+  nativeProviderOwnerTick();
+  if (serviceIdleSleep(s->input.wasAnyPressed() || s->input.wasAnyReleased() ||
+                       nativeNavigationFrame().buttons || nativeTouchHadActivity())) {
+    // Return through the existing ELF/resource/RenderLock cleanup. Never run
+    // physical sleep from an app callback or dispatch a queued next app.
+    s->exiting = true;
+    s->launchPath.clear();
+  }
   *out = {};
   using Button = MappedInputManager::Button;
   const Button buttons[] = {Button::Back, Button::Confirm, Button::Left, Button::Right, Button::Up, Button::Down};
@@ -305,11 +325,63 @@ bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   MappedInputManager::TouchPoint point{};
   out->tapped = s->input.wasTouchTapped(point, s->renderer);
   if (out->tapped) { out->touch_x = point.x; out->touch_y = point.y; }
-  if ((s->backExitsApp && s->input.isPressed(Button::Back)) || s->input.isPressed(Button::Power) ||
-      s->input.wasTouchHomeButtonPressed()) {
+
+  const bool powerPressed = s->input.isPressed(Button::Power);
+  if ((s->backExitsApp && s->input.isPressed(Button::Back)) || powerPressed) {
     s->exiting = true;
   }
-  if (s->input.isPressed(Button::Power) || s->input.wasTouchHomeButtonPressed()) homeRequested = true;
+  if (powerPressed) homeRequested = true;
+
+  unsigned long homeEventMs = 0;
+  // Drain captured presses before applying the single-click deadline. A busy
+  // ELF may deliver both taps only after the 400 ms window has elapsed.
+  // The touch queue holds 16 events, plus at most one navigation Home per update.
+  for (unsigned i = 0; i < 17 && !s->exiting &&
+                       s->input.takeTouchHomeButtonPress(homeEventMs); ++i) {
+    const bool allowOverlay =
+        SETTINGS.doubleClickHomeMenu && !nativeHardwareTakeoverDisplayActive();
+    if (!allowOverlay) {
+      s->pendingHomeSingle = false;
+      s->exiting = true;
+      homeRequested = true;
+    } else if (s->pendingHomeSingle) {
+      const unsigned long elapsed =
+          static_cast<unsigned long>(homeEventMs - s->lastHomeEventMs);
+      s->pendingHomeSingle = false;
+      if (elapsed <= kNativeHomeDoubleClickWindowMs) {
+        const auto modal = GlobalMenuActivity::runFirmwareModal(s->renderer, s->input);
+        *out = {};
+        if (modal == GlobalMenuActivity::ModalResult::ShutdownRequested) {
+          s->exiting = true;
+          // Unwind the synchronous Springboard/app loop so main can service
+          // requestShutdown(), instead of launching another ELF first.
+          homeRequested = true;
+        } else if (modal == GlobalMenuActivity::ModalResult::Unavailable) {
+          // A failed snapshot must not swallow the user's Home request.
+          s->exiting = true;
+          homeRequested = true;
+        }
+        out->exit_requested = s->exiting;
+        return true;
+      }
+      // The previous press was already a completed single-click by the time
+      // this later event occurred. Preserve existing single-home semantics.
+      s->exiting = true;
+      homeRequested = true;
+    } else {
+      s->pendingHomeSingle = true;
+      s->lastHomeEventMs = homeEventMs;
+    }
+  }
+
+  if (s->pendingHomeSingle &&
+      static_cast<unsigned long>(millis() - s->lastHomeEventMs) >
+          kNativeHomeDoubleClickWindowMs) {
+    s->pendingHomeSingle = false;
+    s->exiting = true;
+    homeRequested = true;
+  }
+
   out->exit_requested = s->exiting;
   return true;
 }
@@ -722,6 +794,21 @@ bool loadIndependentAppIndex(std::vector<CatalogAsset>& catalog) {
   indexed.reserve(entries.size());
   for (JsonVariantConst entry : entries) {
     esp_task_wdt_reset();
+    if (!entry["format"].isNull()) {
+      // Legacy ABI callers receive only historical loose applications. Current
+      // bundles belong to the common package API and must not become ELF URLs.
+      if (!entry["format"].is<const char*>() ||
+          std::strcmp(entry["format"].as<const char*>(), "rte.zip") ||
+          measureJson(entry) > 8192) return false;
+      std::string record;
+      serializeJson(entry, record);
+      RuntimePackages::IndependentAppRecord checked{};
+      std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> scratch(
+          new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+      if (!scratch || !RuntimePackages::parseIndependentAppRecord(
+          record.data(), record.size(), checked, *scratch) || !checked.bundled) return false;
+      continue;
+    }
     if (!entry.is<JsonObjectConst>() || !entry["id"].is<const char*>() ||
         !entry["version"].is<const char*>() || !entry["tag"].is<const char*>() ||
         !entry["asset"].is<const char*>() || !entry["url"].is<const char*>() ||
@@ -933,7 +1020,7 @@ bool appCatalogVersionGet(uint32_t index, char* out, size_t capacity) {
 
 namespace {
 constexpr RuntimePackages::PackageRuntimePolicy kCanonicalAppPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
 bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
                         t5_app_manifest_t* manifest = nullptr) {
@@ -949,8 +1036,10 @@ bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
   const std::string json = elf.substr(0, elf.size() - 4) + ".json";
   if (!Storage.exists(elf.c_str()) || !Storage.exists(json.c_str())) return false;
   t5_app_manifest_t parsed{};
-  if (!readAppManifest(json.c_str(), parsed) ||
-      std::strcmp(parsed.file_name, identity.artifact)) return false;
+  std::string appVersion;
+  if (!readAppManifest(json.c_str(), parsed, &appVersion, true) ||
+      std::strcmp(parsed.file_name, identity.artifact) ||
+      appVersion != identity.version) return false;
   if (manifest) *manifest = parsed;
   return true;
 }
@@ -1115,6 +1204,7 @@ bool appCatalogDownloadLastError(char* out, size_t capacity) {
 }
 
 bool installedRefresh() {
+  const uint32_t inventoryBegan = millis();
   auto* s = current();
   if (!s) return false;
   s->installed.clear();
@@ -1150,6 +1240,8 @@ bool installedRefresh() {
     s->installed.push_back(manifest);
   }
   dir.close();
+  LOG_INF("APP", "Inventory count=%u ms=%lu", (unsigned)s->installed.size(),
+          (unsigned long)(millis()-inventoryBegan));
   std::sort(s->installed.begin(), s->installed.end(), [](const t5_app_manifest_t& a, const t5_app_manifest_t& b) {
     return std::strcmp(a.display_name, b.display_name) < 0;
   });
@@ -1380,8 +1472,28 @@ extern "C" const t5_app_api_v1* t5_app_get_api(uint32_t version) {
   return version == T5_APP_ABI_VERSION && current() ? &api : nullptr;
 }
 
+static bool validateLooseAdmissionSidecar(const std::string& json,const std::string& filename,
+                                         AppIntegrity& integrity) {
+  t5_app_manifest_t manifest{};
+  return parseAppManifest(json,manifest,nullptr,false,nullptr,nullptr,&integrity) &&
+      manifest.compatible && filename==manifest.file_name;
+}
+
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
+  // Every synchronous child/resume route crosses this guard, not just the
+  // Springboard loop. Let pending sleep unwind without mapping another ELF.
+  if (idleSleepRequested()) return ESP_OK;
+  const uint32_t launchBegan = millis();
+  const auto launchStage = [&](const char* stage) {
+    LOG_INF("APP", "Launch stage=%s elapsed_ms=%lu path=%s", stage,
+            (unsigned long)(millis()-launchBegan), path ? path : "null");
+  };
+  launchStage("begin");
   lastLaunchError.clear();
+  if (risc_runtime_retention_required()) {
+    lastLaunchError = "Storage unavailable; resources retained. Manual reboot required.";
+    return ESP_ERR_INVALID_STATE;
+  }
   if (session) {
     lastLaunchError = "Another native application is already running.";
     return ESP_ERR_INVALID_STATE;
@@ -1417,6 +1529,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   }
   nativeTouchDiscardGestures();
   StartupScreen::app(renderer, displayName.c_str(), icon);
+  launchStage("loading-screen");
   // Keep the render lock through launch so an outstanding activity repaint
   // cannot overwrite this frame during package recovery or dependency loading.
   // Nested /Apps/<id>/<artifact> entries are independently verified against
@@ -1425,6 +1538,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   const size_t nestedSlash = elf.compare(0, 6, "/Apps/") == 0 ?
       elf.find('/', 6) : std::string::npos;
   std::string canonicalRoot;
+  RuntimePackages::Identity canonicalIdentity{};
   if (nestedSlash != std::string::npos) {
     const std::string id = elf.substr(6, nestedSlash - 6);
     RuntimePackages::Identity identity{};
@@ -1434,6 +1548,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       return ESP_ERR_NOT_SUPPORTED;
     }
     canonicalRoot = elf.substr(0, nestedSlash);
+    canonicalIdentity = identity;
   }
   // Managed /Apps updates recover before any sidecar/ELF can be loaded.
   if (elf.compare(0, 6, "/Apps/") == 0 &&
@@ -1489,10 +1604,17 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   // the ELF has returned and dlclose has succeeded. Failed unloads retain the
   // pin; replacement and uninstall must not race executable memory.
   nativeStreamsBegin();
-  const esp_err_t result = launch_elf_app(path);
+  const bool resourcesReady = canonicalRoot.empty() ||
+      nativeStreamsBindPackageResources(canonicalIdentity);
+  const bool admissionReady = resourcesReady && (canonicalRoot.empty()
+      ? RuntimePackages::beginLooseAppAdmission(path,validateLooseAdmissionSidecar)
+      : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
+  launchStage(admissionReady ? "admitted" : "admission-failed");
+  const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
+  if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
   nativeNetworkEnd();
-  if (!canonicalRoot.empty() && result == ESP_OK)
+  if (!canonicalRoot.empty() && (result == ESP_OK || !admissionReady))
     (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
   // Clean up even when an app returns without calling its GPS stop callback.
   GpsDriverRuntime::stop();
@@ -1500,11 +1622,13 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     char message[80];
     std::snprintf(message, sizeof(message), "ELF loader failed with error 0x%lX.",
                   static_cast<unsigned long>(result));
-    lastLaunchError = message;
+    const char* compatibilityError = admissionReady && result == ESP_ERR_NOT_SUPPORTED
+        ? native_hardware_compat_last_error() : nullptr;
+    lastLaunchError = compatibilityError ? compatibilityError : message;
   }
   const auto systemNavigation = nativeSystemUiTakeNavigation();
   homeRequested = homeRequested || systemNavigation == NativeSystemUiNavigation::Home;
-  queuedLaunch = active.launchPath;
+  queuedLaunch = idleSleepRequested() ? std::string{} : active.launchPath;
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
@@ -1527,7 +1651,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
   nativeTouchDiscardGestures();
-  firmwareActionPending = nativeSettingsDispatchPendingAction(renderer, input, path);
+  firmwareActionPending = !idleSleepRequested() && nativeSettingsDispatchPendingAction(renderer, input, path);
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
   return result;
@@ -1536,7 +1660,11 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
 bool consumeNativeAppReturn() { const bool value = returned; returned = false; return value; }
 
 bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool resume) {
-  if (resume && homeRequested) return false;
+  if (idleSleepRequested() || (resume && homeRequested)) return false;
+  const uint32_t appsBegan = millis();
+  // Show feedback before recovery and path resolution, not after all SD work.
+  { RenderLock lock; StartupScreen::app(renderer, "Apps", "solid:f00a"); }
+  LOG_INF("APP", "Apps loading frame ms=%lu", (unsigned long)(millis()-appsBegan));
   auto showError = [&](const char* message) {
     RenderLock lock;
     renderer.clearScreen();
@@ -1549,6 +1677,8 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     renderer.displayBuffer(DisplayPresentMode::Clean);
     for (;;) {
       esp_task_wdt_reset(); delay(20); input.update();
+      if (serviceIdleSleep(input.wasAnyPressed() || input.wasAnyReleased() ||
+                           nativeNavigationFrame().buttons || nativeTouchHadActivity())) break;
       MappedInputManager::TouchPoint point{};
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
@@ -1568,11 +1698,13 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       showError("Install Springboard or copy springboard.elf and .json to /Apps.");
       return false;
     }
+    LOG_INF("APP", "Apps resolved ms=%lu", (unsigned long)(millis()-appsBegan));
     const auto result = runNativeApp(springboard.c_str(), renderer, input);
     if (result != ESP_OK) {
       showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
       return false;
     }
+    if (idleSleepRequested()) return false;
     if (firmwareActionPending) return true;
     if (homeRequested || queuedLaunch.empty()) return false;
     const std::string selected = queuedLaunch;
@@ -1585,6 +1717,7 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     const std::string sidecar = selected.substr(3, selected.size() - 7) + ".json";
     if (!Storage.exists(sidecar.c_str())) { showError("Application manifest is missing."); continue; }
     const auto appResult = runNativeApp(selected.c_str(), renderer, input);
+    if (idleSleepRequested()) return false;
     if (firmwareActionPending) return true;
     if (homeRequested) return false;
     if (appResult != ESP_OK) {

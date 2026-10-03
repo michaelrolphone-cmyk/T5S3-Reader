@@ -41,6 +41,7 @@ void ActivityManager::renderTaskLoop() {
     RenderLock lock;
     if (currentActivity) {
       HalPowerManager::Lock powerLock;
+#if !defined(BOARD_XTEINK_X4_PRO)
       // Readiness is the destination's first render after startup/onEnter.
       // Keep the loading worker alive throughout Home or reader preparation.
       if (currentActivity->name != "Boot" && !StartupScreen::finishBoot(renderer)) {
@@ -48,8 +49,11 @@ void ActivityManager::renderTaskLoop() {
         delay(1);
         continue;
       }
+#endif
       currentActivity->render(std::move(lock));
+#if !defined(BOARD_XTEINK_X4_PRO)
       if (currentActivity->name != "Boot") StartupScreen::destinationReady();
+#endif
     }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&waitingTaskMux);
@@ -67,7 +71,10 @@ void ActivityManager::loop() {
   // service immediately before this loop. Do not repeat provider/device work
   // before dispatching captured input.
   bool injectedTouchButtonTap = false;
-  if (currentActivity && !StartupScreen::isLoading()) {
+  // Apply an already-queued transition before dispatching the outgoing
+  // activity again. In particular its finish()/child launch must not replace
+  // a firmware-requested Sleep transition after cooperative ELF unwind.
+  if (pendingAction == PendingAction::None && currentActivity && !StartupScreen::isLoading()) {
     bool activityHandled = false;
     const bool globalMenuAllowed = currentActivity->supportsGlobalMenu();
 

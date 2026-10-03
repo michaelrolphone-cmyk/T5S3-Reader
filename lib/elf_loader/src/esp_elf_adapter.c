@@ -127,8 +127,15 @@ int IRAM_ATTR esp_elf_arch_flush(esp_elf_t *elf)
     const uintptr_t data = elf->sec[ELF_SEC_TEXT].addr;
     const size_t size = elf->sec[ELF_SEC_TEXT].size;
     const uintptr_t code = elf_remap_text(elf, data);
-    if (!size || data < SOC_DROM_LOW || data >= SOC_DROM_HIGH ||
-        size > SOC_DROM_HIGH - data || code < SOC_IROM_LOW ||
+    // IDF 4.4.6 labels the narrower flash DROM window separately from
+    // executable external RAM. The explicit CAM port uses that older SDK.
+#if defined(RISCRTE_PROFILE_HEADLESS) && ESP_IDF_VERSION == ESP_IDF_VERSION_VAL(4, 4, 6)
+    const uintptr_t data_low = SOC_EXTRAM_DATA_LOW, data_high = SOC_EXTRAM_DATA_HIGH;
+#else
+    const uintptr_t data_low = SOC_DROM_LOW, data_high = SOC_DROM_HIGH;
+#endif
+    if (!size || data < data_low || data >= data_high ||
+        size > data_high - data || code < SOC_IROM_LOW ||
         code >= SOC_IROM_HIGH || size > SOC_IROM_HIGH - code) return -EINVAL;
 
     /* Never write back unrelated live PSRAM: the old WriteBack_All path ran

@@ -1,12 +1,16 @@
 #pragma once
 
 #include <Print.h>
+#include "StorageGeneration.h"
 #include <common/FsApiConstants.h>  // for oflag_t
 #include <freertos/semphr.h>
 
 #include <memory>
 #include <string>
 #include <vector>
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+#include "RiscStorageVolumeV1.h"
+#endif
 
 class HalFile;
 
@@ -14,7 +18,31 @@ class HalStorage {
  public:
   HalStorage();
   bool begin();
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  // Borrowed from the platform boot owner; it retains the provider module for the
+  // whole Reader session. No SPI transport or filesystem implementation here.
+  bool bindVolume(const risc_storage_volume_api_v1* volume);
+#endif
   bool ready() const;
+  StorageGenerationStamp generation() const;
+  bool unchanged(const StorageGenerationStamp& stamp) const;
+  // Explicit integrity boundaries retire cached observations even when no
+  // managed write was observed. No media/reset/handle ownership change.
+  void invalidateObservations();
+  // Trusted compatibility boundary, not exported to applications. Actual raw
+  // storage imports hold an uncertainty window through module teardown.
+  void externalStorageBegin();
+  void externalStorageEnd(bool closed);
+  void externalStorageUncertain();
+  // Refresh SdFat after raw SDFS access; never closes live handles or clears
+  // failed/retained teardown uncertainty. A retained inventory may request it.
+  bool reconcileExternalStorage();
+  // Known media/power transitions mark unavailable without resetting
+  // an active filesystem or closing another owner's handles.
+  void markUnavailable();
+  bool prepareForSleep();
+  bool cancelSleep();
+  bool commitSleep();
   std::vector<String> listFiles(const char* path = "/", int maxFiles = 200);
   // Read the entire file at `path` into a String. Returns empty string on failure.
   String readFile(const char* path);
@@ -92,6 +120,8 @@ class HalFile : public Print {
   void rewindDirectory();
   bool close();
   HalFile openNextFile();
+  // SdFat directory read errors must not be mistaken for clean enumeration end.
+  uint8_t getError() const;
   bool isOpen() const;
   operator bool() const;
 };

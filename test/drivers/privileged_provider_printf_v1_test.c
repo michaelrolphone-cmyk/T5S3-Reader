@@ -9,7 +9,7 @@
 
 #define RISC_OS_CPU_SYMBOL(name) \
     __attribute__((used)) const unsigned char fake_os_symbol_##name[] __asm__(#name) = { 1 };
-#include "private/privileged_os_cpu_symbols_v1.def"
+#include "private/privileged_os_cpu_symbols_v3.def"
 #undef RISC_OS_CPU_SYMBOL
 
 static int owner, bystander;

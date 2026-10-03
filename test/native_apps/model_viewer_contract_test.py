@@ -11,6 +11,7 @@ APP = (ROOT / "Apps/model_viewer.c").read_text(encoding="utf-8")
 MANIFEST = json.loads((ROOT / "Apps/model_viewer.json").read_text(encoding="utf-8"))
 VIDEO_API = (ROOT / "lib/NativeApps/include/T5VideoApi.h").read_text(encoding="utf-8")
 VIDEO = (ROOT / "src/native/NativeVideoBridge.cpp").read_text(encoding="utf-8")
+ENGINE = (ROOT / "Drivers/display_epd_video/fast.cpp").read_text(encoding="utf-8")
 TAKEOVER = (ROOT / "src/native/NativeHardwareTakeover.cpp").read_text(encoding="utf-8")
 LAUNCHER = (ROOT / "lib/NativeApps/src/NativeAppLauncher.c").read_text(encoding="utf-8")
 PLATFORMIO = (ROOT / "platformio.ini").read_text(encoding="utf-8")
@@ -20,7 +21,7 @@ ASSOCIATIONS = (ROOT / "src/native/FileAssociationRegistry.cpp").read_text(encod
 
 class ModelViewerContract(unittest.TestCase):
     def test_manifest_and_release_contract(self):
-        self.assertEqual(MANIFEST["version"], "1.2.7")
+        self.assertEqual(MANIFEST["version"], "1.2.8")
         self.assertEqual(MANIFEST["min_firmware_version"], "1.3.49")
         self.assertEqual(MANIFEST["file_name"], "model_viewer.elf")
         self.assertEqual(MANIFEST["icon"], "solid:f1b2")
@@ -92,21 +93,27 @@ class ModelViewerContract(unittest.TestCase):
         self.assertIn("ESP_ELFSYM_EXPORT(t5_video_get_api)", LAUNCHER)
 
     def test_fast_video_reuses_gameboy_scan_architecture(self):
-        self.assertIn("#define TARGET_FPS 24", VIDEO)
-        self.assertIn("uint8_t *g_buffers[2]", VIDEO)
-        self.assertIn("g_state_buffer", VIDEO)
-        self.assertIn("esp_lcd_new_i80_bus", VIDEO)
-        self.assertIn("esp_lcd_panel_io_tx_color", VIDEO)
-        self.assertIn("xTaskCreatePinnedToCore", VIDEO)
-        self.assertIn("scan_task", VIDEO)
-        self.assertIn("Board::ScopedI2CLock", VIDEO)
-        self.assertIn("GameBoy-derived raw EPD video", VIDEO)
+        self.assertIn("#define TARGET_FPS 24", ENGINE)
+        self.assertIn("uint8_t *g_buffers[2]", ENGINE)
+        self.assertIn("g_state_buffer", ENGINE)
+        self.assertIn("esp_lcd_new_i80_bus", ENGINE)
+        self.assertIn("esp_lcd_panel_io_tx_color", ENGINE)
+        self.assertIn("risc_cpu_worker_start_v2", ENGINE)
+        self.assertIn("scan_task", ENGINE)
+        # Power sequencing belongs to the installed provider, shared with the
+        # Reader engine. Reintroducing a firmware I2C owner would contend with it.
+        self.assertIn("display_power", ENGINE)
+        self.assertNotIn("Board::ScopedI2CLock", ENGINE)
+        self.assertNotIn("Wire.", ENGINE)
+        self.assertIn("GameBoy-derived raw EPD video", ENGINE)
+        self.assertNotIn("esp_lcd_", VIDEO)
+        self.assertIn("platformDisplayProvider()", VIDEO)
 
     def test_video_teardown_releases_dma_and_lcd_bus(self):
-        self.assertIn("esp_lcd_panel_io_del", VIDEO)
-        self.assertIn("esp_lcd_del_i80_bus", VIDEO)
-        self.assertIn("release_allocations();", VIDEO)
-        self.assertIn("g_scan_task != nullptr", VIDEO)
+        self.assertIn("esp_lcd_panel_io_del", ENGINE)
+        self.assertIn("esp_lcd_del_i80_bus", ENGINE)
+        self.assertIn("release_allocations();", ENGINE)
+        self.assertIn("risc_cpu_worker_join_v2", ENGINE)
 
 
 if __name__ == "__main__":

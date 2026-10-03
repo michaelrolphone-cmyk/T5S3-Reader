@@ -1,0 +1,91 @@
+name: T5 external software pair
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  t5-external-pair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-t5-external-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-t5-external-
+      - name: Build firmware and independent providers
+        run: |
+          python -m pip install platformio==6.1.19 pyelftools==0.32
+          pio pkg install -e t5s3-pro
+          bash scripts/install_x4_provider_toolchain.sh
+          export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+          export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
+          python scripts/build_platform_clock_v1.py
+          python scripts/probe_i2c_esp32s3_v2.py
+          python scripts/audit_i2c_esp32s3_elf.py --strict
+          python scripts/build_pca9535_gpio.py
+          python scripts/build_tps65185_power.py
+          python scripts/build_spi_esp32s3.py
+          python scripts/build_t5s3_sd.py
+          python test/x4pro_import_match_test.py --package t5s3-sd
+          python scripts/build_t5s3_frontlight.py
+          python scripts/build_display_epd_video.py
+          python scripts/stage_t5s3_packages.py
+          pio run -e t5s3-pro
+          python test/hal/external_storage_elf_test.py .pio/build/t5s3-pro/firmware.elf
+      - name: Check storage, frontlight and retained-provider lifecycle
+        run: |
+          STORAGE_TRANSPORT=spi python3 test/storage_volume/run_test.py
+          bash test/run_provider_retained_boundary_test.sh
+          python3 test/hal/retired_storage_import_test.py
+          python3 test/hal/platform_storage_test.py
+          python3 test/hal/display_power_boundary_test.py
+          python3 test/hal/external_display_dispatch_test.py
+          python3 test/hal/external_video_consumer_test.py
+          python3 test/hal/external_i80_teardown_test.py
+          python3 test/resources/cdc_prepare_performance_test.py --current-only
+          python3 test/hal/cpu_dma_reservation_test.py
+          python3 test/hal/external_dma_teardown_test.py
+          python3 test/hal/external_quality_teardown_test.py
+          python3 test/hal/display_linker_noop_test.py
+          python3 test/hal/external_display_elf_test.py .pio/build/t5s3-pro/firmware.elf
+          bash test/run_native_app_test.sh dist/experimental/display-epd-video/driver.elf
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver Drivers/pca9535_gpio/driver.c test/expander/test.c -o /tmp/pca9535-test
+          /tmp/pca9535-test
+          /tmp/pca9535-test uncertain
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver -Dt5_driver_get=pca_driver_get -c Drivers/pca9535_gpio/driver.c -o /tmp/display-pca.o
+          cc -std=c11 -Wall -Wextra -Werror -fsanitize=undefined -Isdk/driver Drivers/tps65185_power/driver.c test/display_power/test.c /tmp/display-pca.o -o /tmp/display-power
+          /tmp/display-power
+          /tmp/display-power timeout
+          /tmp/display-power write
+          c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=undefined -Itest/frontlight/stubs -Isdk/driver test/frontlight/t5_test.cpp -o /tmp/t5-light
+          /tmp/t5-light
+          for elf in dist/experimental/spi-esp32s3-v1/driver.elf dist/experimental/t5s3-sd/driver.elf dist/experimental/t5s3-frontlight/driver.elf; do
+            bash test/run_native_app_test.sh "$elf"
+          done
+      - name: Build separately reviewed module-store pair
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          pio pkg install --global --tool 'platformio/tool-mklittlefs@1.203.210628'
+          python scripts/build_x4_module_store.py --board t5s3-pro \
+            --tool "$HOME/.platformio/packages/tool-mklittlefs/mklittlefs" \
+            --source-sha "$SOURCE_SHA" --output "$RUNNER_TEMP/t5-external-deployment"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: t5-external-deployment-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/t5-external-deployment/
+          retention-days: 7
+          if-no-files-found: error

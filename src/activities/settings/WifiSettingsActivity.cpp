@@ -4,8 +4,10 @@
 #include <I18n.h>
 
 #include "MappedInputManager.h"
+#include "activities/util/RequiredAppActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "native/InstalledAppPath.h"
 #include "native/NativeAppHost.h"
 
 void WifiSettingsActivity::onEnter() {
@@ -18,7 +20,21 @@ void WifiSettingsActivity::onEnter() {
 void WifiSettingsActivity::loop() {
   if (!launchAttempted) {
     launchAttempted = true;
-    const esp_err_t result = runNativeApp("/sd/Apps/wifi_settings.elf", renderer, mappedInput);
+    std::string wifiSettingsPath;
+    if (!resolveInstalledAppPath("wifi_settings.elf", wifiSettingsPath)) {
+      startActivityForResult(
+          std::make_unique<RequiredAppActivity>(
+              renderer, mappedInput, "wifi_settings.elf", "Wi-Fi Networks"),
+          [this](const ActivityResult& result) {
+            // Cancellation exits this wrapper on its next loop. A verified
+            // install repeats the original Settings -> Network step in place.
+            launchAttempted = result.isCancelled;
+            launchFailed = false;
+            requestUpdate();
+          });
+      return;
+    }
+    const esp_err_t result = runNativeApp(wifiSettingsPath.c_str(), renderer, mappedInput);
     if (result == ESP_OK) {
       // A native app may have queued a firmware-owned activity (the Wi-Fi selector)
       // before returning. Do not pop this launcher in the same ActivityManager
@@ -60,9 +76,8 @@ void WifiSettingsActivity::render(RenderLock&&) {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, "Wi-Fi Networks");
   const int y = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing * 3;
   if (launchFailed) {
-    renderer.drawCenteredText(UI_10_FONT_ID, y, "wifi_settings.elf could not be launched");
-    renderer.drawCenteredText(SMALL_FONT_ID, y + 36,
-                              "Install Wi-Fi Networks from the App Store or copy it to /Apps.");
+    renderer.drawCenteredText(UI_10_FONT_ID, y, "Wi-Fi Networks could not be launched");
+    renderer.drawCenteredText(SMALL_FONT_ID, y + 36, "Back returns to Settings.");
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "OK", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   } else {

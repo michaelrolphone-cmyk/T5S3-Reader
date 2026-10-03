@@ -16,13 +16,44 @@ flags=(-std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined
        -fno-omit-frame-pointer -pthread -I"$repo_dir/src")
 for test_case in package_identity package_preflight package_json_guard \
                  package_use_gate package_transaction package_recovery \
-                 package_ordinary_stage package_ordinary_installer \
-                 package_driver_transition driver_install_intake; do
+                 package_resource_only package_resource_transaction \
+                 package_ordinary_stage package_ordinary_tree package_ordinary_manifest package_ordinary_installer \
+                 package_driver_transition driver_install_intake \
+                 package_rte_zip package_rte_zip_integrity package_cdc_migration \
+                 package_independent_catalog package_online_catalog; do
   echo "== Ordinary package MVP: ${test_case} =="
   c++ "${flags[@]}" "$repo_dir/test/resources/${test_case}_test.cpp" \
       -lcrypto -o "$binary"
   "$binary"
 done
+echo '== Ordinary package MVP: production SD resource tree =='
+c++ "${flags[@]}" -I"$repo_dir/test/resources/tree_stubs" \
+    "$repo_dir/test/resources/package_ordinary_sd_tree_test.cpp" -o "$binary"
+"$binary"
+echo '== Ordinary package MVP: durable receipt wire/SD/cleanup boundary =='
+c++ "${flags[@]}" -I"$repo_dir/test/resources/tree_stubs" \
+    -I"$repo_dir/test/resources/cdc_sd_stubs" \
+    "$repo_dir/test/resources/package_verification_receipt_test.cpp" -lcrypto -o "$binary"
+"$binary"
+# Separate translation units detect a bridge-local gate that would appear
+# correct in a one-file unit test but permit simultaneous /Drivers mutation.
+echo '== Ordinary package MVP: package_mutation_gate =='
+c++ "${flags[@]}" "$repo_dir/test/resources/package_mutation_gate_test.cpp" \
+    "$repo_dir/test/resources/package_mutation_gate_other.cpp" \
+    -o "$binary"
+"$binary"
+echo '== Ordinary package MVP: production CDC SD intent/recovery =='
+cdc_fixture="$(mktemp -d)"
+c++ "${flags[@]}" -I"$repo_dir/test/resources/cdc_sd_stubs" \
+    "$repo_dir/src/runtime/packages/PackageCdcSdMigration.cpp" \
+    "$repo_dir/test/resources/package_cdc_sd_migration_test.cpp" -lcrypto -o "$binary"
+"$binary" "$cdc_fixture"
+rmdir "$cdc_fixture" 2>/dev/null || true
+python3 "$repo_dir/test/resources/package_signing_absence_test.py"
+python3 "$repo_dir/test/resources/package_catalog_roundtrip_test.py"
+python3 "$repo_dir/test/resources/package_nested_zip_test.py"
+python3 "$repo_dir/test/resources/resource_only_delivery_test.py"
+python3 "$repo_dir/test/resources/package_sd_zip_stage_test.py"
+python3 "$repo_dir/test/resources/release_runtime_identity_test.py"
 python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
-echo 'PASS: ordinary package MVP host tests (four kinds, source-neutral integrity, early download refusal, staging, versioned driver upgrades and recoverable publication).'
-echo 'Deferred signer/P-256 prototype: test/run_signed_package_experiment.sh (not an MVP gate).'
+echo 'PASS: ordinary package MVP host tests (four kinds, shared mutation gate, runtime-compatible release identity, source-neutral integrity, early download refusal, ZIP CRC/topology, staging, versioned driver upgrades and recoverable publication).'

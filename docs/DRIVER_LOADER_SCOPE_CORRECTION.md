@@ -16,7 +16,7 @@ P-256 package signatures, signer trust roots/scopes/rotation/revocation, signed 
 
 ## Existing state versus target
 
-This branch currently implements signed-import terminology and assumes a cross-PR signed admission gate. Leave the truthful existing-state narrative intact until the source is changed, but do not report the signature path as a required acceptance criterion. The new code must provide a working unsigned-package route with the same structural checks and independent privileged-runtime restrictions. Do not weaken OS/CPU ABI import containment or physical ownership merely to remove signature dependencies. This document modifies specification, not executable behavior.
+The September 17 branch used signed-import terminology and assumed a cross-PR admission gate. Current U1 source has removed that isolated subsystem and uses manager-validated admission with declared imports/content digests; see [purge audit](U1_SIGNING_PURGE_AUDIT.md). The new code must provide a working unsigned-package route with the same structural checks and independent privileged-runtime restrictions. Do not weaken OS/CPU ABI import containment or physical ownership merely to remove signature dependencies. This document modifies specification, not executable behavior.
 
 ## Change-control gate
 

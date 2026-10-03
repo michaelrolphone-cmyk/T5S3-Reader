@@ -65,6 +65,28 @@ uint16_t HalPowerManager::getBatteryPercentage() const {
   return _batteryCachedPercent;
 }
 
+bool HalPowerManager::readBatteryPercentage(uint16_t* percentage) const {
+  if (!percentage) return false;
+#if defined(BOARD_XTEINK_X4_PRO)
+  // Never turn an absent, failed or expired optional gauge into a fake 0%.
+  return Board::readBatteryStateOfCharge(percentage);
+#else
+  // Preserve the established T5/EPD47 cached presentation behavior.
+  *percentage = getBatteryPercentage();
+  return true;
+#endif
+}
+
+bool HalPowerManager::isBatteryCharging() const {
+#if defined(BOARD_XTEINK_X4_PRO)
+  Board::BatteryState state{};
+  return Board::readBatteryState(&state) && state.charging;
+#else
+  // Existing boards use the external-power indicator for this icon.
+  return Board::isUsbConnected();
+#endif
+}
+
 HalPowerManager::Lock::Lock() {
   xSemaphoreTake(powerManager.modeMutex, portMAX_DELAY);
   if (powerManager.currentLockMode != None) {

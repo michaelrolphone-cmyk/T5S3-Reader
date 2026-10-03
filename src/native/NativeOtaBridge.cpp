@@ -6,11 +6,10 @@
 #include <esp_task_wdt.h>
 
 #include <cstring>
-#include <string>
 
-#include "WifiCredentialStore.h"
 #include "network/OtaUpdater.h"
 #include "runtime/network/NetworkService.h"
+#include "runtime/network/SavedNetworkConnection.h"
 
 namespace {
 
@@ -40,47 +39,19 @@ bool ensureOtaNetworkReady() {
       if (state.connection != RuntimeNetwork::ConnectionState::Connected) break;
       delay(100);
     }
-    LOG_ERR("OTA", "Selected Wi-Fi did not obtain an IP address; skipping HTTP request");
-    return false;
-  }
-
-  WIFI_STORE.loadFromFile();
-  const WifiCredential* credential = nullptr;
-  const std::string last = WIFI_STORE.getLastConnectedSsid();
-  if (!last.empty()) credential = WIFI_STORE.findCredential(last);
-  if (!credential) {
-    const auto& saved = WIFI_STORE.getCredentials();
-    if (!saved.empty()) credential = &saved.front();
-  }
-  if (!credential || credential->ssid.empty()) {
-    LOG_ERR("OTA", "No active network or saved Wi-Fi credentials; skipping HTTP request");
-    return false;
-  }
-
-  // Copy credentials before modifying the store on successful connection.
-  const std::string ssid = credential->ssid;
-  const std::string password = credential->password;
-  LOG_INF("OTA", "No ready network; connecting saved Wi-Fi before update request");
-  RuntimeNetwork::wifi().connect(ssid.c_str(), password.empty() ? nullptr : password.c_str());
-
-  const uint32_t started = millis();
-  while (millis() - started < kWifiConnectTimeoutMs) {
-    esp_task_wdt_reset();
-    const auto state = RuntimeNetwork::state();
-    if (state.connection == RuntimeNetwork::ConnectionState::Connected && state.hasAddress) {
-      WIFI_STORE.setLastConnectedSsid(ssid);
-      LOG_INF("OTA", "Network ready for firmware update");
-      return true;
-    }
-    if (state.connection == RuntimeNetwork::ConnectionState::Failed ||
-        state.connection == RuntimeNetwork::ConnectionState::NetworkNotFound) {
-      LOG_ERR("OTA", "Saved Wi-Fi connection failed before IP assignment");
+    if (RuntimeNetwork::state().connection == RuntimeNetwork::ConnectionState::Connected) {
+      LOG_ERR("OTA", "Selected Wi-Fi did not obtain an IP address; skipping HTTP request");
       return false;
     }
-    delay(100);
   }
-  LOG_ERR("OTA", "Timed out waiting for Wi-Fi and an IP address");
-  return RuntimeNetwork::ready();
+
+  if (!RuntimeNetwork::ensureSavedConnection(kWifiConnectTimeoutMs)) {
+    LOG_ERR("OTA", "No saved Wi-Fi network became ready; skipping HTTP request");
+    return false;
+  }
+
+  LOG_INF("OTA", "Network ready for firmware update");
+  return true;
 }
 
 t5_ota_result_t mapResult(OtaUpdater::OtaUpdaterError result) {

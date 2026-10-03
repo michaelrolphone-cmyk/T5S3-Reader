@@ -32,6 +32,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" -I"$repo/src" \
 "$build/quiesce-test" "$build/stuck.so"
 # Host provider owns discovery/claims; actual hardware controller is not built.
 bash "$repo/test/run_usb_host_v2_test.sh"
+# Integrate the class shipped on master, but require checked host release on
+# this branch and verify failed-open orphan and failed-close recovery.
+bash "$repo/test/run_usb_ch34x_v2_test.sh"
 # Generic graph pins transitive dependencies, rejects cycles and stale grants.
 bash "$repo/test/run_provider_graph_v2_test.sh"
 # Existing two-ELF exercise (mock host only).
@@ -47,3 +50,5 @@ if nm -D --undefined-only "$build/cdc-v2.so" | grep -E 'usb_host_|nativeUsb|UsbC
   echo 'USB v2 ELF imports a firmware USB implementation' >&2
   exit 1
 fi
+# A serial port shutdown must never unload unrelated installed drivers.
+python3 "$repo/test/drivers/usb_serial_teardown_source_test.py"

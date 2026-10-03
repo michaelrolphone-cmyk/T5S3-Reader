@@ -29,6 +29,8 @@ const risc_touch_api_v1* api = nullptr;
 uint64_t subscription = 0;
 bool enabled = true;
 bool quarantined = false;
+bool bootstrapAttached = false;
+bool coordinatesSuppressed = false;
 uint32_t lastAttemptMs = 0;
 
 TaskHandle_t workerTask = nullptr;
@@ -58,7 +60,8 @@ NativeTouchPoint taps[kTapDepth]{};
 uint8_t tapHead = 0, tapCount = 0;
 SwipeEvent swipes[kSwipeDepth]{};
 uint8_t swipeHead = 0, swipeCount = 0;
-uint8_t homeCount = 0;
+uint32_t homeEvents[kHomeDepth]{};
+uint8_t homeHead = 0, homeCount = 0;
 
 void clearTransientLocked(bool clearQueues) {
   touchActive = false;
@@ -72,7 +75,7 @@ void clearTransientLocked(bool clearQueues) {
   if (clearQueues) {
     tapHead = tapCount = 0;
     swipeHead = swipeCount = 0;
-    homeCount = 0;
+    homeHead = homeCount = 0;
   }
 }
 
@@ -115,7 +118,7 @@ void applySnapshotLocked(const risc_touch_snapshot_v1& snapshot, bool clearQueue
   if (clearQueues) {
     tapHead = tapCount = 0;
     swipeHead = swipeCount = 0;
-    homeCount = 0;
+    homeHead = homeCount = 0;
   }
 
   // A snapshot after startup/gap is authoritative for held state, but cannot
@@ -182,7 +185,11 @@ void process(const risc_touch_event_v1& event) {
   ++diagnostics.events;
 
   if (event.kind == RISC_TOUCH_EVENT_BUTTON_DOWN) {
-    if (event.id == 0u && homeCount < kHomeDepth) ++homeCount;
+    if (event.id == 0u && homeCount < kHomeDepth) {
+      const uint8_t tail = static_cast<uint8_t>((homeHead + homeCount) % kHomeDepth);
+      homeEvents[tail] = static_cast<uint32_t>(event.timestamp_ms);
+      ++homeCount;
+    }
     portEXIT_CRITICAL(&touchStateMux);
     return;
   }
@@ -385,36 +392,38 @@ bool stopWorker() {
 }
 
 bool activate() {
-  if (api) return startWorker();
-  if (!enabled || quarantined || !Storage.ready()) return false;
+  if (!enabled || quarantined) return false; // Graph may use the read-only boot store.
+  if (api) return subscription && startWorker();
+  // A failed release revokes API use but retains the exact grant for cleanup.
+  // Never overwrite it with a new acquisition, including a failed one.
+  if (lease.grant.slot) return false;
   const uint32_t now = millis();
   if (lastAttemptMs && static_cast<uint32_t>(now - lastAttemptMs) < kRetryMs) return false;
   lastAttemptMs = now;
 
-  RuntimeInstalledProviders::Lease candidate{};
-  if (!RuntimeInstalledProviders::acquireCapability("input.touch.raw", RISC_TOUCH_API_V1, &candidate)) {
+  if (!RuntimeInstalledProviders::acquireCapability("input.touch.raw", RISC_TOUCH_API_V1, &lease)) {
+    if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) quarantined = true;
     LOG_DBG("INPUT", "Touch provider unavailable: %s", RuntimeInstalledProviders::lastError());
     return false;
   }
 
-  const auto* candidateApi = static_cast<const risc_touch_api_v1*>(candidate.interface);
+  const auto* candidateApi = static_cast<const risc_touch_api_v1*>(lease.interface);
   if (!candidateApi || candidateApi->api_version != RISC_TOUCH_API_V1 ||
       candidateApi->struct_size < sizeof(*candidateApi) ||
       !candidateApi->subscribe || !candidateApi->unsubscribe ||
       !candidateApi->poll || !candidateApi->next || !candidateApi->snapshot) {
-    (void)RuntimeInstalledProviders::release(&candidate);
+    if (!RuntimeInstalledProviders::release(&lease)) quarantined = true;
     LOG_ERR("INPUT", "Touch provider exposed an invalid API");
     return false;
   }
 
   const uint64_t candidateSubscription = candidateApi->subscribe(candidateApi->context);
   if (!candidateSubscription) {
-    (void)RuntimeInstalledProviders::release(&candidate);
+    if (!RuntimeInstalledProviders::release(&lease)) quarantined = true;
     LOG_ERR("INPUT", "Touch provider subscription failed");
     return false;
   }
 
-  lease = candidate;
   api = candidateApi;
   subscription = candidateSubscription;
   pollFailureActive = pollFailureExpired = false;
@@ -422,13 +431,10 @@ bool activate() {
   serviceStarted = false;
   (void)resync(true);
   if (!startWorker()) {
-    const bool unsubscribed = api->unsubscribe(api->context, subscription);
-    subscription = 0;
-    RuntimeInstalledProviders::Lease grant = lease;
-    lease = {};
-    api = nullptr;
-    const bool released = RuntimeInstalledProviders::release(&grant);
-    if (!unsubscribed || !released) quarantined = true;
+    // The same checked path retains a failed unsubscribe or release, rather
+    // than losing ownership while unwinding an unsuccessful activation.
+    (void)nativeTouchSuspend();
+    enabled = true;
     return false;
   }
 
@@ -487,37 +493,83 @@ bool nativeTouchSuspend() {
 
   pollFailureActive = pollFailureExpired = false;
   clearTransient();
-  if (!api) {
+  if (subscription) {
+    if (!api || !api->unsubscribe(api->context, subscription)) {
+      quarantined = true;
+      return false;
+    }
     subscription = 0;
-    lease = {};
+  }
+  if (bootstrapAttached) {
+    // The X4 boot controller owns the provider module and its bus/rail. Only
+    // this consumer's subscription is released here.
+    quarantined = false;
     return true;
   }
-
-  bool ok = true;
-  if (subscription && !api->unsubscribe(api->context, subscription)) ok = false;
-  subscription = 0;
-  RuntimeInstalledProviders::Lease grant = lease;
-  lease = {};
+  // release() may revoke the API before reporting failed quiescence. Keep its
+  // exact grant for retries, but never call through the revoked API again.
   api = nullptr;
-  if (!RuntimeInstalledProviders::release(&grant)) ok = false;
-  if (!ok) {
+  if (lease.grant.slot && !RuntimeInstalledProviders::release(&lease)) {
     quarantined = true;
     LOG_ERR("INPUT", "Touch provider failed to quiesce");
+    return false;
   }
-  return ok;
+  quarantined = false;
+  return true;
 }
 
 bool nativeTouchResume() {
+  // A cancelled sleep/failed activation may still own a subscription or a
+  // pending grant. Finish that exact cleanup before starting a fresh lifetime.
+  if ((quarantined || (!api && lease.grant.slot)) && !nativeTouchSuspend()) return false;
   enabled = true;
+#if defined(BOARD_XTEINK_X4_PRO)
+  if (bootstrapAttached && api && !subscription && !quarantined) {
+    subscription = api->subscribe(api->context);
+    if (!subscription) return false;
+    clearTransient();
+    (void)resync(true);
+  }
+#endif
   if (!api) lastAttemptMs = 0;
   return activate();
 }
+
+#if defined(BOARD_XTEINK_X4_PRO)
+bool nativeTouchAttachBootstrap(const risc_touch_api_v1* candidate) {
+  if (api || bootstrapAttached || quarantined || lease.grant.slot ||
+      RuntimeInstalledProviders::hasLiveGrants() || !candidate ||
+      candidate->api_version != RISC_TOUCH_API_V1 ||
+      candidate->struct_size < sizeof(*candidate) || !candidate->subscribe ||
+      !candidate->unsubscribe || !candidate->poll || !candidate->next ||
+      !candidate->snapshot) return false;
+  const uint64_t token = candidate->subscribe(candidate->context);
+  if (!token) return false;
+  api = candidate;
+  subscription = token;
+  bootstrapAttached = true;
+  clearTransient();
+  serviceStarted = false;
+  (void)resync(true);
+  if (!startWorker()) {
+    if (nativeTouchSuspend()) {
+      api = nullptr;
+      bootstrapAttached = false;
+    }
+    enabled = true;
+    return false;
+  }
+  enabled = true;
+  LOG_INF("INPUT", "X4 touch bootstrap attached");
+  return true;
+}
+#endif
 
 bool nativeTouchAvailable() {
   portENTER_CRITICAL(&touchStateMux);
   const bool worker = workerTask != nullptr;
   portEXIT_CRITICAL(&touchStateMux);
-  return api != nullptr && subscription != 0 && worker;
+  return enabled && !quarantined && api != nullptr && subscription != 0 && worker;
 }
 
 bool nativeTouchHadActivity() {
@@ -536,14 +588,28 @@ void nativeTouchDiscardGestures() {
   ++focusRequested;
   tapHead = tapCount = 0;
   swipeHead = swipeCount = 0;
-  homeCount = 0;
+  homeHead = homeCount = 0;
   gestureEligible = false;  // A held contact must lift before it can become a tap.
+  portEXIT_CRITICAL(&touchStateMux);
+}
+
+void nativeTouchSuppressCoordinates(bool suppressed) {
+  portENTER_CRITICAL(&touchStateMux);
+  if (coordinatesSuppressed == suppressed) {
+    portEXIT_CRITICAL(&touchStateMux);
+    return;
+  }
+  coordinatesSuppressed = suppressed;
+  ++focusRequested;
+  tapHead = tapCount = 0;
+  swipeHead = swipeCount = 0;
+  gestureEligible = false;
   portEXIT_CRITICAL(&touchStateMux);
 }
 
 bool nativeTouchGetTap(NativeTouchPoint& point) {
   portENTER_CRITICAL(&touchStateMux);
-  if (!tapCount) {
+  if (coordinatesSuppressed || !tapCount) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }
@@ -556,7 +622,7 @@ bool nativeTouchGetTap(NativeTouchPoint& point) {
 
 bool nativeTouchGetContact(NativeTouchPoint& point) {
   portENTER_CRITICAL(&touchStateMux);
-  const bool active = touchActive && gestureEligible;
+  const bool active = !coordinatesSuppressed && touchActive && gestureEligible;
   if (active) point = currentTouch;
   portEXIT_CRITICAL(&touchStateMux);
   return active;
@@ -565,7 +631,7 @@ bool nativeTouchGetContact(NativeTouchPoint& point) {
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs) {
   uint32_t started = 0;
   portENTER_CRITICAL(&touchStateMux);
-  if (!touchActive || touchMoved || !gestureEligible) {
+  if (coordinatesSuppressed || !touchActive || touchMoved || !gestureEligible) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }
@@ -578,7 +644,7 @@ bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs) {
 
 bool nativeTouchGetSwipe(NativeTouchPoint& start, NativeTouchPoint& end) {
   portENTER_CRITICAL(&touchStateMux);
-  if (!swipeCount) {
+  if (coordinatesSuppressed || !swipeCount) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }
@@ -591,15 +657,22 @@ bool nativeTouchGetSwipe(NativeTouchPoint& start, NativeTouchPoint& end) {
   return true;
 }
 
-bool nativeTouchTakeHomePress() {
+bool nativeTouchTakeHomePress(unsigned long& eventMs) {
   portENTER_CRITICAL(&touchStateMux);
   if (!homeCount) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }
+  eventMs = homeEvents[homeHead];
+  homeHead = static_cast<uint8_t>((homeHead + 1u) % kHomeDepth);
   --homeCount;
   portEXIT_CRITICAL(&touchStateMux);
   return true;
+}
+
+bool nativeTouchTakeHomePress() {
+  unsigned long eventMs = 0;
+  return nativeTouchTakeHomePress(eventMs);
 }
 
 NativeTouchDiagnostics nativeTouchDiagnostics() {

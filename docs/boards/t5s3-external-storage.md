@@ -1,0 +1,235 @@
+# T5 shared storage and frontlight cutover
+
+The authoritative placement is ordinary SD packages, not the historical
+internal `/bootfs` route at `ec0c099`. See [SD driver bootstrap](sd-driver-bootstrap.md)
+for the checked read-only bootstrap-to-provider handoff and installation limits.
+Existing extracted SPI, SD, frontlight, I2C, expander, power, clock and display
+ELFs are reused; shared Reader/application storage uses `HalStorageVolume`.
+Missing/invalid packages stop composition. The firmware bootstrap cannot serve
+normal reads/writes after handoff or rescue an absent external provider.
+
+The T5 frontlight ELF owns GPIO11 and LEDC timer0/channel0. It preserves the
+0–10 quadratic brightness curve, 5 kHz frequency, 8-bit resolution and full-on
+endpoint. It uses native register operations, with no firmware PWM calls. Other
+active channels/timers are preserved, and a conflicting timer0 user or unsupported
+clock source is rejected. The shared board facade only forwards the saved level.
+Register-model tests are not physical PWM validation.
+
+## Sleep ownership
+
+Input shutdown drains all providers except the exact platform storage/frontlight
+lease generations and their healthy dependency closure. A pending release,
+unrelated active grant, failed lower dependency or failed cleanup refuses the
+barrier. Persistent capabilities remain mapped; this is not a claim that their
+physical hardware has quiesced.
+
+Immediately before display/board teardown, the storage provider checks that no
+writer or uncertain operation remains, completes synchronous media work, and
+blocks new I/O. Read handles may remain as RAM metadata, with their provider and
+dependencies pinned until reset. Cancellation before any pin/rail change restores
+those handles without remounting. Actual deep sleep restarts the MCU and acquires
+fresh generations. A missing/unmounted medium with no uncertain transfer can
+also cross the barrier. Writers and failed writes cannot.
+
+Hard power-off alone reserves the power provider while storage is still usable.
+If storage refuses sleep, reservation cancellation retains a failed exact release
+for retry and never calls its revoked interface. Once the one-way barrier is
+crossed, fallback goes directly to deep sleep; it does not save files, remount,
+or start another graph shutdown. Timer clock sleep uses the same checked display
+boundary. Its existing early timer wake still avoids SD mounting.
+
+## Compatibility
+
+The global `SD` and six Arduino SDFS methods are intentionally retired from
+ordinary app imports. Admission rejects them before allocator/table/module
+fallback and reports an explicit update message. No dummy object or second
+filesystem owner is supplied. Rebuild such legacy applications against
+`t5_storage_get_api` or the shared `/sd` VFS. Unknown user packages are untouched.
+Generic File/FS lifetime accounting remains conservative.
+
+An audit of 11 published archives (including Settings 1.0.1 and Springboard
+1.3.1) verified every archive against its GitHub release digest and inspected
+both ELF symbol tables. None imported these retired symbols. Exact identities,
+URLs and hashes are in `released-storage-import-audit.json`; this is a sample,
+not a claim about all historical or user-built applications. The read-only
+`scripts/audit_storage_imports.py` can inspect additional archives.
+
+## Artifacts and validation
+
+`stage_t5s3_packages.py` emits independent ordinary archives, installed SD
+package roots, matching Inbox archives and the board profile. The historical
+`build_x4_module_store.py` CLI now produces a firmware/SD bundle with schema 2;
+no internal flash driver image is emitted. Existing partition geometry is
+unchanged and old internal-flash contents are neither mounted nor erased.
+
+Local checks cover both firmware targets; real provider/FatFs/HAL operations on
+native one-bit and SPI card models; ELF imports/relocations; released import
+auditing; missing providers; retained read handles; writer refusal; lower-provider
+shutdown failure/retry and fresh acquisition; power reservation cancellation;
+frontlight duty/register ownership; shared Home dispatch and clock sleep wiring.
+Host fixtures do not execute Xtensa code or prove device timing. The graph suite
+passed with UBSan locally; the host ASan run stalled during startup, so no local
+ASan pass is claimed.
+
+The M3 cutover, shared DMA reservation boundary and measured pre/post-U1
+warm-provider correction are described below. Hosted CI is checked separately. No hardware validation,
+flashing, formatting or provisioning was performed. Physical validation and
+review of the paired deployment remain separate owner steps.
+
+### M3 expander prerequisite (software integration)
+
+The T5 bootstrap profile now also contains `i2c-esp32s3-v2@0.1.6` and
+`pca9535-gpio@0.1.0`. The latter claims address 0x20 once and owns PCA9535
+register transactions. Board startup resolves that provider before expander
+controls; absent or partially started providers fail closed. Early desk-clock
+startup reads the SD bootstrap inventory, releases it, and does not activate the normal storage provider.
+
+The board holds two nonoverlapping, generation-bound pin grants: radio enable
+IO00 and button IO12. `tps65185-power@0.1.0` owns the display IO10/11/13–17
+grant and the sole I2C claim for TPS65185 at 0x68.
+Output grants initialize safe low levels before direction changes. Button and
+power-good/interrupt pins remain inputs. Writes outside a grant and stale
+handles are rejected; release restores only that grant's safe output bits.
+Unconfirmed writes retain chip ownership and dependencies until reboot rather
+than retrying or restoring a stale bank. Retained platform sleep grants include
+the expander and its I2C dependency, including partially acquired grants.
+
+Both existing display engines now consume the same external `display.power`
+capability. OE/mode/PWRUP/VCOM drop before WAKEUP, preserving the existing
+shutdown order. A failed write retains the power grant and dependencies;
+failed power teardown cannot free the fast engine buffers or complete sleep.
+The quality worker refuses to scan without confirmed power. Register/power
+sequencing is external. No physical pin, waveform, sleep or timing validation is
+claimed. The expander/power prerequisite expanded the profile from four to seven
+ordinary packages; older paired artifacts do not represent that source.
+
+### M3 display extraction — software implementation
+
+The local `display-epd-video@0.1.5` package now contains the existing M5GFX
+0.2.20 Reader waveform/history engine, Wisp path and the existing fast mono/gray
+engine. Reader firmware holds a software canvas and forwards presentation;
+`NativeVideoBridge` retains the takeover check and forwards legacy video calls.
+The provider dispatcher excludes simultaneous Reader/fast ownership and retains
+failed partial starts/stops. Platform composition pins its exact lease, including
+timer boot before storage starts. This is the eighth T5 bootstrap package. It replaces the old ABI-1
+0.1.4 video proxy, which cannot run against this firmware after its private
+`t5_video_get_api` import exception is removed. Firmware and the independently
+built SD package set must be paired.
+
+Pinned IDF 4.4.7 LCD code is staged into the provider. Its TX mechanics use
+OS/CPU ABI 3 to reserve a channel and trigger from the resident SDK allocator,
+which also serves SPI and hardware crypto. No second GDMA allocator, global DMA
+clock/reset owner, or copied SDK peripheral clock table is linked into the ELF.
+The provider owns LCD-only clock control, descriptors, channel configuration and
+transfers. Shutdown removes its LCD IRQ on the allocating core, stops TX with
+100-poll/100-ms bounds, then releases the shared reservation. Failed cleanup
+retains tokens, buffers, code and dependencies. Worker completion precedes frees.
+
+ABI 3 adds only two reservation functions to frozen ABI 2; ABI 1/2 cannot resolve
+them. No firmware `t5_video_get_api`, LCD or GPIO implementation is imported.
+The original generic display.output prefix remains intact; a checked T5-specific
+extension carries Reader history operations and the legacy fast API. Reader/fast
+handoff invalidates stale frame tokens, including portable display clients.
+
+The independent GCC14 package, structural loader validation and relocation map
+checks pass locally. Canonical sections preserve IRAM literal ordering; an opt-in
+build profile compacts the observed all-zero GCC14 linker placeholders without
+relaxing runtime validation. Local firmware builds pass for X4 and T5S3. The
+actual T5 firmware ownership audit finds no LCD/EPD engine and confirms the shared
+SDK DMA reservation boundary. Host checks cover dispatcher handoff, retained
+shutdown, CPU reservation generation/context/failure handling, simulated mixed
+SPI/crypto ownership, scrub, retired imports and shared Home dispatch. Exact ABI
+admission and eight-package T5/seven-package X4 bootstrap fixtures pass.
+
+The full ASan graph script stalled on this macOS host after its first graph test
+and was stopped; targeted manager/spec/snapshot tests run separately. The generic
+USB catalog test needs its full generated catalog and was not runnable with the
+board-only package staging. CI remains the check for those complete build inputs.
+These results do not establish hardware timing, display quality or acceptance.
+
+The five old raw LCD entry points are retired from ordinary app imports before
+fallback lookup. Applications use display.output or the retained legacy video
+consumer. Eleven preserved release archives were rechecked against their prior
+release digests and neither raw SD nor LCD imports were found; exact results are
+in `released-display-import-audit.json`. This sample does not establish safety
+for every historical or user-built application.
+
+### Shared pre/post-U1 warm-provider scan measurement
+
+The source-backed fixture in `test/resources/cdc_prepare_performance_test.py`
+compares `prepare()` from pre-U1 `ca66db298` with the current shared path and
+compiles the actual CDC migration adapter against a filesystem-backed fixture.
+With an already allocated graph, 128 ordinary directories and 64 queries:
+
+| Path | Directory-entry reads | Host elapsed time |
+| --- | ---: | ---: |
+| Pre-U1 warm prepare | 0 | 0.0002 ms |
+| Post-U1 before cache, warm | 8,256 | about 138 ms |
+| Corrected first query plus 63 warm | 129 | about 2.30 ms |
+| Corrected 64 warm queries | 0 | about 0.0006 ms |
+
+These are one local host run's measurements, not ESP32/SD timings or a proof of
+the reported freeze's cause. The reliable regression is repeated directory work:
+current `prepare()` checks CDC recovery before its existing-graph return, and
+candidate filtering repeats that check. The scan yields after each item on the
+device; avoiding identical rescans also avoids those repeated scheduler waits.
+
+`cdcMigrationPendingOnSd()` now reuses only a healthy negative observation bound
+to unchanged, quiescent `HalStorage` mount/mutation generations. Active writers,
+external-access uncertainty, mutation during a scan, remounts and failed reads or
+closes prevent reuse. The tiny observation mutex never covers filesystem calls.
+Pending/recovery states are never cached, and transaction/recovery scans remain
+independent. Package content hashing, exact imports, immutable ELF verification,
+manager authority and failed-teardown retention are unchanged.
+
+The fixture asserts read counts and exercises invalidation/failure cases. The
+existing actual SD migration wrapper test passes intent SHA, serialization,
+rename restart and close/partial-write preservation. Run the historical
+comparison with `--baseline c136021e2`; `--current-only` runs the durable current
+regression without requiring historical commits in a shallow CI checkout.
+
+
+### PSRAM-safe SD admission (0.1.2)
+
+The package-only follow-through changes `t5s3-sd` 0.1.1 → 0.1.2. Firmware remains
+1.3.93: the existing privileged OS/CPU ABI1 inventory already contains all six
+mutex/task imports; no host symbols, permission exception or new ABI is added.
+The unchanged `storage.volume@1` and `spi.bus@1` contracts still compose with the
+same eight-package T5 profile. Keep the generated `privileged-imports.v1`,
+`provider-abi.v1`, `.package.json` and ELF together in the ordinary new package;
+copying only the new ELF over old six-import metadata will correctly be refused.
+Loaded SD generations cannot be hot-replaced: ordinary safe installation and
+next-boot selection rules remain unchanged. Delivered X4 1.3.93 files are not
+replaced by this T5 update.
+
+Evidence for the original flaw is `platformio.ini`'s PSRAM loader configuration,
+`esp_elf.c`'s placement of `.bss` in `pdata`, and `esp_elf_adapter.c`'s SPIRAM
+allocation. The prior 0.1.1 target ELF has two S32C1I compare-and-set instructions
+in `enter_lifecycle`/`enter`, acting on the ELF's `.bss` admission byte. Inspecting
+that ELF safely reproduces the unsafe code-generation condition without running
+it on a device. No physical T5 failure was reproduced or attributed to it.
+
+The T5 provider now reuses `x4pro_i2c/os_cpu_v1.h` and the shared FatFs mutex path.
+Its one opaque OS-owned mutex is allocated before any SPI claim, taken with zero
+wait and never recursively. Start, metadata, I/O, sleep and lifecycle callbacks
+check task context and ownership; failed give poisons that generation and pins
+its mutex/ELF/dependencies. No callback may clear poison. Failed SPI release
+preserves the exact claim, and a retained session prevents sleep or quiescence.
+Admission closes before the final quiesce give; acceptance is published only
+after that give succeeds. Stop deletes only after accepted quiescence, with no
+second fallible take/give. The existing bounded card/FatFs deadlines and scheduler
+cooperation are unchanged. T5 still exports reversible prepare/cancel only;
+there is no X4 terminal-rail callback or invented hardware transition.
+
+Focused local checks: 12 admission/poison/concurrency/cleanup cases per transport
+and the X4 absent-card case; 13 real provider/FatFs/HAL wire scenarios per board,
+including busy timeout, eight failed-give returns and retained-read sleep; retained
+provider graph regressions; changed-package versions. These run with ASan/UBSan
+where applicable (local leak detection is disabled under ptrace). GCC14 target
+build validates 307 relative pointers, structural loader admission and the exact
+12-import set with missing/extra negatives; target disassembly has no S32C1I.
+The pinned SDK declaration check is enabled for T5 in the existing builder; local
+SDK headers are unavailable, so that check runs in hosted target CI. Staging checks
+all eight ordinary package identities/hashes and preserves the seven unchanged
+installed payloads byte-for-byte. Host models and target inspection do not prove
+physical contention timing, sleep current or daily-use reliability.

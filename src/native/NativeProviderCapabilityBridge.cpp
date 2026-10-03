@@ -1,3 +1,5 @@
+#include "runtime/packages/ProviderAbiProfile.h"
+#include "ManagedAppAdmission.h"
 #include <T5ProviderCapabilityApi.h>
 #include <T5AppApi.h>
 #include <NativeAppLauncher.h>
@@ -65,11 +67,24 @@ bool declaredCapability(const char* capability, uint32_t version) {
     if (filename.size() < 5 || filename.compare(filename.size() - 4, 4, ".elf")) return false;
     filename.replace(filename.size() - 4, 4, ".json");
     t5_app_manifest_t validated{};
-    if (!readAppManifest(filename.c_str(), validated) || !validated.compatible) return false;
+    std::shared_ptr<const std::string> captured;
+    RuntimePackages::Identity identity{};
+    const auto state=RuntimePackages::captureManagedAppSidecar(path,captured,&identity);
+    if(state==RuntimePackages::ManagedAppMetadata::Denied)return false;
+    std::string json;
+    if(state==RuntimePackages::ManagedAppMetadata::Captured || state==RuntimePackages::ManagedAppMetadata::CapturedLegacy){
+        std::string version;
+        const bool canonical=state==RuntimePackages::ManagedAppMetadata::Captured;
+        if(!parseAppManifest(*captured,validated,&version,canonical)||(canonical && version!=identity.version))return false;
+        json=*captured;
+    }else{
+        if(!readAppManifest(filename.c_str(),validated))return false;
+        const String bytes=Storage.readFile(filename.c_str());json.assign(bytes.c_str(),bytes.length());
+    }
+    if(!validated.compatible)return false;
     const std::string elf(path + 3);
     if (elf.substr(elf.find_last_of('/') + 1) != validated.file_name) return false;
-    const String json = Storage.readFile(filename.c_str());
-    if (!json.length() || json.length() > 2048) return false;
+    if (json.empty() || json.size() > 2048) return false;
     JsonDocument doc;
     if (deserializeJson(doc, json)) return false;
 
@@ -97,11 +112,6 @@ bool declaredCapability(const char* capability, uint32_t version) {
 // Refuse ambiguous matches rather than choosing an arbitrary implementation.
 bool findProvider(const char* capability, uint32_t version, char (&id)[64]) {
     id[0] = 0;
-    char expected[120]{};
-    const int n = std::snprintf(expected, sizeof(expected),
-                                "os-cpu-abi=1\nprovides=%s\napi=%lu\n",
-                                capability, static_cast<unsigned long>(version));
-    if (n <= 0 || static_cast<size_t>(n) >= sizeof(expected)) return false;
     const char* roots[] = {"/Drivers", "/Providers", "/Services"};
     for (const char* root : roots) {
         HalFile dir = Storage.open(root, O_RDONLY);
@@ -129,9 +139,11 @@ bool findProvider(const char* capability, uint32_t version, char (&id)[64]) {
             }
             const uint64_t bytes = profile.fileSize64();
             char data[120]{};
-            const bool matching = bytes == static_cast<uint64_t>(n) &&
-                profile.read(data, static_cast<size_t>(bytes)) == n &&
-                std::memcmp(data, expected, static_cast<size_t>(n)) == 0;
+            char declared[64]{};uint32_t revision=0,api=0;
+            const bool matching = bytes>0 && bytes<sizeof(data) &&
+                profile.read(data, static_cast<size_t>(bytes)) == static_cast<int>(bytes) &&
+                RuntimePackages::parseProviderAbiProfile(data,static_cast<size_t>(bytes),revision,declared,api) &&
+                api==version && !std::strcmp(declared,capability);
             (void)profile.close();
             if (!matching) continue;
             if (id[0]) {
@@ -173,14 +185,24 @@ bool acquire(const char* capability, uint32_t version,
     if (!findProvider(capability, version, id)) return false;
     Lease grant{};
     if (!RuntimeInstalledProviders::acquire(id, capability, version, &grant) ||
-        !grant.grant.slot || !grant.interface) return fail(RuntimeInstalledProviders::lastError());
+        !grant.grant.slot || !grant.interface) {
+        if (grant.grant.slot) {
+            available->provider = grant;
+            available->owner = invocation;
+        }
+        return fail(RuntimeInstalledProviders::lastError());
+    }
     // UINT32_MAX is reserved for the firmware's semantic text-input focus.
     generation = generation >= UINT32_MAX - 1u ? 1u : generation + 1u;
     if (!generation) generation = 1u;
     // The navigation provider interprets which sources overlap this opaque
     // capability. Yield them before the app can subscribe or poll its grant.
     if (!nativeNavigationClaim(generation, capability, version)) {
-        (void)RuntimeInstalledProviders::release(&grant);
+        if (!RuntimeInstalledProviders::release(&grant)) {
+            available->provider = grant;
+            available->owner = invocation;
+            available->generation = generation;
+        }
         return fail("Input ownership handoff failed");
     }
     available->provider = grant;
@@ -196,15 +218,12 @@ bool release(t5_provider_capability_lease_t token) {
     if (!token || !invocation) return false;
     for (auto& slot : active) {
         if (slot.owner != invocation || slot.generation != token) continue;
-        const bool typography=slot.typography;
-        Lease grant = slot.provider;
+        if (slot.typography) { slot = {}; return true; }
+        // U1 release preserves the exact failed grant for checked retry.
+        if (!RuntimeInstalledProviders::release(&slot.provider)) return false;
         slot = {};
-        if(typography) return true;
-        // A failed quiesce may consume the grant and quarantine an ELF. Never
-        // hand out a stale interface or retry a consumed generation.
-        const bool released = RuntimeInstalledProviders::release(&grant);
         nativeNavigationRelease(token);
-        return released;
+        return true;
     }
     return false;
 }
@@ -230,12 +249,10 @@ t5_provider_capability_get_api(uint32_t version) {
 extern "C" void native_app_provider_capabilities_release(void) {
     for (auto& slot : active) {
         if (!slot.owner) continue;
-        const bool typography=slot.typography;
-        Lease grant = slot.provider;
+        if (slot.typography) { slot = {}; continue; }
         const uint32_t token = slot.generation;
+        if (!RuntimeInstalledProviders::release(&slot.provider)) continue;
         slot = {};
-        if(typography) continue;
-        (void)RuntimeInstalledProviders::release(&grant);
         nativeNavigationRelease(token);
     }
 }

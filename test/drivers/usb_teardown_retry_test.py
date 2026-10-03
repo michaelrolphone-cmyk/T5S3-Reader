@@ -21,45 +21,21 @@ class UsbTeardownRetry(unittest.TestCase):
         cls.graph = GRAPH.read_text(encoding="utf-8")
         cls.controller = CONTROLLER.read_text(encoding="utf-8")
 
-    def test_grant_consumption_is_followed_by_verified_graph_shutdown(self):
+    def test_failed_release_retains_exact_grant_until_quiescence(self):
+        # U1 retains the grant during quarantine, rather than consuming it and
+        # then relying on a global shutdown which could disrupt another app.
         release = self.graph.split("bool GraphV2::release(GrantV2 grant)", 1)[1].split(
-            "size_t GraphV2::liveGrants()", 1
-        )[0]
-        self.assertLess(release.index("slot.occupied = false;"),
-                        release.index("deactivateIfUnused(node)"))
-        helper = self.bridge.split("bool releaseGrant(", 1)[1].split(
-            "bool restoreAfterSafeShutdown(", 1
-        )[0]
-        self.assertIn("RuntimeInstalledProviders::release(&grant)", helper)
-        self.assertIn("grant = {};", helper)
-        recovery = self.bridge.split("bool restoreAfterSafeShutdown(", 1)[1].split(
-            "bool codingValid(", 1
-        )[0]
-        self.assertIn("allowShared && !quarantined && RuntimeInstalledProviders::hasLiveGrants()", recovery)
-        self.assertLess(recovery.index("if (!shared && !RuntimeInstalledProviders::shutdown())"),
-                        recovery.index("quarantined = false;"))
-        self.assertNotIn("Serial.end();", self.bridge)
-        self.assertNotIn("Serial.begin(", self.bridge)
-
-    def test_session_close_and_grant_release_are_independent(self):
-        close = self.bridge.split("bool closeClass()", 1)[1].split("bool openClass(", 1)[0]
-        self.assertIn("if (session) {", close)
-        self.assertIn("if (!serial || !serial->close(session))", close)
-        self.assertLess(close.index("session = 0;"),
-                        close.index('releaseGrant(classGrant, "class-grant-release")'))
-        self.assertNotIn("if (!session) return true;", close)
-
-    def test_app_exit_and_reopen_retry_only_safe_shutdown(self):
-        stop = self.bridge.split("bool stopLocked()", 1)[1].split("bool serialStart(", 1)[0]
-        startup = self.bridge.split("bool serialStart(", 1)[1].split("void serialStop()", 1)[0]
-        exit_fn = self.bridge.split("void serialStop()", 1)[1].split("bool serialReadState(", 1)[0]
-        self.assertNotIn("if (quarantined) return;", stop)
-        self.assertIn("if (session) return false;", stop)
-        self.assertIn('releaseGrant(hostGrant, "host-grant-release")', stop)
-        self.assertIn("if (!restoreAfterSafeShutdown(grantOkay))", stop)
-        self.assertIn("if (!stopLocked())", startup)
-        self.assertIn("USBREF stage=serial-start-quarantined error=", startup)
-        self.assertIn("(void)stopLocked();", exit_fn)
+            "size_t GraphV2::liveGrants()", 1)[0]
+        self.assertIn("slot.pendingRelease = true;", release)
+        self.assertLess(release.index("deactivateIfUnused(node)"),
+                        release.index("slot.occupied = false;"))
+        session = (ROOT / "src/runtime/drivers/InstalledProviderSession.h").read_text()
+        self.assertIn("if (!release(&lease_))", session)
+        self.assertIn("recoverFailedProvider(failedProvider_", session)
+        inventory = (ROOT / "src/runtime/drivers/InstalledSerialInventory.h").read_text()
+        shutdown = inventory.split("bool stopChecked()", 1)[1]
+        self.assertLess(shutdown.index("withdrawAll()"), shutdown.index("release(&slot.lease)"))
+        self.assertLess(shutdown.index("release(&slot.lease)"), shutdown.index("slot = Slot{};"))
 
     def test_physical_claim_is_not_lost_when_device_close_is_deferred(self):
         release = self.controller.split("bool release_interface(", 1)[1].split(
@@ -67,12 +43,11 @@ class UsbTeardownRetry(unittest.TestCase):
         )[0]
         self.assertNotIn("Claim *c = claim(id);", release)
         self.assertIn("usb_host_interface_release(", release)
-        self.assertLess(release.index("*c = {};"),
-                        release.index("usb_host_device_close("))
-        deferred = release.split("if (closed != ESP_OK)", 1)[1]
-        self.assertIn("USBCTRL stage=device-close-deferred", deferred)
-        self.assertIn("return true;", deferred)
-        self.assertIn("*d = {};", release)
+        self.assertIn("c->interfaceReleased", release)
+        self.assertIn("RiscUsbController::releaseClaim(", release)
+        self.assertLess(release.index("RiscUsbController::releaseClaim("),
+                        release.index("*c = {};"))
+        self.assertIn("if (detached && !others) *d = {};", release)
         quiesce = self.controller.split("bool quiesce_host()", 1)[1].split(
             "void stop()", 1
         )[0]

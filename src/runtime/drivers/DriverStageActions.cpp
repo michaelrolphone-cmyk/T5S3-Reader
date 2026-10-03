@@ -1,3 +1,6 @@
+#include "runtime/packages/PackageCdcSdMigration.h"
+#include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "DriverStageActions.h"
 
 #include "DriverPackage.h"
@@ -11,6 +14,14 @@
 namespace RuntimeDrivers {
 namespace {
 constexpr size_t kManifestLimit = 4096;
+constexpr RuntimePackages::PackageRuntimePolicy kMigrationPolicy{
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+uint32_t availableRequirement(const char* name) { return RuntimePackages::installedCapabilityVersion(name); }
+bool canonical(const char* id) { return id && !std::strcmp(id, RuntimePackages::kCdcCanonicalId); }
+bool verifyCanonical(const char* path, RuntimePackages::Identity& observed) {
+  return RuntimePackages::verifyManagedOrdinarySdDirectory(path, RuntimePackages::Kind::Driver,
+      RuntimePackages::kCdcCanonicalId, kMigrationPolicy, availableRequirement, observed);
+}
 
 struct Ops {
   bool exists(const char* path) const { return Storage.exists(path); }
@@ -117,11 +128,26 @@ bool inspectDriverStage(const char* id,
   review = {};
   RuntimePackages::OrdinaryTransactionPaths paths{};
   if (!validDriverRoot(id, paths)) return false;
-  if (legacyPending(id)) {
+  if (legacyPending(id) || (RuntimePackages::cdcLineage(RuntimePackages::Kind::Driver, id) &&
+      RuntimePackages::cdcMigrationPendingOnSd())) {
     review.state = RuntimePackages::OrdinaryStageState::RecoveryRequired;
     return true;
   }
   Ops ops;
+  if (canonical(id)) {
+    review = RuntimePackages::reviewOrdinaryStage(ops, RuntimePackages::Kind::Driver, id, verifyCanonical);
+    if (review.state == RuntimePackages::OrdinaryStageState::Ready) {
+      RuntimePackages::Identity greatest{}; bool allowed = false;
+      if (!RuntimePackages::previewCanonicalCdcFromSd(review.candidate, kMigrationPolicy,
+          availableRequirement, greatest, allowed)) review.state = RuntimePackages::OrdinaryStageState::RecoveryRequired;
+      else if (greatest.id[0] && RuntimePackages::comparePackageVersions(review.candidate.version,
+                   greatest.version) != RuntimePackages::VersionOrder::Newer)
+        review.state = RuntimePackages::OrdinaryStageState::StaleVersion;
+      else if (RuntimePackages::systemPackageUseGate().pinned(RuntimePackages::kCdcAliasRoot))
+        review.state = RuntimePackages::OrdinaryStageState::InUse;
+    }
+    return true;
+  }
   review = RuntimePackages::reviewOrdinaryStage(ops,
       RuntimePackages::Kind::Driver, id,
       [id](const char* path, RuntimePackages::Identity& identity) {
@@ -136,6 +162,15 @@ RuntimePackages::OrdinaryTransactionResult retryDriverStage(const char* id) {
     return RuntimePackages::OrdinaryTransactionResult::InvalidIdentity;
   if (legacyPending(id))
     return RuntimePackages::OrdinaryTransactionResult::AmbiguousState;
+  if (canonical(id)) {
+    RuntimePackages::Identity observed{};
+    if (RuntimePackages::cdcMigrationPendingOnSd())
+      return RuntimePackages::reconcileCdcMigrationFromSd(kMigrationPolicy,
+          [](const char*) -> uint32_t { return UINT32_MAX; }, observed);
+    if (!verifyCanonical(paths.stage, observed)) return RuntimePackages::OrdinaryTransactionResult::InvalidStage;
+    const RuntimePackages::Identity candidate = observed;
+    return RuntimePackages::publishCanonicalCdcFromSd(candidate, kMigrationPolicy, availableRequirement, observed);
+  }
   Ops ops;
   RuntimePackages::Identity observed{};
   return RuntimePackages::retryOrdinaryStage(ops,
@@ -150,9 +185,13 @@ RuntimePackages::OrdinaryStageDiscardResult discardDriverStage(const char* id) {
   RuntimePackages::OrdinaryTransactionPaths paths{};
   if (!validDriverRoot(id, paths))
     return RuntimePackages::OrdinaryStageDiscardResult::InvalidIdentity;
-  if (legacyPending(id))
+  if (legacyPending(id) || (RuntimePackages::cdcLineage(RuntimePackages::Kind::Driver, id) &&
+      RuntimePackages::cdcMigrationPendingOnSd()))
     return RuntimePackages::OrdinaryStageDiscardResult::RecoveryRequired;
   Ops ops;
+  if (canonical(id)) return RuntimePackages::discardOrdinaryStage(ops, RuntimePackages::Kind::Driver, id,
+      [id](const char* path) { return RuntimePackages::inspectManagedOrdinarySdTree(path, RuntimePackages::Kind::Driver, id); },
+      [id](const char* path) { return RuntimePackages::purgeManagedOrdinarySdDirectory(path, RuntimePackages::Kind::Driver, id); });
   return RuntimePackages::discardOrdinaryStage(ops,
       RuntimePackages::Kind::Driver, id,
       [](const char* path) { return knownStageEntries(path, false); },

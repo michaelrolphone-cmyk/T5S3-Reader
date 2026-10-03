@@ -5,8 +5,9 @@
 #include "x4pro_pins.h"
 #include <stddef.h>
 
-static uint32_t previous;
-static bool started;
+static uint32_t previous, pending;
+static uint8_t stable_count;
+static bool started, waiting_for_neutral;
 static uint32_t sample(void) {
     uint32_t buttons = 0;
     if (!x4pro_pin_read(X4PRO_PIN_BTN_LEFT)) buttons |= RISC_NAV_LEFT;
@@ -17,29 +18,53 @@ static uint32_t sample(void) {
 static bool poll(void *context, risc_input_navigation_frame_v1 *out) {
     (void)context;
     if (!started || !out) return false;
-    uint32_t buttons = sample();
-    out->buttons = buttons;
-    out->pressed = buttons & ~previous;
-    out->released = previous & ~buttons;
-    previous = buttons;
+    uint32_t raw = sample();
+    if (waiting_for_neutral) {
+        if (raw != 0) stable_count = 0;
+        else if (stable_count < 3u) ++stable_count;
+        if (stable_count >= 3u) {
+            waiting_for_neutral = false;
+            stable_count = 0;
+        }
+        out->buttons = 0;
+        out->pressed = 0;
+        out->released = 0;
+        return true;
+    }
+    if (raw != pending) { pending = raw; stable_count = 0; }
+    else if (stable_count < 3u) ++stable_count;
+    uint32_t edges = 0, released = 0;
+    if (stable_count >= 3u && pending != previous) {
+        edges = pending & ~previous;
+        released = previous & ~pending;
+        previous = pending;
+    }
+    out->buttons = previous;
+    out->pressed = edges;
+    out->released = released;
     return true;
 }
 static bool foreground(void *context, const risc_input_foreground_v1 *claims, size_t count) {
     (void)context; (void)claims; (void)count;
     return true;
 }
-static bool reset(void *context) { (void)context; previous = sample(); return true; }
+static bool reset(void *context) {
+    (void)context;
+    previous = pending = 0;
+    stable_count = 0;
+    waiting_for_neutral = sample() != 0;
+    return true;
+}
 static const risc_input_navigation_api_v1 api = {
     RISC_INPUT_NAVIGATION_API_V1, sizeof(api), 0, poll, foreground, reset
 };
 static bool start(const risc_provider_dependency_v1 *dependencies, size_t count) {
     (void)dependencies; (void)count;
-    x4pro_pin_release(X4PRO_PIN_BTN_LEFT);
-    x4pro_pin_release(X4PRO_PIN_BTN_RIGHT);
-    x4pro_pin_release(X4PRO_PIN_BTN_POWER);
-    previous = sample();
+    x4pro_pin_input(X4PRO_PIN_BTN_LEFT, true);
+    x4pro_pin_input(X4PRO_PIN_BTN_RIGHT, true);
+    x4pro_pin_input(X4PRO_PIN_BTN_POWER, true);
     started = true;
-    return true;
+    return reset(0);
 }
 static void stop(void) { started = false; }
 static bool quiesce(void) { stop(); return true; }

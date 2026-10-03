@@ -81,15 +81,16 @@ struct OwnedNodeV2 final {
     spec.requirements = from.requirementCount ? requirements : nullptr;
 
     if (!from.requiredOsCpuAbi) return true;
+    if (from.requiredOsCpuAbi != 1 && from.requiredOsCpuAbi != 2 && from.requiredOsCpuAbi != 3) return false;
     if (!from.verifiedElfBytes || !from.verifiedElfLength ||
         from.verifiedElfLength > 8u * 1024u * 1024u ||
-        !from.signedImports || from.signedImportCount > kImports) return false;
+        !from.declaredImports || from.declaredImportCount > kImports) return false;
     void* storage = allocate(sizeof(ImportStorage));
     if (!storage) return false;
     imported = new (storage) ImportStorage();
-    for (size_t i = 0; i < from.signedImportCount; ++i) {
+    for (size_t i = 0; i < from.declaredImportCount; ++i) {
       if (!copyString(imported->names[i], sizeof(imported->names[i]),
-                      from.signedImports[i])) return false;
+                      from.declaredImports[i])) return false;
       imported->pointers[i] = imported->names[i];
       if (i && std::strcmp(imported->pointers[i - 1], imported->pointers[i]) >= 0)
         return false;
@@ -100,7 +101,7 @@ struct OwnedNodeV2 final {
     spec.verifiedElfBytes = image;
     // Even with zero names, the allocated pointer array is nonnull: private
     // loader can distinguish a verified empty list from missing declarations.
-    spec.signedImports = imported->pointers;
+    spec.declaredImports = imported->pointers;
     return true;
   }
 };

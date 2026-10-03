@@ -1,0 +1,37 @@
+name: Saved network fallback regression
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/saved-network-fallback.yml"
+      - "src/native/NativeOtaBridge.cpp"
+      - "src/runtime/network/SavedNetworkConnection.cpp"
+      - "src/runtime/network/SavedNetworkConnection.h"
+      - "test/run_saved_network_fallback_test.sh"
+      - "test/saved_network/**"
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/saved-network-fallback.yml"
+      - "src/native/NativeOtaBridge.cpp"
+      - "src/runtime/network/SavedNetworkConnection.cpp"
+      - "src/runtime/network/SavedNetworkConnection.h"
+      - "test/run_saved_network_fallback_test.sh"
+      - "test/saved_network/**"
+
+permissions:
+  contents: read
+
+jobs:
+  saved-network-fallback:
+    name: Saved network fallback failure and retry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run production helper regression
+        run: bash test/run_saved_network_fallback_test.sh
+      - name: Verify OTA network fallback integration contract
+        run: python3 test/saved_network/ota_network_bridge_contract_test.py

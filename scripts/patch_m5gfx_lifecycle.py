@@ -132,6 +132,14 @@ def patch_wisp_source(source):
     return source
 
 
+def patch_power_failure(source):
+    marker = '// RiscRTE: refuse scan without confirmed panel power'
+    if marker in source:
+        return source
+    return replace_once(source, '      bus->powerControl(true);',
+        '      ' + marker + '\n      if (!bus->powerControl(true)) break;')
+
+
 def patch_environment(env):
     if env.subst('$BOARD') != 't5s3-pro':
         return
@@ -141,6 +149,7 @@ def patch_environment(env):
         raise RuntimeError('Pinned M5GFX unavailable for required EPD lifecycle patch: ' + str(root))
     header, source = patch_sources(h.read_text(), c.read_text())
     source = patch_wisp_source(source)
+    source = patch_power_failure(source)
     project = Path(env.subst('$PROJECT_DIR'))
     for companion in (project/'lib/hal/M5WispRefresh.h', project/'src/native/NativeVideoBootScrub.h'):
         destination = root/companion.name

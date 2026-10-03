@@ -1,4 +1,5 @@
 #include <HalDisplay.h>
+#include "NativeHardwareTakeover.h"
 #include "NativeTouchInput.h"
 #include "NativeAppMemory.h"
 #include "NativeVideoBridge.h"
@@ -88,3 +89,6 @@ extern "C" esp_err_t native_hardware_takeover_end(uint32_t requested) {
   }
   return ESP_OK;
 }
+
+
+bool nativeHardwareTakeoverDisplayActive() { return s_display_borrowed; }

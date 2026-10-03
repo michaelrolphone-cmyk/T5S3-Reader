@@ -9,7 +9,10 @@
 static int value = 42;
 static bool started;
 #ifdef FIXTURE_QUIESCE_FAIL_ONCE
-static unsigned quiesce_failures = 1;
+#ifndef FIXTURE_QUIESCE_FAILURES
+#define FIXTURE_QUIESCE_FAILURES 1
+#endif
+static unsigned quiesce_failures = FIXTURE_QUIESCE_FAILURES;
 #endif
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (started) return false;

@@ -14,11 +14,6 @@ from pathlib import Path
 import re
 import sys
 
-if __package__:
-    from .generate_privileged_imports_v1 import extract_imports, encode_imports
-else:
-    from generate_privileged_imports_v1 import extract_imports, encode_imports
-
 CAPABILITY = re.compile(r'[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\Z', re.ASCII)
 PACKAGE_ID = re.compile(r'[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\Z', re.ASCII)
 MAX_API = 0xffffffff
@@ -27,6 +22,13 @@ MAX_API = 0xffffffff
 def canonical_capability(value: object) -> bool:
     return isinstance(value, str) and 0 < len(value) < 64 and '..' not in value and (
         CAPABILITY.fullmatch(value) is not None)
+
+
+def manifest_os_cpu_abi(manifest: dict) -> int:
+    revision = manifest.get('os_cpu_abi', 1)
+    if type(revision) is not int or revision not in (1, 2, 3):
+        raise ValueError('unsupported OS/CPU ABI revision')
+    return revision
 
 
 def canonical_manifest(path: Path) -> tuple[str, int]:
@@ -40,16 +42,26 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
             result[key] = value
         return result
     manifest = json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=object_pairs)
-    if not isinstance(manifest, dict) or manifest.get('type') != 'driver' or (
+    if not isinstance(manifest, dict) or manifest.get('type') not in ('driver', 'service', 'provider') or (
         type(manifest.get('driver_abi')) is not int or manifest['driver_abi'] != 2):
-        raise ValueError('expected one driver with provider driver ABI v2')
+        raise ValueError('expected one installed module with provider ABI v2')
+    if __package__:
+        from .package_resource_paths import validate_resource_imports
+    else:
+        from package_resource_paths import validate_resource_imports
+    if manifest.get('payload', 'executable') != 'executable':
+        raise ValueError('provider ABI requires executable payload')
+    validate_resource_imports(manifest.get('resource_imports', []))
     package_id = manifest.get('id')
+    if manifest.get('type') == 'driver' and package_id == 'usb-cdc-acm-v2':
+        raise ValueError('retired CDC alias is not a current package identity')
     if not isinstance(package_id, str) or not 0 < len(package_id) < 64 or (
         PACKAGE_ID.fullmatch(package_id) is None):
         raise ValueError('invalid provider identity')
     if manifest.get('architecture') != 'xtensa-esp32s3' or (
         manifest.get('file_name') != 'driver.elf'):
         raise ValueError('unexpected architecture or executable artifact')
+    manifest_os_cpu_abi(manifest)
     provides = manifest.get('provides')
     if not isinstance(provides, list) or len(provides) != 1 or (
         not isinstance(provides[0], dict)):
@@ -74,9 +86,15 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
 
 
 def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
+    # Manifest-only release planning does not need the ELF build toolchain.
+    if __package__:
+        from .generate_privileged_imports_v1 import extract_imports, encode_imports
+    else:
+        from generate_privileged_imports_v1 import extract_imports, encode_imports
     capability, api = canonical_manifest(manifest)
+    revision = manifest_os_cpu_abi(json.loads(manifest.read_text(encoding="utf-8")))
     names = extract_imports(elf)  # Both .dynsym and .symtab; zero is legitimate.
-    profile = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
+    profile = f'os-cpu-abi={revision}\nprovides={capability}\napi={api}\n'.encode('ascii')
     imports = encode_imports(names)
     if len(profile) > 160 or len(imports) > 128 * 128:
         raise ValueError('profile or import resource exceeds provider metadata bounds')
@@ -85,7 +103,7 @@ def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
     output_imports = destination / 'privileged-imports.v1'
     output_profile.write_bytes(profile)
     output_imports.write_bytes(imports)
-    print(f'Provider capability: {capability}@{api} (generic ABI 1)')
+    print(f'Provider capability: {capability}@{api} (generic ABI {revision})')
     print(f'Exact linked ELF imports: {len(names)}')
     for label, value in [('ELF', elf), ('provider-abi.v1', output_profile),
                          ('privileged-imports.v1', output_imports)]:
