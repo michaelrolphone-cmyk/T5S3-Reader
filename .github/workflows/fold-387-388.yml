@@ -1,0 +1,111 @@
+name: fold-387-388
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/fold-387-388.yml'
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fold #387 and #388 into rollup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "michaelrolphone-cmyk"
+          git config user.email "michael.rol.phone@gmail.com"
+          git fetch origin fix/u1-provider-enumeration-cache fix/bug216-ntp-rollover-budget
+
+          set_version() {
+            local ver="$1"
+            sed -i -E "s/^version = .*/version = ${ver}/" platformio.ini
+            grep -n '^version' platformio.ini | head -3
+          }
+
+          finish_conflict() {
+            local ver="$1"
+            local msg="$2"
+            if [ -f platformio.ini ] && grep -q '<<<<<<' platformio.ini; then
+              git checkout --ours -- platformio.ini
+              set_version "$ver"
+              git add platformio.ini
+            fi
+            git add -A
+            if git diff --cached --quiet; then
+              echo "merge conflict left nothing staged" >&2
+              git status
+              exit 1
+            fi
+            git commit -m "$msg"
+          }
+
+          if ! git merge-base --is-ancestor origin/fix/u1-provider-enumeration-cache HEAD; then
+            set +e
+            git merge --no-ff origin/fix/u1-provider-enumeration-cache -m "Fold #387 U1 provider enumeration cache into rollup #384
+
+Reuse coherent provider metadata across UI polling."
+            rc=$?
+            set -e
+            if [ "$rc" -ne 0 ]; then
+              finish_conflict 1.3.91 "Fold #387 U1 provider enumeration cache into rollup #384
+
+Reuse coherent provider metadata across UI polling."
+            else
+              set_version 1.3.91
+              if ! git diff --quiet -- platformio.ini; then
+                git add platformio.ini
+                git commit -m "Rollup: firmware 1.3.91 after folding #387"
+              fi
+            fi
+          else
+            echo "#387 already contained"
+          fi
+
+          if ! git merge-base --is-ancestor origin/fix/bug216-ntp-rollover-budget HEAD; then
+            set +e
+            git merge --no-ff origin/fix/bug216-ntp-rollover-budget -m "Fold #388 BUG-216 NTP millis rollover budget into rollup #384
+
+Keep NTP timeout budgets valid across millis rollover. Firmware 1.3.92."
+            rc=$?
+            set -e
+            if [ "$rc" -ne 0 ]; then
+              finish_conflict 1.3.92 "Fold #388 BUG-216 NTP millis rollover budget into rollup #384
+
+Keep NTP timeout budgets valid across millis rollover. Firmware 1.3.92."
+            else
+              set_version 1.3.92
+              if ! git diff --quiet -- platformio.ini; then
+                git add platformio.ini
+                git commit -m "Rollup: firmware 1.3.92 after folding #388"
+              fi
+            fi
+          else
+            echo "#388 already contained"
+          fi
+
+          set_version 1.3.92
+          if ! git diff --quiet -- platformio.ini; then
+            git add platformio.ini
+            git commit -m "Rollup #384: set firmware to 1.3.92 after folding #387 and #388"
+          fi
+
+          rm -f .github/workflows/fold-387-388.yml
+          git add -A .github/workflows/fold-387-388.yml || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Remove one-shot fold-387-388 workflow"
+          fi
+
+          git push origin HEAD:fix/consolidated-bugs-20261003-c
+          echo "Pushed $(git rev-parse HEAD)"
+          test -f docs/U1_PROVIDER_ENUMERATION_PERFORMANCE.md
+          test -f docs/bugfix/BUG-216.md
+          test -f test/clock_sync/ClockSyncRolloverTest.cpp
+          test -f test/provider_enumeration/cases.cpp
+          grep -q 'version = 1.3.92' platformio.ini
