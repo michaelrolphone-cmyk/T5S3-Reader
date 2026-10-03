@@ -9,9 +9,9 @@
 #include "FsHelpers.h"
 
 namespace {
-// Rebuild TOCs whose NCX links were resolved against the OPF directory,
-// and invalidate guide-start targets cached before the start/text fallback fix.
-constexpr uint8_t BOOK_CACHE_VERSION = 7;
+// Rebuild author metadata corrupted by Expat callback chunking. Generation 9
+// also rejects earlier NCX/guide caches and PR381's dotted-path generation 8.
+constexpr uint8_t BOOK_CACHE_VERSION = 9;
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
