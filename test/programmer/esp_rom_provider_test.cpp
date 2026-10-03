@@ -14,7 +14,8 @@
 
 namespace {
 enum class Fault { None, CancelHash, ShortSource, LostSync, LostErase, LostWrite,
-                   ResetControlIO, ResetControlLost, Md5Mismatch, NoFlashEndReply, Reentrant };
+                   ResetControlIO, ResetControlLost, Md5Mismatch, NoFlashEndReply,
+                   LostFlashEndReply, Reentrant };
 struct Fixture {
   Fault fault = Fault::None;
   std::vector<uint8_t> image;
@@ -48,6 +49,10 @@ void completedFrame() {
   const uint8_t op = fixture.frame[1];
   if (op == 0x03) ++fixture.flashBlocks;
   if (op == 0x04) fixture.flashEndSeen = true;
+  if (fixture.fault == Fault::LostFlashEndReply && op == 0x04) {
+    fixture.connected = false;
+    return;
+  }
   if ((fixture.fault == Fault::LostSync && op == 0x08) ||
       (fixture.fault == Fault::LostErase && op == 0x02) ||
       (fixture.fault == Fault::LostWrite && op == 0x03)) {
@@ -238,6 +243,9 @@ int main() {
   // remain the final action for this backward-compatible implementation.
   auto noAck = run(Fault::NoFlashEndReply, T5_PROGRAM_OK);
   assert(noAck.bytes_written == 0x10000u && fixture.controlCalls == 5);
+  auto resetDisconnect = run(Fault::LostFlashEndReply, T5_PROGRAM_OK);
+  assert(resetDisconnect.bytes_written == 0x10000u && fixture.flashEndSeen &&
+         fixture.controlCalls == 3 && fixture.released == 1);
   (void)run(Fault::Reentrant, T5_PROGRAM_OK);
   assert(fixture.nestedChecked && fixture.acquired == 1);
   resetFixture(Fault::None);

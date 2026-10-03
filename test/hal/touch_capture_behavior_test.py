@@ -68,6 +68,25 @@ static void queue(uint8_t kind, uint16_t x=100, uint16_t y=200) {
 int main(int argc, char**) {
   api = &provider; subscription = 1; nowMs = 100;
   NativeTouchPoint p{}, end{};
+  // Home presses retain provider capture times through delayed UI delivery.
+  risc_touch_event_v1 home{};
+  home.kind = RISC_TOUCH_EVENT_BUTTON_DOWN; home.id = 0;
+  for (unsigned i=0; i<20; ++i) {
+    home.sequence = ++serial; home.timestamp_ms = 100 + i * 200;
+    process(home);
+  }
+  unsigned long captured = 0;
+  nowMs = 10000;
+  for (unsigned i=0; i<16; ++i) {
+    assert(nativeTouchTakeHomePress(captured) && captured == 100 + i * 200);
+  }
+  assert(!nativeTouchTakeHomePress(captured));
+  // Ring wrap and focus reset must not replay old Home events.
+  home.sequence=++serial; home.timestamp_ms=12345; process(home);
+  assert(nativeTouchTakeHomePress(captured) && captured==12345);
+  home.sequence=++serial; process(home);
+  nativeTouchDiscardGestures(); assert(!nativeTouchTakeHomePress(captured));
+  serviceProvider(); nowMs=100;
   if (argc > 1) {
     // A batch can publish events and then fail. Deliver the completed tap now.
     queue(RISC_TOUCH_EVENT_DOWN); queue(RISC_TOUCH_EVENT_UP);

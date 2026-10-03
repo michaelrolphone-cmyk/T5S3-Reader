@@ -1,0 +1,35 @@
+name: UTF-8 filename sort regression
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/fs-helpers-utf8-sort.yml"
+      - "lib/FsHelpers/FsHelpers.cpp"
+      - "lib/FsHelpers/FsHelpers.h"
+      - "test/fs_helpers_utf8_sort_test.cpp"
+      - "test/fs_helpers_test_stubs/**"
+      - "test/run_fs_helpers_utf8_sort_test.sh"
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/fs-helpers-utf8-sort.yml"
+      - "lib/FsHelpers/FsHelpers.cpp"
+      - "lib/FsHelpers/FsHelpers.h"
+      - "test/fs_helpers_utf8_sort_test.cpp"
+      - "test/fs_helpers_test_stubs/**"
+      - "test/run_fs_helpers_utf8_sort_test.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  utf8-filename-sort:
+    name: UTF-8 filenames remain safe and sorted
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run signed-char production helper regression
+        run: bash test/run_fs_helpers_utf8_sort_test.sh

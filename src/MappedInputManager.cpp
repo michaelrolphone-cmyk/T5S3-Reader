@@ -123,6 +123,7 @@ bool MappedInputManager::isPressed(const Button button) const {
 }
 
 void MappedInputManager::update() const {
+  navigationHomeConsumed = false;
 #if !defined(BOARD_XTEINK_X4_PRO)
   gpio.update();
   nativeDeviceDiscoveryTick();
@@ -174,8 +175,19 @@ bool MappedInputManager::getTouchSwipe(TouchPoint& start, TouchPoint& end, const
   return true;
 }
 
+bool MappedInputManager::takeTouchHomeButtonPress(unsigned long& eventMs) const {
+  if (nativeTouchTakeHomePress(eventMs)) return true;
+  if (!navigationHomeConsumed && (nativeNavigationFrame().pressed & RISC_NAV_HOME)) {
+    navigationHomeConsumed = true;
+    eventMs = millis();
+    return true;
+  }
+  return false;
+}
+
 bool MappedInputManager::wasTouchHomeButtonPressed() const {
-  return nativeTouchTakeHomePress() || (nativeNavigationFrame().pressed & RISC_NAV_HOME);
+  unsigned long eventMs = 0;
+  return takeTouchHomeButtonPress(eventMs);
 }
 
 MappedInputManager::Labels MappedInputManager::mapLabels(const char* back, const char* confirm, const char* previous,

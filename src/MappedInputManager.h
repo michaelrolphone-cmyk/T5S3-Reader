@@ -39,6 +39,7 @@ class MappedInputManager {
   bool getTouchContact(TouchPoint& point, const GfxRenderer& renderer) const;
   bool getTouchHold(TouchPoint& point, unsigned long& heldMs, const GfxRenderer& renderer) const;
   bool getTouchSwipe(TouchPoint& start, TouchPoint& end, const GfxRenderer& renderer) const;
+  bool takeTouchHomeButtonPress(unsigned long& eventMs) const;
   bool wasTouchHomeButtonPressed() const;
   Labels mapLabels(const char* back, const char* confirm, const char* previous, const char* next) const;
   bool resolveTouchFrontButton(size_t slotIndex, Button& button) const;
@@ -49,6 +50,7 @@ class MappedInputManager {
 
  private:
   HalGPIO& gpio;
+  mutable bool navigationHomeConsumed = false;
   bool hasInjectedButtonTap = false;
   Button injectedButtonTap = Button::Back;
 

@@ -59,7 +59,8 @@ NativeTouchPoint taps[kTapDepth]{};
 uint8_t tapHead = 0, tapCount = 0;
 SwipeEvent swipes[kSwipeDepth]{};
 uint8_t swipeHead = 0, swipeCount = 0;
-uint8_t homeCount = 0;
+uint32_t homeEvents[kHomeDepth]{};
+uint8_t homeHead = 0, homeCount = 0;
 
 void clearTransientLocked(bool clearQueues) {
   touchActive = false;
@@ -73,7 +74,7 @@ void clearTransientLocked(bool clearQueues) {
   if (clearQueues) {
     tapHead = tapCount = 0;
     swipeHead = swipeCount = 0;
-    homeCount = 0;
+    homeHead = homeCount = 0;
   }
 }
 
@@ -116,7 +117,7 @@ void applySnapshotLocked(const risc_touch_snapshot_v1& snapshot, bool clearQueue
   if (clearQueues) {
     tapHead = tapCount = 0;
     swipeHead = swipeCount = 0;
-    homeCount = 0;
+    homeHead = homeCount = 0;
   }
 
   // A snapshot after startup/gap is authoritative for held state, but cannot
@@ -183,7 +184,11 @@ void process(const risc_touch_event_v1& event) {
   ++diagnostics.events;
 
   if (event.kind == RISC_TOUCH_EVENT_BUTTON_DOWN) {
-    if (event.id == 0u && homeCount < kHomeDepth) ++homeCount;
+    if (event.id == 0u && homeCount < kHomeDepth) {
+      const uint8_t tail = static_cast<uint8_t>((homeHead + homeCount) % kHomeDepth);
+      homeEvents[tail] = static_cast<uint32_t>(event.timestamp_ms);
+      ++homeCount;
+    }
     portEXIT_CRITICAL(&touchStateMux);
     return;
   }
@@ -581,7 +586,7 @@ void nativeTouchDiscardGestures() {
   ++focusRequested;
   tapHead = tapCount = 0;
   swipeHead = swipeCount = 0;
-  homeCount = 0;
+  homeHead = homeCount = 0;
   gestureEligible = false;  // A held contact must lift before it can become a tap.
   portEXIT_CRITICAL(&touchStateMux);
 }
@@ -636,15 +641,22 @@ bool nativeTouchGetSwipe(NativeTouchPoint& start, NativeTouchPoint& end) {
   return true;
 }
 
-bool nativeTouchTakeHomePress() {
+bool nativeTouchTakeHomePress(unsigned long& eventMs) {
   portENTER_CRITICAL(&touchStateMux);
   if (!homeCount) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }
+  eventMs = homeEvents[homeHead];
+  homeHead = static_cast<uint8_t>((homeHead + 1u) % kHomeDepth);
   --homeCount;
   portEXIT_CRITICAL(&touchStateMux);
   return true;
+}
+
+bool nativeTouchTakeHomePress() {
+  unsigned long eventMs = 0;
+  return nativeTouchTakeHomePress(eventMs);
 }
 
 NativeTouchDiagnostics nativeTouchDiagnostics() {

@@ -37,9 +37,15 @@ bool selectLanguage(uint8_t languageId) {
   const auto* end = std::end(SORTED_LANGUAGE_INDICES);
   if (std::find(begin, end, languageId) == end) return false;
 
+  const Language previousLanguage = I18N.getLanguage();
+  const uint8_t previousSetting = SETTINGS.language;
   I18N.setLanguage(static_cast<Language>(languageId));
   SETTINGS.language = languageId;
-  SETTINGS.saveToFile();
+  if (!SETTINGS.saveToFile()) {
+    SETTINGS.language = previousSetting;
+    I18N.setLanguage(previousLanguage);
+    return false;
+  }
   return true;
 }
 
