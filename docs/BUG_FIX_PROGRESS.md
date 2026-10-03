@@ -1,3 +1,14 @@
+## Published repair / CI pending — canonical #42 — 2026-10-03T03:38:21.121Z
+
+- Claim `task11_wrap42_20261003` remains active. Draft [PR #375](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/375), `fix/text-wrap-leading-token`, directly targets master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`. Exact remote head `f1ea32017dff1fc68899ae8c59701223a3a2151a` verified by fetch, ls-remote, and clean matching local checkout.
+- Minimal fix removes the premature return after emitting a truncated leading token; subsequent words consume remaining lines. Existing ellipsis/max-line policy retained. Firmware 1.3.69→1.3.76; no separately distributed package changed.
+- PASS locally: strict C++17 production wrapping/truncation + linked Utf8.cpp regression for ordinary/leading/middle/repeated oversized words, UTF-8, built-in/SD font metric branches, line budgets, invalid/empty inputs and repeated calls; adjacent native UI/Home contracts; package-source version guard; Python/shell syntax and whitespace. Baseline fails with one line instead of three. Font/render/storage hardware remains untested.
+- Local ASan/UBSan executable timed out after 30 seconds, not a pass. New regression is integrated with sanitizers in native host CI. No local full board/aggregate build to avoid competing with higher-priority work; CI runs host and target builds.
+- Exact-head PlatformIO 37093821521, BMP 37093821522 and CAM candidate 37093821516 running. Prior-head runs are not final-head evidence. Next: inspect terminal CI, fix attributable failures, then publish terminal checkpoint and release claim.
+- Captured ledger parent `3fddd78878053538e31c02942b14dd13ad29f0d3`; non-force update only; #332 remains sole coordination PR. No master/other owner branch/hardware/release operations.
+
+---
+
 ## Active repair claim — canonical #42 — 2026-10-03T03:33:13.961Z
 
 - Sole coordinator/owner `task11_wrap42_20261003`; no preceding incomplete owned repair. Prior #261 claim released. Baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; captured ledger parent `640907e2be99dd6588813951348bb98aeaa628fb`; isolated checkout in task-11; branch `fix/text-wrap-leading-token`.
