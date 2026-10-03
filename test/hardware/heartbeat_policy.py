@@ -107,7 +107,7 @@ class Transport:
 
     def command(self, label, *args, timeout=180, reset=False):
         port = self.port()
-        command = [sys.executable, str(Path(__file__).with_name('esptool_transport.py')), '--chip', 'esp32s3', '--port', port,
+        command = [sys.executable, str(Path(__file__).with_name('esptool_transport.py')), '--expected-mac', self.mac, '--chip', 'esp32s3', '--port', port,
                    '--baud', '115200', '--connect-attempts', '1', '--before', 'default-reset',
                    '--after', 'hard-reset' if reset else 'no-reset', *map(str,args)]
         print(label, flush=True)
