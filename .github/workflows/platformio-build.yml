@@ -223,6 +223,9 @@ jobs:
           cp ".pio/build/${{ matrix.environment }}/firmware.elf" "dist/${{ matrix.elf_name }}"
 
       - name: Upload RiscRTE firmware artifact
+        # Historical X4 compilation may run for regression coverage, but its
+        # embedded-driver image must never be offered as a deployment artifact.
+        if: matrix.board_id != 'xteink-x4-pro' || (hashFiles('src/platform/SdPackageBoot.cpp') != '' && hashFiles('scripts/stage_x4pro_packages.py') != '')
         uses: actions/upload-artifact@v4
         with:
           name: riscrte-firmware-${{ matrix.board_id }}

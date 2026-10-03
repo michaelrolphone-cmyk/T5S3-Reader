@@ -55,6 +55,13 @@ class PreparerTests(unittest.TestCase):
         self.assertIn('test -f src/platform/SdPackageBoot.cpp',text)
         self.assertIn('python scripts/stage_x4pro_packages.py',text)
 
+    def test_generic_x4_firmware_upload_requires_corrected_sd_source(self):
+        text=(Path(prep.__file__).parents[2]/'.github/workflows/platformio-build.yml').read_text()
+        upload=text.split('      - name: Upload RiscRTE firmware artifact\n',1)[1].split('      - name:',1)[0]
+        self.assertIn("if: matrix.board_id != 'xteink-x4-pro' ||",upload)
+        self.assertIn("hashFiles('src/platform/SdPackageBoot.cpp') != '' &&",upload)
+        self.assertIn("hashFiles('scripts/stage_x4pro_packages.py') != ''",upload)
+
     def test_build_identity_and_single_macro_guarded_rx(self):
         result=self.prepare()
         prep.plan.validate.assert_called_once_with(b'fixture',s.SOURCE,s.DEPLOYMENT_ARCHIVE)
