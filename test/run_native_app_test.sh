@@ -19,6 +19,7 @@ if [[ $# -gt 0 ]]; then
   exit 0
 fi
 python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
+WRAP_TEST_SANITIZE=1 python3 "$repo_dir/test/text_wrap_regression.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
@@ -186,6 +187,10 @@ python3 "$repo_dir/test/native_apps/timecard_clock_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_clock_failure_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/firmware_flasher_pagination_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
 python3 "$repo_dir/test/native_apps/timecard_store_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_store_failure_test.c" -o "$binary"
@@ -221,6 +226,11 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$repo_dir/test/native_storage_stubs" -I"$repo_dir/lib/NativeApps/include" \
   -I"$repo_dir/src/native" -I"$repo_dir/src" \
   "$repo_dir/test/native_storage_read_test.cpp" -o "$binary"
+"$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo_dir/test/native_apps/sd_firmware_bridge_stubs" \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/src/native" -I"$repo_dir/src" \
+  "$repo_dir/test/native_apps/native_sd_firmware_bridge_test.cpp" -o "$binary"
 "$binary"
 echo 'Native app launcher tests passed'
 

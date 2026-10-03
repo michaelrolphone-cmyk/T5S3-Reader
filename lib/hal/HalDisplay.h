@@ -3,6 +3,10 @@
 #include <Board.h>
 #include <DisplaySurface.h>
 
+#if defined(BOARD_XTEINK_X4_PRO)
+class ProviderDisplaySurface;
+#endif
+
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
 class T5DisplayClient;
 class T5DisplayCanvas;
@@ -51,7 +55,7 @@ class HalDisplay : public DisplaySurface {
   void begin(bool clearPanel = true);
 #if defined(BOARD_XTEINK_X4_PRO)
   // The provider remains the sole owner of panel pins and refresh operations.
-  bool attachProvider(DisplaySurface& surface);
+  bool attachProvider(ProviderDisplaySurface& surface);
 #endif
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and
@@ -157,13 +161,11 @@ class HalDisplay : public DisplaySurface {
 
   bool isReady() const override { return displayReady && getFrameBuffer() != nullptr; }
 
-  DisplaySurfaceInfo getSurfaceInfo() const override {
 #if defined(BOARD_XTEINK_X4_PRO)
-    return providerSurface ? providerSurface->getSurfaceInfo() : SURFACE_INFO;
+  DisplaySurfaceInfo getSurfaceInfo() const override;
 #else
-    return SURFACE_INFO;
+  DisplaySurfaceInfo getSurfaceInfo() const override { return SURFACE_INFO; }
 #endif
-  }
 
   // Last-resort boot diagnostic that deliberately bypasses GfxRenderer and
   // runtime surface metadata. A large X plus eight code boxes gives a visible
@@ -239,7 +241,7 @@ class HalDisplay : public DisplaySurface {
 #elif defined(BOARD_LILYGO_EPD47_S3)
   uint8_t* epdFrameBuffer = nullptr;
 #elif defined(BOARD_XTEINK_X4_PRO)
-  DisplaySurface* providerSurface = nullptr;
+  ProviderDisplaySurface* providerSurface = nullptr;
 #endif
   uint8_t* frameBuffer = nullptr;
   uint8_t* grayscaleLsbBuffer = nullptr;
@@ -248,6 +250,7 @@ class HalDisplay : public DisplaySurface {
   bool grayscaleBaseCaptured = false;
   bool displayReady = false;
   bool flipOutput = false;
+  bool flipTouchBoundaryPending = false;
   bool forceFullRefresh = true;
   bool forcedRefreshPending = false;
   RefreshMode forcedRefreshMode = HALF_REFRESH;

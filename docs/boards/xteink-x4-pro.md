@@ -18,7 +18,43 @@ write or deletion of old internal-flash contents is performed.
 
 The T5 SPI-SD implementation now lives behind the same `storage.volume@1` contract. T5 display extraction behind `display.output@1` is connected locally with one shared SDK DMA reservation authority; see `t5s3-external-storage.md`. A firmware chip proxy is not accepted as the final extraction. Frontlight uses `display.frontlight@1`. Existing external T5 I2C/touch/navigation stay external; shared UI and loader logic remain shared. Battery integration remains pending.
 
-Follow-up versions: firmware `1.3.79`, Springboard `1.3.1 → 1.3.2`, X4 SD `0.2.0 → 0.2.1`. Frontlight Settings now reflects a bound provider and restores the saved preference (zero off, nonzero on; current X4 provider is on/off, not PWM). Springboard requests fast display takeover only when a suitable provider and frame geometry exist; otherwise it uses static ordinary UI pages.
+Follow-up versions: firmware `1.3.85`, Springboard `1.3.1 → 1.3.2`, X4 SD `0.2.0 → 0.2.1`. Frontlight Settings now reflects a bound provider and restores the saved preference (zero off, nonzero on; current X4 provider is on/off, not PWM). Springboard requests fast display takeover only when a suitable provider and frame geometry exist; otherwise it uses static ordinary UI pages.
+
+### Side-by-side follow-through (1.3.85)
+
+The manual baseline delivered from `67d0fd3` remains the unmodified production
+1.3.79 app plus its exact 50-file SD tree. Its checksum-bound archive is immutable;
+the following source changes do not retroactively qualify or replace that image.
+
+- X4 now rotates the provider submission by 180 degrees when Flip UI is enabled,
+  while retaining the original software raster. Orientation changes require a
+  clean presentation request; the current X4 panel uses its existing absolute
+  full-frame refresh rather than a separate waveform for that intent. Shared
+  Settings applies display and touch orientation together
+  instead of changing only the persisted input preference until reboot.
+- Settings → Network resolves the ordinary installed Wi-Fi Networks package,
+  offers the existing required-app install/retry/cancel workflow when absent,
+  and retains queued child navigation. It no longer requires a duplicate loose
+  `/Apps/wifi_settings.elf` beside `/Apps/wifi_settings/wifi_settings.elf`.
+- These changes affect firmware adapters/wrappers only. No app or external
+  driver payload is changed or reissued under an existing package version.
+
+For a useful baseline, check Settings 1.0.1, Springboard 1.3.2, App Store 1.0.8,
+Driver Manager 1.0.8 and, for network setup, Wi-Fi Networks 1.0.3 through the
+ordinary package manager. The driver-only SD tree does not install those apps.
+Use board-specific driver/profile trees; never swap X4 and T5 firmware or drivers.
+
+Manual checks when the owner is ready: record both firmware/package identities;
+cold boot to shared Home; open/reopen Apps, Settings and each manager; compare
+buttons/touch and Back/Cancel; open the same book and check saved progress;
+toggle Flip UI off/on/off and exercise all four corners; reopen Network through
+Settings; verify active boot providers remain protected against replacement.
+On the immutable 1.3.79 baseline leave Flip UI off and use Apps to launch an
+installed Wi-Fi Networks package until these repairs have their own verified build.
+X4 uses static ordinary Apps pages without fast display takeover. Its frontlight
+is on/off. Automatic sleep/shutdown and battery integration remain incomplete;
+those paths must not be reported as passing parity tests. Physical validation is
+FAILED/unavailable until the owner performs and reports actual device tests.
 
 The real SD provider/HAL wire-model profile for a 256 KiB read performs 517 sector reads. The prior code makes 4,653 waits; the revised 4 KiB-or-4 ms cooperation makes 65. A deliberately coarse 10 ms scheduling model gives 46,594 versus 714 modeled milliseconds; these are not measured device timings. The current target SDK uses 1 kHz ticks. The coarse baseline later exceeded a recursive-removal budget; the revised full four-case storage suite passes. This X4 overhead is not established as the shared post-U1 regression root cause. U1 merge boundary is `f7f006f7` (PR96), first parent `ca66db29`. Shared launch phase logs and transaction-only recovery reduce/identify repeated metadata work without removing selected-app admission.
 

@@ -99,6 +99,32 @@ int main(int argc, char**) {
   pollOk=true; queue(RISC_TOUCH_EVENT_UP); serviceProvider();
   assert(nativeTouchGetTap(p) && p.x==100 && p.y==200);
   assert(!nativeTouchGetTap(p));
+  // An unresolved display transform blocks coordinate delivery, not capture/Home.
+  nativeTouchSuppressCoordinates(true);serviceProvider();
+  const auto suppressFocus=focusRequested;
+  nativeTouchSuppressCoordinates(true);assert(focusRequested==suppressFocus);
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);serviceProvider();
+  unsigned long suppressedHeld=0;
+  assert(!nativeTouchGetContact(p)&&!nativeTouchGetHold(p,suppressedHeld));
+  queue(RISC_TOUCH_EVENT_MOVE,180,200);queue(RISC_TOUCH_EVENT_UP,180,200);serviceProvider();
+  assert(!nativeTouchGetSwipe(p,end));
+  home.sequence=++serial;home.timestamp_ms=22345;process(home);
+  assert(nativeTouchTakeHomePress(captured)&&captured==22345);
+  // Unblock is atomic with discarding the captured queue and fencing raw backlog.
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);
+  nativeTouchSuppressCoordinates(false);serviceProvider();
+  assert(!nativeTouchGetTap(p)&&!nativeTouchGetSwipe(p,end));
+  queue(RISC_TOUCH_EVENT_DOWN);serviceProvider();
+  nativeTouchSuppressCoordinates(true);serviceProvider();
+  nativeTouchSuppressCoordinates(false);serviceProvider();
+  assert(!nativeTouchGetContact(p)&&!nativeTouchGetHold(p,suppressedHeld));
+  queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  const auto releasedFocus=focusRequested;
+  nativeTouchSuppressCoordinates(false);assert(focusRequested==releasedFocus);
+  assert(nativeTouchGetTap(p));
   // Boot handoff drops completed/held loading-screen gestures, then accepts new taps.
   queue(RISC_TOUCH_EVENT_DOWN); queue(RISC_TOUCH_EVENT_UP); serviceProvider();
   queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();

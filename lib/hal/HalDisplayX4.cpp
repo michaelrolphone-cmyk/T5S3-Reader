@@ -3,13 +3,15 @@
 #if defined(BOARD_XTEINK_X4_PRO)
 
 #include <Logging.h>
+#include "native/NativeTouchInput.h"
+#include "runtime/display/ProviderDisplaySurface.h"
 
 HalDisplay display;
 
 HalDisplay::HalDisplay() = default;
 HalDisplay::~HalDisplay() = default;
 
-bool HalDisplay::attachProvider(DisplaySurface& surface) {
+bool HalDisplay::attachProvider(ProviderDisplaySurface& surface) {
   displayReady = false;
   providerSurface = nullptr;
   const auto info = surface.getSurfaceInfo();
@@ -22,6 +24,7 @@ bool HalDisplay::attachProvider(DisplaySurface& surface) {
     return false;
   }
   providerSurface = &surface;
+  providerSurface->setFlipOutput(flipOutput);
   return true;
 }
 
@@ -41,11 +44,25 @@ void HalDisplay::drawImageTransparent(const uint8_t* image, uint16_t x, uint16_t
   if (isReady()) providerSurface->drawImageTransparent(image, x, y, w, h, fromProgmem);
 }
 void HalDisplay::displayBuffer(RefreshMode mode, bool) {
-  if (isReady()) providerSurface->displayBuffer(mode);
+  if (!isReady()) return;
+  providerSurface->displayBuffer(mode);
+  if (flipTouchBoundaryPending && providerSurface->lastPresentSucceeded()) {
+    // A failed/partial present leaves old-image coordinates unsafe, even after
+    // the Settings app exits. Only a real completed frame releases this fence.
+    nativeTouchSuppressCoordinates(false);
+    flipTouchBoundaryPending = false;
+  }
 }
 void HalDisplay::displayBufferDiff(const uint8_t*, RefreshMode mode) { displayBuffer(mode); }
 void HalDisplay::refreshDisplay(RefreshMode mode, bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }
-void HalDisplay::setFlipOutput(bool) {}
+void HalDisplay::setFlipOutput(bool enabled) {
+  if (flipOutput != enabled) {
+    nativeTouchSuppressCoordinates(true);
+    flipTouchBoundaryPending = true;
+  }
+  flipOutput = enabled;
+  if (providerSurface) providerSurface->setFlipOutput(enabled);
+}
 void HalDisplay::requestNextRefresh(RefreshMode mode) {
   if (isReady()) providerSurface->requestNextRefresh(mode);
 }
@@ -57,6 +74,9 @@ bool HalDisplay::deepSleep() { return false; }
 void HalDisplay::setIdlePowerSaving(bool) {}
 uint8_t* HalDisplay::getFrameBuffer() const {
   return providerSurface ? providerSurface->getFrameBuffer() : nullptr;
+}
+DisplaySurfaceInfo HalDisplay::getSurfaceInfo() const {
+  return providerSurface ? providerSurface->getSurfaceInfo() : SURFACE_INFO;
 }
 void HalDisplay::copyGrayscaleBuffers(const uint8_t*, const uint8_t*) {}
 void HalDisplay::copyGrayscaleLsbBuffers(const uint8_t* buffer) {

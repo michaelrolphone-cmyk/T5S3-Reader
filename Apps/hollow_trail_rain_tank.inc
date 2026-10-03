@@ -3,6 +3,15 @@
  * character; the short service ladder ends at a visibly chained tank hatch. */
 #define HT_RAIN_TANK_X 1840
 static int ht_rain_tank_floor(void) { return ht_level_land(1)[6].top; }
+static int ht_rain_tank_weather_floor(const ht_game *g,int x0,int x1,int floor) {
+    if(g->level!=1)return floor;
+    int cx=g->camera/256;
+    /* Check the whole streak, so wind cannot draw an outside drop across the
+     * shelter edge. This visual cover adds no collision or character mask. */
+    if(ht_max(x0,x1)+cx>HT_RAIN_TANK_X-90 && ht_min(x0,x1)+cx<HT_RAIN_TANK_X+89)
+        floor=ht_min(floor,ht_rain_tank_floor()-139-g->camera_y/256);
+    return floor;
+}
 static int ht_rain_window_x(void) { return ht_mechanics_by_level[1].ladders[2].x+38; }
 static bool ht_rain_window_lit(unsigned ticks) { return ticks%144u<54u && ticks%18u<9u; }
 static void ht_city_rain_tank(const ht_game *g) {
@@ -85,8 +94,8 @@ static void ht_city_rain_tank(const ht_game *g) {
         int wx=1735+(int)((i*71u+g->ticks*2u)%470u);
         if(wx<left || wx>right)continue;
         int wy=-208+(int)((i*47u+g->ticks*7u)%306u);
-        if(wx>HT_RAIN_TANK_X-90 && wx<HT_RAIN_TANK_X+89 && wy>ht_rain_tank_floor()-139)continue;
-        ht_limb(ht_scene,wx-cx,wy-cy,wx-cx-2,wy-cy+8,0,0,119);
+        int bottom=ht_rain_tank_weather_floor(g,wx-cx,wx-cx-2,wy-cy+9);
+        if(wy-cy<bottom)ht_limb(ht_scene,wx-cx,wy-cy,wx-cx-2,bottom-1,0,0,119);
         if((i&15)==15)ht_checkpoint();
     }
 }

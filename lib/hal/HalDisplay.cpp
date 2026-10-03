@@ -7,6 +7,7 @@
 #include <Logging.h>
 #include <T5DisplayClient.h>
 #include <esp_heap_caps.h>
+#include "native/NativeTouchInput.h"
 
 #include <algorithm>
 #include <cstring>
@@ -387,7 +388,14 @@ void HalDisplay::pushPanelCanvas(const RefreshMode mode, const lgfx::epd_mode::e
     pushPanelCanvasWithEffect(effect);
   }
   gfx->waitDisplay();
-  if (gfx->failed()) displayReady = false;
+  if (gfx->failed()) {
+    displayReady = false;
+    return;
+  }
+  if (flipTouchBoundaryPending) {
+    nativeTouchSuppressCoordinates(false);
+    flipTouchBoundaryPending = false;
+  }
 }
 
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen) {
@@ -439,6 +447,7 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
   }
 
   pushPanelCanvas(mode, epdMode);
+  if (!displayReady) return;
 
   forceFullRefresh = false;
   forcedRefreshPending = false;
@@ -558,6 +567,8 @@ void HalDisplay::setFlipOutput(bool enabled) {
     return;
   }
   flipOutput = enabled;
+  nativeTouchSuppressCoordinates(true);
+  flipTouchBoundaryPending = true;
   // The whole screen moves 180°; force a clean full refresh to avoid e-ink ghosting.
   forceFullRefresh = true;
 }
@@ -681,6 +692,7 @@ void HalDisplay::displayGrayBuffer(HalDisplay::RefreshMode mode) {
   }
 
   pushPanelCanvas(mode, epdModeForRefreshMode(mode));
+  if (!displayReady) return;
 
   refreshCycleCount = 0;
   forcedRefreshPending = false;

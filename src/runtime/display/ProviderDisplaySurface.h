@@ -44,6 +44,14 @@ class ProviderDisplaySurface final : public DisplaySurface {
   // A boot splash must not be mistaken for the subsequent Home present.
   void clearPresentStatus() { lastPresentSucceeded_ = false; lastPresentState_ = 0; }
 
+  void setFlipOutput(bool enabled) {
+    if (flipOutput_ == enabled) return;
+    flipOutput_ = enabled;
+    // Retain this clean request through failed admission/presentation. A later
+    // ordinary UI refresh must not downgrade a whole-screen rotation.
+    flipRefreshPending_ = true;
+  }
+
   void clearScreen(uint8_t color = 0xFF) const override {
     if (ready_) std::memset(raster_, color, rasterSize_);
   }
@@ -80,9 +88,15 @@ class ProviderDisplaySurface final : public DisplaySurface {
         target.pixel_format == RISC_DISPLAY_FORMAT_MONO1;
     if (!compatible) { api_->release(api_->context, target.frame); return; }
     uint8_t* pixels = static_cast<uint8_t*>(target.pixels);
-    for (size_t i = 0; i < rasterSize_; ++i) pixels[i] = static_cast<uint8_t>(~raster_[i]);
+    // Rotate only while copying to the acquired provider frame. The Reader's
+    // logical raster and its cover/cache snapshots remain in their own axes.
+    for (size_t i = 0; i < rasterSize_; ++i) {
+      const uint8_t pixel = static_cast<uint8_t>(~raster_[flipOutput_ ? rasterSize_ - 1 - i : i]);
+      pixels[i] = flipOutput_ ? reverseBits(pixel) : pixel;
+    }
     risc_display_present_options_v1 options{};
-    options.intent = intent(nextModeRequested_ ? nextMode_ : mode);
+    options.intent = flipRefreshPending_ ? static_cast<uint8_t>(RISC_DISPLAY_PRESENT_CLEAN) :
+        intent(nextModeRequested_ ? nextMode_ : mode);
     options.queue_policy = RISC_DISPLAY_QUEUE_FIFO;
     risc_display_present_token_v1 token = RISC_DISPLAY_PRESENT_TOKEN_INVALID;
     if (!api_->submit(api_->context, target.frame, nullptr, 0, &options, &token) ||
@@ -90,12 +104,16 @@ class ProviderDisplaySurface final : public DisplaySurface {
       api_->release(api_->context, target.frame);
       return;
     }
-    nextModeRequested_ = false;
     risc_display_present_status_v1 status{};
     const bool waited = api_->wait_present(api_->context, token, timeoutMs_, &status);
     lastPresentState_ = status.state;
     lastPresentSucceeded_ = waited && status.state == RISC_DISPLAY_PRESENT_COMPLETE;
-    if (!lastPresentSucceeded_) api_->release(api_->context, target.frame);
+    if (lastPresentSucceeded_) {
+      nextModeRequested_ = false;
+      flipRefreshPending_ = false;
+    } else {
+      api_->release(api_->context, target.frame);
+    }
   }
   void requestNextRefresh(DisplayPresentMode mode = DisplayPresentMode::Quality) override {
     nextMode_ = mode;
@@ -113,6 +131,11 @@ class ProviderDisplaySurface final : public DisplaySurface {
   }
 
  private:
+  static uint8_t reverseBits(uint8_t byte) {
+    byte = static_cast<uint8_t>((byte >> 4) | (byte << 4));
+    byte = static_cast<uint8_t>(((byte & 0xccu) >> 2) | ((byte & 0x33u) << 2));
+    return static_cast<uint8_t>(((byte & 0xaau) >> 1) | ((byte & 0x55u) << 1));
+  }
   static uint8_t intent(DisplayPresentMode mode) {
     switch (mode) {
       case DisplayPresentMode::Clean: return RISC_DISPLAY_PRESENT_CLEAN;
@@ -129,6 +152,7 @@ class ProviderDisplaySurface final : public DisplaySurface {
   DisplaySurfaceInfo info_{};
   DisplayPresentMode nextMode_ = DisplayPresentMode::Quality;
   bool nextModeRequested_ = false;
+  bool flipOutput_ = false, flipRefreshPending_ = false;
   bool ready_ = false, lastPresentSucceeded_ = false;
   uint8_t lastPresentState_ = 0;
 };

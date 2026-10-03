@@ -32,6 +32,9 @@ static int chooser_renders;
 static int action_renders;
 static uint32_t fake_millis;
 static bool open_requested;
+static int open_request_count;
+static int fail_handler_index = -1;
+static uint16_t handler_seen_mask;
 static uint32_t picker_test_directory_count;
 
 static const t5_app_dirent_t root_entries[] = {
@@ -185,7 +188,9 @@ static void render_browser(const char *path, const char *status,
                            const t5_file_browser_entry_t *entries,
                            uint32_t count, int32_t selected) {
     assert(path && status);
-    if (phase != 3 || render_index == 0) assert(status[0] == 0);
+    if ((phase != 3 && render_index == 0) || (phase == 3 && render_index == 0))
+        assert(status[0] == 0);
+    else if (phase == 6 || phase == 7) assert(strstr(status, "Open cancelled") != NULL);
     if (phase == 1) {
         if (render_index == 0) {
             assert(strcmp(path, "/") == 0 && count == 7 && selected == -1);
@@ -228,8 +233,11 @@ static void render_browser(const char *path, const char *status,
             assert(!"unexpected phase-3 render");
         }
     } else {
-        assert(phase == 4 && render_index == 0);
-        assert(strcmp(path, "/") == 0 && count == 6 && status[0] == 0 && selected == -1);
+        assert((phase == 4 || phase == 6 || phase == 7) && render_index <= 1);
+        assert(strcmp(path, "/") == 0 && count == 6);
+        if (render_index == 0) assert(status[0] == 0);
+        else assert(strstr(status, "Open cancelled") != NULL);
+        assert(selected == -1 || selected == 5);
         assert_entry(entries, 5, "notes.md", false);
     }
     ++render_index;
@@ -289,12 +297,17 @@ static bool poll_browser(t5_file_browser_event_t *event, uint32_t wait_ms,
         }
         return true;
     }
-    assert(phase == 4 && at_root);
-    if (event_index == 0 || event_index == 1) {
-        fake_millis = event_index == 0 ? 100 : 300;
+    assert((phase == 4 || phase == 6 || phase == 7) && at_root);
+    if (event_index == 0 || event_index == 1 || (phase == 7 && event_index < 4)) {
+        fake_millis = (uint32_t)(100 + event_index * 200);
         ++event_index;
         event->type = T5_FILE_BROWSER_EVENT_ROW;
         event->row_index = 5; /* notes.md */
+        return true;
+    }
+    if (phase == 6 || (phase == 7 && event_index >= 4)) {
+        ++event_index;
+        event->type = T5_FILE_BROWSER_EVENT_EXIT;
         return true;
     }
     assert(!"unexpected phase-4 event poll"); return false;
@@ -348,7 +361,7 @@ static bool launch_take(int32_t *error, uint64_t *cookie) {
 }
 
 static uint32_t handler_count(const char *path) {
-    if (strstr(path, "notes.md")) return 2;
+    if (strstr(path, "notes.md")) return 10;
     if (strstr(path, ".epub")) return 1;
     if (strstr(path, ".txt")) return 2;
     if (strstr(path, ".bmp")) return 1;
@@ -356,8 +369,20 @@ static uint32_t handler_count(const char *path) {
 }
 static bool handler_get(const char *path, uint32_t index, t5_file_handler_t *out) {
     assert(path && out);
+    if ((int)index == fail_handler_index) {
+        fail_handler_index = -1; /* One transient provider failure; a fresh open can retry. */
+        return false;
+    }
     memset(out, 0, sizeof(*out));
-    if (strstr(path, "notes.md") || strstr(path, ".txt")) {
+    if (strstr(path, "notes.md")) {
+        assert(index < 10);
+        handler_seen_mask |= (uint16_t)(1u << index);
+        out->kind = T5_FILE_HANDLER_APP;
+        snprintf(out->app_id, sizeof(out->app_id), "handler_%u", index);
+        snprintf(out->display_name, sizeof(out->display_name), "Handler %u", index);
+        return true;
+    }
+    if (strstr(path, ".txt")) {
         assert(index < 2);
         if (index == 0) {
             out->kind = T5_FILE_HANDLER_SYSTEM_READER;
@@ -385,11 +410,12 @@ static bool handler_get(const char *path, uint32_t index, t5_file_handler_t *out
     return false;
 }
 static bool open_request(const char *path, const char *app_id, uint64_t cookie) {
-    assert(phase == 4);
+    assert(phase == 4 || phase == 7);
     assert(!strcmp(path, "/sd/notes.md"));
-    assert(!strcmp(app_id, "text_editor"));
+    assert(!strcmp(app_id, "handler_9"));
     assert(cookie == 0x4642524f57534552ULL);
     open_requested = true;
+    ++open_request_count;
     return true;
 }
 static bool open_take_result(int32_t *error, uint64_t *cookie) {
@@ -422,11 +448,15 @@ static void ui_render(const t5_ui_chrome_t *chrome, const t5_ui_list_row_t *rows
         ++action_renders;
         return;
     }
-    assert(phase == 4 && count == 2);
+    assert((phase == 4 || phase == 6 || phase == 7) && (count == 8 || count == 2));
     assert(!strcmp(chrome->title, "Open with"));
-    assert(!strcmp(rows[0].title, "Reader"));
-    assert(!strcmp(rows[1].title, "Text Editor"));
-    assert(selected >= 0 && selected < 2);
+    const uint32_t first = count == 2 ? 8u : 0u;
+    for (uint32_t i = 0; i < count; ++i) {
+        char expected[32];
+        snprintf(expected, sizeof(expected), "Handler %u", first + i);
+        assert(!strcmp(rows[i].title, expected));
+    }
+    assert(selected >= 0 && selected < (int32_t)count);
     ++chooser_renders;
 }
 static bool ui_poll(t5_ui_event_t *event, uint32_t wait_ms) {
@@ -436,8 +466,17 @@ static bool ui_poll(t5_ui_event_t *event, uint32_t wait_ms) {
         event->type = ui_event_index++ < 2 ? T5_UI_EVENT_NEXT : T5_UI_EVENT_CONFIRM;
         return true;
     }
-    assert(phase == 4);
-    event->type = ui_event_index++ == 0 ? T5_UI_EVENT_NEXT : T5_UI_EVENT_CONFIRM;
+    if (phase == 4 || phase == 7) {
+        const int n = ui_event_index++;
+        event->type = n < 9 ? T5_UI_EVENT_NEXT : T5_UI_EVENT_CONFIRM;
+        return true;
+    }
+    if (phase == 6) {
+        const int n = ui_event_index++;
+        event->type = n < 8 ? T5_UI_EVENT_NEXT : T5_UI_EVENT_BACK;
+        return true;
+    }
+    assert(!"handler lookup failure should not open chooser");
     return true;
 }
 static int32_t ui_hit(int16_t x, int16_t y) { (void)x; (void)y; return -1; }
@@ -510,6 +549,8 @@ int main(void) {
     fake_millis = 0;
     app_main();
     assert(open_requested);
+    assert(open_request_count == 1);
+    assert(handler_seen_mask == 0x03ffu);
     assert(chooser_renders >= 2);
     assert(render_index == 1);
     assert(session_exists);
@@ -532,5 +573,17 @@ int main(void) {
             assert(strcmp(picker_names[PICKER_ENTRIES - 1], "Folder095") == 0);
         }
     }
+
+    phase = 6;
+    event_index = render_index = ui_event_index = 0;
+    app_main();
+    assert(open_request_count == 1); /* Back cancels after paging to handlers 9–10. */
+
+    phase = 7;
+    event_index = render_index = ui_event_index = 0;
+    fail_handler_index = 4;
+    status_text[0] = 0;
+    app_main();
+    assert(open_request_count == 2); /* Failed lookup is surfaced, then a fresh open succeeds. */
     return 0;
 }

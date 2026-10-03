@@ -30,6 +30,7 @@ uint64_t subscription = 0;
 bool enabled = true;
 bool quarantined = false;
 bool bootstrapAttached = false;
+bool coordinatesSuppressed = false;
 uint32_t lastAttemptMs = 0;
 
 TaskHandle_t workerTask = nullptr;
@@ -591,9 +592,23 @@ void nativeTouchDiscardGestures() {
   portEXIT_CRITICAL(&touchStateMux);
 }
 
+void nativeTouchSuppressCoordinates(bool suppressed) {
+  portENTER_CRITICAL(&touchStateMux);
+  if (coordinatesSuppressed == suppressed) {
+    portEXIT_CRITICAL(&touchStateMux);
+    return;
+  }
+  coordinatesSuppressed = suppressed;
+  ++focusRequested;
+  tapHead = tapCount = 0;
+  swipeHead = swipeCount = 0;
+  gestureEligible = false;
+  portEXIT_CRITICAL(&touchStateMux);
+}
+
 bool nativeTouchGetTap(NativeTouchPoint& point) {
   portENTER_CRITICAL(&touchStateMux);
-  if (!tapCount) {
+  if (coordinatesSuppressed || !tapCount) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }
@@ -606,7 +621,7 @@ bool nativeTouchGetTap(NativeTouchPoint& point) {
 
 bool nativeTouchGetContact(NativeTouchPoint& point) {
   portENTER_CRITICAL(&touchStateMux);
-  const bool active = touchActive && gestureEligible;
+  const bool active = !coordinatesSuppressed && touchActive && gestureEligible;
   if (active) point = currentTouch;
   portEXIT_CRITICAL(&touchStateMux);
   return active;
@@ -615,7 +630,7 @@ bool nativeTouchGetContact(NativeTouchPoint& point) {
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs) {
   uint32_t started = 0;
   portENTER_CRITICAL(&touchStateMux);
-  if (!touchActive || touchMoved || !gestureEligible) {
+  if (coordinatesSuppressed || !touchActive || touchMoved || !gestureEligible) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }
@@ -628,7 +643,7 @@ bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs) {
 
 bool nativeTouchGetSwipe(NativeTouchPoint& start, NativeTouchPoint& end) {
   portENTER_CRITICAL(&touchStateMux);
-  if (!swipeCount) {
+  if (coordinatesSuppressed || !swipeCount) {
     portEXIT_CRITICAL(&touchStateMux);
     return false;
   }

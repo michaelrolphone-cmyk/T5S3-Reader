@@ -23,6 +23,11 @@ bool nativeTouchHadActivity();
 // gestures now; the capture task fences raw backlog with its next successful
 // poll/snapshot. Held contacts must lift before becoming eligible.
 void nativeTouchDiscardGestures();
+// Fence coordinate delivery across an unresolved display transform. Capture,
+// physical activity and the coordinate-independent Home escape remain live.
+// Only the display owner that begins the boundary may release it after a
+// successful presentation; release also discards queued/held old-image input.
+void nativeTouchSuppressCoordinates(bool suppressed);
 bool nativeTouchGetTap(NativeTouchPoint& point);
 bool nativeTouchGetContact(NativeTouchPoint& point);
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs);
