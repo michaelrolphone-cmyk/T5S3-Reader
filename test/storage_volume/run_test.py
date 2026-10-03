@@ -17,15 +17,26 @@ with tempfile.TemporaryDirectory() as temp:
         subprocess.run(['cc','-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-overflow','-fsanitize='+SANITIZER,
                         '-Isdk/driver','-Itest/storage_volume/fake','-IDrivers/x4pro_board','-c',source,'-o',str(out)],cwd=ROOT,check=True)
         objects.append(str(out))
+    common = ['c++', '-std=c++17', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
+              '-fsanitize='+SANITIZER, '-DBOARD_XTEINK_X4_PRO', '-Wno-overloaded-virtual',
+              '-Itest/storage_volume/stubs', '-Ilib/hal', '-Isdk/driver']
     extra = []
     if len(sys.argv) > 1:
-        # Keep -Werror on our sources; upstream ArduinoJson is a system header.
         extra = ['-DTEST_APP_PARSER', '-DCROSSPOINT_VERSION="1.3.74"',
-                 '-isystem', sys.argv[1], '-Isrc', '-Ilib/NativeApps/include', 'src/native/AppManifest.cpp']
+                 '-isystem', sys.argv[1], '-Isrc', '-Ilib/NativeApps/include']
+        # GCC emits maybe-uninitialized for ArduinoJson's empty iterator after
+        # inlining, even with -isystem. Keep that diagnostic visible but not
+        # fatal in the parser TU only. Provider/HAL/test retain full -Werror;
+        # every TU retains the runtime sanitizers.
+        compiler_version = subprocess.check_output(['c++', '--version'], text=True)
+        parser_flags = [] if 'clang' in compiler_version.lower() else ['-Wno-error=maybe-uninitialized']
+        parser = build/'AppManifest.o'
+        subprocess.run([*common, *extra, *parser_flags, '-c', 'src/native/AppManifest.cpp',
+                        '-o', str(parser)], cwd=ROOT, check=True)
+        objects.append(str(parser))
     binary=build/'storage'
-    subprocess.run(['c++','-std=c++17','-O1','-g','-Wall','-Wextra','-Werror','-fsanitize='+SANITIZER,'-DBOARD_XTEINK_X4_PRO','-Wno-overloaded-virtual',
-                    '-Itest/storage_volume/stubs','-Ilib/hal','-Isdk/driver',
-                    'test/storage_volume/runtime_test.cpp','lib/hal/HalStorageVolume.cpp',*extra,*objects,'-o',str(binary)],cwd=ROOT,check=True)
+    subprocess.run([*common, *extra, 'test/storage_volume/runtime_test.cpp',
+                    'lib/hal/HalStorageVolume.cpp', *objects, '-o', str(binary)], cwd=ROOT, check=True)
     for layout in ('superfloppy','mbr'):
         for failure in ([], ['busy-timeout']):
             subprocess.run([str(binary),layout,*failure],cwd=ROOT,check=True,timeout=120,env=ENV)
