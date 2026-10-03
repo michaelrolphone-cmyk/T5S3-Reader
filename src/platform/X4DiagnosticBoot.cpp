@@ -13,37 +13,32 @@
 
 #include <Board.h>
 #include <Arduino.h>
-#include <FontCacheManager.h>
-#include <FontDecompressor.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
 #include <Logging.h>
-#include <Txt.h>
+#include <HalPowerManager.h>
+#include <I18n.h>
 #include <RiscI2cBusV1.h>
 #include <RiscTouchV1.h>
 #include <cstring>
+#include <esp_heap_caps.h>
+#include "runtime/network/PsramTlsAllocator.h"
 #include <memory>
 #include <new>
-#include <string>
 
 #include "MappedInputManager.h"
 #include "CrossPointSettings.h"
 #include "activities/ActivityManager.h"
-#include "activities/util/FullScreenMessageActivity.h"
 #include "components/UITheme.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
 #include "util/ButtonNavigator.h"
 #include "runtime/drivers/ProviderModuleV2.h"
 
-extern EpdFont notoserif14RegularFont;
-extern EpdFontFamily ui10FontFamily;
-extern EpdFontFamily ui12FontFamily;
-extern EpdFontFamily smallFontFamily;
-extern FontDecompressor fontDecompressor;
+extern bool setupDisplayAndFonts();
+extern void setupReaderState();
 extern GfxRenderer renderer;
-extern FontCacheManager fontCacheManager;
 extern MappedInputManager mappedInputManager;
 extern ActivityManager activityManager;
 
@@ -60,74 +55,8 @@ const risc_input_navigation_api_v1 *nav_api = nullptr;
 const risc_frontlight_api_v1 *light_api = nullptr;
 uint8_t surface[48000];
 std::unique_ptr<ProviderDisplaySurface> provider_surface;
-uint32_t sequence = 0;
 bool ready = false;
-bool shared_text_ready = false;
-const char *storage_status = "SD provider unavailable";
-bool storage_mounted = false;
 bool showing_home = false;
-std::string storage_preview;
-std::unique_ptr<Txt> preview_text;
-std::string preview_name;
-uint64_t preview_position = 0;
-
-void advancePreview() {
-    if (!preview_text) return;
-    if (preview_position >= preview_text->getFileSize()) {
-        storage_preview = "End of " + preview_name;
-        return;
-    }
-    char sample[49] = {0};
-    const size_t left = preview_text->getFileSize() - preview_position;
-    const size_t count = left < sizeof(sample) - 1u ? left : sizeof(sample) - 1u;
-    if (!preview_text->readContent(reinterpret_cast<uint8_t *>(sample),
-                                   preview_position, count)) {
-        storage_preview = "SD read failed";
-        preview_text.reset();
-        return;
-    }
-    for (size_t j = 0; j < count; ++j)
-        if ((unsigned char)sample[j] < 32 || (unsigned char)sample[j] > 126) sample[j] = ' ';
-    storage_preview = preview_name + ": " + std::string(sample, count);
-    preview_position += count;
-    LOG_INF("X4", "storage preview bytes=%lu", static_cast<unsigned long>(preview_position));
-}
-bool openFirstText(const risc_storage_volume_api_v1 *volume, const char *directory) {
-    const risc_storage_dir_t cursor = volume->dir_open(volume->context, directory);
-    if (cursor == RISC_STORAGE_DIR_INVALID) return false;
-    risc_storage_dirent_v1 entry{};
-    bool found = false;
-    std::string selected;
-    std::string selected_name;
-    for (unsigned i = 0; i < 16 && volume->dir_next(volume->context, cursor, &entry); ++i) {
-        const char *extension = std::strrchr(entry.name, '.');
-        if (entry.is_directory || !extension || std::strcmp(extension, ".TXT") != 0) continue;
-        char path[RISC_STORAGE_VOLUME_NAME_MAX + 16] = {0};
-        const size_t prefix = std::strlen(directory);
-        const size_t name = std::strlen(entry.name);
-        if (prefix + name + 2 >= sizeof(path)) break;
-        std::memcpy(path, directory, prefix);
-        size_t at = prefix;
-        if (at == 0 || path[at - 1] != '/') path[at++] = '/';
-        std::memcpy(path + at, entry.name, name + 1);
-        selected = path;
-        selected_name = entry.name;
-        found = true;
-        break;
-    }
-    volume->dir_close(volume->context, cursor);
-    if (!found) return false;
-    auto candidate = std::make_unique<Txt>(selected, "/.crosspoint");
-    if (!candidate->load() || candidate->getFileSize() > 131072u) {
-        storage_preview = "TXT unavailable or too large";
-        return true;
-    }
-    preview_text = std::move(candidate);
-    preview_name = std::move(selected_name);
-    preview_position = 0;
-    advancePreview();
-    return true;
-}
 
 void log_fail(const char *stage, RuntimeProviders::ModuleV2 &mod) {
     LOG_ERR("X4", "%s failed: %s", stage, mod.lastError() ? mod.lastError() : "unknown");
@@ -145,64 +74,13 @@ bool load_one(RuntimeProviders::ModuleV2 &mod, const x4_embedded_provider &provi
     LOG_INF("X4", "loaded %s %s", provider.id, provider.version);
     return true;
 }
-void pixel(int x, int y, bool black) {
-    if (x < 0 || y < 0 || x >= 800 || y >= 480) return;
-    uint8_t &byte = surface[(size_t)y * 100u + (size_t)x / 8u];
-    uint8_t mask = (uint8_t)(0x80u >> (x & 7));
-    if (black) byte &= (uint8_t)~mask;
-    else byte |= mask;
-}
-void marker(int x, int y) {
-    for (int i = 0; i < 24; ++i) { pixel(x + i, y, true); pixel(x, y + i, true); }
-}
-void rectangle(int left, int top, int right, int bottom, bool black) {
-    for (int y = top; y < bottom; ++y)
-        for (int x = left; x < right; ++x) pixel(x, y, black);
-}
-void paint(uint32_t edge) {
-    renderer.clearScreen(0xFF);
-    for (int i = 0; i < 800; ++i) { pixel(i, 0, true); pixel(i, 479, true); }
-    for (int i = 0; i < 480; ++i) { pixel(0, i, true); pixel(799, i, true); }
-    marker(8, 8);
-    marker(760, 8);
-    marker(8, 440);
-    for (int x = 40; x < 200; ++x) pixel(x, 40, true);
-    for (int y = 40; y < 120; ++y) pixel(40, y, true);
-    /* Large high-contrast targets make a real first frame unambiguous by eye. */
-    rectangle(80, 80, 400, 320, true);
-    rectangle(180, 160, 300, 240, false);
-    rectangle(520, 120, 680, 420, true);
-    for (uint32_t n = 0; n < (sequence & 7u); ++n) marker(80 + (int)n * 28, 200);
-    if (edge & RISC_NAV_LEFT) marker(80, 300);
-    if (edge & RISC_NAV_RIGHT) marker(160, 300);
-    if (edge & RISC_NAV_CONFIRM) marker(240, 300);
-    /* Exercise the same 0=black software raster and text renderer as Reader UI. */
-    if (shared_text_ready) {
-        renderer.drawText(NOTOSERIF_14_FONT_ID, 48, 12, "RiscRTE X4 Pro");
-        renderer.drawText(NOTOSERIF_14_FONT_ID, 48, 36, storage_status);
-    }
-}
-bool present() {
-    uint32_t black_pixels = 0;
-    for (uint8_t value : surface) black_pixels += (uint32_t)__builtin_popcount((unsigned)((uint8_t)~value));
-    LOG_INF("X4", "diagnostic black_pixels=%lu", static_cast<unsigned long>(black_pixels));
-    if (!provider_surface || !provider_surface->isReady()) return false;
-    const unsigned long began = millis();
-    renderer.displayBuffer(DisplayPresentMode::Clean);
-    char detail[160] = "unavailable";
-    (void)panel_mod.copyProviderError(detail, sizeof(detail));
-    if (!provider_surface->lastPresentSucceeded()) {
-        LOG_ERR("X4", "present failed elapsed=%lu budget=20000 %s", millis() - began, detail);
-        return false;
-    }
-    LOG_INF("X4", "present complete elapsed=%lu %s", millis() - began, detail);
-    return true;
-}
 }
 
 void x4DiagnosticSetup() {
     LOG_INF("X4", "diagnostic entered");
-    const unsigned long start = millis();
+    // Match the shared firmware allocation policy before UI/app allocations.
+    if (psramFound()) heap_caps_malloc_extmem_enable(1024);
+    RuntimeNetwork::enablePsramTlsAllocations();
     LOG_INF("X4", "diagnostic boot %s flash=16MB app0=0x10000", Board::firmwareMarker());
     const x4_embedded_provider *clock = x4_embedded_find("platform-clock-v1");
     const x4_embedded_provider *panel = x4_embedded_find("x4pro-panel");
@@ -224,17 +102,11 @@ void x4DiagnosticSetup() {
         auto *volume = static_cast<const risc_storage_volume_api_v1 *>(sd_mod.capability());
         if (volume && volume->api_version == RISC_STORAGE_VOLUME_API_V1 &&
             volume->struct_size >= sizeof(*volume) && volume->ready) {
-            storage_mounted = Storage.bindVolume(volume);
+            const bool storage_mounted = Storage.bindVolume(volume);
             char reason[80] = "none";
             if (volume->last_error) (void)volume->last_error(volume->context, reason, sizeof(reason));
-            storage_status = storage_mounted ? "SD root read only" : "SD card not ready";
             LOG_INF("X4", "storage.volume mounted=%d reason=%s", storage_mounted ? 1 : 0, reason);
-            if (storage_mounted) storage_preview = "SD root read only";
-            if (storage_mounted && volume->dir_open && volume->dir_next &&
-                volume->dir_close && volume->file_open_read && volume->file_read && volume->file_close) {
-                storage_preview = "SD ready; no root TXT file";
-                if (!openFirstText(volume, "/Books")) (void)openFirstText(volume, "/");
-            }
+
         }
     }
     if (i2c && touch && load_one(i2c_mod, *i2c, &dep, 1)) {
@@ -271,11 +143,15 @@ void x4DiagnosticSetup() {
         LOG_ERR("X4", "Reader display facade rejected provider");
         return;
     }
-    display.begin(false);
-    if (!renderer.preflightSurface() || !renderer.begin()) {
-        LOG_ERR("X4", "shared renderer surface rejected");
-        return;
-    }
+    // BoardX4Pro's power hooks do not touch T5S3 peripherals. Initialize
+    // the shared power mutex before any native app takes its UI/power lock.
+    powerManager.begin();
+    SETTINGS.loadFromFile();
+    I18N.setLanguage(static_cast<Language>(SETTINGS.language));
+    UITheme::getInstance().reload();
+    if (!setupDisplayAndFonts()) return;
+    display.setFlipOutput(SETTINGS.flipUi != 0);
+    setupReaderState();
     // Reader's four button hints are laid out in portrait coordinates. The
     // physical X4 is portrait when held with its controls upright; landscape
     // left the Classic Home menu with a negative usable height.
@@ -285,58 +161,34 @@ void x4DiagnosticSetup() {
         return;
     }
     if (light_api) (void)light_api->set_level(light_api->context, 0, 1);
-    shared_text_ready = fontDecompressor.init();
-    if (shared_text_ready) {
-        fontCacheManager.setFontDecompressor(&fontDecompressor);
-        renderer.setFontCacheManager(&fontCacheManager);
-        renderer.insertFont(NOTOSERIF_14_FONT_ID, EpdFontFamily(&notoserif14RegularFont));
-        renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
-        renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
-        renderer.insertFont(SMALL_FONT_ID, smallFontFamily);
+    // E-paper retains its previous frame across reset. Present a brief
+    // startup frame so a fresh boot is visible before an identical Home
+    // image is drawn. This is X4-only and adds no NVS or storage write.
+    renderer.clearScreen();
+    renderer.drawCenteredText(UI_12_FONT_ID, 72, "Starting Reader");
+    renderer.drawCenteredText(UI_10_FONT_ID, 116, "X4 Pro");
+    renderer.displayBuffer(DisplayPresentMode::Clean);
+    LOG_INF("X4", "boot splash present=%d", provider_surface->lastPresentSucceeded() ? 1 : 0);
+    provider_surface->clearPresentStatus();
+    const auto &home = UITheme::getInstance().getMetrics();
+    const int menu_height = renderer.getScreenHeight() -
+        (home.homeTopPadding + home.homeCoverTileHeight + home.homeMenuTopOffset +
+         home.buttonHintsHeight);
+    const int required_menu_height = 3 * home.menuRowHeight + 2 * home.menuSpacing;
+    if (menu_height < required_menu_height) {
+        LOG_ERR("X4", "Home menu geometry rejected height=%d required=%d",
+                menu_height, required_menu_height);
+        return;
     }
-    LOG_INF("X4", "shared text ready=%d", shared_text_ready ? 1 : 0);
-    char probe[160] = "unavailable";
-    (void)panel_mod.copyProviderError(probe, sizeof(probe));
-    LOG_INF("X4", "%s", probe);
-    if (shared_text_ready) {
-        // E-paper retains its previous frame across reset. Present a brief
-        // startup frame so a fresh boot is visible before an identical Home
-        // image is drawn. This is X4-only and adds no NVS or storage write.
-        renderer.clearScreen();
-        renderer.drawCenteredText(UI_12_FONT_ID, 72, "Starting Reader");
-        renderer.drawCenteredText(UI_10_FONT_ID, 116, "X4 Pro");
-        renderer.displayBuffer(DisplayPresentMode::Clean);
-        LOG_INF("X4", "boot splash present=%d", provider_surface->lastPresentSucceeded() ? 1 : 0);
-        provider_surface->clearPresentStatus();
-        // Render the real Reader Home with a safe fixed Classic/MONO1 frame.
-        // Other activities and device-dependent actions remain gated until
-        // their X4 power, storage-write and input lifecycles are cut over.
-        SETTINGS.uiTheme = CrossPointSettings::CLASSIC;
-        UITheme::getInstance().reload();
-        const auto &home = UITheme::getInstance().getMetrics();
-        const int menu_height = renderer.getScreenHeight() -
-            (home.homeTopPadding + home.homeCoverTileHeight + home.homeMenuTopOffset +
-             home.buttonHintsHeight);
-        const int required_menu_height = 3 * home.menuRowHeight + 2 * home.menuSpacing;
-        if (menu_height < required_menu_height) {
-            LOG_ERR("X4", "Home menu geometry rejected height=%d required=%d",
-                    menu_height, required_menu_height);
-            return;
-        }
-        LOG_INF("X4", "home geometry width=%d height=%d menu_height=%d",
-                renderer.getScreenWidth(), renderer.getScreenHeight(), menu_height);
-        activityManager.begin();
-        ButtonNavigator::setMappedInputManager(mappedInputManager);
-        activityManager.goHome();
-        // HomeActivity::onEnter queues a deferred update. X4 does not run the
-        // normal activity loop yet, so wake its render worker for this frame.
-        activityManager.requestUpdate(true);
-        showing_home = true;
-        LOG_INF("X4", "home activity scheduled=1");
-    } else {
-        paint(0);
-        ready = present();
-    }
+    LOG_INF("X4", "home geometry width=%d height=%d menu_height=%d",
+            renderer.getScreenWidth(), renderer.getScreenHeight(), menu_height);
+    ButtonNavigator::setMappedInputManager(mappedInputManager);
+    activityManager.goHome();
+    // Home queues its first render before the owner loop starts.
+    activityManager.requestUpdate(true);
+    showing_home = true;
+    LOG_INF("X4", "home activity scheduled=1");
+
 }
 
 void x4DiagnosticLoop() {
@@ -354,7 +206,7 @@ void x4DiagnosticLoop() {
         delay(200);
         return;
     }
-    mappedInputManager.updateBootstrapInput();
+    mappedInputManager.update();
     const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
     if (showing_home) {
         static uint32_t input_sequence = 0;
@@ -368,10 +220,6 @@ void x4DiagnosticLoop() {
                         static_cast<unsigned long>(++input_sequence));
         }
         activityManager.loop();
-    } else if (frame_in.pressed) {
-        ++sequence;
-        paint(frame_in.pressed);
-        if (!present()) ready = false;
     }
     delay(20);
 }

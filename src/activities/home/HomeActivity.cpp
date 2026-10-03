@@ -10,9 +10,6 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Utf8.h>
-#if defined(BOARD_XTEINK_X4_PRO)
-#include <RiscInputNavigationV1.h>
-#endif
 #include <Xtc.h>
 
 #include <cstring>
@@ -200,33 +197,18 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 
 void HomeActivity::onEnter() {
   Activity::onEnter();
-#if defined(BOARD_XTEINK_X4_PRO)
-  // X4 has only a qualified read-only TXT destination. Do not import stale
-  // recents, installed app pins, or OPDS into its Home menu yet.
-  hasOpdsServers = false;
-  recentBooks.clear();
-  homeApps.clear();
-#else
   hasOpdsServers = OPDS_STORE.hasServers();
-#endif
   selectorIndex = 0;
   recentsLoading = false;
   firstRenderDone = false;
   coverRendered = false;
   coverBufferStored = false;
   pendingHomeAppArtifact.clear();
-#if defined(BOARD_XTEINK_X4_PRO)
-  x4Status.clear();
-#endif
   lastVisibleTextPrewarmKey.clear();
   const auto& metrics = UITheme::getInstance().getMetrics();
-#if defined(BOARD_XTEINK_X4_PRO)
-  recentsLoaded = true;
-#else
   loadRecentBooks(metrics.homeRecentBooksCount);
   loadHomeApps();
   recentsLoaded = !needsRecentCovers(metrics.homeCoverHeight);
-#endif
   // Build missing thumbnails while the independent loading screen is visible,
   // rather than freezing navigation immediately after showing a usable Home.
   if (StartupScreen::isLoading() && !recentsLoaded) loadRecentCovers(metrics.homeCoverHeight);
@@ -389,9 +371,6 @@ void HomeActivity::render(RenderLock&&) {
   }
 
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding},
-#if defined(BOARD_XTEINK_X4_PRO)
-                 !x4Status.empty() ? x4Status.c_str() :
-#endif
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
                  nullptr, TextRole::UserContent, TextRole::System, headerClockLabel);
 
@@ -454,19 +433,6 @@ void HomeActivity::render(RenderLock&&) {
 void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToReader(path); }
 
 void HomeActivity::activateSelection(int index) {
-#if defined(BOARD_XTEINK_X4_PRO)
-  // Keep the shared Reader Home labels and menu layout. The X4 currently has
-  // only a read-only TXT subset behind Recent books; all other destinations
-  // stay visible but fail closed until their device services are qualified.
-  if (index == 0) {
-    activityManager.goToRecentBooks();
-  } else {
-    x4Status = "Selection unavailable on X4";
-    freeCoverBuffer();
-    requestUpdate();
-  }
-  return;
-#endif
   int idx = 0;
   int menuSelectedIndex = index - static_cast<int>(recentBooks.size());
   const int recentsIdx = idx++;

@@ -379,6 +379,14 @@ bool setupDisplayAndFonts() {
   return true;
 }
 
+void setupReaderState() {
+  sdFontSystem.begin(renderer);
+  KOREADER_STORE.loadFromFile();
+  OPDS_STORE.loadFromFile();
+  APP_STATE.loadFromFile();
+  RECENT_BOOKS.loadFromFile();
+}
+
 void ensureSdFontLoaded() { sdFontSystem.ensureLoaded(renderer); }
 
 HalDisplay::RefreshMode readerResumeRefreshMode() {
@@ -562,11 +570,7 @@ void setup() {
     StartupScreen::boot(renderer);
   }
 
-  sdFontSystem.begin(renderer);
-  KOREADER_STORE.loadFromFile();
-  OPDS_STORE.loadFromFile();
-  APP_STATE.loadFromFile();
-  RECENT_BOOKS.loadFromFile();
+  setupReaderState();
   // Keep provider loading on the normal owner task. The video worker only
   // submits pixels; it cannot contend with SD/module/renderer initialization.
   if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) {

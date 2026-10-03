@@ -50,8 +50,12 @@ class BootAnimationContract(unittest.TestCase):
         setup = main[main.index("void setup()") : main.index("void loop()")]
         t5 = setup.split("#ifdef BOARD_XTEINK_X4_PRO", 1)[-1]
         t5 = t5.split("#endif", 1)[-1]
-        for work in ("sdFontSystem.begin(renderer)", "APP_STATE.loadFromFile()",
-                     "logPlatformInputHealth()", "mappedInputManager.update()", "activityManager.goHome()"):
+        state = main.split("void setupReaderState() {", 1)[1].split("\n}", 1)[0]
+        for work in ("sdFontSystem.begin(renderer)", "KOREADER_STORE.loadFromFile()",
+                     "OPDS_STORE.loadFromFile()", "APP_STATE.loadFromFile()", "RECENT_BOOKS.loadFromFile()"):
+            self.assertIn(work, state)
+        for work in ("setupReaderState()", "logPlatformInputHealth()",
+                     "mappedInputManager.update()", "activityManager.goHome()"):
             self.assertLess(t5.index("StartupScreen::boot(renderer)"), t5.index(work))
         start = SOURCE[SOURCE.index("bool bootWithVideo("):SOURCE.index("bool finishVideoBoot(")]
         self.assertNotIn("renderLayerReveal()", start)
@@ -62,9 +66,10 @@ class BootAnimationContract(unittest.TestCase):
         self.assertIn("if (StartupScreen::isLoading() && !recentsLoaded) loadRecentCovers", home)
         self.assertIn("if (!bootLoading) GUI.fillPopupProgress", home)
         render = activity[activity.index("void ActivityManager::renderTaskLoop()"):activity.index("void ActivityManager::loop()")]
-        # X4 has a provider-backed first frame and no T5S3 startup animation.
-        # Check the T5S3 render branch's ordering, not its preceding X4 branch.
-        t5_render = render.split("#else", 1)[1].split("#endif", 1)[0]
+        # Both boards share render/power locking; only startup choreography
+        # is conditional. Follow the T5S3 ordering across these guarded calls.
+        self.assertEqual(render.count("currentActivity->render(std::move(lock))"), 1)
+        t5_render = render
         self.assertLess(t5_render.index("currentActivity->render(std::move(lock))"),
                         t5_render.index("StartupScreen::destinationReady()"))
         self.assertLess(t5_render.index("StartupScreen::finishBoot(renderer)"),
