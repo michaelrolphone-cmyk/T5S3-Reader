@@ -39,6 +39,7 @@ static void format(bool partitioned) {
     b[66]=0x29;std::memcpy(b+82,"FAT32   ",8);b[510]=0x55;b[511]=0xaa;
     for(unsigned fat=0;fat<2;++fat) { uint8_t *p=card_image+(size_t)(base+32+fat*1024)*512;put32(p,0xffffff8);put32(p+4,0xffffffff);put32(p+8,0xfffffff); }
 }
+#include "directory_iteration_test.inc"
 int main(int argc, char **argv) {
     card_image=static_cast<uint8_t*>(std::calloc(card_sectors,512));assert(card_image);
     format(argc>1 && std::strcmp(argv[1],"mbr")==0);
@@ -67,6 +68,9 @@ int main(int argc, char **argv) {
     assert(driver->start(deps,sizeof(deps)/sizeof(deps[0])));
     char error[80];api->last_error(nullptr,error,sizeof(error));if(!api->ready(nullptr))std::fprintf(stderr,"mount: %s\n",error);
     assert(api->ready(nullptr));assert(Storage.bindVolume(api));
+    if (argc>1 && std::strncmp(argv[1],"directory-",10)==0) {
+        directoryIterationTests(argv[1],driver,api); return 0;
+    }
     std::fprintf(stderr,"mkdir\n");
     assert(Storage.mkdir("/Apps/springboard/.staging/deep/package/path"));
     assert(Storage.mkdir("/Drivers/very-long-provider-name"));

@@ -31,6 +31,7 @@ class HalStorage::StorageLock {
   StorageLock() : held(xSemaphoreTake(Storage.storageMutex, pdMS_TO_TICKS(kOperationMs)) == pdTRUE) {}
   ~StorageLock() { if (held) xSemaphoreGive(Storage.storageMutex); }
   explicit operator bool() const { return held; }
+  bool initialized() const { return held && Storage.initialized; }
 };
 bool HalStorage::bindVolume(const risc_storage_volume_api_v1 *api) {
   StorageLock lock;
@@ -301,20 +302,24 @@ void HalFile::rewindDirectory() {
 }
 bool HalFile::close() { HalStorage::StorageLock lock; return lock && (!impl || impl->closeLocked()); }
 HalFile HalFile::openNextFile() {
-  std::string path;
-  {
-    HalStorage::StorageLock lock;
-    if (!lock || !impl || !impl->handle || !impl->directory || impl->error || !mediaReady()) return {};
-    risc_storage_dirent_v1 entry{};
-    if (!volume->dir_next(volume->context, impl->handle, &entry)) {
-      if (extended->handle_error(volume->context, impl->handle, true)) impl->error = 1;
-      return {};
-    }
-    path = impl->path + (impl->path == "/" ? "" : "/") + entry.name;
+  HalStorage::StorageLock lock;
+  if (!lock || !impl || !impl->handle || !impl->directory || impl->error || !mediaReady()) return {};
+  risc_storage_dirent_v1 entry{};
+  if (!volume->dir_next(volume->context, impl->handle, &entry)) {
+    if (extended->handle_error(volume->context, impl->handle, true)) impl->error = 1;
+    return {};
   }
-  auto file = Storage.open(path.c_str());
-  if (!file) { HalStorage::StorageLock lock; if (lock) impl->error = 1; }
-  return file;
+  // Preserve Storage.open admission after an explicit unavailable transition,
+  // even when the provider still reports ready. The lock is non-recursive.
+  if (!lock.initialized()) { impl->error = 1; return {}; }
+  // dir_next already supplies the type. Open the real child directly: a
+  // redundant stat would walk the FAT parent again for every entry. Provider
+  // opens still validate existence/type and own all handle/close semantics.
+  const std::string path = impl->path + (impl->path == "/" ? "" : "/") + entry.name;
+  const uint32_t handle = entry.is_directory ? volume->dir_open(volume->context, path.c_str())
+      : extended->file_open(volume->context, path.c_str(), RISC_STORAGE_OPEN_READ);
+  if (!handle) { impl->error = 1; return {}; }
+  return HalFile(std::make_unique<Impl>(handle, entry.is_directory, false, path.c_str()));
 }
 uint8_t HalFile::getError() const {
   HalStorage::StorageLock lock;

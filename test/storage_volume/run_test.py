@@ -45,7 +45,8 @@ with tempfile.TemporaryDirectory() as temp:
         for failure in ([], ['busy-timeout']):
             subprocess.run([str(binary),layout,*failure],cwd=ROOT,check=True,timeout=120,env=ENV)
 
-    for scenario in ("sleep", "mutex-open-give", "mutex-read-give", "mutex-write-give",
+    for scenario in ("directory-basic", "directory-races", "directory-io", "directory-unavailable", "directory-exhaustion",
+                     "directory-close-file", "directory-close-dir", "sleep", "mutex-open-give", "mutex-read-give", "mutex-write-give",
                      "mutex-close-give", "mutex-dir-give", "mutex-stat-give",
                      "mutex-error-give", "mutex-info-give"):
         subprocess.run([str(binary),scenario],cwd=ROOT,check=True,timeout=120,env=ENV)
