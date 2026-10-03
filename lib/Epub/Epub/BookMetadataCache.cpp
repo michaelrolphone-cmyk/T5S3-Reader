@@ -9,9 +9,10 @@
 #include "FsHelpers.h"
 
 namespace {
-// Rebuild author metadata corrupted by Expat callback chunking. Generation 9
-// also rejects earlier NCX/guide caches and PR381's dotted-path generation 8.
-constexpr uint8_t BOOK_CACHE_VERSION = 9;
+// Generation 10: invalidate stale derived caches after first-rendition selection
+// (#385 / BUG-247). Also rejects earlier author-chunk (gen 9), dotted-path (gen 8),
+// and NCX/guide caches from prior bugfix generations.
+constexpr uint8_t BOOK_CACHE_VERSION = 10;
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
@@ -310,7 +311,7 @@ bool BookMetadataCache::cleanupTmpFiles() const {
 
 uint32_t BookMetadataCache::writeSpineEntry(FsFile& file, const SpineEntry& entry) const {
   const uint32_t pos = file.position();
-  serialization::writeString(file, entry.href);
+  serialization::writePod(file, entry.href);
   serialization::writePod(file, entry.cumulativeSize);
   serialization::writePod(file, entry.tocIndex);
   return pos;
