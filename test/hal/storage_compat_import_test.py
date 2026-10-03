@@ -91,7 +91,7 @@ int main(int argc,char** argv){
  puts("Actual registered storage import/lifetime boundary PASS");
 }
 '''
-cpp=cpp.replace('#include <cstdio>','#include <cstdio>\n#include <initializer_list>\nstatic bool retiredStorageImport=false;')
+cpp=cpp.replace('#include <cstdio>','#include <cstdio>\n#include <initializer_list>\nstatic bool retiredStorageImport=false,retiredDisplayImport=false;')
 with tempfile.TemporaryDirectory(prefix='u1-storage-import-') as temp:
     directory=Path(temp);c=directory/'lookup.c';c.write_text(c_prefix+registered)
     body=directory/'boundary.cpp';body.write_text(cpp)

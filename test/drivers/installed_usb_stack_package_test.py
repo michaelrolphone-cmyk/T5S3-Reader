@@ -28,7 +28,7 @@ BASELINE = {
     'platform-clock-v1': ('platform.clock', []),
     'i2c-esp32s3-v2': ('i2c.bus', []),
     'gt911-touch': ('input.touch.raw', ['i2c.bus', 'platform.clock']),
-    'display-epd-video': ('display.output', []),
+    'display-epd-video': ('display.output', ['display.power', 'platform.clock']),
     't5s3-usb-power-profile': ('board.power.bq25896.profile', []),
     'board-power-t5s3-v2': ('board.power.vbus',
                              ['i2c.bus', 'platform.clock', 'board.power.bq25896.profile']),

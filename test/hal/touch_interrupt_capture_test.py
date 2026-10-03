@@ -60,8 +60,13 @@ assert "expander->read(expander->context, grant" in T5_BOARD
 # display consumer retains a second TPS/PCA register implementation.
 assert "writeTpsRegister" not in T5_DISPLAY
 assert "Wire." not in T5_DISPLAY
-assert "platformDisplayPower()" in T5_DISPLAY
-assert "power_->acquire" in T5_DISPLAY and "power_->release" in T5_DISPLAY
+assert "platformDisplayPower()" not in T5_DISPLAY
+for engine in ("quality.cpp", "fast.cpp"):
+    source = (ROOT / "Drivers/display_epd_video" / engine).read_text()
+    assert "writeTpsRegister" not in source and "Wire." not in source
+    power = "display_power" if engine == "quality.cpp" else "g_power"
+    if engine == "fast.cpp": assert "g_power = display_power;" in source
+    assert power + "->acquire" in source and power + "->release" in source
 
 # Firmware acquires input.touch.raw and continuously services that opaque
 # provider on a dedicated capture task. UI/render cadence must never be the
