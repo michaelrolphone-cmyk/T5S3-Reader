@@ -68,10 +68,22 @@ bool HalStorage::begin() {
   if (poisoned || !generations.mountAttempt()) return false;
   // This explicitly selected lab profile has one proven wiring/identity. The
   // comparison reads eFuse-derived identity; it does not initialize Wi-Fi.
+#ifdef RISCRTE_CAM_NOSD_CI
+  const uint8_t allowed[6] = {0x28,0x84,0x85,0x4b,0xa1,0x1c};
+#else
   const uint8_t allowed[6] = {0x28,0x84,0x85,0x4b,0x57,0x98};
+#endif
   uint8_t actual[6]{};
   if (esp_read_mac(actual, ESP_MAC_WIFI_STA) != ESP_OK || memcmp(actual, allowed, 6)) return false;
+#ifdef RISCRTE_CAM_NOSD_CI
+  // Read-only even if a card is mistakenly inserted. The CI assertion then
+  // rejects a successful mount instead of treating it as an absence pass.
+  const esp_err_t mountResult = BootstrapSdmmc::mount({39, 38, 40}, false);
+  Serial.printf("RTE_NOSD mount_attempted=1 mounted=%u error=%d\n", mountResult == ESP_OK, int(mountResult));
+  initialized = mountResult == ESP_OK;
+#else
   initialized = BootstrapSdmmc::mount({39, 38, 40}, true) == ESP_OK;
+#endif
   backendMounted = initialized;
   if (!initialized && BootstrapSdmmc::retained()) poisoned = true;
   generations.mounted(initialized);

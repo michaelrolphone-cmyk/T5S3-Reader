@@ -44,7 +44,14 @@ jobs:
       - name: Build exact X4 application
         if: steps.support.outputs.available == 'true'
         run: |
-          python -m pip install platformio==6.1.19
+          python -m pip install platformio==6.1.19 pyelftools==0.32
+          pio pkg install -e xteink-x4-pro
+          export PATH="$HOME/.platformio/packages/toolchain-xtensa-esp32s3/bin:$PATH"
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_x4pro_drivers.py
+          python scripts/embed_x4pro_providers.py
+          python test/x4pro_boot_isolation_test.py
+          python test/x4pro_import_match_test.py
           pio run -e xteink-x4-pro
       - name: Freeze X4 provenance and target-specific manifest
         if: steps.support.outputs.available == 'true'

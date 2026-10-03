@@ -1,0 +1,76 @@
+name: Three-target hardware candidates
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [cam-sd, cam-nosd, x4]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-three-target-${{ matrix.target }}-${{ hashFiles('platformio*.ini', 'test/hardware/heartbeat/platformio.ini') }}
+          restore-keys: ${{ runner.os }}-three-target-${{ matrix.target }}-
+      - name: Host cleanup contracts and heartbeat build
+        run: |
+          python -m pip install platformio==6.1.19 pyelftools==0.32
+          python -m unittest discover -s test/hardware -p test_heartbeat_policy.py -v
+          pio run -d test/hardware/heartbeat -e '${{ matrix.target }}'
+      - name: CAM candidate
+        if: matrix.target != 'x4'
+        env:
+          RISCRTE_ARDUINOJSON_INCLUDE: ${{ runner.temp }}/arduinojson/src
+          TARGET: ${{ matrix.target }}
+        run: |
+          git clone --depth=1 --branch v7.4.2 https://github.com/bblanchon/ArduinoJson.git "$RUNNER_TEMP/arduinojson"
+          bash test/run_cam_headless_test.sh
+          if [ "$TARGET" = cam-sd ]; then
+            pio pkg install --global --tool 'espressif/toolchain-xtensa-esp32s3@8.4.0+2021r2-patch5'
+            python scripts/build_all_apps.py --id camera_utility
+            python test/hardware/cam/make_app_bundle.py
+            pio run -c platformio.cam-runtime.ini -e cam-camera-app-experiment
+          else
+            pio run -c platformio.cam-runtime.ini -e cam-nosd-ci
+          fi
+      - name: X4 candidate
+        if: matrix.target == 'x4'
+        run: |
+          pio pkg install -e xteink-x4-pro
+          export PATH="$HOME/.platformio/packages/toolchain-xtensa-esp32s3/bin:$PATH"
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_x4pro_drivers.py
+          python scripts/embed_x4pro_providers.py
+          python test/x4pro_boot_isolation_test.py
+          python test/x4pro_import_match_test.py
+          pio run -e xteink-x4-pro
+      - name: Freeze exact-head images and provenance
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python test/hardware/three_target_manifest.py '${{ matrix.target }}' "$RUNNER_TEMP/ci-target" "$SOURCE_SHA" "$RUN_ID" "$RUN_ATTEMPT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-target-${{ matrix.target }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/ci-target/
+          retention-days: 7
+          if-no-files-found: error
