@@ -6,7 +6,8 @@ import re
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(os.environ.get("EPUB_TEST_SOURCE_ROOT", Path(__file__).resolve().parents[2]))
+TEST_ROOT = Path(__file__).resolve().parents[2]
 
 
 def function(source, signature):
@@ -44,6 +45,8 @@ virtual size_t write(const uint8_t*, size_t) = 0; };
 struct Entry { std::string label, href, anchor; uint8_t depth; };
 class BookMetadataCache { public:
 std::vector<Entry> entries;
+bool failReset = false;
+bool resetTocEntries() { if (failReset) return false; entries.clear(); return true; }
 void createTocEntry(const std::string& label, const std::string& href,
 const std::string& anchor, uint8_t depth) { entries.push_back({label, href, anchor, depth}); }
 };
@@ -67,7 +70,15 @@ bool admitCachedToc(VersionFile& bookFile) {
     flags = os.environ.get('CXXFLAGS', '').split()
     command = [os.environ.get('CXX', 'c++'), '-std=c++17', '-Wall', '-Wextra', '-Werror', *flags,
                '-I' + str(out), '-I' + str(ROOT / 'lib/XmlParserUtils'),
-               str(ROOT / 'test/epub_toc/path_test.cpp'), str(out / 'path.cpp'),
+               str(TEST_ROOT / 'test/epub_toc/path_test.cpp'), str(out / 'path.cpp'),
                str(out / 'TocNcxParser.cpp'), str(out / 'TocNavParser.cpp'), '-lexpat', '-o', str(out / 'test')]
     subprocess.run(command, check=True, timeout=60)
     subprocess.run([str(out / 'test')], check=True, timeout=30)
+
+    # Check the actual failed-TOC discard operation independently of parser fixtures.
+    if 'bool BookMetadataCache::resetTocEntries()' in cache:
+        (out / 'cache_reset.inc').write_text(function(cache, 'bool BookMetadataCache::resetTocEntries()'))
+        subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        *flags, '-I' + str(out), str(TEST_ROOT / 'test/epub_toc/reset_test.cpp'),
+                        '-o', str(out / 'reset_test')], check=True, timeout=60)
+        subprocess.run([str(out / 'reset_test')], check=True, timeout=30)
