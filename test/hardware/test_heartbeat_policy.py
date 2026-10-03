@@ -2,6 +2,7 @@ import contextlib
 import hashlib
 from pathlib import Path
 import tempfile
+import types
 import unittest
 from unittest.mock import patch
 import heartbeat_policy as policy
@@ -14,6 +15,25 @@ def lines(target='cam-nosd'):
     return [f'RTE_HEARTBEAT version=1.0.0 target={target} mac={policy.BOARDS[target][0]} sequence={i} uptime_ms={i*2000} heap=1000 app=0x10000' for i in range(1,5)]
 
 class PolicyTests(unittest.TestCase):
+    def test_slow_serial_open_does_not_consume_heartbeat_window(self):
+        clock = [0]
+        samples = iter(lines())
+        class SlowSerial:
+            def __init__(self, **kwargs): pass
+            def __enter__(self):
+                clock[0] += 30
+                return self
+            def __exit__(self, *args): pass
+            def read(self, size):
+                clock[0] += 2
+                return (next(samples) + '\n').encode()
+        transport = policy.Transport({}, 'cam-nosd', Path('.'))
+        with patch.dict('sys.modules', {'serial': types.SimpleNamespace(Serial=SlowSerial)}), \
+                patch.object(policy.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(transport, 'port', return_value='/dev/cu.test'):
+            captured = transport.observe(8)
+        self.assertEqual(policy.healthy(captured, 'cam-nosd')['count'], 4)
+
     def test_x4_diagnostics_keeps_only_known_facts(self):
         facts=policy.x4_diagnostics([
             '[INF] [X4] loaded platform-clock-v1 0.1.0',

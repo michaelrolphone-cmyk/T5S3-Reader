@@ -184,11 +184,13 @@ class Transport:
         import serial
         port = self.port()
         pending, lines, count = bytearray(), [], 0
-        end = time.monotonic() + seconds
         handle = serial.Serial(port=None, baudrate=115200, timeout=.5, write_timeout=5, exclusive=True)
         handle.dtr = handle.rts = False
         handle.port = port
         with handle:
+            # macOS may take several seconds to open a re-enumerated CDC
+            # interface. Give the requested sampling window to actual reads.
+            end = time.monotonic() + seconds
             while time.monotonic() < end:
                 require(self.port() == port, 'USB changed during boot observation')
                 chunk = handle.read(2048)
