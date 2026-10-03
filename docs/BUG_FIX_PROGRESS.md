@@ -1,3 +1,13 @@
+## Published repair / CI pending — canonical #261 — 2026-10-03T02:38:45.537592+00:00
+
+- Claim `task4_ncx_261_20261003` remains active. Draft [PR #374](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/374), branch `fix/ncx-relative-chapter-path`, targets master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`. Exact remote head verified by ls-remote: `d8e0f7d94c0f4dbcb4f953f434eddbdceee84d74`.
+- Production caller/parser regression fails on original source: expected `OPS/Text/ch1.xhtml`, got `Text/ch1.xhtml`. Repair derives the base from NCX location; metadata cache version 5→6 ensures old incorrect TOCs are rebuilt. Firmware 1.3.69→1.3.74. Current all-branch caller history and NCX PR search show no duplicate; #350 changed-path check contains no Epub implementation files. Existing closed repairs and #373 remain untouched.
+- Local PASS: strict C++17 production caller/Expat parser/normalizer regression with nested/same/root paths, fragments/later chapter match, EPUB3 preference/fallback, read/parse failure and retry; production cache-version rejection/close; package-source version check, shell/Python syntax and git diff --check. Local ASan/UBSan run timed out at 30 seconds and is not a pass. No local full board build; remote builds cover integration.
+- Exact-head checks running: PlatformIO `37090449675`, BMP `37090449671`, CAM candidate build `37090449695`. Source-version and global Home jobs already pass. No hardware/device test is requested or claimed.
+- Next: inspect terminal CI, fix introduced failures, preserve validation results/remote SHA, then release claim at terminal checkpoint. Single ledger writer remains this coordinator.
+
+---
+
 ## Active repair claim — canonical #261 — 2026-10-03T02:32:18.754508+00:00
 
 - Coordinator/owner `task4_ncx_261_20261003` (delegated hourly fixer); claim active, phase production regression then focused repair. Scanner released its writer role; this run is the sole ledger writer.
