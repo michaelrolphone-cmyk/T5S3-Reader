@@ -431,34 +431,75 @@ const char* lastError() {
 bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
                   char* providerId, size_t capacity) {
     // Metadata-only enumeration remains separate from lazy ELF admission.
-    // Rebuild once at cursor zero; subsequent candidates reuse the same bounded
-    // snapshot without repeatedly scanning SD or reading executable payloads.
+    // Called on the serialized provider owner task. Reuse a complete bounded
+    // snapshot only while storage is quiescent in the same observed generation.
+    // Input polling starts a new cursor on every tick, not a new installation.
+    // Activation still independently validates and pins the selected ELF.
     struct Candidate { char id[64]; char capability[64]; uint32_t api; };
     static Candidate candidates[kMaxProviders]{};
     static size_t count = 0;
+    static StorageGenerationStamp snapshotGeneration{};
+    static bool retained = false;
+    constexpr unsigned kCursorBits = 5;
+    constexpr size_t kCursorMask = (size_t{1} << kCursorBits) - 1;
+    constexpr size_t kCursorSerialLimit = (SIZE_MAX >> kCursorBits) - 1;
+    static_assert(kMaxProviders <= kCursorMask, "Provider cursor position must fit");
+    static size_t snapshotSerial = 0;
+    static bool cursorExhausted = false;
     if (providerId && capacity) providerId[0] = 0;
-    if (!capability || !version || !cursor || !providerId || capacity < 2 || !prepare()) {
+    if (!capability || !version || !cursor || !providerId || capacity < 2 ||
+        cursorExhausted || !prepare() || !Storage.ready()) {
         if (cursor) *cursor = SIZE_MAX;
         return false;
     }
-    if (*cursor == 0) {
+    // No filesystem or generation calls occur under an additional mutex.
+    // Existing HalStorage locks continue to serialize individual media calls.
+    const auto observed = Storage.generation();
+    size_t position = *cursor & kCursorMask;
+    if (*cursor && ((*cursor >> kCursorBits) != snapshotSerial || position > count ||
+                    observed.mount != snapshotGeneration.mount ||
+                    observed.mutation != snapshotGeneration.mutation)) {
+        *cursor = SIZE_MAX;
+        return false;
+    }
+    if (*cursor == 0 && (!retained || !observed.matches(snapshotGeneration))) {
+        retained = false;
         count = 0;
+        // Invalidate older cursors before even an unsuccessful rebuild. An
+        // interleaved cursor must never consume a replacement global snapshot.
+        if (snapshotSerial == kCursorSerialLimit) {
+            cursorExhausted = true; *cursor = SIZE_MAX; return false;
+        }
+        ++snapshotSerial;
         std::unique_ptr<RegistrationFrame> frame(new (std::nothrow) RegistrationFrame{});
         if (!frame) { *cursor = SIZE_MAX; return false; }
         for (const Root& root : kRoots) {
             HalFile directory = Storage.open(root.path, O_RDONLY);
-            if (!directory.isOpen() || !directory.isDirectory()) {
-                if (directory.isOpen()) (void)directory.close();
+            if (!directory.isOpen()) {
+                if (Storage.exists(root.path) || !Storage.ready()) {
+                    *cursor = SIZE_MAX; count = 0; return false;
+                }
                 continue;
             }
-            for (size_t visited = 0; visited < 64; ++visited) {
+            if (!directory.isDirectory()) {
+                (void)directory.close(); *cursor = SIZE_MAX; count = 0; return false;
+            }
+            // One extra probe distinguishes the exact bound from truncation.
+            bool complete = false;
+            for (size_t visited = 0; visited <= 64; ++visited) {
                 ordinaryCooperativeYield(1, 1);
                 HalFile item = directory.openNextFile();
-                if (!item.isOpen()) break;
+                if (!item.isOpen()) {
+                    complete = directory.getError() == 0;
+                    break;
+                }
+                if (visited == 64) {
+                    (void)item.close(); break;
+                }
                 const size_t length = item.getName(frame->id, sizeof(frame->id));
                 const bool valid = item.isDirectory() && length &&
                     length < sizeof(frame->id) && safeId(frame->id);
-                (void)item.close();
+                if (!item.close()) { *cursor = SIZE_MAX; break; }
                 if (!valid) continue;
                 if (RuntimePackages::cdcLineage(root.kind, frame->id) &&
                     RuntimePackages::cdcMigrationPendingOnSd()) continue;
@@ -483,18 +524,30 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
                 std::strcpy(entry.capability, frame->capability);
                 entry.api = api;
             }
-            (void)directory.close();
-            if (*cursor == SIZE_MAX) { count = 0; return false; }
+            const bool closed = directory.close();
+            if (*cursor == SIZE_MAX || !complete || !closed) {
+                *cursor = SIZE_MAX; count = 0; return false;
+            }
         }
+        const auto after = Storage.generation();
+        if (observed.mount != after.mount || observed.mutation != after.mutation) {
+            *cursor = SIZE_MAX; count = 0; return false;
+        }
+        snapshotGeneration = after;
+        // Active writers/raw access retain operation-local behavior, but may
+        // never turn a transient omission into a reusable negative result.
+        retained = observed.matches(after);
     }
-    while (*cursor < count) {
-        const auto& entry = candidates[(*cursor)++];
+    while (position < count) {
+        const auto& entry = candidates[position++];
         if (entry.api != version || std::strcmp(entry.capability, capability)) continue;
         const size_t length = std::strlen(entry.id);
         if (length >= capacity) { *cursor = SIZE_MAX; return false; }
         std::memcpy(providerId, entry.id, length + 1);
+        *cursor = (snapshotSerial << kCursorBits) | position;
         return true;
     }
+    *cursor = (snapshotSerial << kCursorBits) | position;
     return false;
 }
 

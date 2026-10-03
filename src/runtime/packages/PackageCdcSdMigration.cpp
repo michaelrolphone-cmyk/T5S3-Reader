@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <string>
 
@@ -291,8 +292,28 @@ bool cleanPrecommitPart(Ops& ops, Verify verify) {
 
 }  // namespace
 bool cdcMigrationPendingOnSd() {
+  if (!Storage.ready()) return false;
+  // This is only a negative directory observation, never package admission or
+  // content verification. Active writers, remounts and uncertain external I/O
+  // make generation stamps nonmatching. No filesystem call holds this mutex.
+  static std::mutex observationMutex;
+  static StorageGenerationStamp absentAt{};
+  const auto before = Storage.generation();
+  bool reusable;
+  {
+    std::lock_guard<std::mutex> lock(observationMutex);
+    reusable = absentAt.matches(before);
+  }
+  if (reusable && before.matches(Storage.generation())) return false;
   Ops ops;
-  return Storage.ready() && cdcMigrationPending(ops);
+  const bool pending = cdcMigrationPending(ops);
+  const auto after = Storage.generation();
+  {
+    std::lock_guard<std::mutex> lock(observationMutex);
+    absentAt = !pending && ops.healthy && before.matches(after)
+                   ? after : StorageGenerationStamp{};
+  }
+  return pending;
 }
 OrdinaryTransactionResult reconcileCdcMigrationFromSd(const PackageRuntimePolicy& policy,
                                                       uint32_t (*resolver)(const char*), Identity& observed) {
