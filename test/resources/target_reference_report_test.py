@@ -5,7 +5,13 @@ import struct
 import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'scripts'))
-from report_u1_target_references import references
+from report_u1_target_references import references, REQUIRED_ENTRYPOINTS
+# Keep the strict linked-symbol check aligned with the authoritative declaration:
+# its default argument does not create an old zero-argument ELF entrypoint.
+assert REQUIRED_ENTRYPOINTS['x4-diagnostic'] == 'x4DiagnosticSetup(bool)'
+assert 'void x4DiagnosticSetup(bool deskClockUserWake = false);' in (ROOT/'src/platform/X4DiagnosticBoot.h').read_text()
+assert REQUIRED_ENTRYPOINTS['controller'] == 't5_driver_get'
+assert REQUIRED_ENTRYPOINTS['firmware'] == 't5_serial_port_get_api'
 memory = {0x1000: struct.pack('<I', 0x2000), 0x1004: struct.pack('<I', 0x3000),
           0x2000: struct.pack('<IIII', 1, 16, 0x3000, 0x4000)}
 functions = {0x3000: ['installedAcquirePort'], 0x4000: ['releasePort']}

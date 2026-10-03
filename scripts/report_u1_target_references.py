@@ -30,6 +30,9 @@ LEGACY_NAMES = ('usbAcquirePort', 'UsbSerialProjection', 'NativeUsbDevices',
                 'nativeUsbDirectStreamClaim', 'nativeUsbProviderAttach', 'nativeUsbClassRead',
                 'nativeUsbClassWrite', 'usb_host_install', 'hcd_port_init')
 X4_DIAGNOSTIC_NAMES = ('x4DiagnosticSetup', 'x4DiagnosticLoop')
+REQUIRED_ENTRYPOINTS = {'controller': 't5_driver_get',
+                        'x4-diagnostic': 'x4DiagnosticSetup(bool)',
+                        'firmware': 't5_serial_port_get_api'}
 
 
 def references(disassembly, read_virtual, objects, functions):
@@ -69,9 +72,7 @@ def references(disassembly, read_virtual, objects, functions):
 def report(path, objdump, source_head, profile="firmware"):
     roots = (CONTROLLER_NAMES if profile == "controller" else
              X4_DIAGNOSTIC_NAMES if profile == "x4-diagnostic" else ROOT_NAMES)
-    required = ("t5_driver_get" if profile == "controller" else
-                "x4DiagnosticSetup()" if profile == "x4-diagnostic" else
-                "t5_serial_port_get_api")
+    required = REQUIRED_ENTRYPOINTS[profile]
     from elftools.elf.elffile import ELFFile
     deadline = time.monotonic() + 120
     if not path.is_file() or not 52 <= path.stat().st_size <= 256 * 1024 * 1024:
