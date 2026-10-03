@@ -15,6 +15,24 @@ images and a target/SHA/run/attempt/length/hash manifest. No host script from a
 PR or artifact executes on the Mac. The installed controller must be reviewed
 and pinned, and uses separately pinned heartbeat bytes as its cleanup image.
 
+X4 provider builds use Espressif `esp-14.2.0_20260121` with the explicit
+`esp14-no-relax` profile (`-O2 --no-relax` for the board providers). The older
+8.4 linker asserted in `elf32-xtensa.c:3299`; GCC 14 alone also asserted for
+the panel at `-Os`. The clock uses GCC 14 with its existing flags. Firmware
+itself retains PlatformIO's pinned compiler. CI downloads the official Linux
+toolchain archive and verifies its fixed SHA-256 before extraction.
+For an already installed matching compiler, run:
+
+```sh
+X4_ELF_TOOLCHAIN=/path/to/toolchain/bin bash test/hardware/x4/build_candidate.sh
+```
+
+Run different PlatformIO configurations serially and freeze candidate images
+outside `.pio` before switching: PlatformIO can remove another configuration's
+build directory. Generated provider imports must match the actual ELF exactly;
+the panel may have no imports under GCC 14 or only `memset` under the older
+compiler. Unknown, missing and extra declared imports remain rejected.
+
 | Target | Chip MAC | Firmware |
 | --- | --- | --- |
 | cam-sd | 28:84:85:4b:57:98 | camera utility through headless runtime and real SD |
@@ -70,3 +88,6 @@ Every hardware pass also requires verified heartbeat cleanup. Cloud build
 success, host mocks, candidate boot and physical UI qualification remain
 separate claims. Raw serial, images, storage data and credentials are never
 published in statuses or artifacts.
+Failure evidence retains only fixed provider identifiers, phase enums and
+numeric boot facts; arbitrary serial messages and user file contents are not
+written into the journal.

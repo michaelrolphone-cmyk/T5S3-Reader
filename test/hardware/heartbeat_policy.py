@@ -73,6 +73,34 @@ def healthy(lines, target):
             'Heartbeat restarted, stalled, or has invalid heap')
     return {'count': len(values), 'last_sequence': values[-1][0], 'last_uptime_ms': values[-1][1]}
 
+def x4_diagnostics(lines):
+    """Persist enums/numeric boot facts only, never arbitrary serial strings."""
+    providers = ('platform-clock-v1','x4pro-panel','x4pro-buttons','x4pro-frontlight',
+                 'x4pro-sd','x4pro-i2c','x4pro-gt911')
+    phases = ('elf-relocate-begin','elf-relocation-failed','elf-relocated',
+              'hardware-start-begin','hardware-started','elf-interface-or-identity',
+              'elf-entry-symbol-missing','invalid-provider-import')
+    facts = {'loaded': [], 'failed': [], 'provider_phases': [],
+             'storage_mounted': [], 'ready': [], 'home_present': []}
+    for provider in providers:
+        if any('[X4] loaded '+provider+' ' in row for row in lines): facts['loaded'].append(provider)
+        if any('[X4] '+provider+' failed:' in row for row in lines): facts['failed'].append(provider)
+        for phase in phases:
+            if any('PROVREF id='+provider+' '+kind+'='+phase in row
+                   for row in lines for kind in ('stage','failure')):
+                facts['provider_phases'].append([provider,phase])
+    for name, prefix in [('storage_mounted','storage.volume mounted='),
+                         ('ready','heartbeat ready='),('home_present','home present=')]:
+        facts[name] = [int(m.group(1)) for row in lines
+                       if (m := re.search(r'\[X4\] '+re.escape(prefix)+r'([01])(?:\s|$)',row))]
+    reasons = ('CMD0 send failed','CMD8 no response','CMD8 response invalid',
+               'ACMD41 failed','CMD2 failed','CMD3 failed','CMD7 select failed',
+               'CMD16 block size failed','card idle','FAT32 volume absent',
+               'sector 0 read failed','sector 0 signature invalid','FAT32 boot invalid')
+    facts['storage_errors'] = [reason for reason in reasons
+                              if any('reason='+reason in row for row in lines)]
+    return facts
+
 def candidate_result(lines, target):
     require(not any(x in line for line in lines for x in ('Guru Meditation','Backtrace:','abort()')), 'Candidate panic')
     if target == 'cam-nosd':
@@ -169,7 +197,7 @@ class Transport:
                     row, _, pending = pending.partition(b'\n')
                     row = row.decode('utf-8', 'replace').strip()
                     require(len(row) <= 2048 and len(lines) < 2000, 'Boot output exceeds line bound')
-                    if any(s in row for s in ('RTE_HEARTBEAT ', 'RTE_NOSD ', 'RUNTIME BOOT ', 'RUNTIME APP ', 'CAMERA_APP saved=', '[X4]', 'Guru Meditation','Backtrace:','abort()')):
+                    if any(s in row for s in ('RTE_HEARTBEAT ', 'RTE_NOSD ', 'RUNTIME BOOT ', 'RUNTIME APP ', 'CAMERA_APP saved=', '[X4]', 'PROVREF ', 'Guru Meditation','Backtrace:','abort()')):
                         lines.append(row)
                 require(len(pending) <= 2048, 'Unterminated boot line exceeds bound')
         self.serial_bytes += count
@@ -202,7 +230,9 @@ def transaction(target, binding, heartbeat, heartbeat_sha, folder, candidate=Non
                 if app:
                     transport.write('candidate', frozen_candidate)
                     result['candidate_readback_equal'] = True
-                    result['candidate_checks'] = candidate_result(transport.boot(180 if target=='cam-sd' else 45),target)
+                    boot_lines = transport.boot(180 if target=='cam-sd' else 45)
+                    if target == 'x4': result['boot_diagnostics'] = x4_diagnostics(boot_lines)
+                    result['candidate_checks'] = candidate_result(boot_lines,target)
                 result['result'] = 'pass'
             except BaseException as error:
                 result['error'] = f'{type(error).__name__}: {error}'[:400]

@@ -53,13 +53,9 @@ jobs:
         if: matrix.target == 'x4'
         run: |
           pio pkg install -e xteink-x4-pro
-          export PATH="$HOME/.platformio/packages/toolchain-xtensa-esp32s3/bin:$PATH"
-          python scripts/build_platform_clock_v1.py
-          python scripts/build_x4pro_drivers.py
-          python scripts/embed_x4pro_providers.py
-          python test/x4pro_boot_isolation_test.py
-          python test/x4pro_import_match_test.py
-          pio run -e xteink-x4-pro
+          bash test/hardware/x4/install_ci_toolchain.sh
+          export X4_ELF_TOOLCHAIN="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin"
+          bash test/hardware/x4/build_candidate.sh
       - name: Freeze exact-head images and provenance
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

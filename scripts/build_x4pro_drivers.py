@@ -38,8 +38,15 @@ def build_one(name):
     # CI run 37048644826 confirmed that pinned Linux Xtensa ld 2.35.1 links
     # the enlarged FAT32 provider at -O2 with relaxation disabled. Keep the
     # workaround scoped; all other providers retain their ordinary flags.
-    optimization = "-O2" if name == "x4pro_sd" else "-Os"
-    link_flags = ["-Wl,--no-relax"] if name == "x4pro_sd" else []
+    # Explicit CI profile: GCC 14 still asserts for the panel at -Os;
+    # -O2 with relaxation disabled builds every provider. Keep the older
+    # default for other callers until they opt into the pinned toolchain.
+    profile = os.environ.get("RISCRTE_X4_LINK_PROFILE", "legacy")
+    if profile not in ("legacy", "esp14-no-relax"):
+        raise ValueError("Unknown X4 linker profile")
+    stable_link = name == "x4pro_sd" or profile == "esp14-no-relax"
+    optimization = "-O2" if stable_link else "-Os"
+    link_flags = ["-Wl,--no-relax"] if stable_link else []
     subprocess.run([
         CC, "-std=c11", optimization,
         "-fPIC", "-mtext-section-literals", "-mlongcalls",

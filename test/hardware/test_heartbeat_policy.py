@@ -14,6 +14,20 @@ def lines(target='cam-nosd'):
     return [f'RTE_HEARTBEAT version=1.0.0 target={target} mac={policy.BOARDS[target][0]} sequence={i} uptime_ms={i*2000} heap=1000 app=0x10000' for i in range(1,5)]
 
 class PolicyTests(unittest.TestCase):
+    def test_x4_diagnostics_keeps_only_known_facts(self):
+        facts=policy.x4_diagnostics([
+            '[INF] [X4] loaded platform-clock-v1 0.1.0',
+            '[ERR] [X4] x4pro-sd failed: private arbitrary details',
+            '[ERR] [PROV] PROVREF id=x4pro-sd failure=elf-relocation-failed code=9',
+            '[INF] [X4] storage.volume mounted=0 reason=CMD8 no response',
+            '[INF] [X4] heartbeat ready=0',
+            '[INF] [X4] private arbitrary details'])
+        self.assertEqual(facts['loaded'],['platform-clock-v1'])
+        self.assertEqual(facts['failed'],['x4pro-sd'])
+        self.assertEqual(facts['storage_errors'],['CMD8 no response'])
+        self.assertEqual(facts['storage_mounted'],[0])
+        self.assertNotIn('private',str(facts))
+
     def test_heartbeat_requires_target_mac_and_progress(self):
         self.assertEqual(policy.healthy(lines(),'cam-nosd')['count'],4)
         for bad in [lines()[:2],lines()[::-1],lines()+lines(),lines('cam-sd')]:
