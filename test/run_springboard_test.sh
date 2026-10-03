@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$repo_dir/test/epub_toc/path_test.py"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 python3 "$repo_dir/test/native_apps/hollow_trail_memory_test.py"
