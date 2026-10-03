@@ -11,7 +11,9 @@ from PIL import Image, ImageDraw
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=pathlib.Path, default=pathlib.Path('dist/story-previews'))
-parser.add_argument('--rain-shelter', action='store_true', help='Render active post-fuse rain at refuge edges, zooms and handoff')
+selection = parser.add_mutually_exclusive_group()
+selection.add_argument('--rain-shelter', action='store_true', help='Render active post-fuse rain at refuge edges, zooms and handoff')
+selection.add_argument('--mill-entry', action='store_true', help='Render the barred mill door, broken shutter and register along the existing route')
 args = parser.parse_args()
 repo = pathlib.Path(__file__).resolve().parents[1]
 out = args.output.resolve()
@@ -50,6 +52,13 @@ if args.rain_shelter:
              ('wet-hold', 170, 'Shelter and opposite light during the hold'),
              ('wet-end', 419, 'Last tableau tick before control returns'),
              ('wet-handoff', 420, 'Live gameplay after tableau handoff')]
+elif args.mill_entry:
+    shots = [('mill-start', 0, 'Grounded approach to the mill'),
+             ('mill-hold', 170, 'Arrival hold: broken shutter and barred door'),
+             ('mill-end', 339, 'Last tableau tick before control returns'),
+             ('mill-handoff', 340, 'Live gameplay after the mill tableau'),
+             ('mill-register', 0, 'Register and sloping desk beside the shutter'),
+             ('mill-door', 0, 'Barred doorway set in the existing uphill wall')]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,10 +116,18 @@ int main(int argc,char **argv) {
  } else if(!strcmp(argv[1],"terrace")) {
   ht.level=1;ht_select_level(1);ht_spawn(true);ht.x=380*256;ht.y=220*256;
   ht.camera=180*256;ht.camera_y=40*256;gameplay=true;
- } else if(!strcmp(argv[1],"mill")) {
-  ht.x=1071*256;ht.y=ht_surface_at(&ht,2,1071)*256;ht.camera=871*256;
+ } else if(!strcmp(argv[1],"mill") || !strncmp(argv[1],"mill-",5)) {
+  int x=!strcmp(argv[1],"mill-register")?1180:!strcmp(argv[1],"mill-door")?1240:1071;
+  int parcel=x<1080?2:3;
+  ht.x=x*256;ht.y=ht_surface_at(&ht,parcel,x)*256;ht.camera=(x-200)*256;
   ht.camera_y=(ht.y/256-180)*256;ht.traversal.forest_log_phase=32;
-  ht_cutscene_begin(HT_CUTSCENE_MILL);
+  if(x!=1071)gameplay=true;
+  else {
+   ht_cutscene_begin(HT_CUTSCENE_MILL);
+   if(!strcmp(argv[1],"mill-handoff")) {
+    ht_cutscene.tick=339;ht_cutscene_step(&ht_cutscene);ht_cutscene_apply_handoff(&ht_cutscene);gameplay=true;
+   }
+  }
  } else ht_cutscene_begin(HT_CUTSCENE_INTRO);
  ht_cutscene.tick=(uint16_t)atoi(argv[2]);
  if(gameplay){ht_render_scene();ht_narration(&ht);}else if(strcmp(argv[1],"study"))ht_cutscene_render(&ht_cutscene);

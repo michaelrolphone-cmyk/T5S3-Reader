@@ -309,6 +309,19 @@ static void ht_forest_mill(const ht_game *g) {
     ht_triangle(ht_scene,x+42,base-65,x+29,base-56,x+29,base-17,202);
     ht_triangle(ht_scene,x+42,base-65,x+29,base-17,x+42,base-29,202);
     for(int i=0;i<3;++i)ht_limb(ht_scene,x+32,base-50+i*10,x+42,base-56+i*10,0,0,164);
+    /* Novella I: the door under the eaves is barred from within; the broken
+     * shutter remains the open entry beside it. The cutaway shows the timber
+     * across the inner face, seated in two brackets, behind the stone jambs. */
+    ht_triangle(ht_scene,x+127,base-57,x+158,base-48,x+155,base-2,235);
+    ht_triangle(ht_scene,x+127,base-57,x+155,base-2,x+126,base-2,235);
+    for(int board=0;board<3;++board)
+        ht_limb(ht_scene,x+132+board*8,base-48+board*2,x+131+board*8,base-4,0,0,204);
+    ht_limb(ht_scene,x+126,base-40,x+158,base-36,2,2,135);
+    ht_rect(ht_scene,x+126,base-43,4,8,249);
+    ht_rect(ht_scene,x+154,base-39,4,8,249);
+    ht_limb(ht_scene,x+125,base-58,x+159,base-49,2,2,244);
+    ht_limb(ht_scene,x+125,base-58,x+124,base-2,2,2,226);
+    ht_limb(ht_scene,x+160,base-49,x+158,base-2,2,2,226);
     /* Desk scrape and sparse fern/ivy contact, never a new collision object. */
     ht_limb(ht_scene,x+69,base-7,x+89,base-9,1,0,43);
     for(int i=0;i<5;++i) {

@@ -65,9 +65,38 @@ static void rain_tank_weather(void) {
     }
     ht_world_scale=256;ht_native_active=false;ht_scene=ht_scene_low;
 }
+static void mill_barred_door(void) {
+    /* The novella's closed door and broken-shutter entry must read as two
+     * different openings: a timber bar interrupts a dark doorway recess. */
+    static const int scales[]={272,384},cameras[]={900,1040};
+    memset(&ht,0,sizeof(ht));ht.level=0;ht_select_level(0);ht_spawn(true);
+    ht.camera_y=40*256;
+    for(unsigned mode=0;mode<3;++mode) {
+        ht_native_active=mode!=0;ht_native_foreground_half_y=mode==2;
+        ht_scene=mode?ht_native_a:ht_scene_low;
+        int raster=mode?2:1,width=HT_W*raster;
+        size_t bytes=mode?HT_NATIVE_PIXELS:HT_PIXELS;
+        for(unsigned camera=0;camera<2;++camera)for(unsigned scale=0;scale<2;++scale) {
+            ht.camera=cameras[camera]*256;ht_world_scale=scales[scale];
+            ht_game retained=ht;memset(ht_scene,0,bytes);ht_forest_mill(&ht);
+            assert(!memcmp(&ht,&retained,sizeof(ht)));
+            int x=ht_project_x(1095+142-cameras[camera])*raster;
+            int upper=ht_project_y(218-40-49)*raster;
+            int bar=ht_project_y(218-40-38)*raster;
+            unsigned recess=0,timber=0;
+            for(int dx=-2*raster;dx<=2*raster;++dx) {
+                recess+=ht_scene[upper*width+x+dx];
+                timber+=ht_scene[bar*width+x+dx];
+            }
+            assert(recess>timber+(unsigned)(4*raster+1)*40u);
+        }
+    }
+    ht_world_scale=256;ht_native_active=false;ht_native_foreground_half_y=false;ht_scene=ht_scene_low;
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY);assert(memory);ht_bind(memory);ht_bind_native(memory);
     rain_tank_weather();
+    mill_barred_door();
     ht.level=0;memset(&ht,0,sizeof(ht));ht_spawn(true);
     ht_cutscene_begin(HT_CUTSCENE_INTRO);
     assert(ht_cutscene.active && ht_cutscene.tick==0);
