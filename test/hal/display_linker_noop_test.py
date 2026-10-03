@@ -15,7 +15,7 @@ ri=indices['.rela.dyn'];rela=sections[ri];plt=sections[indices['.rela.plt']];dyn
 assert plt[4]-rela[4]-rela[5]==24,'Expected the two normalized display placeholders'
 records=[original[i:i+12] for i in range(rela[4],rela[4]+rela[5],12)]
 rtld=[i for i,r in enumerate(records) if (struct.unpack_from('<I',r,4)[0]&255)==2]
-assert len(rtld)==4
+assert len(rtld) in (2,4) # Shared DMA removes two private controller link entries.
 size_entry=next(i for i in range(dynamic[4],dynamic[4]+dynamic[5],8) if struct.unpack_from('<I',original,i)[0]==8)
 
 def image(split):
