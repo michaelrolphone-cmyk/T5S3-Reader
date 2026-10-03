@@ -14,6 +14,7 @@ parser.add_argument('--output', type=pathlib.Path, default=pathlib.Path('dist/st
 selection = parser.add_mutually_exclusive_group()
 selection.add_argument('--rain-shelter', action='store_true', help='Render active post-fuse rain at refuge edges, zooms and handoff')
 selection.add_argument('--mill-entry', action='store_true', help='Render the barred mill door, broken shutter and register along the existing route')
+selection.add_argument('--service-lamps', action='store_true', help='Render both Oil Fields service lamps across the former signal cycle')
 args = parser.parse_args()
 repo = pathlib.Path(__file__).resolve().parents[1]
 out = args.output.resolve()
@@ -59,6 +60,13 @@ elif args.mill_entry:
              ('mill-handoff', 340, 'Live gameplay after the mill tableau'),
              ('mill-register', 0, 'Register and sloping desk beside the shutter'),
              ('mill-door', 0, 'Barred doorway set in the existing uphill wall')]
+elif args.service_lamps:
+    shots = [('service-near', 0, 'First service lamp at cycle start'),
+             ('service-near', 80, 'First service lamp during the former pause'),
+             ('service-near', 143, 'First service lamp at cycle end'),
+             ('service-wide', 80, 'Wide framing at the first lamp'),
+             ('service-far', 0, 'Second service lamp at cycle start'),
+             ('service-far', 80, 'Second service lamp during the former pause')]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,6 +100,13 @@ int main(int argc,char **argv) {
   ht.y=ht_surface_at(&ht,!strcmp(argv[1],"signal")?7:6,ht.x/256)*256;
   ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;ht.grounded=true;ht.ticks=0;
   if(!strcmp(argv[1],"rain"))ht_cutscene_begin(HT_CUTSCENE_RAIN);else gameplay=true;
+ } else if(!strncmp(argv[1],"service-",8)) {
+  ht.level=2;ht_select_level(2);ht_spawn(true);
+  int scene=!strcmp(argv[1],"service-far"),parcel=scene?6:3;
+  ht.x=(ht_landmark_x(2,scene)-25)*256;ht.y=ht_surface_at(&ht,parcel,ht.x/256)*256;
+  ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;ht.ticks=(unsigned)atoi(argv[2]);ht.grounded=true;
+  if(!strcmp(argv[1],"service-wide")){ht.intimacy=0;ht.vista=256;}
+  gameplay=true;
  } else if(!strcmp(argv[1],"study")) {
   ht_schoolroom_study_render((unsigned)atoi(argv[2]));
  } else if(!strcmp(argv[1],"schoolroom")) {

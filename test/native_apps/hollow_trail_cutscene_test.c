@@ -65,6 +65,37 @@ static void rain_tank_weather(void) {
     }
     ht_world_scale=256;ht_native_active=false;ht_scene=ht_scene_low;
 }
+static void oil_service_lamps(void) {
+    /* Both actual Oil Fields landmarks are service lights, not invitations
+     * repeating the city signal. Check their complete former flash cycle. */
+    memset(&ht,0,sizeof(ht));ht.level=2;ht_select_level(2);ht_spawn(true);
+    for(unsigned mode=0;mode<3;++mode)for(int scene=0;scene<2;++scene) {
+        ht_native_active=mode!=0;ht_native_foreground_half_y=mode==2;
+        ht_scene=mode?ht_native_a:ht_scene_low;ht_world_scale=256;
+        int raster=mode?2:1,width=HT_W*raster,world=ht_landmark_x(2,scene);
+        size_t bytes=mode?HT_NATIVE_PIXELS:HT_PIXELS;
+        ht.camera=(world-200)*256;
+        int base=ht_buried_base(&ht,scene?6:3,world,62);ht.camera_y=(base-180)*256;
+        for(unsigned tick=0;tick<144;++tick) {
+            ht.ticks=tick;ht_game retained=ht;memset(ht_scene,127,bytes);ht_story_landmarks(&ht);
+            assert(!memcmp(&ht,&retained,sizeof(ht)));
+            assert(ht_scene[(180-57)*raster*width+258*raster]<50);
+            assert(ht_scene[(180-65)*raster*width+252*raster]>200); /* Housing exists. */
+        }
+    }
+    /* Other chapter beacons keep three short flashes; the ending choice can
+     * still extinguish the final signal. */
+    ht_native_active=false;ht_native_foreground_half_y=false;ht_scene=ht_scene_low;
+    for(unsigned level=1;level<HT_LEVELS;++level)if(level!=2) {
+        ht.level=level;ht.verdict=0;unsigned flashes=0,lit_ticks=0;bool prior=false;
+        for(unsigned tick=0;tick<144;++tick) {
+            ht.ticks=tick;memset(ht_scene,127,HT_PIXELS);ht_signal(80,150,&ht);
+            bool lit=ht_scene[93*HT_W+80]<50;lit_ticks+=lit;if(lit&&!prior)++flashes;prior=lit;
+        }
+        assert(flashes==3 && lit_ticks==27);
+    }
+    ht.level=9;ht.verdict=1;ht.ticks=0;ht_signal(80,150,&ht);assert(ht_scene[93*HT_W+80]>150);
+}
 static void mill_barred_door(void) {
     /* The novella's closed door and broken-shutter entry must read as two
      * different openings: a timber bar interrupts a dark doorway recess. */
@@ -97,6 +128,7 @@ int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY);assert(memory);ht_bind(memory);ht_bind_native(memory);
     rain_tank_weather();
     mill_barred_door();
+    oil_service_lamps();
     ht.level=0;memset(&ht,0,sizeof(ht));ht_spawn(true);
     ht_cutscene_begin(HT_CUTSCENE_INTRO);
     assert(ht_cutscene.active && ht_cutscene.tick==0);
