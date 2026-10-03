@@ -223,14 +223,12 @@ Shared provider enumeration is the exact reviewed function from PR387 commit
 opaque-cursor contract are preserved. The local harness includes this branch's
 existing `ProviderAbiProfile.h`; bootstrap/OS-CPU registration is not replaced.
 
-### Explicit pending T5 safety follow-through
+### T5 safety follow-through
 
-`Drivers/storage_fatfs/volume.c` still uses its original raw atomic gate for the
-non-X4/T5 path. `lib/elf_loader/src/esp_elf_adapter.c` allocates ELF data in PSRAM;
-the X4 target disassembly demonstrated why raw S32C1I there is unsafe. The
-coordinated T5 follow-through should reuse the same tested mutex boundary, check
-its target imports/lifecycle and bump its own package. This is pending work,
-owned by the shared-provider follow-through after the current X4 edits settle.
-T5 transport regression tests and target import checks do not establish T5
-hardware reliability or clear that concern. No T5 ready-for-hardware claim is
-made by this X4 candidate.
+The delivered X4 1.3.93 candidate remains immutable. The subsequent package-only
+T5 repair advances `t5s3-sd` 0.1.1 → 0.1.2 and enables the same reviewed OS/CPU
+ABI1 mutex boundary. Firmware, X4 providers, physical pins and transport timings
+are unchanged. See [T5 admission and cleanup](t5s3-external-storage.md#psram-safe-sd-admission-012)
+for source/target evidence, checked SPI ownership and regression coverage.
+The original T5 concern is confirmed by source and disassembly, not a reproduced
+physical failure; software checks do not establish T5 hardware reliability.

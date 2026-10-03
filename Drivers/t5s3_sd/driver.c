@@ -6,6 +6,7 @@
 #include "RiscSpiBusV1.h"
 #include "RiscStorageVolumeV1.h"
 #include "../storage_fatfs/sd_protocol.h"
+#include "../x4pro_i2c/os_cpu_v1.h"
 #include <string.h>
 
 static const risc_platform_clock_api_v1 *clock_api;
@@ -129,32 +130,75 @@ static bool sync_card(void) {
     return end_spi(wait_byte(0xff,750));
 }
 static bool transport_idle(void) { return !bus_session; }
+#define STORAGE_VOLUME_OS_CPU_MUTEX
 #define STORAGE_VOLUME_LABEL "T5S3"
 #include "../storage_fatfs/volume.c"
 
-static bool start(const risc_provider_dependency_v1 *deps,size_t count) {
-    if(started || bus_claim || bus_session) return false;
-    bus=NULL;clock_api=NULL;
-    for(size_t i=0;i<count;++i) {
-        if(deps[i].api_version!=1) continue;
-        if(equal(deps[i].capability_id,"spi.bus")) bus=deps[i].api;
-        if(equal(deps[i].capability_id,"platform.clock")) clock_api=deps[i].api;
+static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
+    /* ModuleV2 serializes initial start/restart before publishing consumers.
+     * The opaque kernel mutex lives outside this ELF's PSRAM-backed data. */
+    if (!valid_task() || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE)) return false;
+    if (!operation_mutex) {
+        operation_mutex = xQueueCreateMutex(1); /* queueQUEUE_TYPE_MUTEX */
+        if (!operation_mutex) return false; /* No SPI claim before admission. */
     }
-    if(!bus || bus->api_version!=1 || bus->struct_size<sizeof(*bus) ||
-       !bus->claim_device || !bus->begin || !bus->select || !bus->transfer || !bus->end || !bus->release_device ||
-       !clock_api || clock_api->api_version!=1 || clock_api->struct_size<sizeof(*clock_api) ||
-       !clock_api->monotonic_ms || !clock_api->sleep_ms) { clock_api=NULL;bus=NULL;return false; }
-    if(!bus->claim_device(bus->context,12,&bus_claim)) return false;
-    started=true;return refresh(NULL);
+    if (__atomic_load_n(&quiesced, __ATOMIC_ACQUIRE)) {
+        __atomic_store_n(&quiesced, false, __ATOMIC_RELEASE);
+        __atomic_store_n(&quiescing, false, __ATOMIC_RELEASE);
+    }
+    if (!enter_lifecycle()) return false;
+    bool okay = false;
+    if (started || bus_claim || bus_session || has_handles() || !deps) goto done;
+    bus = NULL; clock_api = NULL;
+    for (size_t i = 0; i < count; ++i) {
+        if (deps[i].api_version != 1) continue;
+        if (equal(deps[i].capability_id, "spi.bus")) bus = deps[i].api;
+        if (equal(deps[i].capability_id, "platform.clock")) clock_api = deps[i].api;
+    }
+    if (!bus || bus->api_version != 1 || bus->struct_size < sizeof(*bus) ||
+        !bus->claim_device || !bus->begin || !bus->select || !bus->transfer || !bus->end || !bus->release_device ||
+        !clock_api || clock_api->api_version != 1 || clock_api->struct_size < sizeof(*clock_api) ||
+        !clock_api->monotonic_ms || !clock_api->sleep_ms) { clock_api = NULL; bus = NULL; goto done; }
+    if (!bus->claim_device(bus->context, 12, &bus_claim)) goto done;
+    started = true;
+    mounted = card_ready = io_failed = power_down_prepared = false;
+    error[0] = 0;
+    operation_start = clock_api->monotonic_ms(clock_api->context);
+    (void)init_card(); /* Absent card retains the existing refresh capability. */
+    okay = true;
+done:
+    return leave() && okay;
 }
 static bool quiesce(void) {
-    if(!enter_lifecycle()) return false;
-    bool safe=!has_handles() && !bus_session;
-    if(safe && bus_claim) safe=bus->release_device(bus->context,bus_claim);
-    if(safe) { (void)f_mount(NULL,"",0);bus_claim=0;started=mounted=card_ready=power_down_prepared=false; }
-    leave();return safe;
+    if (!valid_task() || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE)) return false;
+    if (!operation_mutex || __atomic_load_n(&quiesced, __ATOMIC_ACQUIRE)) return true;
+    if (!enter_lifecycle()) return false;
+    bool safe = !has_handles() && !bus_session;
+    if (safe && bus_claim) {
+        safe = bus->release_device(bus->context, bus_claim);
+        if (safe) bus_claim = 0;
+        /* Failed release retains the exact claim and dependency for retry. */
+    }
+    if (safe) {
+        (void)f_mount(NULL, "", 0);
+        started = mounted = card_ready = power_down_prepared = false;
+        bus = NULL; clock_api = NULL;
+        /* Close admission before the final give. Publish accepted quiescence
+         * only after it succeeds, so stop cannot delete a still-owned mutex. */
+        __atomic_store_n(&quiescing, true, __ATOMIC_RELEASE);
+    }
+    if (!leave() || !safe) return false;
+    __atomic_store_n(&quiesced, true, __ATOMIC_RELEASE);
+    return true;
 }
-static void stop(void) { (void)quiesce(); }
+static void stop(void) {
+    if (!valid_task() || !operation_mutex || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE)) return;
+    if (!__atomic_load_n(&quiesced, __ATOMIC_ACQUIRE) && !quiesce()) return;
+    /* Accepted quiescence has no second fallible take/give before unmapping. */
+    x4_cpu_mutex retired = operation_mutex;
+    operation_mutex = NULL;
+    vQueueDelete(retired);
+}
 static const risc_driver_v2 driver={RISC_PROVIDER_DRIVER_ABI_V2,sizeof(driver),"t5s3-sd",
                                   "storage.volume",1,&api,start,stop,quiesce};
 __attribute__((visibility("default")))

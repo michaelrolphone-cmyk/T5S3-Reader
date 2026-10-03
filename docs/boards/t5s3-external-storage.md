@@ -187,3 +187,49 @@ existing actual SD migration wrapper test passes intent SHA, serialization,
 rename restart and close/partial-write preservation. Run the historical
 comparison with `--baseline c136021e2`; `--current-only` runs the durable current
 regression without requiring historical commits in a shallow CI checkout.
+
+
+### PSRAM-safe SD admission (0.1.2)
+
+The package-only follow-through changes `t5s3-sd` 0.1.1 → 0.1.2. Firmware remains
+1.3.93: the existing privileged OS/CPU ABI1 inventory already contains all six
+mutex/task imports; no host symbols, permission exception or new ABI is added.
+The unchanged `storage.volume@1` and `spi.bus@1` contracts still compose with the
+same eight-package T5 profile. Keep the generated `privileged-imports.v1`,
+`provider-abi.v1`, `.package.json` and ELF together in the ordinary new package;
+copying only the new ELF over old six-import metadata will correctly be refused.
+Loaded SD generations cannot be hot-replaced: ordinary safe installation and
+next-boot selection rules remain unchanged. Delivered X4 1.3.93 files are not
+replaced by this T5 update.
+
+Evidence for the original flaw is `platformio.ini`'s PSRAM loader configuration,
+`esp_elf.c`'s placement of `.bss` in `pdata`, and `esp_elf_adapter.c`'s SPIRAM
+allocation. The prior 0.1.1 target ELF has two S32C1I compare-and-set instructions
+in `enter_lifecycle`/`enter`, acting on the ELF's `.bss` admission byte. Inspecting
+that ELF safely reproduces the unsafe code-generation condition without running
+it on a device. No physical T5 failure was reproduced or attributed to it.
+
+The T5 provider now reuses `x4pro_i2c/os_cpu_v1.h` and the shared FatFs mutex path.
+Its one opaque OS-owned mutex is allocated before any SPI claim, taken with zero
+wait and never recursively. Start, metadata, I/O, sleep and lifecycle callbacks
+check task context and ownership; failed give poisons that generation and pins
+its mutex/ELF/dependencies. No callback may clear poison. Failed SPI release
+preserves the exact claim, and a retained session prevents sleep or quiescence.
+Admission closes before the final quiesce give; acceptance is published only
+after that give succeeds. Stop deletes only after accepted quiescence, with no
+second fallible take/give. The existing bounded card/FatFs deadlines and scheduler
+cooperation are unchanged. T5 still exports reversible prepare/cancel only;
+there is no X4 terminal-rail callback or invented hardware transition.
+
+Focused local checks: 12 admission/poison/concurrency/cleanup cases per transport
+and the X4 absent-card case; 13 real provider/FatFs/HAL wire scenarios per board,
+including busy timeout, eight failed-give returns and retained-read sleep; retained
+provider graph regressions; changed-package versions. These run with ASan/UBSan
+where applicable (local leak detection is disabled under ptrace). GCC14 target
+build validates 307 relative pointers, structural loader admission and the exact
+12-import set with missing/extra negatives; target disassembly has no S32C1I.
+The pinned SDK declaration check is enabled for T5 in the existing builder; local
+SDK headers are unavailable, so that check runs in hosted target CI. Staging checks
+all eight ordinary package identities/hashes and preserves the seven unchanged
+installed payloads byte-for-byte. Host models and target inspection do not prove
+physical contention timing, sleep current or daily-use reliability.

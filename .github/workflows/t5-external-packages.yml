@@ -39,6 +39,7 @@ jobs:
           python scripts/build_tps65185_power.py
           python scripts/build_spi_esp32s3.py
           python scripts/build_t5s3_sd.py
+          python test/x4pro_import_match_test.py --package t5s3-sd
           python scripts/build_t5s3_frontlight.py
           python scripts/build_display_epd_video.py
           python scripts/stage_t5s3_packages.py

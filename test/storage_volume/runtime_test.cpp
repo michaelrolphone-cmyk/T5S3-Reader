@@ -6,9 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
-#ifndef TEST_SPI_TRANSPORT
 #include "os_cpu_fake.h"
-#endif
 #ifdef TEST_APP_PARSER
 #include "native/AppManifest.h"
 #endif
@@ -78,7 +76,6 @@ int main(int argc, char **argv) {
     std::fprintf(stderr,"settings\n");
     assert(Storage.writeFile("/.crosspoint/settings.json",String("{\"language\":0}")));
     assert(Storage.readFile("/.crosspoint/settings.json")=="{\"language\":0}");
-#ifndef TEST_SPI_TRANSPORT
     // Failure of the OS ownership transition must reach every success-shaped
     // return type. Keep this generation mapped even when the card I/O succeeded.
     if (argc > 1 && std::strncmp(argv[1], "mutex-", 6) == 0) {
@@ -103,15 +100,15 @@ int main(int argc, char **argv) {
         const unsigned reads = card_reads, writes = card_writes, deletes = sd_mutex_deletes;
         assert(!api->ready(nullptr) && !api->refresh(nullptr));
         assert(!power->prepare_power_down(nullptr) && !power->cancel_power_down(nullptr));
-        assert(!risc_storage_volume_power_commit(api)->commit_power_down(nullptr));
+        const auto *commit = risc_storage_volume_power_commit(api);
+        assert(!commit || !commit->commit_power_down(nullptr));
         assert(!api->file_close(nullptr, reader, true) && !driver->quiesce());
         driver->stop();
         assert(card_reads == reads && card_writes == writes && sd_mutex_deletes == deletes);
         assert(!card_sleep_off && !card_bad_pin);
-        std::free(card_image); std::printf("X4 SD actual FatFs poison retention: %s PASS\n", kind);
+        std::free(card_image); std::printf("production SD actual FatFs poison retention: %s PASS\n", kind);
         return 0;
     }
-#endif
     // Retain read metadata across a cancelled sleep; never unload a live handle.
     uint64_t sleepSize=0;
     auto sleepHandle=api->file_open_read(nullptr,"/.crosspoint/settings.json",&sleepSize);
@@ -123,9 +120,29 @@ int main(int argc, char **argv) {
     assert(power->cancel_power_down(nullptr));assert(api->ready(nullptr));
     assert(api->file_read(nullptr,sleepHandle,&sleepByte,1)==1 && sleepByte=='{');
     assert(api->file_close(nullptr,sleepHandle,true));
-#ifndef TEST_SPI_TRANSPORT
     if (argc > 1 && std::strcmp(argv[1], "sleep") == 0) {
-        const auto *commit = risc_storage_volume_power_commit(api); assert(commit);
+        const auto *commit = risc_storage_volume_power_commit(api);
+#ifdef TEST_SPI_TRANSPORT
+        // This board has no terminal rail callback; only its reversible freeze
+        // is exported, so generic callers cannot assume an X4 sleep commit.
+        assert(!commit && !card_sleep_off && !card_sleep_commits);
+        sleepHandle = api->file_open_read(nullptr, "/.crosspoint/settings.json", &sleepSize);
+        assert(sleepHandle && power->prepare_power_down(nullptr));
+        assert(!api->ready(nullptr) && !driver->quiesce());
+        assert(!api->file_read(nullptr, sleepHandle, &sleepByte, 1));
+        assert(!api->file_close(nullptr, sleepHandle, true));
+        assert(power->cancel_power_down(nullptr) && api->ready(nullptr));
+        assert(api->file_read(nullptr, sleepHandle, &sleepByte, 1) == 1 && sleepByte == '{');
+        assert(api->file_close(nullptr, sleepHandle, true));
+        assert(driver->quiesce()); driver->stop();
+        assert(sd_mutex_creates == sd_mutex_deletes && !SpiCardFixture::claimed && !SpiCardFixture::active);
+        assert(driver->start(deps, sizeof(deps) / sizeof(deps[0])) && api->ready(nullptr));
+        assert(driver->quiesce()); driver->stop();
+        assert(sd_mutex_creates == sd_mutex_deletes && !card_bad_pin);
+        std::free(card_image);
+        std::puts("T5 SD reversible sleep retains readers and restarts after cleanup PASS");
+#else
+        assert(commit);
         assert(!commit->commit_power_down(nullptr) && !card_sleep_off);
         sleepHandle = api->file_open_read(nullptr, "/.crosspoint/settings.json", &sleepSize);
         assert(sleepHandle && power->prepare_power_down(nullptr));
@@ -137,9 +154,9 @@ int main(int argc, char **argv) {
         assert(!card_bad_pin);
         std::free(card_image);
         std::puts("X4 SD terminal sleep commit retains frozen readers and powers off once PASS");
+#endif
         return 0;
     }
-#endif
     std::fprintf(stderr,"large file\n");
     std::vector<uint8_t> block(4096);for(size_t i=0;i<block.size();++i)block[i]=i;
     auto file=Storage.open("/Apps/springboard/springboard.elf",O_RDWR|O_CREAT|O_EXCL);assert(file);

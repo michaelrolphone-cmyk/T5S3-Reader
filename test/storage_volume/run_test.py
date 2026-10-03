@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory() as temp:
     objects=[]
     for source in ('Drivers/t5s3_sd/driver.c' if SPI else 'Drivers/x4pro_sd/driver.c',
                    'Drivers/storage_fatfs/fatfs/ff.c','Drivers/storage_fatfs/fatfs/ffunicode.c',
-                   *([] if SPI else ['test/storage_volume/os_cpu_fake.c'])):
+                   'test/storage_volume/os_cpu_fake.c'):
         out=build/(Path(source).name+'.o')
         subprocess.run(['cc','-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-overflow','-fsanitize='+SANITIZER,
                         '-pthread','-D_XOPEN_SOURCE=700','-Isdk/driver','-Itest/storage_volume/fake','-IDrivers/x4pro_board','-c',source,'-o',str(out)],cwd=ROOT,check=True)
@@ -45,8 +45,7 @@ with tempfile.TemporaryDirectory() as temp:
         for failure in ([], ['busy-timeout']):
             subprocess.run([str(binary),layout,*failure],cwd=ROOT,check=True,timeout=120,env=ENV)
 
-    if not SPI:
-        for scenario in ("sleep", "mutex-open-give", "mutex-read-give", "mutex-write-give",
-                         "mutex-close-give", "mutex-dir-give", "mutex-stat-give",
-                         "mutex-error-give", "mutex-info-give"):
-            subprocess.run([str(binary),scenario],cwd=ROOT,check=True,timeout=120,env=ENV)
+    for scenario in ("sleep", "mutex-open-give", "mutex-read-give", "mutex-write-give",
+                     "mutex-close-give", "mutex-dir-give", "mutex-stat-give",
+                     "mutex-error-give", "mutex-info-give"):
+        subprocess.run([str(binary),scenario],cwd=ROOT,check=True,timeout=120,env=ENV)

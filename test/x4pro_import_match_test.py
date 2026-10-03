@@ -22,6 +22,9 @@ PACKAGES = {
     "x4pro-sd": sorted(["memcpy", "memcmp", "memset", "strlen", "strchr",
                            "xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
                            "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
+    "t5s3-sd": sorted(["memcpy", "memcmp", "memset", "strlen", "strchr", "strcmp",
+                           "xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
+                           "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
     "x4pro-i2c": sorted(["xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
                            "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
 }
@@ -60,22 +63,22 @@ int main(int argc, char **argv) {
         str(ROOT / "lib/elf_loader/src/esp_privileged_imports.c"), "-o", str(binary)
     ], check=True)
     for package, expected in PACKAGES.items():
-        if args.package and package != args.package:
+        if (args.package and package != args.package) or (not args.package and package == "t5s3-sd"):
             continue
         elf = ROOT / "dist/experimental" / package / "driver.elf"
         found = undefined_imports(elf)
         if (package == "x4pro-panel" and found not in ([], ["memset"])) or \
                 (package != "x4pro-panel" and found != expected):
             raise SystemExit(f"{package} imports {found} != {expected}")
-        if package == "x4pro-sd":
+        if package in ("x4pro-sd", "t5s3-sd"):
             compiler = os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
             if compiler:
                 disassembly = subprocess.check_output([compiler.replace("gcc", "objdump"), "-d", str(elf)], text=True)
                 if re.search(r"\bs32c1i\b", disassembly, re.IGNORECASE):
-                    raise SystemExit("x4pro-sd contains a PSRAM-unsafe raw compare-and-set")
-                print("x4 SD target admission: no S32C1I instructions")
+                    raise SystemExit(f"{package} contains a PSRAM-unsafe raw compare-and-set")
+                print(f"{package} target admission: no S32C1I instructions")
             else:
-                print("x4 SD disassembly check NOT RUN: target toolchain unavailable")
+                print(f"{package} disassembly check NOT RUN: target toolchain unavailable")
         if "UND" in found:
             raise SystemExit(f"{package} kept the unnamed UND row")
         result = subprocess.run([str(binary), str(elf), *found])
