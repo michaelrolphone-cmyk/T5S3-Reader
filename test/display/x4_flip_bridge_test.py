@@ -37,9 +37,12 @@ constexpr unsigned DisplayWidth=800, DisplayHeight=480, LogicalWidth=480, Logica
 }
 ''')
     if not args.bridge_source_ref:
+        # Match PlatformIO's library boundary: lib/hal does not get a global
+        # -Isrc. Keep that path absent so its production includes must resolve
+        # independently rather than being masked by this host fixture.
         run(build, 'x4-display', r'''
 #include <HalDisplay.h>
-#include "runtime/display/ProviderDisplaySurface.h"
+#include "src/runtime/display/ProviderDisplaySurface.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -99,7 +102,7 @@ int main() {
   assert(lastIntent==RISC_DISPLAY_PRESENT_LOW_LATENCY);
   puts("Actual X4 HAL: saved/live flip, unchanged raster, full 800x480 pixel mapping PASS");
 }
-''', (build, ROOT / 'lib/hal', ROOT / 'lib/DisplaySurface', ROOT / 'src', ROOT / 'sdk/driver'),
+''', (build, ROOT, ROOT / 'lib/hal', ROOT / 'lib/DisplaySurface', ROOT / 'sdk/driver'),
             (ROOT / 'lib/hal/HalDisplayX4.cpp',), ('BOARD_XTEINK_X4_PRO',))
 
     if not args.bridge_source_ref:

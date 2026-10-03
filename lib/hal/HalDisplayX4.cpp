@@ -3,8 +3,8 @@
 #if defined(BOARD_XTEINK_X4_PRO)
 
 #include <Logging.h>
-#include "native/NativeTouchInput.h"
-#include "runtime/display/ProviderDisplaySurface.h"
+#include "../../src/native/NativeTouchInput.h"
+#include "../../src/runtime/display/ProviderDisplaySurface.h"
 
 HalDisplay display;
 

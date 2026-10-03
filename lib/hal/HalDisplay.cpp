@@ -7,7 +7,7 @@
 #include <Logging.h>
 #include <T5DisplayClient.h>
 #include <esp_heap_caps.h>
-#include "native/NativeTouchInput.h"
+#include "../../src/native/NativeTouchInput.h"
 
 #include <algorithm>
 #include <cstring>
