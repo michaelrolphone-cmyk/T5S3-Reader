@@ -63,7 +63,7 @@ int main() {
     runAuthors("single creator", "<dc:creator>Jane Doe</dc:creator>", "Jane Doe", chunk);
     runAuthors("multiple creators", "<dc:creator>Jane Doe</dc:creator><dc:creator>John Smith</dc:creator>",
                "Jane Doe, John Smith", chunk);
-    runAuthors("entities and UTF-8", "<dc:creator>Jos\u00e9 &amp; Zo\u00eb &#x1F642;</dc:creator>", "Jos\u00e9 & Zo\u00eb \U0001F642", chunk);
+    runAuthors("entities and UTF-8", "<dc:creator>José &amp; Zoë &#x1F642;</dc:creator>", "José & Zoë \U0001F642", chunk);
     runAuthors("CDATA and comment boundaries", "<dc:creator>Jane<![CDATA[ & ]]><!-- split -->Doe</dc:creator>",
                "Jane & Doe", chunk);
     runAuthors("empty creators", "<dc:creator/><dc:creator>Jane</dc:creator><dc:creator></dc:creator>"
@@ -124,7 +124,7 @@ int main() {
   require(Storage.files.empty(), "malformed parser temporary cache cleaned");
   run("fresh retry after parse failure", text + start, "OPS/body.xhtml", 3);
   for (int i = 0; i < 3; ++i) run("repeat open", start, "OPS/fallback.xhtml", 7);
-  for (uint8_t version : {5, 6, 7, 8, 9}) {
+  for (uint8_t version : {5, 6, 7, 8, 9, 10}) {
     FsFile file;
     Storage.openFileForWrite("fixture", "/cache/book.bin", file);
     serialization::writePod(file, version);
@@ -134,14 +134,14 @@ int main() {
     for (const char* field : {"Title", "Author", "en", "OPS/cover.xhtml", "OPS/body.xhtml"})
       serialization::writeString(file, field);
     BookMetadataCache cache;
-    require(cache.load() == (version == 9), "cache generation acceptance");
-    require(cache.loaded == (version == 9), "old cache not published");
-    if (version != 9) require(!cache.bookFile, "old cache handle closed");
+    require(cache.load() == (version == 10), "cache generation acceptance");
+    require(cache.loaded == (version == 10), "old cache not published");
+    if (version != 10) require(!cache.bookFile, "old cache handle closed");
     else {
       require(cache.coreMetadata.textReferenceHref == "OPS/body.xhtml", "current target restored");
       require(cache.coreMetadata.author == "Author", "current author restored");
     }
     Storage.files.clear();
   }
-  std::cout << "57 author chunk cases, 34 guide cases, malformed XML, retry, cleanup and cache generations 5-9 passed\n";
+  std::cout << "57 author chunk cases, 34 guide cases, malformed XML, retry, cleanup and cache generations 5-10 passed\n";
 }
