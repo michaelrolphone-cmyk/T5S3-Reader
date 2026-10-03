@@ -96,7 +96,15 @@ int main() {
             self.assertLess(boot.index(call), boot.index('activityManager.goHome()'))
         self.assertNotIn('insertFont(', boot)
         self.assertNotIn('openFirstText', boot)
-        self.assertIn('mappedInputManager.update()', boot)
+        self.assertNotIn('activityManager.loop()', boot)
+        self.assertNotIn('mappedInputManager.update()', boot)
+        main = (ROOT / 'src/main.cpp').read_text()
+        loop = main[main.rindex('void loop()'):]
+        self.assertIn('if (!x4DiagnosticLoop()) return;', loop)
+        for shared in ('RuntimeDefaultApp::read(artifact)', 'mappedInputManager.update()',
+                       'nativeProviderOwnerTick()', 'activityManager.loop()',
+                       'activityManager.skipLoopDelay()'):
+            self.assertEqual(loop.count(shared), 1)
         inp = (ROOT / 'src/MappedInputManager.cpp').read_text()
         method = inp.split('void MappedInputManager::update() const {', 1)[1].split('\n}', 1)[0]
         self.assertIn('#if !defined(BOARD_XTEINK_X4_PRO)', method)

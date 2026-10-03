@@ -619,8 +619,7 @@ void setup() {
 
 void loop() {
 #ifdef BOARD_XTEINK_X4_PRO
-  x4DiagnosticLoop();
-  return;
+  if (!x4DiagnosticLoop()) return;
 #endif
   if (g_displayBootFailed) {
     // Do not touch ActivityManager/renderer after failed display bootstrap.
@@ -662,14 +661,20 @@ void loop() {
   nativeProviderOwnerTick();
   // External power/connection changes allow a new bounded admission attempt.
   // No provider inventory scans on every frame after a failed/missing provider.
+#if !defined(BOARD_XTEINK_X4_PRO)
   if (gpio.wasUsbStateChanged()) nativeNavigationRetry();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+#endif
 
   // Handle a shutdown requested by an activity (e.g. the reader menu Shut Down button).
   if (g_shutdownRequested) {
     g_shutdownRequested = false;
+#if defined(BOARD_XTEINK_X4_PRO)
+    LOG_ERR("MAIN", "Shutdown unavailable: X4 power provider is not integrated");
+#else
     enterPowerOffKeepingScreen("");
     return;
+#endif
   }
 
   renderer.setFadingFix(SETTINGS.fadingFix);
@@ -700,7 +705,10 @@ void loop() {
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
-      nativeNavigationFrame().buttons || nativeTouchHadActivity() || halTiltSensor.hadActivity() ||
+      nativeNavigationFrame().buttons || nativeTouchHadActivity() ||
+#if !defined(BOARD_XTEINK_X4_PRO)
+      halTiltSensor.hadActivity() ||
+#endif
       activityManager.preventAutoSleep()
 #ifdef ENABLE_SERIAL_LOG
       || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)
@@ -710,6 +718,11 @@ void loop() {
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }
 
+  bool hasHardwareButtonTap = false;
+  auto hardwareButtonTap = MappedInputManager::Button::Up;
+#if !defined(BOARD_XTEINK_X4_PRO)
+  // These legacy GPIO/power adapters are T5/EPD47 hardware operations. X4
+  // input comes from normal provider leases, without a second raw GPIO owner.
   static bool screenshotButtonsReleased = true;
   if (gpio.isPressed(HalGPIO::BTN_POWER) && gpio.isPressed(HalGPIO::BTN_DOWN)) {
     if (screenshotButtonsReleased) {
@@ -724,8 +737,6 @@ void loop() {
     screenshotButtonsReleased = true;
   }
 
-  bool hasHardwareButtonTap = false;
-  auto hardwareButtonTap = MappedInputManager::Button::Up;
   auto queueHardwareButtonTap = [&](const MappedInputManager::Button button) {
     if (!hasHardwareButtonTap) {
       hardwareButtonTap = button;
@@ -815,6 +826,7 @@ void loop() {
   if (gpio.wasUsbStateChanged()) {
     activityManager.requestUpdate();
   }
+#endif
 
   const unsigned long activityStartTime = millis();
   if (hasHardwareButtonTap) {

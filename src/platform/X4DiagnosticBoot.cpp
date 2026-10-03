@@ -153,7 +153,7 @@ void x4DiagnosticSetup() {
 
 }
 
-void x4DiagnosticLoop() {
+bool x4DiagnosticLoop() {
     static unsigned long last = 0;
     if (showing_home && !ready && provider_surface && provider_surface->lastPresentSucceeded()) {
         ready = true;
@@ -166,9 +166,8 @@ void x4DiagnosticLoop() {
     }
     if (!ready) {
         delay(200);
-        return;
+        return false;
     }
-    mappedInputManager.update();
     const risc_input_navigation_frame_v1 frame_in = nativeNavigationFrame();
     if (showing_home) {
         static uint32_t input_sequence = 0;
@@ -181,9 +180,8 @@ void x4DiagnosticLoop() {
                 LOG_INF("X4", "input.navigation event=%s sequence=%lu", event.name,
                         static_cast<unsigned long>(++input_sequence));
         }
-        activityManager.loop();
     }
-    delay(20);
+    return true;
 }
 
 #endif  // BOARD_XTEINK_X4_PRO
