@@ -1,3 +1,11 @@
+## Version reservation reconciliation — canonical #261 — 2026-10-03 UTC
+
+- Owner coordination update assigns firmware 1.3.74 to X4 storage PR #350 (and x4pro-sd 0.2.0); consolidation #373 retains 1.3.73. Move this NCX repair reservation from 1.3.74 to **1.3.75** before publishing another commit. Claim `task4_ncx_261_20261003` remains active; branch/PR #374 unchanged.
+- Master remains 3d9bc4f373679f5ae8dd184db6a8d0afa5a40231; captured ledger parent 31179206aedd61fba0d86735f81ec3fa5e649268. Earlier CI on d8e0f7d9 is not evidence for the upcoming version-adjusted head. Do not cancel or alter any hardware controller or CI process.
+- Next: commit/push only the firmware reservation change, verify fresh remote SHA and all exact-head software checks, then terminal checkpoint.
+
+---
+
 ## Published repair / CI pending — canonical #261 — 2026-10-03T02:38:45.537592+00:00
 
 - Claim `task4_ncx_261_20261003` remains active. Draft [PR #374](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/374), branch `fix/ncx-relative-chapter-path`, targets master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`. Exact remote head verified by ls-remote: `d8e0f7d94c0f4dbcb4f953f434eddbdceee84d74`.
