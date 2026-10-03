@@ -311,7 +311,7 @@ bool BookMetadataCache::cleanupTmpFiles() const {
 
 uint32_t BookMetadataCache::writeSpineEntry(FsFile& file, const SpineEntry& entry) const {
   const uint32_t pos = file.position();
-  serialization::writePod(file, entry.href);
+  serialization::writeString(file, entry.href);
   serialization::writePod(file, entry.cumulativeSize);
   serialization::writePod(file, entry.tocIndex);
   return pos;
