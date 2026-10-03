@@ -49,8 +49,8 @@ template<class R,class I> int runNativeApp(const char*,R&,I&){++childCalls;retur
 tests=r'''
 int main(int argc,char**argv){
  assert(argc==2);std::string scenario=argv[1];
- if(scenario=="reader")g_readerResumeOnBoot=true;
- if(scenario=="desk")g_readerDeskClockWake=true;
+ if(scenario=="reader"||scenario=="desk-reader")g_readerResumeOnBoot=true;
+ if(scenario=="desk"||scenario=="desk-reader")g_readerDeskClockWake=true;
  if(scenario=="missing")found=false;
  if(scenario=="invalid")RuntimeDefaultApp::choice=RuntimeDefaultApp::Selection::Invalid;
  if(scenario=="explicit"){selected="default.elf";RuntimeDefaultApp::choice=RuntimeDefaultApp::Selection::Ready;}
@@ -69,9 +69,10 @@ int main(int argc,char**argv){
   assert(!childCalls&&entryCalls==(scenario!="missing"&&scenario!="invalid"));
   assert(resolveCalls==(scenario!="invalid"));
   assert(!g_readerStartPending);
-  if(scenario=="reader"){
+  if(scenario=="reader"||scenario=="desk-reader"){
    assert(activityManager.reads==1&&!activityManager.homes&&book=="/saved.epub");
    assert(APP_STATE.openEpubPath.empty()&&APP_STATE.readerActivityLoadCount==1&&APP_STATE.saves==1);
+   assert(!StartupScreen::fades);
   }else{
    assert(activityManager.homes==1&&!activityManager.reads);
    assert(StartupScreen::fades==(scenario!="desk"));
@@ -84,5 +85,5 @@ with tempfile.TemporaryDirectory(prefix='reader-boot-') as directory:
     temp=Path(directory);cpp=temp/'boot.cpp';binary=temp/'boot'
     cpp.write_text(prefix+start+loop+tests)
     subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-unused-variable','-I'+str(ROOT/'src'),str(cpp),'-o',str(binary)],check=True,timeout=30)
-    for scenario in ('home','reader','desk','missing','invalid','explicit','custom','recovery','display','retained'):
+    for scenario in ('home','reader','desk','desk-reader','missing','invalid','explicit','custom','recovery','display','retained'):
         subprocess.run([str(binary),scenario],check=True,timeout=5)
