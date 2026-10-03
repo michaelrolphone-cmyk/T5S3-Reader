@@ -55,3 +55,34 @@ A T5 software pass reports no expected MAC or qualified binary partition-table
 hash and `physical_binding_established: false`. It cannot borrow the X4 device
 binding or backup. Physical T5 identity, live layout and prior-store preservation
 remain unverified; this option adds no controller dispatch or hardware access.
+
+## Prepared one-shot ec0c099 X4 cycle
+
+`x4_paired_cycle.py --artifact /path/to/artifact.zip` only checks the frozen
+`ec0c09991f8f7babc69b3da0681b0b3f1e99c3ab` archive and prints its external provider
+inventory. It performs no device discovery or access. It is not installed in or
+called by the automatic scheduler. The archive and both image hashes are fixed;
+it cannot substitute a newer PR head.
+
+Only after actual human approval may the operator supply `--approval-sha` with
+that exact SHA, `--runtime-root` pointing to the existing pinned CI installation,
+and a fresh `--out` directory. The runner verifies installed pins and obtains
+scheduler/device locks, honors manual ownership pauses, verifies physical MAC,
+partition/OTA prefix, heartbeat app, and original store hash, and saves a fresh
+private full-store backup before writes. A changed prior store refuses writes.
+
+Both bounded app0/store payloads must verify before candidate boot. The 90-second
+observation requires all seven external BOOTFS origins/versions/ELF lengths,
+provider relocation/start phases, storage mount, touch readiness and shared Home
+presentation. It reports device-millisecond phase timing and host command
+elapsed times; serial-only results are not visual or interaction qualification.
+Raw serial output is not persisted.
+
+Cleanup installs the approved heartbeat firmware and verifies it boots. **The
+new candidate store remains installed.** The old unknown store is retained as a
+recovery backup, not routinely restored. No automatic original-store write is
+implemented. Incomplete store writes, altered protected state or cleanup errors
+produce failure with recovery evidence; they cannot be reported as success.
+No partition-table change, whole-chip erase, SD wipe or optional app-fixture
+staging is performed by this runner. App0 cleanup restores the heartbeat
+executable, not unused historical bytes in the app0 tail.
