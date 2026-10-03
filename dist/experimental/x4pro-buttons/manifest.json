@@ -1,0 +1,19 @@
+{
+  "type": "driver",
+  "id": "x4pro-buttons",
+  "version": "0.1.0",
+  "driver_abi": 2,
+  "architecture": "xtensa-esp32s3",
+  "file_name": "driver.elf",
+  "board": "xteink-x4-pro",
+  "requires": [],
+  "provides": [
+    {
+      "capability": "input.navigation",
+      "api": 1
+    }
+  ],
+  "status": "experimental-unpublished",
+  "size_bytes": 3112,
+  "sha256": "5b0dab1b3c25f87144311aa3d827789efbae530c01dc7f7e4bdae388f7a8ca93"
+}
