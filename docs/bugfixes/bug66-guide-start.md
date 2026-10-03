@@ -1,0 +1,11 @@
+# Canonical bug 66: EPUB guide start fallback
+
+## Claim checkpoint — 2026-10-03 15:38 UTC
+
+- Owner: scheduled Reader repair 2026-10-03 / bug66; phase: claimed, baseline reproduced; branch `fix/bug66-epub-guide-start` from current master `9b673f3b10e20a24d11f9b71f0deef7323b0a714`.
+- Canonical source: bug 66 in `automation/bug-ledger:bugs.md`, ledger head `13f6c55cf482738f583efc58cd922e0afe835108`. That ledger still has the unrelated active `task11_wrap42_20261003` writer claim. No proof of stopped ownership; shared ledger is untouched. Reconciliation is deferred to its coordinator; this file is the durable per-bug checkpoint.
+- Failure: complete production ContentOpfParser plus real Expat returns an empty textReferenceHref for a start-only guide. Baseline regression exits 1: expected OPS/fallback.xhtml, got empty. Reader first-open logic consumes that metadata through Epub::getSpineIndexForTextReference, so the book remains at its first spine item. A later start reference also incorrectly replaces an explicit text reference.
+- Dedup: all 326 fetched remote branch tips containing ContentOpfParser.cpp share buggy blob `f75fd2d0c667576b4e16e801d390923fbf11d831`; 16 current open PRs and 29 closed-unmerged PRs inspected, including all 978 changed paths of PR350. Current-master source and merged history do not contain this repair. Canonical claim search found no active bug66 claim. PR373 and the separate rollup branch remain untouched.
+- Reserve firmware **1.3.82**, above published/master 1.3.69 and all observed branch reservations through 1.3.81. No separately released app, driver, service, or provider source changes.
+- Planned scope: accept start only while no text reference is selected; retain text precedence. Invalidate old book metadata with cache version 7 (master is 5; independent PR374/373 reserves 6). Integration must retain cache 7 or a later unique generation; the only overlapping file is its version constant. No edit to another repair or consolidation branch.
+- Next: focused production-parser normal/error/retry/cleanup regression, one minimal patch, applicable host checks, draft PR, remote SHA verification and exact-head CI. No master write, merge, release, deployment, signing, or device action.
