@@ -74,7 +74,11 @@ existing package transaction flow or separately coordinated staging. Never
 force-unload a card owner to update its own backing files.
 
 The historical `build_x4_module_store.py` CLI now emits schema-2 firmware/SD
-bundles; its optional `--tool` argument is unused. It verifies every staged
+bundles; its optional `--tool` argument is unused. The complete SD tree, including
+hidden `.package.json` files, is packed in `sdcard.zip`; `sd_archive` records its
+length/hash and `sd_root` identifies the `sdcard/` prefix inside that archive.
+There is no raw tree in the deployment bundle for an uploader to silently omit
+files from. The builder round-trips the archive and verifies every staged
 ordinary generation against its archive and records hashes. It emits no
 `module-store.bin`, flash-driver offset or device-write instruction. CI/controller
 integration remains owned by the separate CI task. No filesystem formatting,

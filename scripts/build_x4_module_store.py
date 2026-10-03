@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import zipfile
 from pack_rte_zip import pack_directory
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,26 @@ def inventory(root):
     if not result or len(result) > 128:
         raise ValueError('Invalid bounded module-store inventory')
     return result
+
+
+def pack_sd_tree(tree, archive):
+    # GitHub upload-artifact excludes dotfiles in directory trees by default.
+    # Freeze the ENTIRE tree inside one ordinary visible ZIP, then round-trip
+    # all declared files. Do not rely on caller-specific uploader flags.
+    expected=inventory(tree)
+    with zipfile.ZipFile(archive,'x',compression=zipfile.ZIP_STORED) as output:
+        for name,record in expected.items():
+            info=zipfile.ZipInfo('sdcard/'+name,date_time=(1980,1,1,0,0,0))
+            info.external_attr=0o100644 << 16
+            output.writestr(info,(tree/name).read_bytes())
+    with zipfile.ZipFile(archive) as check:
+        if set(check.namelist()) != {'sdcard/'+name for name in expected}:
+            raise ValueError('SD archive inventory mismatch')
+        for name,record in expected.items():
+            data=check.read('sdcard/'+name)
+            if dict(bytes=len(data),sha256=hashlib.sha256(data).hexdigest()) != record:
+                raise ValueError('SD archive round-trip mismatch')
+    return digest(archive)
 
 
 def build(tool, output, source_sha, board="xteink-x4-pro"):
@@ -70,16 +91,20 @@ def build(tool, output, source_sha, board="xteink-x4-pro"):
         if digest(output/'sdcard/Packages/Inbox'/name) != digest(packages/name):
             raise ValueError('SD inbox archive differs from approved package')
         shutil.copyfile(packages/name, output/'packages'/name)
+    sd_archive=output/'sdcard.zip'
+    packed=pack_sd_tree(output/'sdcard',sd_archive)
+    # A partially uploaded raw tree must never be mistaken for the install input.
+    shutil.rmtree(output/'sdcard')
     manifest = dict(schema=2, board=board, source_sha=source_sha,
                     provisioning_authorized=False, driver_medium='sd',
                     firmware=dict(file='firmware.bin', offset=0x10000, **digest(output/'firmware.bin')),
-                    sd_root='sdcard', partition_table=digest(output/'partitions.csv'),
+                    sd_root='sdcard', sd_archive=dict(file=sd_archive.name,**packed), partition_table=digest(output/'partitions.csv'),
                     files=expected, packages=archive_records)
     (output/'deployment.json').write_text(json.dumps(manifest, indent=2)+'\n')
     (output/'README.txt').write_text(
         'Software artifact only; no device validation or provisioning performed.\n'
         'Firmware requires ordinary driver generations and the board profile on SD.\n'
-        'Stage sdcard/ paths with checked ordinary package installation; preserve unrelated data.\n'
+        'Verify sdcard.zip, then stage its sdcard/ paths with checked installation; preserve unrelated data.\n'
         'Active driver generations refuse replacement; no hot-update claim.\n'
         'No internal-flash driver image is supplied or required. Do not erase old flash contents.\n')
     return manifest

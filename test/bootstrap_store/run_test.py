@@ -93,5 +93,5 @@ assert 'x4_embedded' not in (root/'src/platform/X4DiagnosticBoot.cpp').read_text
 assert 'loadPlatformSdPackages' in (root/'src/platform/X4DiagnosticBoot.cpp').read_text()
 # Keep the ownership barrier and real read-only parser regression in the
 # existing host CI entrypoint, without adding a second workflow/controller.
-for check in ('handoff_test.py', 'read_only_fat_test.py'):
+for check in ('handoff_test.py', 'read_only_fat_test.py', 'artifact_test.py'):
  subprocess.run([sys.executable,str(root/'test/bootstrap_store'/check)],check=True,timeout=30)
