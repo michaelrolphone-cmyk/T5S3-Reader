@@ -17,7 +17,7 @@ static uint64_t claim, token, token_serial = 1, sequence;
 static risc_touch_snapshot_v1 state;
 static risc_touch_event_v1 events[RISC_TOUCH_QUEUE_LENGTH];
 static uint8_t head, queued;
-static bool started, gap;
+static bool started, gap, powered;
 static char error_text[64];
 
 static bool equal(const char *a, const char *b) {
@@ -59,7 +59,7 @@ static bool probe(uint8_t address) {
     uint8_t id[4] = {0};
     if (read_reg(0x8140u, id, sizeof(id)) && id[0] == '9' &&
         id[1] == '1' && id[2] == '1' && write_reg(STATUS, 0)) return true;
-    (void)bus->release_device(bus->context, claim);
+    if (!bus->release_device(bus->context, claim)) { fail("gt911 probe release pending"); return false; }
     claim = 0;
     return false;
 }
@@ -157,29 +157,33 @@ static const risc_touch_api_v1 api = {
     RISC_TOUCH_API_V1, sizeof(api), 0, subscribe, unsubscribe, poll, next, snapshot
 };
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (started || !deps || count != 2u) return false;
-    bus = 0; clock_api = 0; claim = 0; error_text[0] = 0;
+    if (started || bus || clock_api || claim || token || powered || !deps || count != 2u) return false;
+    const risc_i2c_bus_api_v1 *candidate_bus = 0;
+    const risc_platform_clock_api_v1 *candidate_clock = 0;
+    error_text[0] = 0;
     for (size_t i = 0; i < count; ++i) {
         if (equal(deps[i].capability_id, "i2c.bus") && deps[i].api_version == 1)
-            bus = (const risc_i2c_bus_api_v1 *)deps[i].api;
+            candidate_bus = (const risc_i2c_bus_api_v1 *)deps[i].api;
         if (equal(deps[i].capability_id, "platform.clock") && deps[i].api_version == 1)
-            clock_api = (const risc_platform_clock_api_v1 *)deps[i].api;
+            candidate_clock = (const risc_platform_clock_api_v1 *)deps[i].api;
     }
-    if (!bus || bus->struct_size < sizeof(*bus) || !bus->claim_device ||
-        !bus->transact || !bus->release_device || !clock_api ||
-        clock_api->struct_size < sizeof(*clock_api) || !clock_api->sleep_ms ||
-        !clock_api->monotonic_ms) { fail("gt911 dependencies"); return false; }
+    if (!risc_i2c_bus_has_safe_contract(candidate_bus) || !candidate_clock ||
+        candidate_clock->api_version != RISC_PLATFORM_CLOCK_API_V1 ||
+        candidate_clock->struct_size < sizeof(*candidate_clock) || !candidate_clock->sleep_ms ||
+        !candidate_clock->monotonic_ms) { fail("gt911 dependencies"); return false; }
+    bus = candidate_bus; clock_api = candidate_clock;
     /* GPIO1 is the shared master rail; GPIO2 is active-low GT911 power. */
     x4pro_pin_output(X4PRO_PIN_PERIPH_EN, true);
     x4pro_pin_output(X4PRO_PIN_TOUCH_PWR, false);
+    powered = true;
     sleep_ms(50);
     reset_select(false);
     if (!probe(X4PRO_I2C_GT911)) {
+        if (claim) return false; // Retain rejected release; do not reset/reprobe.
         reset_select(true);
         if (!probe(0x14u)) {
             fail("gt911 probe");
-            x4pro_pin_output(X4PRO_PIN_TOUCH_PWR, true);
-            return false;
+            return false; // Graph invokes checked quiescence before unload.
         }
     }
     memset(&state, 0, sizeof(state));
@@ -187,12 +191,25 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     sequence = 0; token = 0; head = queued = 0; gap = false; started = true;
     return true;
 }
-static void stop(void) {
-    if (bus && claim) (void)bus->release_device(bus->context, claim);
-    claim = token = 0; started = false;
-    x4pro_pin_output(X4PRO_PIN_TOUCH_PWR, true);
+static bool quiesce(void) {
+    if (token) return false; // A live subscription remains authoritative.
+    started = false;
+    if (claim) {
+        if (!bus || !bus->release_device(bus->context, claim)) {
+            fail("gt911 release pending"); return false;
+        }
+        claim = 0;
+    }
+    if (powered) x4pro_pin_output(X4PRO_PIN_TOUCH_PWR, true);
+    powered = false;
+    bus = 0; clock_api = 0;
+    return true;
 }
-static bool quiesce(void) { if (token) return false; stop(); return true; }
+static void stop(void) {
+    /* ModuleV2 calls stop only after quiesce=true; no new fallible release. */
+    if (claim || token || powered || bus || clock_api) return;
+    started = false;
+}
 static bool last_error(char *dst, size_t cap) {
     if (!dst || !cap || !error_text[0]) return false;
     size_t i = 0;

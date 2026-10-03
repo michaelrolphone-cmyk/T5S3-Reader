@@ -9,7 +9,8 @@
 static const risc_driver_v2 *driver;
 static const risc_driver_diagnostics_v2 *diagnostics;
 static const risc_battery_gauge_api_v1 *gauge;
-static risc_i2c_bus_api_v1 bus;
+static risc_i2c_bus_contract_v1 contract;
+#define bus (contract.base)
 static risc_provider_dependency_v1 dependency;
 static uint64_t active_token, serial = 10;
 static unsigned claims, releases, transactions, input_calls, pin_reads;
@@ -70,8 +71,9 @@ static void reset_fixture(void) {
     charge_high = false;
     fail_register = -1;
     version = 0x0d; config = 0; soc = 55; cell = 0x3200;
-    bus = (risc_i2c_bus_api_v1){RISC_I2C_BUS_API_V1, sizeof(bus), &context_cookie,
-                               claim_device, transact, release_device};
+    contract = (risc_i2c_bus_contract_v1){
+        {RISC_I2C_BUS_API_V1, sizeof(contract), &context_cookie, claim_device, transact, release_device},
+        RISC_I2C_BUS_CONTRACT_TAG, RISC_I2C_BUS_CONTRACT_V1, RISC_I2C_BUS_SAFE_CONTRACT_FLAGS};
     dependency = (risc_provider_dependency_v1){"i2c.bus", RISC_I2C_BUS_API_V1, &bus};
 }
 static void error_is(const char *expected) {
@@ -133,11 +135,23 @@ static void dependencies_test(void) {
     dependency.api = header; assert(!driver->start(&dependency, 1));
     dependency.api = &bus;
     bus.struct_size = sizeof(bus) - 1u; assert(!driver->start(&dependency, 1));
-    bus.struct_size = sizeof(bus); bus.api_version = 99;
+    bus.struct_size = sizeof(contract); bus.api_version = 99;
     assert(!driver->start(&dependency, 1));
     bus.api_version = 1; bus.claim_device = NULL; assert(!driver->start(&dependency, 1));
     bus.claim_device = claim_device; bus.transact = NULL; assert(!driver->start(&dependency, 1));
     bus.transact = transact; bus.release_device = NULL; assert(!driver->start(&dependency, 1));
+    bus.release_device = release_device;
+    contract.contract_tag ^= 1; assert(!driver->start(&dependency, 1));
+    contract.contract_tag ^= 1; contract.contract_version = 2;
+    assert(!driver->start(&dependency, 1)); contract.contract_version = 1;
+    for (unsigned bit = 0; bit < 3; ++bit) {
+        contract.contract_flags = RISC_I2C_BUS_SAFE_CONTRACT_FLAGS & ~(1u << bit);
+        assert(!driver->start(&dependency, 1));
+    }
+    /* Legacy size and unrelated oversized suffixes fail before any I/O. */
+    const risc_i2c_bus_api_v1 legacy = {1, sizeof(legacy), &context_cookie,
+                                     claim_device, transact, release_device};
+    dependency.api = &legacy; assert(!driver->start(&dependency, 1));
     error_is("cw2017 i2c abi");
     no_activity();
 }

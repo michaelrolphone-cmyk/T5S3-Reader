@@ -15,6 +15,8 @@ PACKAGES = {
     "x4pro-panel": None,
     "x4pro-buttons": [],
     "x4pro-frontlight": [],
+    "x4pro-i2c": sorted(["xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
+                           "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
 }
 
 def main():

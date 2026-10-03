@@ -30,7 +30,29 @@ PACKAGES = [
     "x4pro_frontlight", "x4pro_battery", "x4pro_sd",
 ]
 
+def check_i2c_sdk_contract():
+    """Check existing CPU ABI declarations, without adding loader privileges."""
+    core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
+    sdk = Path(os.environ.get("ESP32S3_SDK", core / "packages/framework-arduinoespressif32/tools/sdk/esp32s3"))
+    if not (sdk / "include/freertos/include/freertos/FreeRTOS.h").is_file():
+        if os.environ.get("CI"):
+            raise ValueError("Pinned SDK missing for X4 I2C CPU ABI contract check")
+        print("X4 I2C SDK declaration check NOT RUN: pinned SDK unavailable locally")
+        return
+    include = [sdk / "qio_opi/include", sdk / "include/newlib/platform_include"]
+    include += sorted(p for p in (sdk / "include").rglob("include") if p.is_dir())
+    include += [sdk / "include/soc/esp32s3", sdk / "include/xtensa/esp32s3/include",
+                sdk / "include/freertos/port/xtensa/include", sdk / "include/freertos/include/esp_additions",
+                sdk / "include/freertos/include/esp_additions/freertos", sdk / "include/esp_rom/include/esp32s3"]
+    subprocess.run([CC, "-std=gnu11", "-fsyntax-only", "-Werror", "-DCONFIG_IDF_TARGET_ESP32S3=1",
+                    *["-I" + str(p) for p in include],
+                    str(ROOT / "test/drivers/x4pro_i2c_sdk_contract.c")], check=True)
+    print("X4 I2C pinned SDK declaration check: PASS")
+
+
 def build_one(name):
+    if name == "x4pro_i2c":
+        check_i2c_sdk_contract()
     source = ROOT / "Drivers" / name
     manifest = json.loads((source / "manifest.json").read_text())
     output = ROOT / "dist" / "experimental" / manifest["id"]

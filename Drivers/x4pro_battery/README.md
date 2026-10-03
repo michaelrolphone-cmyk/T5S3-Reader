@@ -1,8 +1,9 @@
 # X4 Pro read-only battery gauge
 
 `board.battery@1` reads the resident CW2017 at `0x63` through the installed
-`i2c.bus@1`. It accepts only the complete v1 bus table and exactly the single
-manifest dependency. Startup and every sample require running VERSION
+`i2c.bus@1`. It accepts only the tagged API-1 safety contract (serialization, total deadline
+and retained release) and exactly the single manifest dependency. Missing,
+short, mistagged or incompatible contracts are rejected before any I/O. Startup and every sample require running VERSION
 `0x0d`/`0x0f`, normal CONFIG, 14-bit VCELL that converts to nonzero millivolts,
 and integer SOC in 0–100. VERSION `0xa0` is
 the power-on/startup value and is rejected as not ready.
@@ -44,12 +45,13 @@ same checked release; failure prevents further reads but retains ownership so a
 later cleanup attempt can recover. Successful cleanup is idempotent.
 
 Startup and read each perform at most four synchronous transactions. Each has
-one register-address byte and at most two returned bytes, with a requested 20 ms total transaction budget and no retry/poll loop. The current
-`x4pro-i2c` bit-bang provider has finite byte/bit loops for those fixed lengths
-but ignores `timeout_ms`. Its delay calls the clock provider's `sleep_ms(0)`;
-this does not establish an elapsed-time deadline. No end-to-end 20/80 ms
-wall-time guarantee or timing/hardware qualification is claimed here. Enforcing
-the bus deadline requires a separate bus-provider change.
+one register-address byte and at most two returned bytes, with a requested
+20 ms total transaction budget and no consumer retry/poll loop. The matching
+`x4pro-i2c 0.1.2` serializes the UI-owner battery poll against the independent
+GT911 capture task, rejects busy admission, and enforces per-transfer deadline
+checks with fixed safety cleanup. A failed or contended sample is unavailable.
+This does not claim a hard 20/80 ms wall-time bound or physical timing proof.
+See [the bus contract and limits](../x4pro_i2c/README.md).
 
 Run `bash test/run_x4pro_battery_test.sh` for the host regression against the
 actual driver, with a fake bus and GPIO input boundary.

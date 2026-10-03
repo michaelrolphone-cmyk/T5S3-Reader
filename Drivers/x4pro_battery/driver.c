@@ -11,8 +11,8 @@
  * FreeInk/OEM readiness: VERSION=0x0d/0x0f running; 0xa0 is POR, not ready.
  * SOC_H is the integer percentage. Sources/evidence limits: README.md.
  * Each call performs at most four fixed 1+1/1+2 byte synchronous transfers,
- * with no polling or retries. The 20 ms budget is required by the bus ABI;
- * x4pro-i2c currently ignores it, so this is NOT a wall-time guarantee. */
+ * with no polling or retries. Require the tagged serialized/deadline/drained
+ * release contract before any I/O; legacy unsafe bus packages fail closed. */
 #define CW2017_VERSION 0x00u
 #define CW2017_VCELL 0x02u
 #define CW2017_SOC 0x04u
@@ -107,9 +107,7 @@ static bool start(const risc_provider_dependency_v1 *dependencies, size_t count)
         fail("cw2017 i2c dependency"); return false;
     }
     const risc_i2c_bus_api_v1 *candidate = dependencies[0].api;
-    if (candidate->struct_size < sizeof(*candidate) ||
-        candidate->api_version != RISC_I2C_BUS_API_V1 || !candidate->claim_device ||
-        !candidate->transact || !candidate->release_device) {
+    if (!risc_i2c_bus_has_safe_contract(candidate)) {
         fail("cw2017 i2c abi"); return false;
     }
     bus = candidate;

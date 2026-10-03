@@ -93,11 +93,23 @@ telemetry, distinct from a genuinely measured 0%. Unsupported current, capacity,
 full and USB/VBUS fields remain unknown; a noncharging sample is not proof of
 Discharge. T5/EPD47 keep their existing percentage-cache and power-icon behavior.
 
-The current X4 bit-bang bus has finite byte/bit loops for each of the battery's
-four fixed small reads, but ignores the supplied timeout. This patch claims
-finite work and slow polling, not an enforced wall-time transaction deadline or
-physical timing verification. The bus contract remains separate follow-up work.
-Automatic X4 sleep/shutdown is still deferred. Hardware validation remains
+The first 1.3.87 candidate at `b8db638b` is withheld. Its initial review incorrectly
+assumed owner-task battery polling serialized touch; the actual GT911 capture
+worker is independent, so `x4pro-i2c 0.1.1` could interleave their physical bus
+operations. Passing CI did not establish this missing concurrency invariant.
+The same-PR bus repair increments `x4pro-i2c 0.1.1 → 0.1.2` and uses the existing
+privileged OS/CPU ABI1 zero-wait mutex boundary, with checked total deadlines,
+fixed STOP cleanup and retained unsafe ownership. Provider BSS is in PSRAM, so
+bare S32C1I on an ELF-local flag is deliberately not used. See [the bus contract](../../Drivers/x4pro_i2c/README.md).
+Firmware remains unreleased 1.3.87; earlier CI artifacts are superseded as test
+candidates and have not been delivered. A future test needs both matching
+battery0.1.2, I²C0.1.2 and GT9110.1.3 ordinary packages. Updated touch and
+battery reject the old bus before GPIO/I²C activity; the tagged append-only
+contract leaves the original API-1 prefix unchanged. Older GT911 loses failed
+release ownership, so a bus-only upgrade is insufficient. Delivered1.3.85 remains immutable;
+its default boot path did not activate the new battery consumer, but the old bus
+also lacks safe admission for other separately installed clients.
+Automatic X4 sleep/shutdown remains deferred. Hardware validation remains
 FAILED/unavailable until an actual device result establishes it.
 
 ## Shared Reader software
