@@ -207,7 +207,7 @@ class Transport:
                     row, _, pending = pending.partition(b'\n')
                     row = row.decode('utf-8', 'replace').strip()
                     require(len(row) <= 2048 and len(lines) < 2000, 'Boot output exceeds line bound')
-                    if any(s in row for s in ('RTE_HEARTBEAT ', 'RTE_NOSD ', 'RUNTIME BOOT ', 'RUNTIME APP ', 'CAMERA_APP saved=', '[X4]', 'PROVREF ', 'Guru Meditation','Backtrace:','abort()','Task watchdog','task_wdt')):
+                    if any(s in row for s in ('RTE_HEARTBEAT ', 'RTE_BOOT ', 'RTE_NOSD ', 'RUNTIME BOOT ', 'RUNTIME APP ', 'CAMERA_APP saved=', '[X4]', 'PROVREF ', 'Guru Meditation','Backtrace:','abort()','Task watchdog','task_wdt')):
                         lines.append(row)
                 require(len(pending) <= 2048, 'Unterminated boot line exceeds bound')
         self.serial_bytes += count

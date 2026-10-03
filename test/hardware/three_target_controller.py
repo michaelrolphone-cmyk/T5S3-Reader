@@ -132,6 +132,20 @@ def status(gh,path,result):
     result.update(status_id=response['id'],status_state=state)
     device.save(path,result)
 
+def held_candidate_status(gh, number, job, root):
+    """A deployment hold is terminal feedback, not a permanently pending check."""
+    sha = github.eligible_source(gh,number)
+    folder = root/'holds'/job['target']; folder.mkdir(mode=0o700,parents=True,exist_ok=True)
+    path = folder/(sha+'.json')
+    description = ('FAILED: '+str(job['candidate_hold']))[:140]
+    if path.exists() and json.loads(path.read_text()).get('description') == description:
+        return
+    response = gh.call('/statuses/'+sha,'POST',{
+        'context':job['target']+' hardware / heartbeat cleanup','state':'failure','description':description})
+    # Separate from candidate journals: lifting the hold still permits the test.
+    device.save(path,{'source_sha':sha,'target':job['target'],'state':'failure',
+                     'description':description,'status_id':response['id']})
+
 def maintain(job,root):
     target=job['target']; binding=private_json(Path(job['binding']))
     transport=device.Transport(binding,target,root)
@@ -229,6 +243,8 @@ def main():
                 summary.append({'target':job['target'],'maintenance':health})
                 if health.get('state')=='busy' or health.get('result')=='failed': continue
                 if job.get('candidate_hold'):
+                    for number in numbers:
+                        held_candidate_status(gh,number,job,root)
                     summary.append({'target':job['target'],'candidate_hold':job['candidate_hold']}); continue
                 for number in numbers:
                     try: once(gh,number,job,root)

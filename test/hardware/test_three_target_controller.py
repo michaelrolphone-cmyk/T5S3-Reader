@@ -4,11 +4,21 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import three_target_controller as controller
 import heartbeat_policy as policy
 
 class ControllerTests(unittest.TestCase):
+    def test_candidate_hold_is_failure_without_finalizing_candidate_journal(self):
+        gh=Mock();gh.call.return_value={'id':99}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(controller.github,'eligible_source',return_value='a'*40):
+            root=Path(tmp);job={'target':'x4','candidate_hold':'matching external driver store not provisioned'}
+            controller.held_candidate_status(gh,350,job,root)
+            controller.held_candidate_status(gh,350,job,root)
+            self.assertEqual(gh.call.call_count,1)
+            self.assertEqual(gh.call.call_args.args[2]['state'],'failure')
+            self.assertFalse((root/'candidates').exists())
+
     def test_x4_app_contract_keeps_exact_provenance_and_target(self):
         image=bytearray(32); image[0]=0xe9; image[12]=9
         image=bytes(image)+b'RISCRTE_BOARD_ID:xteink-x4-pro\0'
