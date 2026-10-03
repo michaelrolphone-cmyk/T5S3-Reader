@@ -213,7 +213,8 @@ class Transport:
         self.serial_bytes += count
         return lines
 
-def transaction(target, binding, heartbeat, heartbeat_sha, folder, candidate=None, candidate_sha=None):
+def transaction(target, binding, heartbeat, heartbeat_sha, folder, candidate=None, candidate_sha=None, candidate_profile="reader"):
+    require(candidate_profile in ('reader','runtime-heartbeat') and (candidate_profile == 'reader' or target == 'cam-nosd'), 'Unknown candidate profile')
     require(target in BOARDS and binding['mac'].lower() == BOARDS[target][0], 'Unqualified target identity')
     hb = image_bytes(heartbeat, heartbeat_sha, target, True)
     app = image_bytes(candidate, candidate_sha, target) if candidate else None
@@ -242,7 +243,11 @@ def transaction(target, binding, heartbeat, heartbeat_sha, folder, candidate=Non
                     result['candidate_readback_equal'] = True
                     boot_lines = transport.boot(180 if target=='cam-sd' else 45)
                     if target == 'x4': result['boot_diagnostics'] = x4_diagnostics(boot_lines)
-                    result['candidate_checks'] = candidate_result(boot_lines,target)
+                    if candidate_profile == 'runtime-heartbeat':
+                        require(not any(token in line for line in boot_lines for token in ('Guru Meditation','Backtrace:','abort()','Task watchdog','task_wdt')), 'Runtime panic/watchdog')
+                        result['candidate_checks'] = healthy(boot_lines,target)
+                    else:
+                        result['candidate_checks'] = candidate_result(boot_lines,target)
                 result['result'] = 'pass'
             except BaseException as error:
                 result['error'] = f'{type(error).__name__}: {error}'[:400]

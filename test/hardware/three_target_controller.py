@@ -212,6 +212,14 @@ def main():
                 device.require(len(prs)<100,'PR page bound exceeded')
                 numbers=[x['number'] for x in github.bounded_owner_prs(prs)]
         summary=[]
+        if not args.maintenance_only and config.get('runtime_cam') is not None:
+            import runtime_cam_adapter
+            try:
+                summary.append(runtime_cam_adapter.scan(token,config['runtime_cam'],jobs,root))
+            except github.RateLimited:
+                raise
+            except Exception as error:
+                summary.append({'repository':'RiscRTE','error':type(error).__name__+': '+str(error)[:250]})
         for job in jobs:
             if not job['enabled'] or Path(job['pause']).exists():
                 summary.append({'target':job['target'],'state':'paused'}); continue
@@ -220,6 +228,8 @@ def main():
                 health=maintain(job,root)
                 summary.append({'target':job['target'],'maintenance':health})
                 if health.get('state')=='busy' or health.get('result')=='failed': continue
+                if job.get('candidate_hold'):
+                    summary.append({'target':job['target'],'candidate_hold':job['candidate_hold']}); continue
                 for number in numbers:
                     try: once(gh,number,job,root)
                     except github.RateLimited: raise
