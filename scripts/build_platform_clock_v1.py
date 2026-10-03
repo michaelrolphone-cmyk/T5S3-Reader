@@ -31,11 +31,14 @@ def build(cc=None):
         cc = str(core / 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc')
     OUTPUT.mkdir(parents=True, exist_ok=True)
     elf = OUTPUT / 'driver.elf'
-    # Xtensa binutils 2.35 can crash in elf_xtensa_finish_dynamic_sections
-    # when garbage-collecting a small PIC shared object. Keep complete tiny
-    # clock sections and use the same proven flags as the other small ELFs.
+    # The pinned GCC 14 Linux linker also crashes with relaxed clock literals.
+    # Match the board-provider CI profile; retain the default local profile.
+    profile = os.environ.get('RISCRTE_X4_LINK_PROFILE', '')
+    if profile not in ('', 'esp14-no-relax'):
+        raise ValueError('Unknown X4 link profile: ' + profile)
+    link_flags = ['-O2', '-Wl,--no-relax'] if profile else ['-Os']
     subprocess.run([
-        cc, '-std=c11', '-D_DEFAULT_SOURCE', '-D_USE_LONG_TIME_T', '-Os', '-fPIC',
+        cc, '-std=c11', '-D_DEFAULT_SOURCE', '-D_USE_LONG_TIME_T', *link_flags, '-fPIC',
         '-mtext-section-literals', '-mlongcalls', '-fvisibility=hidden',
         '-nostdlib', '-nostartfiles', '-shared',
         '-I' + str(ROOT / 'sdk/driver'),
