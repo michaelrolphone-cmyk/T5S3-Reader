@@ -17,6 +17,7 @@ void WifiSettingsActivity::onEnter() {
 
 void WifiSettingsActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/wifi_settings.elf", renderer, mappedInput);
     if (result == ESP_OK) {

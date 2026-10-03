@@ -17,6 +17,7 @@ void ClearCacheActivity::onEnter() {
 
 void ClearCacheActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/clear_cache.elf", renderer, mappedInput);
     if (result == ESP_OK) {

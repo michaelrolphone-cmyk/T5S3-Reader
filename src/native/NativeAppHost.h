@@ -9,6 +9,10 @@ esp_err_t runNativeApp(const char* sdPath, GfxRenderer& renderer, MappedInputMan
 // Consumed by main.cpp to start a fresh inactivity period on browser return.
 bool consumeNativeAppReturn();
 
+// Internal default.elf supervisor path: verified admission, no drawing session
+// or RenderLock, no provider requirements/takeover. Existing owner task only.
+esp_err_t runNativeReaderEntry(const char* sdPath, GfxRenderer& renderer, MappedInputManager& input);
+
 // Present a native UI bridge frame without blocking the app owner task during
 // long e-paper pixel transfers.
 bool presentNativeAppUiFrame();

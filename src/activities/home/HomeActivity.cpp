@@ -259,6 +259,7 @@ void HomeActivity::freeCoverBuffer() {
 
 void HomeActivity::loop() {
   if (!pendingHomeAppArtifact.empty()) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     // Home selections run inside ActivityManager's current touch/button
     // dispatch. Defer the ELF until the next owner-task iteration so input
     // cleanup and UI dispatch fully finish first, matching Springboard and
@@ -274,6 +275,7 @@ void HomeActivity::loop() {
     return;
   }
   if (appsPending) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     appsPending = false;
     appsPending = runNativeSpringboard(renderer, mappedInput, appsResume);
     appsResume = appsPending;

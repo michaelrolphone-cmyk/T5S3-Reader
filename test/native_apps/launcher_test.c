@@ -9,6 +9,7 @@
 #include "esp_dlfcn.h"
 #include "esp_elf.h"
 #include "T5AppApi.h"
+#include "T5ReaderEntryApi.h"
 #include "T5ArchiveApi.h"
 #include "T5BatteryApi.h"
 #include "T5ButtonRemapApi.h"
@@ -147,8 +148,27 @@ static void reset_takeover(void)
     mode = 0;
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+    if (argc == 2 && strcmp(argv[1], "reader") == 0) {
+        reset_takeover();
+        assert(!native_app_loader_retained());
+        assert(launch_elf_reader_entry("/sd/apps/game.elf") == ESP_OK);
+        assert(calls == 1 && closes == 1 && !memory_live);
+        reset_takeover();
+        takeover_exported = true;
+        takeover_request = T5_HARDWARE_TAKEOVER_DISPLAY;
+        assert(launch_elf_reader_entry("/sd/apps/game.elf") == ESP_ERR_NOT_SUPPORTED);
+        assert(calls == 0 && closes == 1 && takeover_begins == 0 && !memory_live);
+        reset_takeover();
+        mode = 4;
+        assert(launch_elf_reader_entry("/sd/apps/game.elf") == ESP_FAIL);
+        assert(native_app_loader_retained());
+        assert(launch_elf_reader_entry("/sd/apps/game.elf") == ESP_ERR_INVALID_STATE);
+        assert(launch_elf_app("/sd/apps/game.elf") == ESP_ERR_INVALID_STATE);
+        puts("Reader loader: entry, takeover denial, unload retention and nested barrier PASS");
+        return 0;
+    }
     assert(native_app_current_path() == NULL);
     assert(launch_elf_app(NULL) == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("") == ESP_ERR_INVALID_ARG);
@@ -321,3 +341,5 @@ bool native_app_memory_begin(void) { assert(!memory_live); memory_live=true; ret
 void native_app_memory_relocation(bool active) { assert(memory_live); memory_resolving=active; }
 void native_app_memory_end(void) { assert(!memory_resolving); memory_live=false; }
 bool native_hardware_display_is_borrowed(void) { return takeover_active; }
+
+const t5_reader_entry_api_v1* t5_reader_entry_get_api(uint32_t version) { (void)version; return NULL; }

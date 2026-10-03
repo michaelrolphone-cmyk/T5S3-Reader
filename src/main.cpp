@@ -29,6 +29,7 @@ void loop() { RuntimeBoot::loop(); }
 #include "CrossPointState.h"
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
+#include "native/NativeReaderEntry.h"
 #include "native/InstalledAppPath.h"
 #include "native/NativeStreamBridge.h"
 #include "runtime/boot/DefaultAppSelection.h"
@@ -239,6 +240,7 @@ void resumeInputProvidersAfterSleep() {
 
 // Enter deep sleep mode
 void enterDeepSleep() {
+  if (NativeReaderEntry::deferSleep(NativeReaderEntry::Action::Sleep)) return;
   const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
   if (!deskClock && shouldSuppressDeepSleepForDebug()) {
     LOG_DBG("MAIN", "Deep sleep suppressed while serial is connected");
@@ -277,6 +279,7 @@ void enterDeepSleep() {
 }
 
 void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
+  if (NativeReaderEntry::deferSleep(NativeReaderEntry::Action::SleepKeepingScreen, wakeOnTouch)) return;
   HalPowerManager::Lock powerLock;
   if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
@@ -291,6 +294,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 }
 
 void enterPowerOffKeepingScreen(const char* status) {
+  if (NativeReaderEntry::deferSleep(NativeReaderEntry::Action::PowerOff)) return;
   (void)status;  // Status line intentionally not shown; the sleep screen setting is used instead.
   if (!suspendInputProvidersForSleep()) return;
   {
@@ -324,6 +328,10 @@ void enterPowerOffKeepingScreen(const char* status) {
 // context rather than inside an activity's call stack.
 bool g_shutdownRequested = false;
 bool g_displayBootFailed = false;
+static bool g_readerStartPending = false;
+static bool g_readerResumeOnBoot = false;
+static bool g_readerDeskClockWake = false;
+static bool g_readerEntryEligible = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
 bool setupDisplayAndFonts() {
@@ -419,6 +427,33 @@ void logPlatformInputHealth() {
     if (!touch) LOG_ERR("INPUT", "Touch capability unavailable: install/repair gt911-touch");
     if (SETTINGS.externalInputNavigation && !navigation)
       LOG_ERR("INPUT", "Controller navigation capability unavailable: install/repair usb-ui-navigation dependency stack");
+  }
+}
+
+static void startReaderApplication() {
+  if (!g_readerStartPending) return;
+  g_readerStartPending = false;
+  const auto prepareStartupRefresh = [](HalDisplay::RefreshMode refreshMode) {
+    display.suppressInitialFullRefresh();
+    renderer.requestNextRefresh(refreshMode);
+  };
+  if (!g_readerResumeOnBoot) {
+    prepareStartupRefresh(HalDisplay::HALF_REFRESH);
+    if (!g_readerDeskClockWake) {
+      RenderLock lock;
+      StartupScreen::armBootFade();
+    }
+    // A cold boot fades the logo when Home is ready. A desk-clock user wake
+    // has no splash to fade and proceeds directly into Home.
+    activityManager.goHome();
+  } else {
+    // Clear app state to avoid getting into a boot loop if the epub doesn't load
+    const auto path = APP_STATE.openEpubPath;
+    APP_STATE.openEpubPath = "";
+    APP_STATE.readerActivityLoadCount++;
+    APP_STATE.saveToFile();
+    display.suppressInitialFullRefresh();
+    activityManager.goToReader(path, readerResumeRefreshMode());
   }
 }
 
@@ -580,30 +615,20 @@ void setup() {
     prepareStartupRefresh(HalDisplay::HALF_REFRESH);
     // If we rebooted from a panic, go directly to the crash report screen to show the panic info.
     activityManager.goToCrashReport();
-  } else if (!resumeReaderOnBoot) {
-    prepareStartupRefresh(HalDisplay::HALF_REFRESH);
-    if (!deskClockUserWake) {
-      RenderLock lock;
-      StartupScreen::armBootFade();
-    }
-    // A cold boot fades the logo when Home is ready. A desk-clock user wake
-    // has no splash to fade and proceeds directly into Home.
-    activityManager.goHome();
   } else {
-    // Clear app state to avoid getting into a boot loop if the epub doesn't load
-    const auto path = APP_STATE.openEpubPath;
-    APP_STATE.openEpubPath = "";
-    APP_STATE.readerActivityLoadCount++;
-    APP_STATE.saveToFile();
-    display.suppressInitialFullRefresh();
-    activityManager.goToReader(path, readerResumeRefreshMode());
+    // The ELF's first pump enters exactly the previous Home/book destination.
+    // The firmware remains the owner of its ActivityManager and saved state.
+    g_readerResumeOnBoot = resumeReaderOnBoot;
+    g_readerDeskClockWake = deskClockUserWake;
+    g_readerStartPending = true;
+    g_readerEntryEligible = true;
   }
 
   // Ensure we're not still holding the power button before leaving setup
   waitForPowerRelease();
 }
 
-void loop() {
+static void readerApplicationLoop() {
   if (g_displayBootFailed) {
     // Do not touch ActivityManager/renderer after failed display bootstrap.
     // Leave the retained image or emergency failure pattern stable for diagnosis.
@@ -611,29 +636,6 @@ void loop() {
     return;
   }
 
-  // One normal app invocation per boot. A missing selector preserves the
-  // embedded paper UI; a damaged/unavailable app falls back without reboot or
-  // repeated hashing/launch attempts. The resolver verifies the installed
-  // package and sidecar before the existing native app host grants anything.
-  static bool defaultAppChecked = false;
-  if (!defaultAppChecked) {
-    defaultAppChecked = true;
-    char artifact[96]{};
-    const auto choice = RuntimeDefaultApp::read(artifact);
-    if (choice == RuntimeDefaultApp::Selection::Ready) {
-      std::string installed;
-      if (resolveInstalledAppPath(artifact, installed)) {
-        LOG_INF("APP", "default start artifact=%s", artifact);
-        const esp_err_t result = runNativeApp(installed.c_str(), renderer, mappedInputManager);
-        LOG_INF("APP", "default returned result=%d", static_cast<int>(result));
-      } else {
-        LOG_ERR("APP", "default unavailable artifact=%s", artifact);
-      }
-      activityManager.goHome();
-    } else if (choice == RuntimeDefaultApp::Selection::Invalid) {
-      LOG_ERR("APP", "default selector invalid; embedded GUI remains available");
-    }
-  }
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
@@ -681,6 +683,7 @@ void loop() {
 
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
+  if (NativeReaderEntry::consumeResume()) lastActivityTime = millis();
   if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
       nativeNavigationFrame().buttons || nativeTouchHadActivity() || halTiltSensor.hadActivity() ||
       activityManager.preventAutoSleep()
@@ -807,6 +810,7 @@ void loop() {
   if (hasHardwareButtonTap) {
     mappedInputManager.clearInjectedButtonTap();
   }
+  if (NativeReaderEntry::pending()) return;
   const unsigned long activityDuration = millis() - activityStartTime;
 
   const unsigned long loopDuration = millis() - loopStartTime;
@@ -833,6 +837,55 @@ void loop() {
       delay(10);
     }
   }
+}
+
+static void runReaderSleep(NativeReaderEntry::Action action, bool wakeOnTouch) {
+  switch (action) {
+    case NativeReaderEntry::Action::Sleep: enterDeepSleep(); break;
+    case NativeReaderEntry::Action::SleepKeepingScreen: enterDeepSleepKeepingScreen(wakeOnTouch); break;
+    case NativeReaderEntry::Action::PowerOff: enterPowerOffKeepingScreen(""); break;
+    default: break;
+  }
+}
+
+void loop() {
+  if (g_displayBootFailed || NativeReaderEntry::blocked()) { delay(250); return; }
+  static bool defaultAppChecked = false;
+  if (!defaultAppChecked) {
+    defaultAppChecked = true;
+    // Recovery and panic handling stay independent of installed applications.
+    if (g_readerEntryEligible) {
+      char artifact[96]{};
+      const auto choice = RuntimeDefaultApp::read(artifact);
+      if (choice == RuntimeDefaultApp::Selection::Absent)
+        std::strcpy(artifact, "default.elf");
+      if (choice != RuntimeDefaultApp::Selection::Invalid) {
+        std::string installed;
+        if (resolveInstalledAppPath(artifact, installed)) {
+          LOG_INF("APP", "default start artifact=%s", artifact);
+          if (!std::strcmp(artifact, "default.elf")) {
+            const bool okay = NativeReaderEntry::run(installed.c_str(), renderer, mappedInputManager,
+                startReaderApplication, readerApplicationLoop, runReaderSleep);
+            LOG_INF("APP", "Reader entry returned okay=%d", static_cast<int>(okay));
+            if (NativeReaderEntry::blocked()) return;
+          } else {
+            startReaderApplication();
+            const auto result = runNativeApp(installed.c_str(), renderer, mappedInputManager);
+            LOG_INF("APP", "default returned result=%d", static_cast<int>(result));
+            activityManager.goHome();
+          }
+        } else if (choice == RuntimeDefaultApp::Selection::Ready) {
+          LOG_ERR("APP", "default unavailable artifact=%s", artifact);
+        }
+      } else {
+        LOG_ERR("APP", "default selector invalid; embedded GUI remains available");
+      }
+    }
+  }
+  // An absent/bad entry is tried once. Preserve the existing recovery GUI and
+  // the original Home/book-resume destination, without an unconditional Home.
+  startReaderApplication();
+  readerApplicationLoop();
 }
 
 #endif // RISCRTE_PROFILE_HEADLESS

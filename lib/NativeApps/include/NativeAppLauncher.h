@@ -1,5 +1,6 @@
 #pragma once
 #include "esp_err.h"
+#include <stdbool.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -7,6 +8,10 @@ extern "C" {
 // Apps export void app_main(void), stop all work and return to exit.
 // Native faults are not recoverable loader errors. See docs/NATIVE_APPS.md.
 esp_err_t launch_elf_app(const char *sd_path);
+// Firmware-only Reader supervisor mode. No direct hardware takeover; a failed
+// unload retains the loader barrier so no child can be launched afterward.
+esp_err_t launch_elf_reader_entry(const char *sd_path);
+bool native_app_loader_retained(void);
 
 // Optional module lifecycle exports. The loader calls app_module_init() after
 // relocation and before any hardware takeover request, then calls
