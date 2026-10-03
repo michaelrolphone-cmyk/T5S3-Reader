@@ -21,7 +21,7 @@ bool declaredPackageSnapshot(const OrdinaryPackagePlan& p,const char* name,const
 namespace RuntimeInstalledProviders {
 bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& c) {
  if(!c.elfBytes || c.elfLength<52 || memcmp(c.elfBytes,"\177ELF",4)) return false;
- ++registrations;printf("REGISTER %s %s bytes=%zu\n",c.driverId,c.provides,c.elfLength);return true;
+ ++registrations;printf("REGISTER %s %s bytes=%zu os_cpu_abi=%u\n",c.driverId,c.provides,c.elfLength,c.requiredOsCpuAbi);return true;
 }
 }
 int main(int argc,char**argv) {

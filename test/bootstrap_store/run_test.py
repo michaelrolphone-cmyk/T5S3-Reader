@@ -41,6 +41,22 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
    entry['sha256']=hashlib.sha256(manifest.read_bytes()).hexdigest()
  package.write_text(json.dumps(metadata));run(True)
  assert hashlib.sha256(binary.read_bytes()).digest()==reader_digest
+ # Coherent ABI2 metadata reaches the manager unchanged; mismatches and
+ # unsupported/coerced revisions fail before registration of this provider.
+ profile=manifest.parent/'provider-abi.v1'; original_profile=profile.read_bytes()
+ def revision_case(value,profile_revision,ok):
+  config['os_cpu_abi']=value;manifest.write_text(json.dumps(config))
+  profile.write_bytes(original_profile.replace(b'os-cpu-abi=1',f'os-cpu-abi={profile_revision}'.encode()))
+  for entry in metadata['entries']:
+   if entry['name'] in ('manifest.json','provider-abi.v1'):
+    payload=(manifest.parent/entry['name']).read_bytes()
+    entry['size_bytes']=len(payload);entry['sha256']=hashlib.sha256(payload).hexdigest()
+  package.write_text(json.dumps(metadata))
+  return run(ok)
+ assert 'os_cpu_abi=2' in revision_case(2,2,True)
+ for value,profile_revision in [(1,2),(2,1),(3,3),(None,1),(True,1),('2',2)]:
+  revision_case(value,profile_revision,False)
+ print('Bootstrap revision selection, manifest/profile mismatch and invalid revisions: PASS')
  print('External-file origin, valid packages, corrupt/missing ELF, version mismatch, traversal, independent version update: PASS')
 assert not (root/'src/platform/x4pro_embedded.c').exists()
 assert 'x4_embedded' not in (root/'src/platform/X4DiagnosticBoot.cpp').read_text()

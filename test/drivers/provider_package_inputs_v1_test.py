@@ -9,7 +9,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_provider_package_inputs_v1 import (  # noqa: E402
-    canonical_manifest, prepare)
+    canonical_manifest, manifest_os_cpu_abi, prepare)
 from generate_privileged_imports_v1 import extract_imports  # noqa: E402
 
 SOURCES = (
@@ -24,6 +24,15 @@ SOURCES = (
 
 
 def run() -> None:
+    assert manifest_os_cpu_abi({}) == 1
+    assert manifest_os_cpu_abi({'os_cpu_abi': 2}) == 2
+    for revision in (None, True, '2', 0, 3, 2.0):
+        try:
+            manifest_os_cpu_abi({'os_cpu_abi': revision})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('invalid ABI revision accepted')
     with tempfile.TemporaryDirectory(prefix='risc-provider-inputs-') as temporary:
         root = Path(temporary)
         for index, (manifest_path, elf_path, expected_capability) in enumerate(SOURCES):

@@ -92,7 +92,7 @@ bool GraphV2::addChecked(const SpecV2& spec, bool privilegedAdmission) {
                        spec.verifiedElfLength == 0 &&
                        spec.declaredImports == nullptr &&
                        spec.declaredImportCount == 0 && emptyDigest;
-  const bool privileged = spec.requiredOsCpuAbi == 1 &&
+  const bool privileged = (spec.requiredOsCpuAbi == 1 || spec.requiredOsCpuAbi == 2) &&
                           spec.verifiedElfBytes != nullptr &&
                           spec.verifiedElfLength > 0 &&
                           spec.verifiedElfLength <= 8u * 1024u * 1024u &&
@@ -221,7 +221,7 @@ bool GraphV2::activate(size_t index) {
                                       node.spec.id, node.spec.provides,
                                       node.spec.api,
                                       node.spec.requirementCount ? node.boundDependencies : nullptr,
-                                      node.spec.requirementCount)
+                                      node.spec.requirementCount, node.spec.requiredOsCpuAbi)
       : node.module.load(node.spec.verifiedElfPath, node.spec.id,
                          node.spec.provides, node.spec.api,
                          node.spec.requirementCount ? node.boundDependencies : nullptr,

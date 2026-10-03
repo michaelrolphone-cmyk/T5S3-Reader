@@ -46,11 +46,16 @@ def firmware_exports(repo):
     return exports | native_hardware_compat_exports(repo)
 
 
-def privileged_os_cpu_exports(repo):
-    """Exact ABI-v1 names resolvable ONLY during an admitted provider load."""
+def privileged_os_cpu_exports(repo, revision=1):
+    """Exact selected ABI names, ONLY during an admitted provider load."""
+    if type(revision) is not int or revision not in (1, 2):
+        raise ValueError("Unsupported privileged OS/CPU ABI")
     repo = pathlib.Path(repo)
     source = (repo / 'lib/elf_loader/include/private/privileged_os_cpu_symbols_v1.def').read_text()
     names = re.findall(r'^RISC_OS_CPU_SYMBOL\((\w+)\)\s*$', source, re.M)
+    if revision == 2:
+        extension = (repo / 'lib/elf_loader/include/private/privileged_os_cpu_symbols_v2.def').read_text()
+        names += re.findall(r'^RISC_OS_CPU_SYMBOL\((\w+)\)\s*$', extension, re.M)
     if not names or len(names) != len(set(names)):
         raise ValueError('Empty or duplicate privileged OS/CPU ABI inventory')
     if any(n.startswith(('t5_', 'usb_', 'usbh_', 'hcd_', 'hub_', 'i2c_',

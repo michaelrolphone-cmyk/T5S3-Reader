@@ -8,8 +8,8 @@ using RuntimeProviders::GraphV2;
 using RuntimeProviders::SpecV2;
 
 // Friend test fixture models ONLY the compiler-visible firmware manager
-// boundary. It does not replace real P-256 verification; PR #76 supplies that
-// prerequisite before any production manager calls the private entry.
+// boundary. Package integrity and independent manager admission remain
+// separate; no manifest or digest alone confers privileged execution.
 namespace RuntimePackages {
 class DeviceProviderExecutorV2 {
  public:
@@ -48,9 +48,16 @@ int main() {
   assert(!invalid.acquire("cap.generic", 1).slot); // Host may not run Xtensa.
   assert(invalid.shutdown());
 
+  GraphV2 revision2;
+  privileged.requiredOsCpuAbi=2;
+  assert(!revision2.addVerified(privileged));
+  assert(RuntimePackages::DeviceProviderExecutorV2::admitForFixture(revision2,privileged));
+  assert(!revision2.acquire("cap.generic",1).slot);
+  assert(revision2.shutdown());
+
   GraphV2 malformed;
   privileged.contentSha256[0] = 0xa5;
-  privileged.requiredOsCpuAbi = 2;
+  privileged.requiredOsCpuAbi = 3;
   assert(!RuntimePackages::DeviceProviderExecutorV2::admitForFixture(malformed, privileged));
   privileged.requiredOsCpuAbi = 1;
   privileged.declaredImports = duplicate;

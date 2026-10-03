@@ -70,6 +70,11 @@ int main() {
   std::strcpy(dependencyName, "cap.root");
   assert(EVP_Digest(image, sizeof(image), digest, &digestLength,
                     EVP_sha256(), nullptr) == 1 && digestLength == 32);
+  GraphV2 revision2;
+  auto nextRevision=candidate;nextRevision.requiredOsCpuAbi=2;
+  assert(DeviceProviderExecutorV2::registerManagerValidated(revision2,nextRevision));
+  assert(revision2.moduleCount()==1);
+  assert(revision2.shutdown());
   GraphV2 malformed;
   digest[0] ^= 0xff;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, candidate));
@@ -78,7 +83,7 @@ int main() {
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, candidate));
   image[8] ^= 0x55;
   auto invalid = candidate;
-  invalid.requiredOsCpuAbi = 2;
+  invalid.requiredOsCpuAbi = 3;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));
   invalid = candidate; invalid.elfBytes = nullptr;
   assert(!DeviceProviderExecutorV2::registerManagerValidated(malformed, invalid));

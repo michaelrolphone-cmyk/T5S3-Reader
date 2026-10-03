@@ -30,6 +30,34 @@ class PackageJsonGuard {
     return position_ == length_;
   }
 
+  // Return one top-level value slice only after validating the entire object,
+  // including duplicate keys and nested bounds. The source stays immutable.
+  bool topLevelValue(const char* wanted, const char*& bytes, size_t& size, bool& found) {
+    bytes = nullptr; size = 0; found = false;
+    if (!wanted || !objectOnly()) return false;
+    position_ = activeKeys_ = depth_ = 0;
+    skipWhitespace();
+    if (!take('{')) return false;
+    skipWhitespace();
+    if (take('}')) return true;
+    do {
+      skipWhitespace();
+      size_t offset = 0, length = 0;
+      if (!string(true, &offset, &length)) return false;
+      skipWhitespace();
+      if (!take(':')) return false;
+      skipWhitespace();
+      const size_t start = position_;
+      if (!value()) return false;
+      if (length == std::strlen(wanted) && !std::memcmp(data_ + offset, wanted, length)) {
+        bytes = data_ + start; size = position_ - start; found = true;
+        return true;
+      }
+      skipWhitespace();
+    } while (take(','));
+    return take('}');
+  }
+
  private:
   struct Key { size_t offset; size_t length; };
   const char* data_;

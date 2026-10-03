@@ -8,6 +8,7 @@
 #include "private/esp_privileged_elf.h"
 
 /* Exercise the production private entry, mocking native loader/RTOS only. */
+static unsigned revision;
 static unsigned begins, ends, inits, grants, relocations, deinitializations;
 static bool allow_scope = true, allow_grant = true;
 static const void *authorized_module;
@@ -15,7 +16,7 @@ bool esp_elf_validate_file(const uint8_t *image, size_t length) {
     return image && length == 1024;
 }
 bool esp_elf_privileged_os_cpu_begin_v1(void) {
-    ++begins;
+    ++begins; revision=1;
     return allow_scope;
 }
 bool esp_elf_privileged_os_cpu_end_v1(void) {
@@ -95,6 +96,23 @@ int main(void) {
                                                    exact, 2) == -ENOSYS);
     assert(begins == 3 && ends == 2 && inits == 2 && grants == 2 &&
            relocations == 1 && deinitializations == 2);
+    assert(revision==1);
+    strcpy(names+32,"risc_cpu_worker_start_v2");
+    const char *const next[]={"esp_intr_alloc","risc_cpu_worker_start_v2"};
+    assert(esp_elf_relocate_privileged_verified_v1(&module,bytes,1024,next,2)==-EINVAL);
+    assert(begins==3 && relocations==1);
+    assert(esp_elf_relocate_privileged_verified_v2(&module,bytes,1024,next,1)==-EINVAL);
+    assert(begins==3 && relocations==1);
+    assert(esp_elf_relocate_privileged_verified_v2(&module,bytes,1024,next,2)==-ENOSYS);
+    assert(revision==2 && begins==4 && relocations==2 && deinitializations==3);
+    strcpy(names+32,"t5_video_get_api");
+    const char *const forbidden[]={"esp_intr_alloc","t5_video_get_api"};
+    assert(esp_elf_relocate_privileged_verified_v2(&module,bytes,1024,forbidden,2)==-EINVAL);
+    assert(begins==4 && relocations==2);
     puts("Privileged relocation entry: exact imports and one-shot module grant before mapping PASS");
     return 0;
+}
+
+bool esp_elf_privileged_os_cpu_begin_v2(void) {
+    bool result=esp_elf_privileged_os_cpu_begin_v1();revision=2;return result;
 }

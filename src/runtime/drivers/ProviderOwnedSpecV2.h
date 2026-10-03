@@ -81,6 +81,7 @@ struct OwnedNodeV2 final {
     spec.requirements = from.requirementCount ? requirements : nullptr;
 
     if (!from.requiredOsCpuAbi) return true;
+    if (from.requiredOsCpuAbi != 1 && from.requiredOsCpuAbi != 2) return false;
     if (!from.verifiedElfBytes || !from.verifiedElfLength ||
         from.verifiedElfLength > 8u * 1024u * 1024u ||
         !from.declaredImports || from.declaredImportCount > kImports) return false;

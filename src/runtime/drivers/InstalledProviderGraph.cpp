@@ -1,3 +1,4 @@
+#include "runtime/packages/ProviderAbiProfile.h"
 #include "runtime/packages/PackageCdcSdMigration.h"
 #include "runtime/packages/PackageMutationGate.h"
 #include "InstalledProviderGraph.h"
@@ -131,27 +132,11 @@ uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
     length = size;
     return data;
 }
-bool profile(const char* bytes, size_t size, char (&capability)[64], uint32_t& api) {
-    capability[0] = 0;
-    api = 0;
-    constexpr char prefix[] = "os-cpu-abi=1\nprovides=";
-    const size_t prefixSize = sizeof(prefix) - 1;
-    if (!bytes || size <= prefixSize + 7 ||
-        std::memcmp(bytes, prefix, prefixSize)) return false;
-    const char* start = bytes + prefixSize;
-    const char* end = std::strchr(start, '\n');
-    if (!end || end <= start || static_cast<size_t>(end - start) >= sizeof(capability) ||
-        std::strncmp(end, "\napi=", 5)) return false;
-    std::memcpy(capability, start, static_cast<size_t>(end - start));
-    capability[end - start] = 0;
-    const char* number = end + 5;
-    if (*number < '1' || *number > '9') return false;
-    char* tail = nullptr;
-    const unsigned long value = std::strtoul(number, &tail, 10);
-    if (!tail || tail == number || *tail != '\n' || tail[1] ||
-        !value || value > UINT32_MAX) return false;
-    api = static_cast<uint32_t>(value);
-    return true;
+
+
+bool profile(const char* bytes,size_t size,char (&capability)[64],uint32_t& api) {
+    uint32_t revision=0;
+    return parseProviderAbiProfile(bytes,size,revision,capability,api);
 }
 
 bool parseExactImports(uint8_t* bytes, size_t length,
@@ -248,12 +233,29 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         uint8_t* profileBytes = readFile(name, 191, profileSize);
         if (!profileBytes) break;
         auto& capability = frame.capability;
-        uint32_t api = 0;
+        uint32_t api = 0, osCpuAbi = 0;
         const bool goodProfile = declaredPackageSnapshot(*plan,"provider-abi.v1",profileBytes,profileSize) &&
-            profile(reinterpret_cast<const char*>(profileBytes), profileSize, capability, api);
+            parseProviderAbiProfile(reinterpret_cast<const char*>(profileBytes), profileSize, osCpuAbi, capability, api);
         std::free(profileBytes);
         if (!goodProfile || std::strcmp(capability, expectedCapability) ||
             api != expectedApi) break;
+
+        // Match the digest-bound source manifest too. Legacy metadata lacking
+        // a source manifest can express only revision 1, never ABI 2.
+        bool declaredManifest=false;
+        for(size_t i=0;i<plan->entryCount;++i)
+            if(!std::strcmp(plan->entries[i].name,"manifest.json"))declaredManifest=true;
+        if(declaredManifest) {
+            if(!pathFor(name,root,id,"manifest.json"))break;
+            size_t manifestSize=0;
+            uint8_t* manifest=readFile(name,4096,manifestSize);
+            uint32_t declaredRevision=0;
+            const bool matching=manifest && declaredPackageSnapshot(*plan,"manifest.json",manifest,manifestSize) &&
+                providerManifestOsCpuAbi(reinterpret_cast<const char*>(manifest),manifestSize,declaredRevision) &&
+                declaredRevision==osCpuAbi;
+            std::free(manifest);
+            if(!matching)break;
+        } else if(osCpuAbi!=1)break;
 
         auto& needs = frame.needs;
         bool goodRequirements = plan->requirementCount <= kMaxPackageRequirements;
@@ -297,7 +299,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         candidate.elfLength = elfSize;
         candidate.importedSymbols = symbols;
         candidate.importedSymbolCount = symbolCount;
-        candidate.requiredOsCpuAbi = 1;
+        candidate.requiredOsCpuAbi = osCpuAbi;
         candidate.resourceIdentity = plan->identity;
         candidate.declaredSha256 = executableDigest;
         candidate.packageManifestSha256 = packageManifestSha256;
@@ -349,7 +351,7 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
             uint8_t* profileBytes = readFile(name, 191, profileSize);
             if (!profileBytes) continue;
             auto& provided = frame.capability;
-            uint32_t api = 0;
+            uint32_t api = 0, osCpuAbi = 0;
             const bool matching =
                 profile(reinterpret_cast<const char*>(profileBytes), profileSize,
                         provided, api) &&
@@ -488,7 +490,7 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
                 }
                 size_t size = 0;
                 uint8_t* bytes = readFile(frame->name, 191, size);
-                uint32_t api = 0;
+                uint32_t api = 0, osCpuAbi = 0;
                 const bool parsed = bytes && profile(reinterpret_cast<char*>(bytes),
                     size, frame->capability, api);
                 std::free(bytes);

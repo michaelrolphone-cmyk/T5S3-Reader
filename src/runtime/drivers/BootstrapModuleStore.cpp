@@ -1,3 +1,4 @@
+#include "runtime/packages/ProviderAbiProfile.h"
 #include "BootstrapModuleStore.h"
 #include "InstalledProviderGraph.h"
 #include "DeviceProviderExecutorV2.h"
@@ -98,6 +99,12 @@ bool add(const std::string& manifestPath) {
      plan->identity.kind!=Kind::Driver || std::strcmp(plan->identity.id,id) ||
      std::strcmp(plan->identity.version,version) || std::strcmp(plan->identity.artifact,filename) ||
      !preflightCapturedPackage(*plan,policy)) return rejected(manifestPath.c_str(),__LINE__);
+  uint32_t osCpuAbi=1;
+  if(!manifest["os_cpu_abi"].isUnbound()) {
+    if(!manifest["os_cpu_abi"].is<uint32_t>()) return rejected(manifestPath.c_str(),__LINE__);
+    osCpuAbi=manifest["os_cpu_abi"].as<uint32_t>();
+  }
+  if(osCpuAbi!=1 && osCpuAbi!=2) return rejected(manifestPath.c_str(),__LINE__);
   const char* capability=manifest["provides"][0]["capability"] | "";
   const uint32_t api=manifest["provides"][0]["api"] | 0u;
   if(!safePackageCapability(capability) || !api || !manifest["requires"].is<JsonArrayConst>() ||
@@ -124,7 +131,7 @@ bool add(const std::string& manifestPath) {
       driverManifest=true;
     }
     if(!std::strcmp(entry.name,"provider-abi.v1")) {
-      const std::string expected="os-cpu-abi=1\nprovides="+std::string(capability)+"\napi="+std::to_string(api)+"\n";
+      const std::string expected="os-cpu-abi="+std::to_string(osCpuAbi)+"\nprovides="+std::string(capability)+"\napi="+std::to_string(api)+"\n";
       if(bytes.size()!=expected.size() || std::memcmp(bytes.data(),expected.data(),bytes.size())) return rejected(manifestPath.c_str(),__LINE__);
       profile=true;
     }
@@ -132,6 +139,7 @@ bool add(const std::string& manifestPath) {
   const char* symbols[128]{}; size_t count=0;
   if(!driverManifest || !profile || elf.empty() || !imports(importBytes,symbols,count)) return rejected(manifestPath.c_str(),__LINE__);
   ManagerProviderCandidateV2 candidate{};
+  candidate.requiredOsCpuAbi=osCpuAbi;
   candidate.driverId=id;candidate.provides=capability;candidate.providesApi=api;
   candidate.requirements=needs;candidate.requirementCount=plan->requirementCount;
   candidate.elfBytes=elf.data();candidate.elfLength=elf.size();

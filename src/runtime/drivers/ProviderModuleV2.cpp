@@ -189,12 +189,12 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
                                  const char* expectedCapability,
                                  uint32_t expectedApi,
                                  const risc_provider_dependency_v1* deps,
-                                 size_t count) {
+                                 size_t count, uint32_t osCpuAbi) {
   if (!handle_) error_[0] = 0;
 #ifdef ESP_PLATFORM
   // Nonnull import metadata and an exact zero count is valid for a truly
   // self-contained ELF. The private matcher checks both symbol tables.
-  if (handle_ || !candidateBytes || !contentSha256 || !length ||
+  if ((osCpuAbi != 1 && osCpuAbi != 2) || handle_ || !candidateBytes || !contentSha256 || !length ||
       !declaredImports || declaredImportCount > 128 ||
       length > 8u * 1024u * 1024u ||
       !validRequest(expectedId, expectedCapability, expectedApi, deps, count)) {
@@ -240,7 +240,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   const bool isDisplayAdapter =
       std::strcmp(expectedId, "display-epd-video") == 0 &&
       std::strcmp(expectedCapability, "display.output") == 0 && expectedApi == 1;
-  if (importsFirmwareDisplay != isDisplayAdapter) {
+  if (osCpuAbi == 1 ? importsFirmwareDisplay != isDisplayAdapter : importsFirmwareDisplay) {
     report(expectedId, "display-firmware-compat-import-policy");
     return false;
   }
@@ -293,7 +293,8 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     report(expectedId, "elf-handle-oom");
     return false;
   }
-  const int result = esp_elf_relocate_privileged_verified_v1(
+  const int result = (osCpuAbi == 2 ? esp_elf_relocate_privileged_verified_v2 :
+                      esp_elf_relocate_privileged_verified_v1)(
       image, snapshot, length, declaredImports, declaredImportCount);
   heap_caps_free(snapshot);
   if (result != 0) {
@@ -322,7 +323,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   (void)candidateBytes; (void)length; (void)contentSha256;
   (void)declaredImports; (void)declaredImportCount;
   (void)expectedId; (void)expectedCapability; (void)expectedApi;
-  (void)deps; (void)count;
+  (void)deps; (void)count; (void)osCpuAbi;
   return false;
 #endif
 }

@@ -45,7 +45,7 @@ class ModuleV2 final {
                          const char* expectedId, const char* expectedCapability,
                          uint32_t expectedApi,
                          const risc_provider_dependency_v1* dependencies,
-                         size_t count);
+                         size_t count, uint32_t osCpuAbi = 1);
   bool setStreamHost(const StreamHostV1* host) {
     if (state_ != State::Absent || handle_) return false;
     streamHost_ = host; return true;

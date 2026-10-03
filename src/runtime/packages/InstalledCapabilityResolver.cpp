@@ -1,3 +1,4 @@
+#include "ProviderAbiProfile.h"
 #include "InstalledCapabilityResolver.h"
 #include "PackageOrdinaryManifest.h"
 #include "PackageOrdinarySdAdapter.h"
@@ -45,29 +46,13 @@ bool readSmall(const char* path, char* buffer, size_t capacity, size_t& length) 
 // A provider profile counts only after bounded installed-directory metadata
 // inspection. This hot path does not rehash contents. A profile is not
 // a grant of execution or hardware rights.
-bool parseProfile(const char* path, char (&capability)[64], uint32_t& version) {
+bool parseProfile(const char* path, char (&capability)[64], uint32_t& version, uint32_t& revision) {
   version = 0;
   capability[0] = '\0';
   char bytes[192]{};
   size_t length = 0;
   if (!readSmall(path, bytes, sizeof(bytes), length)) return false;
-  const char prefix[] = "os-cpu-abi=1\nprovides=";
-  if (std::strncmp(bytes, prefix, sizeof(prefix) - 1)) return false;
-  const char* declared = bytes + sizeof(prefix) - 1;
-  const char* end = std::strchr(declared, '\n');
-  if (!end || end == declared || static_cast<size_t>(end - declared) >= sizeof(capability) ||
-      std::strncmp(end, "\napi=", 5)) return false;
-  std::memcpy(capability, declared, static_cast<size_t>(end - declared));
-  capability[end - declared] = '\0';
-  if (!safePackageCapability(capability)) return false;
-  const char* number = end + 5;
-  if (*number < '1' || *number > '9') return false;
-  char* tail = nullptr;
-  const unsigned long parsed = std::strtoul(number, &tail, 10);
-  if (!tail || tail == number || *tail != '\n' || tail[1] != '\0' ||
-      !parsed || parsed > UINT32_MAX) return false;
-  version = static_cast<uint32_t>(parsed);
-  return true;
+  return parseProviderAbiProfile(bytes,length,revision,capability,version);
 }
 
 struct Candidate {
@@ -136,8 +121,8 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable) {
       if (std::snprintf(profile, sizeof(profile), "%s/provider-abi.v1", path) >=
           static_cast<int>(sizeof(profile))) continue;
       char capability[64]{};
-      uint32_t advertised = 0;
-      if (!parseProfile(profile, capability, advertised)) { reusable = false; continue; }
+      uint32_t advertised = 0, osCpuAbi = 0;
+      if (!parseProfile(profile, capability, advertised, osCpuAbi)) { reusable = false; continue; }
       char manifest[192]{};
       if (std::snprintf(manifest, sizeof(manifest), "%s/.package.json", path) >=
           static_cast<int>(sizeof(manifest))) continue;
@@ -147,6 +132,17 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable) {
           !parseOrdinaryManifest(json.get(), length, *plan) ||
           std::strcmp(plan->identity.id, id) ||
           plan->identity.kind != installed.kind) { reusable = false; continue; }
+      bool sourceDeclared=false;
+      for(size_t i=0;i<plan->entryCount;++i)
+        if(!std::strcmp(plan->entries[i].name,"manifest.json"))sourceDeclared=true;
+      if(sourceDeclared) {
+        uint32_t sourceRevision=0;
+        if(std::snprintf(manifest,sizeof(manifest),"%s/manifest.json",path)>=static_cast<int>(sizeof(manifest)) ||
+           !readSmall(manifest,json.get(),4097,length) ||
+           !providerManifestOsCpuAbi(json.get(),length,sourceRevision) || sourceRevision!=osCpuAbi) {
+          reusable=false;continue;
+        }
+      } else if(osCpuAbi!=1) { reusable=false;continue; }
       bool declared = false;
       for (size_t i = 0; i < plan->entryCount; ++i)
         if (std::strcmp(plan->entries[i].name, "provider-abi.v1") == 0)
