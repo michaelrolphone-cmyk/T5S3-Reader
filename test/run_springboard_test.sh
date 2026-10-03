@@ -2,6 +2,9 @@
 set -euo pipefail
 python3 "$(dirname "${BASH_SOURCE[0]}")/epub_guide/guide_test.py"
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+bash "$repo_dir/test/run_x4pro_battery_test.sh"
+bash "$repo_dir/test/run_native_battery_gauge_test.sh"
+python3 "$repo_dir/test/hal/battery_presentation_test.py"
 python3 "$repo_dir/test/activities/confirmation_touch_test.py"
 python3 "$repo_dir/test/epub_toc/path_test.py"
 binary="$(mktemp)"

@@ -35,6 +35,7 @@
 #include "components/UITheme.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
+#include "native/NativeBatteryGauge.h"
 #include "util/ButtonNavigator.h"
 #include "runtime/drivers/ProviderModuleV2.h"
 
@@ -144,6 +145,10 @@ void x4DiagnosticSetup() {
     LOG_INF("X4", "home geometry width=%d height=%d menu_height=%d",
             renderer.getScreenWidth(), renderer.getScreenHeight(), menu_height);
     ButtonNavigator::setMappedInputManager(mappedInputManager);
+    // setup and loop share the invocation-owner task. Prime the copied battery
+    // snapshot after storage/input startup, before Home queues its first render.
+    // The optional provider may be absent or fail; it never gates Home startup.
+    nativeBatteryTick();
     activityManager.goHome();
     // Home queues its first render before the owner loop starts.
     activityManager.requestUpdate(true);

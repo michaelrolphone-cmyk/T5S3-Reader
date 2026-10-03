@@ -4,6 +4,7 @@
 #include "GfxRenderer.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
+#include "native/NativeBatteryGauge.h"
 
 namespace {
 using ButtonIndex = uint8_t;
@@ -131,6 +132,9 @@ void MappedInputManager::update() const {
 #endif  // X4 physical controls are boot-owned providers, not external navigation.
   nativeNavigationTick();
   nativeTouchTick();
+#if defined(BOARD_XTEINK_X4_PRO)
+  nativeBatteryTick();  // Owner task only; render paths read the copied cache.
+#endif
 }
 
 bool MappedInputManager::wasAnyPressed() const {

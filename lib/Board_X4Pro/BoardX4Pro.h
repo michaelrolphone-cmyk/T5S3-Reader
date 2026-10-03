@@ -30,7 +30,7 @@ void deinitForSleep();
 
 struct BatteryProfile {
   uint16_t inputLimitMa = 0;
-  uint16_t capacityMah = 1100;
+  uint16_t capacityMah = 0;  // Not supplied by board.battery v1.
   uint16_t chargeCurrentMa = 0;
   uint16_t prechargeCurrentMa = 0;
   uint16_t terminationCurrentMa = 0;
@@ -55,6 +55,10 @@ enum class BatteryGaugeState : uint8_t {
   Unknown = 0xFF,
 };
 struct BatteryState {
+  // X4 supplies only gauge validity, SOC, battery voltage and charging. The
+  // existing shared structure has no per-field known flags: zero/false in
+  // other fields means unsupported, not measured absence. Detailed telemetry
+  // remains disabled; chargerStatus and non-charging gaugeState stay Unknown.
   bool chargerReady = false;
   bool gaugeReady = false;
   bool chargerReadOk = false;
@@ -93,6 +97,9 @@ struct BatteryState {
   int16_t averageCurrentMa = 0;
 };
 const BatteryProfile& batteryProfile();
+// Cache-only on X4: begin does not initialize hardware or guarantee availability.
+// It reports whether the owner loop has published a still-valid sample. Reads
+// return false before that happens, on failure/expiry, or for null outputs.
 bool beginBatteryManagement();
 bool isBatteryManagementReady();
 bool readBatteryState(BatteryState* state);

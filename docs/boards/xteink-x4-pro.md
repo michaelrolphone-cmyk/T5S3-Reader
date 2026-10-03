@@ -16,9 +16,9 @@ board configuration onto a local `sdcard` tree. The existing artifact CLI now
 freezes a firmware/SD bundle, without a flash module-store image. No device
 write or deletion of old internal-flash contents is performed.
 
-The T5 SPI-SD implementation now lives behind the same `storage.volume@1` contract. T5 display extraction behind `display.output@1` is connected locally with one shared SDK DMA reservation authority; see `t5s3-external-storage.md`. A firmware chip proxy is not accepted as the final extraction. Frontlight uses `display.frontlight@1`. Existing external T5 I2C/touch/navigation stay external; shared UI and loader logic remain shared. Battery integration remains pending.
+The T5 SPI-SD implementation now lives behind the same `storage.volume@1` contract. T5 display extraction behind `display.output@1` is connected locally with one shared SDK DMA reservation authority; see `t5s3-external-storage.md`. A firmware chip proxy is not accepted as the final extraction. Frontlight uses `display.frontlight@1`. Existing external T5 I2C/touch/navigation stay external; shared UI and loader logic remain shared. The optional external battery integration is described below.
 
-Follow-up versions: firmware `1.3.85`, Springboard `1.3.1 → 1.3.2`, X4 SD `0.2.0 → 0.2.1`. Frontlight Settings now reflects a bound provider and restores the saved preference (zero off, nonzero on; current X4 provider is on/off, not PWM). Springboard requests fast display takeover only when a suitable provider and frame geometry exist; otherwise it uses static ordinary UI pages.
+Follow-up versions: firmware `1.3.87`, Springboard `1.3.1 → 1.3.2`, X4 SD `0.2.0 → 0.2.1`. Frontlight Settings now reflects a bound provider and restores the saved preference (zero off, nonzero on; current X4 provider is on/off, not PWM). Springboard requests fast display takeover only when a suitable provider and frame geometry exist; otherwise it uses static ordinary UI pages.
 
 ### Side-by-side follow-through (1.3.85)
 
@@ -52,11 +52,53 @@ Settings; verify active boot providers remain protected against replacement.
 On the immutable 1.3.79 baseline leave Flip UI off and use Apps to launch an
 installed Wi-Fi Networks package until these repairs have their own verified build.
 X4 uses static ordinary Apps pages without fast display takeover. Its frontlight
-is on/off. Automatic sleep/shutdown and battery integration remain incomplete;
-those paths must not be reported as passing parity tests. Physical validation is
+is on/off. Automatic sleep/shutdown remains incomplete; those paths must not
+be reported as passing parity tests. Battery integration below is source-tested,
+not physically qualified. Physical validation is
 FAILED/unavailable until the owner performs and reports actual device tests.
 
 The real SD provider/HAL wire-model profile for a 256 KiB read performs 517 sector reads. The prior code makes 4,653 waits; the revised 4 KiB-or-4 ms cooperation makes 65. A deliberately coarse 10 ms scheduling model gives 46,594 versus 714 modeled milliseconds; these are not measured device timings. The current target SDK uses 1 kHz ticks. The coarse baseline later exceeded a recursive-removal budget; the revised full four-case storage suite passes. This X4 overhead is not established as the shared post-U1 regression root cause. U1 merge boundary is `f7f006f7` (PR96), first parent `ca66db29`. Shared launch phase logs and transaction-only recovery reduce/identify repeated metadata work without removing selected-app admission.
+
+## Optional battery follow-through (1.3.87)
+
+The delivered production `1.3.85` board BINs and manual ZIPs remain immutable at
+`e58ac310`. This change does not alter or requalify those assets. Its changed
+`x4pro-battery` payload is independently versioned `0.1.1 → 0.1.2`; a future test
+must use the matching ordinary package, never silently reuse old driver bytes.
+No application package is changed; Battery Status is maintained independently.
+
+The existing `board.battery@1` capability is acquired through the ordinary
+installed-provider graph. It stays optional and is not added to the mandatory
+boot package list. Missing/invalid packages leave Home usable with an explicit
+unavailable indicator. The X4 owner input loop (including native-app polling)
+reads at most once per five seconds and publishes a small copied snapshot;
+Board/Settings/render readers never load a provider or perform hardware I/O.
+Acquisition and pending-release cleanup attempts are spaced by 30 seconds.
+Bad reads invalidate the copy immediately; a 15-second-old sample is unavailable
+on the next read. Sampling does not force an e-paper refresh: an idle Home frame
+retains its previously drawn value until the ordinary UI redraws.
+Exact failed-release grants stay retained with revoked interfaces cleared. A
+failed start whose own cleanup remains unsafe stays pinned by the existing graph;
+there is no global shutdown of unrelated touch/display/storage providers.
+
+The read-only external ELF validates the bus ABI, running gauge state, voltage
+and 0–100 SOC before publishing. Charge GPIO21 handling follows the recovered
+OEM input/no-pull, active-high semantics. All chip/pin behavior stays in that
+ELF. No reset, wake, profile/BATINFO, charge policy, VBUS inference or full-charge
+claim is added. A gauge still asleep or without usable resident configuration
+reports unavailable. See [driver evidence and lifecycle limits](../../Drivers/x4pro_battery/README.md).
+
+Base, Lyra and RoundedRaff show `--%` plus a crossed battery outline for unavailable
+telemetry, distinct from a genuinely measured 0%. Unsupported current, capacity,
+full and USB/VBUS fields remain unknown; a noncharging sample is not proof of
+Discharge. T5/EPD47 keep their existing percentage-cache and power-icon behavior.
+
+The current X4 bit-bang bus has finite byte/bit loops for each of the battery's
+four fixed small reads, but ignores the supplied timeout. This patch claims
+finite work and slow polling, not an enforced wall-time transaction deadline or
+physical timing verification. The bus contract remains separate follow-up work.
+Automatic X4 sleep/shutdown is still deferred. Hardware validation remains
+FAILED/unavailable until an actual device result establishes it.
 
 ## Shared Reader software
 
@@ -64,7 +106,7 @@ X4 uses the same `HomeActivity`, `RecentBooksActivity`, `SettingsActivity`, nati
 
 `X4DiagnosticSetup` remains the board composition entry point. It binds independently installed display, navigation, touch and storage providers, initializes the shared power-lock service, and calls the shared display/font and Reader-state setup. It loads settings, language, theme, recents and app state through the normal storage facade. It no longer selects a fixed theme, registers a reduced font set, or scans a TXT file during boot. The provider display remains portrait 480×800 over the panel's 800×480 physical raster. A bounded startup present remains distinct from the first Home present.
 
-Home and native apps call the same `MappedInputManager::update`. On X4 that consumes normal navigation/touch provider leases without polling the legacy GPIO facade or applying the external-controller preference to physical buttons. X4 now enters the shared main loop after its display readiness check: default-app selection, provider polling, activity dispatch, app-return handling, serial screenshot handling and cooperative loop delays are shared. `ActivityManager` runs the ordinary activity stack and shared render/power lock. X4 still skips the T5S3 startup animation and hardware setup. `HalSystem::begin()`, legacy SdFat/SPI initialization, raw T5 buttons/tilt and unimplemented X4 sleep/shutdown remain outside its path. The MONO1 Home-card and absent battery-indicator adaptations remain board-specific pending capability abstraction.
+Home and native apps call the same `MappedInputManager::update`. On X4 that consumes normal navigation/touch provider leases without polling the legacy GPIO facade or applying the external-controller preference to physical buttons. X4 now enters the shared main loop after its display readiness check: default-app selection, provider polling, activity dispatch, app-return handling, serial screenshot handling and cooperative loop delays are shared. `ActivityManager` runs the ordinary activity stack and shared render/power lock. X4 still skips the T5S3 startup animation and hardware setup. `HalSystem::begin()`, legacy SdFat/SPI initialization, raw T5 buttons/tilt and unimplemented X4 sleep/shutdown remain outside its path. The MONO1 Home-card adaptation remains board-specific; battery painters now use the shared validity-aware interface.
 
 The original shared Home/filesystem correction used firmware `1.3.74` and SD provider `0.2.0`; the active external-driver milestone versions are listed above. JPEGDEC's existing abbreviated pin is expanded to the same full commit `86282979224c8a32fd51e091ed5a35b0c699a52b` for clean dependency fetches.
 

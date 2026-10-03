@@ -1,4 +1,5 @@
 #include "BoardX4Pro.h"
+#include "../../src/native/NativeBatteryGauge.h"
 
 namespace BoardX4Pro {
 namespace {
@@ -31,11 +32,24 @@ void disableGpsLora() {}
 bool prepareForSleep() { return false; }
 void deinitForSleep() {}
 const BatteryProfile& batteryProfile() { return kProfile; }
-bool beginBatteryManagement() { return false; }
-bool isBatteryManagementReady() { return false; }
+bool beginBatteryManagement() { return isBatteryManagementReady(); }
+bool isBatteryManagementReady() {
+  NativeBatterySnapshot sample{};
+  return nativeBatteryReadSnapshot(&sample);
+}
 bool readBatteryState(BatteryState* state) {
-  if (state) *state = BatteryState{};
-  return false;
+  if (!state) return false;
+  *state = BatteryState{};
+  NativeBatterySnapshot sample{};
+  if (!nativeBatteryReadSnapshot(&sample)) return false;
+  state->gaugeReady = state->gaugeReadOk = true;
+  state->socPercent = sample.percent;
+  state->batteryVoltageMv = state->gaugeVoltageMv = sample.millivolts;
+  state->charging = sample.charging;
+  if (sample.charging) state->gaugeState = BatteryGaugeState::Charge;
+  // Charging is measured; cable attachment, completion and charger details
+  // are not. In particular 100% is not proof of chargeDone or a full flag.
+  return true;
 }
 bool shutdownBatteryPower() { return false; }
 bool pca9535Present() { return false; }
@@ -55,8 +69,12 @@ bool readBQ25896Reg8(uint8_t, uint8_t* value) {
   return false;
 }
 bool readBatteryStateOfCharge(uint16_t* soc) {
-  if (soc) *soc = 0;
-  return false;
+  if (!soc) return false;
+  *soc = 0;
+  NativeBatterySnapshot sample{};
+  if (!nativeBatteryReadSnapshot(&sample)) return false;
+  *soc = sample.percent;
+  return true;
 }
 bool readBatteryCurrentMa(int16_t* current) {
   if (current) *current = 0;
