@@ -19,6 +19,7 @@ if [[ $# -gt 0 ]]; then
   exit 0
 fi
 python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
+WRAP_TEST_SANITIZE=1 python3 "$repo_dir/test/text_wrap_regression.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
