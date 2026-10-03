@@ -15,8 +15,11 @@ The same owner task admits an invocation without a native drawing session or a
 held RenderLock. Existing launch-bearing activities yield before mutating their
 launch flags. Pointer/generation checks resume their exact loop after ELF unload;
 existing synchronous child results and nested parent continuation remain intact.
-Sleep/power-off also execute after unload. Failed Reader unload retains the loader
-barrier and prevents pending work or a new invocation. No second owner task or
+Sleep/power-off also execute after unload. Failed Reader or child unload retains
+the loader barrier and prevents pending work or a new invocation. Uncertain child
+quiescence parks the owner stack before session/context/admission cleanup, retaining
+the RenderLock and yielding until manual reboot. Reader readmission preserves
+child Home/queued-navigation results for suspended Springboard workflows. No second owner task or
 execution-context swap is used.
 
 Versions: firmware `1.3.82 -> 1.3.90`, above open PR385's reserved `1.3.88`;

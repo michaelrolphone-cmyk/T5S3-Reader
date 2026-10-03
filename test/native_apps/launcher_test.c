@@ -169,6 +169,18 @@ int main(int argc, char** argv)
         puts("Reader loader: entry, takeover denial, unload retention and nested barrier PASS");
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "child-close") == 0) {
+        reset_takeover();
+        mode = 4;
+        const int uncertain_before = test_compat_storage_uncertain;
+        assert(launch_elf_app("/sd/apps/game.elf") == ESP_FAIL);
+        assert(calls == 1 && closes == 1 && native_app_loader_retained());
+        assert(test_compat_storage_uncertain == uncertain_before + 1);
+        assert(launch_elf_app("/sd/apps/game.elf") == ESP_ERR_INVALID_STATE);
+        assert(launch_elf_reader_entry("/sd/apps/game.elf") == ESP_ERR_INVALID_STATE);
+        puts("Ordinary child failed unload retains Reader/child loader barrier PASS");
+        return 0;
+    }
     assert(native_app_current_path() == NULL);
     assert(launch_elf_app(NULL) == ESP_ERR_INVALID_ARG);
     assert(launch_elf_app("") == ESP_ERR_INVALID_ARG);
@@ -178,6 +190,7 @@ int main(int argc, char** argv)
     assert(opens == 0);
     for (int round = 0; round < 3; ++round) {
         for (mode = 0; mode < 6; ++mode) {
+            if (mode == 4) continue; // Permanent failed-close quarantine has its own process.
             opens = closes = calls = 0;
             pending = "stale error";
             const int uncertain_before = test_compat_storage_uncertain;
@@ -273,7 +286,7 @@ int main(int argc, char** argv)
     restore_failed=true; retain_hardware=true;
     const int uncertain_before = test_compat_storage_uncertain;
     assert(launch_elf_app("/sd/apps/game.elf")==ESP_FAIL);
-    assert(memory_live && closes==0);
+    assert(memory_live && closes==0 && native_app_loader_retained());
     assert(test_compat_storage_uncertain == uncertain_before + 1);
     assert(launch_elf_app("/sd/apps/game.elf")==ESP_ERR_INVALID_STATE);
     return 0;

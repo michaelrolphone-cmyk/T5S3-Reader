@@ -49,8 +49,19 @@ class BootAnimationContract(unittest.TestCase):
             main = main.split("#else\n", 1)[1]
         setup = main[main.index("void setup()") : main.index("void loop()")]
         for work in ("sdFontSystem.begin(renderer)", "APP_STATE.loadFromFile()",
-                     "logPlatformInputHealth()", "mappedInputManager.update()", "activityManager.goHome()"):
+                     "logPlatformInputHealth()", "mappedInputManager.update()", "g_readerStartPending = true"):
+
             self.assertLess(setup.index("StartupScreen::boot(renderer)"), setup.index(work))
+        # Home/book preparation now runs from the ELF pump (or its once-only
+        # fallback), after setup finishes. Starting the animation must precede
+        # arming that callback; it may not be invoked early during setup.
+        self.assertNotIn("startReaderApplication()", setup)
+        entry = main[main.index("static void startReaderApplication()") : main.index("void setup()")]
+        self.assertIn("activityManager.goHome()", entry)
+        self.assertIn("activityManager.goToReader(path, readerResumeRefreshMode())", entry)
+        loop = main[main.index("void loop()"):]
+        self.assertIn("startReaderApplication, readerApplicationLoop, runReaderSleep", loop)
+        self.assertIn("startReaderApplication();", loop)
         start = SOURCE[SOURCE.index("bool bootWithVideo("):SOURCE.index("bool finishVideoBoot(")]
         self.assertNotIn("renderLayerReveal()", start)
         self.assertNotIn("kMinimumPulseMs", SOURCE)

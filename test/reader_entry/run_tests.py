@@ -15,7 +15,7 @@ def run(command):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--case", default="all", choices=("all", "state", "app", "coordinator", "activities", "boot"))
+    parser.add_argument("--case", default="all", choices=("all", "state", "app", "coordinator", "activities", "boot", "retained", "navigation"))
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="reader-entry-test-") as directory:
         temp = Path(directory)
@@ -39,6 +39,10 @@ def main():
                  HERE / "coordinator_test.cpp", ROOT / "src/native/NativeReaderEntry.cpp", app, "-o", binary])
             for case in ("normal", "load_error", "unload_error", "resume_error", "startup_handoff", "retained"):
                 run([binary, case])
+        if args.case in ("all", "navigation"):
+            run(["python3", HERE / "navigation_resume_test.py"])
+        if args.case in ("all", "retained"):
+            run(["python3", HERE / "retained_session_test.py"])
         if args.case in ("all", "boot"):
             run(["python3", HERE / "boot_dispatch_test.py"])
         if args.case in ("all", "activities"):

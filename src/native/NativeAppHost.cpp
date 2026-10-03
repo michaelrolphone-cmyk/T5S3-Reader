@@ -1469,20 +1469,36 @@ static bool validateLooseAdmissionSidecar(const std::string& json,const std::str
       manifest.compatible && filename==manifest.file_name;
 }
 
+// Keep the Session, admission, context, heap and RenderLock on this owner stack.
+// A retained child may still own a task/DMA callback. Returning or redrawing the
+// Reader cannot make it safe; only a manual reboot may release this quarantine.
+[[noreturn]] static void retainNativeAppSession() {
+  lastLaunchError = "Application resources retained. Manual reboot required.";
+  LOG_ERR("APP", "%s", lastLaunchError.c_str());
+  for (;;) {
+    esp_task_wdt_reset();
+    delay(250);  // Explicit retained state, never a busy retry or forced unload.
+  }
+}
+
 static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, MappedInputManager& input,
                                   bool readerEntry) {
   lastLaunchError.clear();
-  if (risc_runtime_retention_required()) {
-    lastLaunchError = "Storage unavailable; resources retained. Manual reboot required.";
+  if (risc_runtime_retention_required() || native_app_loader_retained()) {
+    lastLaunchError = "Runtime resources retained. Manual reboot required.";
     return ESP_ERR_INVALID_STATE;
   }
   if (session) {
     lastLaunchError = "Another native application is already running.";
     return ESP_ERR_INVALID_STATE;
   }
-  queuedLaunch.clear();
-  homeRequested = false;
-  firmwareActionPending = false;
+  if (!readerEntry) {
+    // Reader readmission resumes the suspended Home/Springboard workflow.
+    // Its child's Home/queued-navigation result must survive until consumed.
+    queuedLaunch.clear();
+    homeRequested = false;
+    firmwareActionPending = false;
+  }
   // Legacy loose ELFs still work in Browse Files. Present sidecars are enforced.
   if (!path || std::strncmp(path, "/sd/", 4)) {
     lastLaunchError = "Invalid native application path.";
@@ -1614,6 +1630,7 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
       ? RuntimePackages::beginLooseAppAdmission(path,validateLooseAdmissionSidecar)
       : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
   const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
+  if (native_app_loader_retained()) retainNativeAppSession();
   if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
   nativeNetworkEnd();

@@ -11,6 +11,7 @@ esp_err_t launch_elf_app(const char *sd_path);
 // Firmware-only Reader supervisor mode. No direct hardware takeover; a failed
 // unload retains the loader barrier so no child can be launched afterward.
 esp_err_t launch_elf_reader_entry(const char *sd_path);
+// Any app with uncertain unload/quiescence retains the shared loader barrier.
 bool native_app_loader_retained(void);
 
 // Optional module lifecycle exports. The loader calls app_module_init() after

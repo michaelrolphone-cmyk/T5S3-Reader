@@ -37,7 +37,8 @@ class LiveInstallContract(unittest.TestCase):
         launch = implementation.split('const auto orientation =', 1)[1]
         self.assertLess(launch.index('nativeStreamsBegin();'), launch.index('beginManagedAppAdmission('))
         self.assertLess(launch.index('beginManagedAppAdmission('), launch.index('launch_elf_app(path)'))
-        self.assertLess(launch.index('launch_elf_app(path)'), launch.index('endManagedAppAdmission();'))
+        self.assertLess(launch.index('launch_elf_app(path)'), launch.index('retainNativeAppSession();'))
+        self.assertLess(launch.index('retainNativeAppSession();'), launch.index('endManagedAppAdmission();'))
         self.assertLess(launch.index('endManagedAppAdmission();'), launch.index('nativeStreamsEnd();'))
         for filename in ('NativeCapabilityGate.cpp', 'NativeProviderCapabilityBridge.cpp'):
             bridge = (ROOT / 'src/native' / filename).read_text()

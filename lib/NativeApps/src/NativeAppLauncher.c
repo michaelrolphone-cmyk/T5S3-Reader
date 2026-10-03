@@ -76,8 +76,8 @@ extern void native_hardware_compat_storage_uncertain(void);
 static const char *TAG = "sd_elf_launcher";
 static atomic_flag s_running = ATOMIC_FLAG_INIT;
 static const char *s_current_path = NULL;
-static atomic_bool s_reader_retained = false;
-bool native_app_loader_retained(void) { return atomic_load(&s_reader_retained); }
+static atomic_bool s_retained = false;
+bool native_app_loader_retained(void) { return atomic_load(&s_retained); }
 typedef void (*elf_app_main_t)(void);
 
 const char *native_app_current_path(void)
@@ -301,7 +301,7 @@ close_module:
         unload_failed = true;
         const char *close_error = dlerror();
         ESP_LOGE(TAG, "dlclose(%s): %s", sd_path,
-                 close_error != NULL ? error : "unload failed without a diagnostic");
+                 close_error != NULL ? close_error : "unload failed without a diagnostic");
         result = ESP_FAIL;
     }
 done:
@@ -313,8 +313,8 @@ done:
     }
     native_app_capabilities_release();
     s_current_path = NULL;
-    if (reader_entry && (retain_module || unload_failed)) atomic_store(&s_reader_retained, true);
-    if (!retain_module && !(reader_entry && unload_failed))
+    if (retain_module || unload_failed) atomic_store(&s_retained, true);
+    if (!retain_module && !unload_failed)
         atomic_flag_clear_explicit(&s_running, memory_order_release);
     return result;
 }

@@ -28,6 +28,7 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   "$repo_dir/test/native_apps/launcher_test.c" -o "$binary"
 "$binary"
 "$binary" reader
+"$binary" child-close
 python3 "$repo_dir/test/reader_entry/run_tests.py"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/src" \
   "$repo_dir/test/resources/app_allocation_test.cpp" -o "$binary"
