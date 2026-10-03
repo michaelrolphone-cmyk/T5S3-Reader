@@ -99,7 +99,11 @@ class ModelViewerContract(unittest.TestCase):
         self.assertIn("esp_lcd_panel_io_tx_color", VIDEO)
         self.assertIn("xTaskCreatePinnedToCore", VIDEO)
         self.assertIn("scan_task", VIDEO)
-        self.assertIn("Board::ScopedI2CLock", VIDEO)
+        # Power sequencing belongs to the installed provider, shared with the
+        # Reader engine. Reintroducing a firmware I2C owner would contend with it.
+        self.assertIn("platformDisplayPower()", VIDEO)
+        self.assertNotIn("Board::ScopedI2CLock", VIDEO)
+        self.assertNotIn("Wire.", VIDEO)
         self.assertIn("GameBoy-derived raw EPD video", VIDEO)
 
     def test_video_teardown_releases_dma_and_lcd_bus(self):
