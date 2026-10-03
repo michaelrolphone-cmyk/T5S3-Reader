@@ -11,7 +11,9 @@
 namespace {
 // Rebuild TOCs whose NCX links were resolved against the OPF directory,
 // and invalidate guide-start targets cached before the start/text fallback fix.
-constexpr uint8_t BOOK_CACHE_VERSION = 7;
+// Rebuild empty/partial TOCs produced before extraction and fallback validation.
+// Generation 11 also supersedes reserved path/author/rendition generations 8–10.
+constexpr uint8_t BOOK_CACHE_VERSION = 11;
 constexpr char bookBinFile[] = "/book.bin";
 constexpr char tmpSpineBinFile[] = "/spine.bin.tmp";
 constexpr char tmpTocBinFile[] = "/toc.bin.tmp";
@@ -83,6 +85,14 @@ bool BookMetadataCache::beginTocPass() {
     useSpineHrefIndex = false;
   }
 
+  return true;
+}
+
+bool BookMetadataCache::resetTocEntries() {
+  // Keep the already-built spine/index; only discard this failed TOC attempt.
+  if (!buildMode || !tocFile.close()) return false;
+  if (!Storage.openFileForWrite("BMC", cachePath + tmpTocBinFile, tocFile)) return false;
+  tocCount = 0;
   return true;
 }
 
