@@ -23,8 +23,51 @@ static void assert_prior_raster_independent(const ht_cutscene_state *s) {
     memset(out,255,bytes);ht_cutscene_render(s);
     assert(!memcmp(expected,out,bytes));free(expected);
 }
+static void rain_tank_weather(void) {
+    /* The burnt fuse enables a second rain pass in live gameplay. The refuge
+     * must shelter that pass too, including slanted drops at either edge. */
+    static const int cameras[]={1400,1640,1890},scales[]={176,256,384};
+    memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+    ht.x=1840*256;ht.y=70*256;ht.camera_y=-110*256;
+    ht.scene_evidence=2;ht.weather_amount=256;
+    for(unsigned mode=0;mode<2;++mode) {
+        ht_native_active=mode!=0;ht_native_foreground_half_y=false;
+        ht_scene=mode?ht_native_a:ht_scene_low;
+        int raster=mode?2:1,width=HT_W*raster;
+        size_t bytes=mode?HT_NATIVE_PIXELS:HT_PIXELS;
+        for(unsigned camera=0;camera<3;++camera)for(unsigned scale=0;scale<3;++scale) {
+            ht.camera=cameras[camera]*256;ht_world_scale=scales[scale];
+            /* Stay one projected pixel inside the roof edge to exclude the
+             * raster primitive's endpoint rounding, not falling rain. */
+            int left=ht_max(0,ht_project_x(1751-cameras[camera])*raster+1);
+            int right=ht_min(width,ht_project_x(1928-cameras[camera])*raster-1);
+            int top=ht_max(0,ht_project_y(125)*raster);
+            int bottom=ht_min(HT_H*raster,ht_project_y(176)*raster);
+            unsigned outside=0,drips=0;
+            for(unsigned tick=0;tick<270;++tick) {
+                ht.ticks=tick;ht_game retained=ht;
+                memset(ht_scene,0,bytes);ht_weather(&ht);
+                assert(!memcmp(&ht,&retained,sizeof(ht)));
+                for(int y=top;y<bottom;++y)for(int x=left;x<right;++x)
+                    assert(ht_scene[y*width+x]==0);
+                if(tick%27==0) {
+                    for(size_t i=0;i<bytes;++i)outside+=ht_scene[i]!=0;
+                    memset(ht_scene,0,bytes);ht_city_rain_tank(&ht);
+                    for(int y=top;y<bottom;++y)for(int x=left;x<right;++x) {
+                        assert(ht_scene[y*width+x]!=119); /* Local falling rain. */
+                        drips+=ht_scene[y*width+x]==122; /* Authored belly drips. */
+                    }
+                }
+            }
+            assert(outside>0); /* The fix must not disable the weather pass. */
+            if(left<right)assert(drips>0); /* Close zoom can move all cover off-screen. */
+        }
+    }
+    ht_world_scale=256;ht_native_active=false;ht_scene=ht_scene_low;
+}
 int main(void) {
     uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY);assert(memory);ht_bind(memory);ht_bind_native(memory);
+    rain_tank_weather();
     ht.level=0;memset(&ht,0,sizeof(ht));ht_spawn(true);
     ht_cutscene_begin(HT_CUTSCENE_INTRO);
     assert(ht_cutscene.active && ht_cutscene.tick==0);
@@ -130,6 +173,7 @@ int main(void) {
     /* Rain-tank tableau: only an actual forward grounded crossing earns it. */
     ht_cutscene_seen=0;ht.level=1;ht_select_level(1);ht_spawn(true);
     ht.x=HT_RAIN_TANK_X*256;ht.y=ht_rain_tank_floor()*256;ht.grounded=true;
+    ht.scene_evidence=2;ht.weather_amount=256; /* Actual post-fuse arrival. */
     ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;
     before=ht;before.x-=256;assert(ht_cutscene_rain_arrival(&before,&ht));
     before.x=ht.x+256;assert(!ht_cutscene_rain_arrival(&before,&ht));
