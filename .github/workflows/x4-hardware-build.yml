@@ -20,6 +20,8 @@ jobs:
         run: |
           python -m unittest discover -s test/hardware -p 'test_*.py' -v
           python -m unittest discover -s test/hardware/cam -p 'test_trusted_controller.py' -v
+          c++ -std=c++17 -Wall -Wextra -Werror test/hardware/reader/stage_protocol_test.cpp -o /tmp/reader-stage-protocol
+          /tmp/reader-stage-protocol
   x4-candidate:
     needs: contracts
     runs-on: ubuntu-latest
