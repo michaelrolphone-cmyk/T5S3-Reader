@@ -78,6 +78,7 @@ for pair in \
   "opds_settings opds_settings_test" \
   "clear_cache clear_cache_test" \
   "ota_update ota_update_test" \
+  "sd_firmware_update sd_firmware_update_test" \
   "language_settings language_settings_test" \
   "font_manager font_manager_test" \
   "font_selection font_selection_test" \
