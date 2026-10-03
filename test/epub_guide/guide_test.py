@@ -64,12 +64,16 @@ template <typename T> void readPod(FsFile& f, T& value) {
 }
 inline void writeString(FsFile& f, const std::string& s) {
   if (!f) return;
+  writePod(f, static_cast<uint32_t>(s.size()));
   for (char c : s) f.data->push_back(static_cast<uint8_t>(c));
-  f.data->push_back(0); f.pos = f.data->size();
+  f.pos = f.data->size();
 }
 inline void readString(FsFile& f, std::string& s) {
-  s.clear();
-  while (f.available()) { char c = (*f.data)[f.pos++]; if (!c) break; s += c; }
+  uint32_t length = 0;
+  readPod(f, length);
+  if (f.pos + length > f.data->size()) std::abort();
+  s.assign(reinterpret_cast<const char*>(f.data->data() + f.pos), length);
+  f.pos += length;
 }
 }
 namespace FsHelpers {
@@ -81,7 +85,8 @@ class BookMetadataCache {
   struct Metadata { std::string title, author, language, coverItemHref, textReferenceHref; } coreMetadata;
   std::string cachePath = "/cache";
   FsFile bookFile;
-  size_t lutOffset = 0;
+  // Firmware size_t and the serialized LUT offset are both 32-bit.
+  uint32_t lutOffset = 0;
   uint16_t spineCount = 0, tocCount = 0;
   bool loaded = false;
   std::vector<std::string> spine;

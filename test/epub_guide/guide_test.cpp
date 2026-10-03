@@ -64,7 +64,7 @@ int main() {
     FsFile file;
     Storage.openFileForWrite("fixture", "/cache/book.bin", file);
     serialization::writePod(file, version);
-    serialization::writePod(file, size_t(0));
+    serialization::writePod(file, uint32_t(0));
     serialization::writePod(file, uint16_t(2));
     serialization::writePod(file, uint16_t(0));
     for (const char* field : {"Title", "Author", "en", "OPS/cover.xhtml", "OPS/body.xhtml"})
