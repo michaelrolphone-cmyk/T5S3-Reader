@@ -1,3 +1,15 @@
+## Active repair claim — canonical #42 — 2026-10-03T03:33:13.961Z
+
+- Sole coordinator/owner `task11_wrap42_20261003`; no preceding incomplete owned repair. Prior #261 claim released. Baseline master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; captured ledger parent `640907e2be99dd6588813951348bb98aeaa628fb`; isolated checkout in task-11; branch `fix/text-wrap-leading-token`.
+- Confirmed production `BaseTheme::wrappedTextForRole` returns after oversized first token. Verbatim production wrapping/truncation plus linked Utf8.cpp regression emits one line instead of three for "abcdefghijkl tail words" at width 8. NativeUiBridge renderTextView consumes this vector and total_lines, establishing ordinary UI reachability; font metrics are fixtures, no hardware claim.
+- All current open and closed-unmerged PR changed-file lists inspected (42 PRs); all remote branch histories inspected for this function. No existing repair. #350/#370 touch only separate BaseTheme drawHeader battery rendering; wrapping function unchanged. #373/#374 and all retained repairs excluded.
+- Reserve firmware **1.3.76**, beyond master/published 1.3.69 and known reservations through X4 1.3.74 / NCX 1.3.75. No app/driver/provider source changes planned. Refresh reservations before publication.
+- Phase: minimal early-return correction, regression/line-budget/UTF-8/error/retry checks, draft PR, exact-head CI. Keep existing ellipsis behavior for oversized tokens; no wrapping redesign. No master write, merge, release, deployment, hardware or other-repository edits.
+- Root/platform/roadmap/workflow/version/cooperative instructions read. This clone has no .agents directory or relevant child AGENTS in affected source.
+- Publish claim with captured parent and non-force fast-forward; sole coordination PR remains #332.
+
+---
+
 ## Terminal checkpoint — NCX relative chapter paths, canonical #261 — 2026-10-03T02:49:49.285461+00:00
 
 - Claim `task4_ncx_261_20261003` released at this terminal checkpoint; active ledger owner **none**. One bug repaired in draft, open, mergeable [PR #374](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/374), branch `fix/ncx-relative-chapter-path`, directly targeting master. Exact remote SHA `b1c4f1ed9ce0eba39ae9c152098188c47135148d`; master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231` remains unchanged. Awaiting owner merge, not fixed on master.

@@ -413,7 +413,7 @@ The following is the earlier consolidation's recorded coverage, preserved as his
 - **Repair direction:** Build the next device snapshot in temporary storage and publish it only on complete success; on failure, explicitly clear `device_count`/rows or mark the existing snapshot unavailable and disable Inspect. The event loop must branch on the refresh result rather than redrawing stale state. Add tests for a success followed by snapshot failure and for the provider returning a required count above 8.
 ### 42. Shared text wrapping drops the rest of a paragraph after an over-width first token
 
-- **Status:** Needs revalidation on the reconciliation baseline; historical source report, not a fresh confirmed-open assertion.
+- **Status:** Confirmed / claimed by `task11_wrap42_20261003` on master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`; branch `fix/text-wrap-leading-token`. Production wrapping/UTF-8 host regression fails: long first token yields only one line, dropping following words. Firmware 1.3.76 reserved. Prior report and provenance retained.
 - **Sources:** [automation/bug-scan-20260927-0520](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/automation/bug-scan-20260927-0520/bugs.md)
 
 - **Affected code:** `src/components/themes/BaseTheme.cpp`, `BaseTheme::wrappedTextForRole()`; visible callers include `src/native/NativeUiBridge.cpp::renderTextView()`.
