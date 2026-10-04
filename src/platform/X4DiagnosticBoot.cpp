@@ -1,4 +1,5 @@
 #include "X4DiagnosticBoot.h"
+#include "X4BootDiagnostics.h"
 
 #if defined(BOARD_XTEINK_X4_PRO)
 
@@ -135,31 +136,44 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
     if (psramFound()) heap_caps_malloc_extmem_enable(1024);
     RuntimeNetwork::enablePsramTlsAllocations();
     LOG_INF("X4", "diagnostic boot %s flash=16MB app0=0x10000", Board::firmwareMarker());
+    using X4BootDiagnostics::Stage;
+    const auto refused = [](const char* reason) { X4BootDiagnostics::fail(reason); };
+    X4BootDiagnostics::mark(Stage::Packages);
     if (!loadPlatformSdPackages()) {
+        refused("boot packages or SD handoff unavailable");
         LOG_ERR("X4", "External boot packages unavailable or invalid; no embedded fallback");
         return;
     }
-    if (!acquire("storage.volume",storage_lease)) return;
+    X4BootDiagnostics::mark(Stage::StorageMount);
+    if (!acquire("storage.volume",storage_lease)) { refused(RuntimeInstalledProviders::lastError()); return; }
     auto* volume=static_cast<const risc_storage_volume_api_v1*>(storage_lease.interface);
-    if (!volume || volume->api_version!=1 || volume->struct_size<sizeof(*volume)) return;
+    if (!volume || volume->api_version!=1 || volume->struct_size<sizeof(*volume)) {
+        refused("storage.volume API rejected"); return;
+    }
     const bool storage_mounted=Storage.bindVolume(volume);
     char reason[80]="none";
     if(volume->last_error) (void)volume->last_error(volume->context,reason,sizeof(reason));
     LOG_INF("X4","storage.volume mounted=%d reason=%s",storage_mounted?1:0,reason);
-    if (!acquire("display.frontlight",light_lease)) return;
+    X4BootDiagnostics::mark(Stage::Frontlight);
+    if (!acquire("display.frontlight",light_lease)) { refused(RuntimeInstalledProviders::lastError()); return; }
     light_api=static_cast<const risc_frontlight_api_v1*>(light_lease.interface);
-    if (!Board::attachFrontlight(light_api)) return;
+    if (!Board::attachFrontlight(light_api)) { refused("frontlight API rejected"); return; }
     // Shared input consumers acquire real graph leases, with the same normal
     // dependency/lifecycle path as T5. No bootstrap pointer attachment bypass.
+    X4BootDiagnostics::mark(Stage::Navigation);
     nativeNavigationTick();
-    if (!bindDisplay()) return;
+    X4BootDiagnostics::mark(Stage::Display);
+    if (!bindDisplay()) { refused("display provider binding rejected; see provider diagnostics"); return; }
     // BoardX4Pro's power hooks do not touch T5S3 peripherals. Initialize
     // the shared power mutex before any native app takes its UI/power lock.
+    X4BootDiagnostics::mark(Stage::PowerManager);
     powerManager.begin();
+    X4BootDiagnostics::mark(Stage::Settings);
     SETTINGS.loadFromFile();
     // Optional rtc.clock/API2 recovers cold-boot time through the installed
     // provider. A missing package/chip or invalid time must never gate Home.
     // Deep sleep retains SDK time; no external read is needed on minute wakes.
+    X4BootDiagnostics::mark(Stage::Rtc);
     halClock.begin();
     halClock.configure(SETTINGS.timeZoneId, SETTINGS.rtcStoresUtc != 0,
                        SETTINGS.rtcVariantHint, SETTINGS.rtcReferenceEpoch);
@@ -170,18 +184,22 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
     // The bus deliberately rejects contending transactions rather than waiting.
     // Finish the one-shot RTC boot read before starting GT911's independent
     // capture task, so normal touch polling cannot make valid time look absent.
+    X4BootDiagnostics::mark(Stage::Touch);
     nativeTouchTick();
     LOG_INF("X4","input.touch ready=%d",nativeTouchAvailable()?1:0);
     I18N.setLanguage(static_cast<Language>(SETTINGS.language));
     UITheme::getInstance().reload();
-    if (!setupDisplayAndFonts()) return;
+    X4BootDiagnostics::mark(Stage::Fonts);
+    if (!setupDisplayAndFonts()) { refused("display or font setup rejected"); return; }
     display.setFlipOutput(SETTINGS.flipUi != 0);
+    X4BootDiagnostics::mark(Stage::ReaderState);
     setupReaderState();
     // Reader's four button hints are laid out in portrait coordinates. The
     // physical X4 is portrait when held with its controls upright; landscape
     // left the Classic Home menu with a negative usable height.
     renderer.setOrientation(GfxRenderer::Portrait);
     if (renderer.getScreenWidth() != 480 || renderer.getScreenHeight() != 800) {
+        refused("Reader portrait geometry rejected");
         LOG_ERR("X4", "Reader portrait geometry rejected");
         return;
     }
@@ -189,6 +207,7 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
     // Reuse the same complete RiscRTE logo as T5's renderer fallback. X4
     // presents one static frame under its existing provider display owner.
     if (!deskClockUserWake) {
+    X4BootDiagnostics::mark(Stage::Splash);
     StartupScreen::staticLogo(renderer);
     LOG_INF("X4", "boot splash present=%d", provider_surface->lastPresentSucceeded() ? 1 : 0);
     provider_surface->clearPresentStatus();
@@ -199,6 +218,7 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
          home.buttonHintsHeight);
     const int required_menu_height = 3 * home.menuRowHeight + 2 * home.menuSpacing;
     if (menu_height < required_menu_height) {
+        refused("Home menu geometry rejected");
         LOG_ERR("X4", "Home menu geometry rejected height=%d required=%d",
                 menu_height, required_menu_height);
         return;
@@ -209,9 +229,12 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
     // setup and loop share the invocation-owner task. Prime the copied battery
     // snapshot after storage/input startup, before Home queues its first render.
     // The optional provider may be absent or fail; it never gates Home startup.
+    X4BootDiagnostics::mark(Stage::Battery);
     nativeBatteryTick();
+    X4BootDiagnostics::mark(Stage::HomePrepare);
     if (!resumeSavedReaderActivity()) activityManager.goHome();
     // Home queues its first render before the owner loop starts.
+    X4BootDiagnostics::mark(Stage::HomePresent);
     activityManager.requestUpdate(true);
     showing_home = true;
     LOG_INF("X4", "home activity scheduled=1");
@@ -222,11 +245,13 @@ bool x4DiagnosticLoop() {
     static unsigned long last = 0;
     if (showing_home && !ready && provider_surface && provider_surface->lastPresentSucceeded()) {
         ready = true;
+        X4BootDiagnostics::mark(X4BootDiagnostics::Stage::Ready);
         LOG_INF("X4", "home present=1");
     }
     const unsigned long now = millis();
     if (now - last >= 2000) {
         last = now;
+        X4BootDiagnostics::poll(static_cast<bool>(logSerial));
         LOG_INF("X4", "heartbeat ready=%d", ready ? 1 : 0);
     }
     if (!ready) {

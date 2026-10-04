@@ -43,6 +43,25 @@ class X4BootIsolation(unittest.TestCase):
         touch = (ROOT / "Drivers/x4pro_gt911/driver.c").read_text()
         self.assertNotIn("X4PRO_PIN_PERIPH_EN", touch)
 
+    def test_boot_checkpoint_precedes_work_and_reconnect_does_not_retry(self):
+        main = (ROOT / "src/main.cpp").read_text()
+        setup = main[main.rindex("void setup()"): main.rindex("void loop()")]
+        _, body, _ = x4_branch(setup)
+        self.assertLess(body.index("x4PrepareBootPower()"), body.index("X4BootDiagnostics::begin("))
+        self.assertIn('X4BootDiagnostics::fail("board-alive setup rejected")', body)
+        boot = (ROOT / "src/platform/X4DiagnosticBoot.cpp").read_text()
+        setup = boot.split("void x4DiagnosticSetup(bool deskClockUserWake)", 1)[1].split("bool x4DiagnosticLoop()", 1)[0]
+        for stage, operation in (("Packages", "loadPlatformSdPackages()"),
+                ("StorageMount", 'acquire("storage.volume"'), ("Display", "bindDisplay()"),
+                ("Settings", "SETTINGS.loadFromFile()"), ("Rtc", "halClock.begin()"),
+                ("Fonts", "setupDisplayAndFonts()"), ("ReaderState", "setupReaderState()"),
+                ("HomePrepare", "resumeSavedReaderActivity()"), ("HomePresent", "activityManager.requestUpdate(true)")):
+            self.assertLess(setup.index("mark(Stage::" + stage + ")"), setup.index(operation))
+        loop = boot.split("bool x4DiagnosticLoop()", 1)[1]
+        self.assertIn("X4BootDiagnostics::poll(static_cast<bool>(logSerial))", loop)
+        for forbidden in ("loadPlatformSdPackages()", "Storage.begin()", "x4DiagnosticSetup("):
+            self.assertNotIn(forbidden, loop)
+
     def test_portrait_home_and_distinct_boot_present(self):
         boot = (ROOT / "src/platform/X4DiagnosticBoot.cpp").read_text()
         self.assertIn("renderer.setOrientation(GfxRenderer::Portrait)", boot)

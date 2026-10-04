@@ -58,6 +58,7 @@ void loop() { RuntimeBoot::loop(); }
 #include "util/ButtonNavigator.h"
 #include "platform/X4DiagnosticBoot.h"
 #include "platform/X4BootPower.h"
+#include "platform/X4BootDiagnostics.h"
 #include "util/ScreenshotUtil.h"
 
 MappedInputManager mappedInputManager(gpio);
@@ -522,13 +523,20 @@ bool resumeSavedReaderActivity() {
 void setup() {
 #ifdef BOARD_XTEINK_X4_PRO
   const bool x4BootPowerReady = x4PrepareBootPower();
+  X4BootDiagnostics::begin(static_cast<uint32_t>(esp_reset_reason()));
+  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::BoardPower);
+  if (!x4BootPowerReady) X4BootDiagnostics::fail("board-alive setup rejected");
+  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::SerialSetup);
 #ifdef ENABLE_SERIAL_LOG
   Serial.begin(115200);
   const unsigned long x4SerialStart = millis();
   while (!Serial && millis() - x4SerialStart < 500) delay(10);
 #endif
-  LOG_INF("X4", "Boot firmware=%s board-alive=%d", CROSSPOINT_VERSION, x4BootPowerReady);
+  LOG_INF("X4", "Boot firmware=%s board-alive=%d reset=%d", CROSSPOINT_VERSION, x4BootPowerReady,
+          static_cast<int>(esp_reset_reason()));
+  X4BootDiagnostics::poll(static_cast<bool>(logSerial));
   if (!x4BootPowerReady) return;
+  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::ClockResume);
   if (DeskClockSleep::resumeAfterTimerWake()) return;
   x4DiagnosticSetup(DeskClockSleep::consumeUserWake());
   return;

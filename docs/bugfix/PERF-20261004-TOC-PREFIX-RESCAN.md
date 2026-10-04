@@ -1,3 +1,25 @@
+# Working-base integration — 2026-10-04 16:23 UTC
+
+- repository_full_name: michaelrolphone-cmyk/T5S3-Reader
+- canonical_key: michaelrolphone-cmyk/T5S3-Reader::BUG-262
+- source_ref / target_branch: xteink-x4-pro-boot
+- original reproduction baseline_sha: 60e5a78b79e5a196e2265aa8bad3200af5a82479
+- captured repair head / merge first parent: bc55f2278ed30a70f45c7712ff60039a8b136b41
+- integration baseline_sha / merge second parent: abd75f89b253a471d43f3afa1e5b5363bf546318
+- repair_branch: perf/toc-prefix-rescan
+- target_pr: https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/396
+- active claim: https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/332#issuecomment-5982006776
+- firmware: base 1.3.122 -> repair 1.3.124; root confirmed reservation above separate BUG-236 1.3.123
+- phase: combined-tree verification; new exact-head hosted checks pending
+
+Resume only this existing repair. The sole merge conflict is the firmware version; all incoming diagnostic production, tests and documentation are preserved. TOC production, exact-href lookup, cache generation 11/reset behavior and the complete focused regression remain byte-identical to the preceding repair. No separately distributed app/driver/provider payload changes relative to the working base.
+
+Current master b71a420788cfdbb758fb5bb0eada0e82fc497122 adds unrelated Hollow Trail work beyond the master1d97f4f4 already in this working base. PR350 and PR348 remain open, so the expressly assigned PR350 working-base exception still applies; this repair does not independently integrate the newer game changes.
+
+The original-source control again reproduces325120 reads for127 spines/1270 links, fails the repaired cost bound, and emits SHA256 ba78e810ab875a3f1abdf8dd58c059f1ba1a464a280954e0d80ec51eacc57343. Recheck the combined tree with normal/sanitized focused tests, byte comparison, relevant full aggregates and exact-head target CI. Device performance and hardware qualification remain unrun. The PR description and terminal ledger-conversation checkpoint record final results without rewriting earlier evidence.
+
+---
+
 # Working-base integration — 2026-10-04 15:17 UTC
 
 - repository_full_name: michaelrolphone-cmyk/T5S3-Reader
