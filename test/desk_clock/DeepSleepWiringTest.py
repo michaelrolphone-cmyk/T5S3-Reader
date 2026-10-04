@@ -45,7 +45,8 @@ class ClockDeepSleepWiring(unittest.TestCase):
 
     def test_button_during_timer_repaint_survives_explicit_restart(self):
         self.assertIn("clockUiWakeMagic = kClockUiWakeMagic;", CLOCK)
-        self.assertIn("if (clockUiWakeMagic == kClockUiWakeMagic)", CLOCK)
+        self.assertIn("RTC_NOINIT_ATTR uint32_t clockUiWakeMagic;", CLOCK)
+        self.assertIn("esp_reset_reason() == ESP_RST_SW && clockUiWakeMagic == kClockUiWakeMagic", CLOCK)
         self.assertIn("userWakePending = true;", CLOCK)
 
     def test_timer_boot_avoids_touch_sd_and_app_startup(self):

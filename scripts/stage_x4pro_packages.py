@@ -13,9 +13,9 @@ from pack_rte_zip import pack_directory
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ['platform_clock_v1', 'x4pro_panel', 'x4pro_buttons', 'x4pro_frontlight',
-           'x4pro_sd', 'x4pro_i2c', 'x4pro_gt911', 'x4pro_battery']
+           'x4pro_sd', 'x4pro_i2c', 'x4pro_gt911', 'x4pro_battery', 'x4pro_rtc']
 
-def stage(sources=SOURCES, board="xteink-x4-pro", output=None, omitted=("x4pro-battery",)):
+def stage(sources=SOURCES, board="xteink-x4-pro", output=None, omitted=("x4pro-battery", "x4pro-rtc")):
     output = output or ROOT / "dist/x4-independent-packages"
     output.mkdir(parents=True, exist_ok=True)
     records = []

@@ -44,6 +44,7 @@ void loop() { RuntimeBoot::loop(); }
 #include "PowerControl.h"
 #include "runtime/power/IdleSleepDeadline.h"
 #include "native/NativeBatteryGauge.h"
+#include "native/NativeRtcClock.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
@@ -56,6 +57,7 @@ void loop() { RuntimeBoot::loop(); }
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
 #include "platform/X4DiagnosticBoot.h"
+#include "platform/X4BootPower.h"
 #include "util/ScreenshotUtil.h"
 
 MappedInputManager mappedInputManager(gpio);
@@ -235,9 +237,17 @@ bool suspendInputProvidersForSleep() {
     (void)nativeTouchResume();
     return false;
   }
+  if (!nativeRtcSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: RTC provider has not quiesced");
+    (void)nativeRtcResume();
+    (void)nativeBatteryResume();
+    (void)nativeTouchResume();
+    return false;
+  }
   if (!nativeNavigationSuspend()) {
     LOG_ERR("INPUT", "Sleep refused: navigation/provider graph has not quiesced");
     nativeNavigationResume();
+    (void)nativeRtcResume();
     (void)nativeBatteryResume();
     (void)nativeTouchResume();
     return false;
@@ -248,6 +258,7 @@ bool suspendInputProvidersForSleep() {
 void resumeInputProvidersAfterSleep() {
   // Bootstrap/navigation first; touch can then join the already healthy graph.
   nativeNavigationResume();
+  (void)nativeRtcResume();
   (void)nativeBatteryResume();
   (void)nativeTouchResume();
 }
@@ -510,11 +521,14 @@ bool resumeSavedReaderActivity() {
 
 void setup() {
 #ifdef BOARD_XTEINK_X4_PRO
+  const bool x4BootPowerReady = x4PrepareBootPower();
 #ifdef ENABLE_SERIAL_LOG
   Serial.begin(115200);
   const unsigned long x4SerialStart = millis();
   while (!Serial && millis() - x4SerialStart < 500) delay(10);
 #endif
+  LOG_INF("X4", "Boot firmware=%s board-alive=%d", CROSSPOINT_VERSION, x4BootPowerReady);
+  if (!x4BootPowerReady) return;
   if (DeskClockSleep::resumeAfterTimerWake()) return;
   x4DiagnosticSetup(DeskClockSleep::consumeUserWake());
   return;

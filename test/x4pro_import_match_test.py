@@ -18,6 +18,7 @@ PACKAGES = {
     # synthesize memset. Both must still match their own exact ELF imports.
     "x4pro-panel": None,
     "x4pro-buttons": [],
+    "x4pro-rtc": [],
     "x4pro-frontlight": [],
     "x4pro-sd": sorted(["memcpy", "memcmp", "memset", "strlen", "strchr",
                            "xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",

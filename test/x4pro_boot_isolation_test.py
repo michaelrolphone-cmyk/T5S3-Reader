@@ -22,6 +22,27 @@ def x4_branch(source):
     raise AssertionError("unterminated X4 branch")
 
 class X4BootIsolation(unittest.TestCase):
+    def test_optional_rtc_precedes_independent_touch_capture(self):
+        boot = (ROOT / "src/platform/X4DiagnosticBoot.cpp").read_text()
+        setup = boot.split("void x4DiagnosticSetup(bool deskClockUserWake)", 1)[1]
+        self.assertLess(setup.index("SETTINGS.loadFromFile()"), setup.index("halClock.begin()"))
+        self.assertLess(setup.index("halClock.configure("), setup.index("halClock.syncSystemTimeFromRtc()"))
+        self.assertLess(setup.index("halClock.syncSystemTimeFromRtc()"), setup.index("nativeTouchTick()"))
+        self.assertIn("(!halClock.isAvailable() || !halClock.syncSystemTimeFromRtc())", setup)
+        self.assertLess(setup.index("nativeTouchTick()"), setup.index("nativeBatteryTick()"))
+
+    def test_keep_alive_precedes_usb_and_both_boot_paths(self):
+        main = (ROOT / "src/main.cpp").read_text()
+        setup = main[main.rindex("void setup()"): main.rindex("void loop()")]
+        _, body, _ = x4_branch(setup)
+        for later in ("Serial.begin(115200)", "DeskClockSleep::resumeAfterTimerWake()",
+                      "x4DiagnosticSetup(DeskClockSleep::consumeUserWake())"):
+            self.assertLess(body.index("x4PrepareBootPower()"), body.index(later))
+        self.assertLess(body.index("if (!x4BootPowerReady) return;"),
+                        body.index("DeskClockSleep::resumeAfterTimerWake()"))
+        touch = (ROOT / "Drivers/x4pro_gt911/driver.c").read_text()
+        self.assertNotIn("X4PRO_PIN_PERIPH_EN", touch)
+
     def test_portrait_home_and_distinct_boot_present(self):
         boot = (ROOT / "src/platform/X4DiagnosticBoot.cpp").read_text()
         self.assertIn("renderer.setOrientation(GfxRenderer::Portrait)", boot)

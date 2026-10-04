@@ -4,6 +4,7 @@
 #include "PackageOrdinarySdAdapter.h"
 #include "PackageOrdinaryStage.h"
 #include <HalStorage.h>
+#include <Logging.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -20,6 +21,11 @@ constexpr PackageRuntimePolicy kPolicy{
     "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr size_t kMaxDepth = 8;
 constexpr size_t kMaxEntriesPerRoot = 64;
+// A healthy native-SD inventory can need over two seconds for bounded FAT
+// directory/metadata reads. Match the storage operation's finite 15s envelope
+// instead of discarding the entire capability snapshot at an arbitrary 2s.
+// Entry, manifest, provider I/O and per-root time limits all remain enforced.
+constexpr uint32_t kInventoryRootBudgetMs = 15000;
 
 bool readSmall(const char* path, char* buffer, size_t capacity, size_t& length) {
   length = 0;
@@ -83,7 +89,13 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable) {
 #endif
     while (true) {
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
-      if (xTaskGetTickCount() - started >= pdMS_TO_TICKS(2000)) { (void)directory.close(); return false; }
+      if (xTaskGetTickCount() - started >= pdMS_TO_TICKS(kInventoryRootBudgetMs)) {
+        LOG_ERR("CAPS", "Installed capability inventory timed out: root=%s entries=%u budget_ms=%lu",
+                root, static_cast<unsigned>(examined),
+                static_cast<unsigned long>(kInventoryRootBudgetMs));
+        (void)directory.close();
+        return false; // Never publish or retain a partial inventory.
+      }
 #endif
       // Metadata-only inspection still yields between bounded directory items.
       ordinaryCooperativeYield(1, 1);

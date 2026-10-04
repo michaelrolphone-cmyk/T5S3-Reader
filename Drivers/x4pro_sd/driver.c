@@ -43,15 +43,52 @@ static void fail(const char *text) {
     while (text[i] && i + 1u < sizeof(error)) { error[i] = text[i]; ++i; }
     error[i] = 0;
 }
-static void tick(void) {
+/* ESP32-S3 TRM 7.2.4.1 caps CPU_CLK at 240 MHz. After the GPIO input
+ * read-back observes each output level, 24 CPU cycles hold that phase for at
+ * least 100 ns: comfortably above default-SD's 10 ns HIGH/LOW minimum and
+ * below its 25 MHz maximum (at most 5 MHz before software/bus overhead).
+ * Do not infer a timing minimum from back-to-back APB stores. */
+#define SELECTED_PHASE_CYCLES 24u
+#define CLOCK_GUARD_POLLS 128u
+static uint32_t cycle_count(void) {
+#if defined(__XTENSA__)
+    uint32_t value;
+    __asm__ __volatile__("rsr.ccount %0" : "=a"(value) :: "memory");
+    return value;
+#elif defined(X4PRO_SD_CYCLE_COUNT)
+    return X4PRO_SD_CYCLE_COUNT();
+#else
+#error "SD clock guard requires a native cycle counter or explicit test clock"
+#endif
+}
+static bool selected_phase(bool high) {
+    bool observed = false;
+    for (unsigned attempt = 0; attempt < CLOCK_GUARD_POLLS; ++attempt) {
+        if (x4pro_pin_read(X4PRO_PIN_SD_CLK) == high) { observed = true; break; }
+    }
+    if (!observed) return false;
+    const uint32_t began = cycle_count();
+    for (unsigned attempt = 0; attempt < CLOCK_GUARD_POLLS; ++attempt)
+        if ((uint32_t)(cycle_count() - began) >= SELECTED_PHASE_CYCLES) return true;
+    return false; /* Stuck read-back or counter must never hang the SD owner. */
+}
+static bool tick(void) {
+    /* Preserve identification-mode timing and setup until the card is selected. */
+    if (card_ready) {
+        x4pro_pin_level(X4PRO_PIN_SD_CLK, true);
+        if (!selected_phase(true)) return false;
+        x4pro_pin_level(X4PRO_PIN_SD_CLK, false);
+        return selected_phase(false);
+    }
     x4pro_pin_output(X4PRO_PIN_SD_CLK, true);
     x4pro_pin_output(X4PRO_PIN_SD_CLK, false);
+    return true;
 }
 static bool wait_dat0(bool level, uint32_t max_clocks, uint32_t budget_ms) {
     const uint64_t began = clock_api->monotonic_ms(clock_api->context);
     for (uint32_t i = 0; i < max_clocks; ++i) {
         if (x4pro_pin_read(X4PRO_PIN_SD_DAT0) == level) return true;
-        tick();
+        if (!tick()) return false;
         if ((i & 255u) == 255u) {
             clock_api->sleep_ms(clock_api->context, 1);
             if (clock_api->monotonic_ms(clock_api->context) - began >= budget_ms) break;
@@ -59,21 +96,21 @@ static bool wait_dat0(bool level, uint32_t max_clocks, uint32_t budget_ms) {
     }
     return false;
 }
-static void cmd_bit(bool bit) { x4pro_pin_output(X4PRO_PIN_SD_CMD, bit); tick(); }
+static bool cmd_bit(bool bit) { x4pro_pin_output(X4PRO_PIN_SD_CMD, bit); return tick(); }
 static bool command(uint8_t index, uint32_t arg, uint8_t *response, size_t length) {
     if (length > 17u || (length && !response)) return false;
     uint8_t frame[6];
     x4pro_sd_command(index, arg, frame);
-    for (int i = 0; i < 8; ++i) tick();
+    for (int i = 0; i < 8; ++i) if (!tick()) return false;
     for (size_t byte = 0; byte < sizeof(frame); ++byte)
-        for (int bit = 7; bit >= 0; --bit) cmd_bit((frame[byte] >> bit) & 1);
+        for (int bit = 7; bit >= 0; --bit) if (!cmd_bit((frame[byte] >> bit) & 1)) return false;
     x4pro_pin_release(X4PRO_PIN_SD_CMD);
     /* CMD0 has no response on the native SD bus. */
-    if (!length) { for (int i = 0; i < 8; ++i) tick(); return true; }
+    if (!length) { for (int i = 0; i < 8; ++i) if (!tick()) return false; return true; }
     bool seen = false;
     for (int i = 0; i < 64 && !seen; ++i) {
         seen = !x4pro_pin_read(X4PRO_PIN_SD_CMD);
-        if (!seen) tick();
+        if (!seen && !tick()) return false;
     }
     if (!seen) return false;
     memset(response, 0, length);
@@ -81,7 +118,7 @@ static bool command(uint8_t index, uint32_t arg, uint8_t *response, size_t lengt
         uint8_t value = 0;
         for (int bit = 0; bit < 8; ++bit) {
             bool level = x4pro_pin_read(X4PRO_PIN_SD_CMD);
-            tick();
+            if (!tick()) return false;
             value = (uint8_t)((value << 1) | (level ? 1u : 0u));
         }
         response[byte] = value;
@@ -96,12 +133,12 @@ static bool read_sector(uint32_t lba, uint8_t out[512]) {
     if (!out || (!high_capacity && lba > UINT32_MAX / 512u) ||
         !command(17, high_capacity ? lba : lba * 512u, response, sizeof(response)) ||
         !response_for(17, response) || !wait_dat0(false, 131072u, 500u)) return false;
-    tick(); /* Consume the DAT0 start bit before the first payload bit. */
+    if (!tick()) return false; /* Consume the DAT0 start bit before the first payload bit. */
     for (size_t byte = 0; byte < 512u; ++byte) {
         uint8_t value = 0;
         for (unsigned bit = 0; bit < 8u; ++bit) {
             value = (uint8_t)((value << 1) | (x4pro_pin_read(X4PRO_PIN_SD_DAT0) ? 1u : 0u));
-            tick();
+            if (!tick()) return false;
         }
         out[byte] = value;
         if ((byte & 63u) == 63u) cooperate(64);
@@ -110,10 +147,10 @@ static bool read_sector(uint32_t lba, uint8_t out[512]) {
     for (unsigned bit = 0; bit < 16u; ++bit) {
         received_crc = (uint16_t)((received_crc << 1) |
                                   (x4pro_pin_read(X4PRO_PIN_SD_DAT0) ? 1u : 0u));
-        tick();
+        if (!tick()) return false;
     }
     const bool stop = x4pro_pin_read(X4PRO_PIN_SD_DAT0);
-    tick();
+    if (!tick()) return false;
     return stop && received_crc == x4pro_sd_crc16(out, 512u);
 }
 static bool init_card(void) {
@@ -126,7 +163,7 @@ static bool init_card(void) {
     if (clock_api) clock_api->sleep_ms(clock_api->context, 120);
     x4pro_pin_release(X4PRO_PIN_SD_CMD);
     x4pro_pin_release(X4PRO_PIN_SD_DAT0);
-    for (int i = 0; i < 80; ++i) tick();
+    for (int i = 0; i < 80; ++i) if (!tick()) return false;
     if (!command(0, 0, response, 0)) { fail("CMD0 send failed"); return false; }
     if (!command(8, 0x1AAu, response, 6)) { fail("CMD8 no response"); return false; }
     if ((response[0] & 0x3fu) != 8u || response[3] != 1u || response[4] != 0xaau) {
@@ -169,24 +206,24 @@ static bool write_sector(uint32_t lba, const uint8_t data[512]) {
     const uint32_t status = ((uint32_t)response[1] << 24) | ((uint32_t)response[2] << 16) |
                             ((uint32_t)response[3] << 8) | response[4];
     if (status & 0xfdffe008u) return false;
-    for (unsigned i = 0; i < 8; ++i) tick();
-    x4pro_pin_output(X4PRO_PIN_SD_DAT0, false); tick();
+    for (unsigned i = 0; i < 8; ++i) if (!tick()) return false;
+    x4pro_pin_output(X4PRO_PIN_SD_DAT0, false); if (!tick()) return false;
     for (unsigned i = 0; i < 512; ++i) {
         for (int bit = 7; bit >= 0; --bit) {
-            x4pro_pin_output(X4PRO_PIN_SD_DAT0, (data[i] >> bit) & 1u); tick();
+            x4pro_pin_output(X4PRO_PIN_SD_DAT0, (data[i] >> bit) & 1u); if (!tick()) return false;
         }
         if ((i & 63u) == 63u) cooperate(64);
     }
     const uint16_t crc = x4pro_sd_crc16(data, 512);
     for (int bit = 15; bit >= 0; --bit) {
-        x4pro_pin_output(X4PRO_PIN_SD_DAT0, (crc >> bit) & 1u); tick();
+        x4pro_pin_output(X4PRO_PIN_SD_DAT0, (crc >> bit) & 1u); if (!tick()) return false;
     }
-    x4pro_pin_output(X4PRO_PIN_SD_DAT0, true); tick();
+    x4pro_pin_output(X4PRO_PIN_SD_DAT0, true); if (!tick()) return false;
     x4pro_pin_release(X4PRO_PIN_SD_DAT0);
     if (!wait_dat0(false, 1024, 100)) return false;
     unsigned token = 0;
     for (unsigned i = 0; i < 5; ++i) {
-        token = (token << 1) | (x4pro_pin_read(X4PRO_PIN_SD_DAT0) ? 1u : 0u); tick();
+        token = (token << 1) | (x4pro_pin_read(X4PRO_PIN_SD_DAT0) ? 1u : 0u); if (!tick()) return false;
     }
     if (token != 5u || !wait_dat0(true, 262144, 1000)) return false;
     if (!command(13, card_rca, response, 6) || !response_for(13, response)) return false;

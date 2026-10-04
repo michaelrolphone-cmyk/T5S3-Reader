@@ -6,6 +6,7 @@
 unsigned x4_sd_fake_ticks;
 bool x4_sd_fake_bad_pin;
 static unsigned slept_ms;
+uint32_t x4pro_sd_test_cycle_count(void) { static uint32_t cycles; return cycles += 8; }
 static void sleep_ms(void *context, uint32_t ms) { (void)context; slept_ms += ms; }
 static uint64_t monotonic_ms(void *context) { (void)context; return slept_ms; }
 static int expect(bool condition, const char *message) {

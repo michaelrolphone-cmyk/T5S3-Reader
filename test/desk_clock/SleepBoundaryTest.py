@@ -113,6 +113,7 @@ run(r'''
 #include <sys/time.h>
 #include "util/DeskClockTime.h"
 #define LOG_ERR(...) ((void)0)
+#define LOG_INF(...) ((void)0)
 #define BOARD_XTEINK_X4_PRO 1
 #define SOC_GPIO_SUPPORT_DEEPSLEEP_WAKEUP 0
 constexpr int ESP_OK=0,ESP_FAIL=-1,INPUT_PULLUP=1,ESP_SLEEP_WAKEUP_ALL=0;
@@ -151,5 +152,32 @@ int main(){
  reset();timer=false;try{sleepUntilNextMinute();assert(false);}catch(const Restart&){}assert(!slept && !clockState.magic);
  reset();button=false;try{sleepUntilNextMinute();assert(false);}catch(const Restart&){}assert(!slept && !clockState.magic);
  std::puts("Production minute sleep: deadline after teardown, timer/button wake and checked RTC pad failures PASS");
+}
+''')
+run(r'''
+#include <cassert>
+#include <cstdio>
+#include <string>
+#define LOG_ERR(...) ((void)0)
+std::string calls; char fail=0;
+bool nativeTouchSuspend(){calls+='t';return fail!='t';}
+bool nativeBatterySuspend(){calls+='b';return fail!='b';}
+bool nativeRtcSuspend(){calls+='r';return fail!='r';}
+bool nativeNavigationSuspend(){calls+='n';return fail!='n';}
+bool nativeTouchResume(){calls+='T';return true;}
+bool nativeBatteryResume(){calls+='B';return true;}
+bool nativeRtcResume(){calls+='R';return true;}
+void nativeNavigationResume(){calls+='N';}
+'''+function('src/main.cpp','bool suspendInputProvidersForSleep()')+'\n'+
+function('src/main.cpp','void resumeInputProvidersAfterSleep()')+r'''
+int main(){
+ assert(suspendInputProvidersForSleep() && calls=="tbrn");
+ calls.clear();resumeInputProvidersAfterSleep();assert(calls=="NRBT");
+ struct Failure{char who;const char*expected;};
+ for(auto f:{Failure{'t',"tT"},Failure{'b',"tbBT"},Failure{'r',"tbrRBT"},Failure{'n',"tbrnNRBT"}}){
+  calls.clear();fail=f.who;assert(!suspendInputProvidersForSleep() && calls==f.expected);
+  calls.clear();fail=0;assert(suspendInputProvidersForSleep() && calls=="tbrn");
+ }
+ puts("Production sleep consumers: RTC precedes graph drain, every rollback and retry PASS");
 }
 ''')

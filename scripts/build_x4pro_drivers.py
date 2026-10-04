@@ -27,7 +27,7 @@ def compiler():
 CC = compiler()
 PACKAGES = [
     "x4pro_i2c", "x4pro_panel", "x4pro_gt911", "x4pro_buttons",
-    "x4pro_frontlight", "x4pro_battery", "x4pro_sd",
+    "x4pro_frontlight", "x4pro_battery", "x4pro_rtc", "x4pro_sd",
 ]
 
 def check_i2c_sdk_contract():
@@ -58,6 +58,10 @@ def check_i2c_sdk_contract():
 def build_one(name):
     if name in ("x4pro_i2c", "x4pro_sd", "t5s3_sd"):
         check_i2c_sdk_contract()
+    if name == "x4pro_rtc":
+        subprocess.run([CC, "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsyntax-only",
+                        "-I" + str(ROOT / "sdk/driver"),
+                        str(ROOT / "test/native_rtc/abi_layout_test.c")], check=True)
     source = ROOT / "Drivers" / name
     manifest = json.loads((source / "manifest.json").read_text())
     output = ROOT / "dist" / "experimental" / manifest["id"]

@@ -151,16 +151,26 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
     // Shared input consumers acquire real graph leases, with the same normal
     // dependency/lifecycle path as T5. No bootstrap pointer attachment bypass.
     nativeNavigationTick();
-    nativeTouchTick();
-    LOG_INF("X4","input.touch ready=%d",nativeTouchAvailable()?1:0);
     if (!bindDisplay()) return;
     // BoardX4Pro's power hooks do not touch T5S3 peripherals. Initialize
     // the shared power mutex before any native app takes its UI/power lock.
     powerManager.begin();
     SETTINGS.loadFromFile();
-    // System time survives deep sleep; no legacy Wire RTC owner on X4.
+    // Optional rtc.clock/API2 recovers cold-boot time through the installed
+    // provider. A missing package/chip or invalid time must never gate Home.
+    // Deep sleep retains SDK time; no external read is needed on minute wakes.
+    halClock.begin();
     halClock.configure(SETTINGS.timeZoneId, SETTINGS.rtcStoresUtc != 0,
                        SETTINGS.rtcVariantHint, SETTINGS.rtcReferenceEpoch);
+    if (!halClock.isSystemTimeValid() &&
+        (!halClock.isAvailable() || !halClock.syncSystemTimeFromRtc())) {
+        LOG_INF("CLK", "RTC time unavailable; clock remains unset until explicit synchronization");
+    }
+    // The bus deliberately rejects contending transactions rather than waiting.
+    // Finish the one-shot RTC boot read before starting GT911's independent
+    // capture task, so normal touch polling cannot make valid time look absent.
+    nativeTouchTick();
+    LOG_INF("X4","input.touch ready=%d",nativeTouchAvailable()?1:0);
     I18N.setLanguage(static_cast<Language>(SETTINGS.language));
     UITheme::getInstance().reload();
     if (!setupDisplayAndFonts()) return;

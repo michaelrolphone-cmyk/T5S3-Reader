@@ -17,6 +17,7 @@ static unsigned hardware_calls;
 static unsigned rail_commits;
 #endif
 static uint64_t now_ms;
+uint32_t x4pro_sd_test_cycle_count(void) { static uint32_t cycles; return cycles += 8; }
 static bool reenter, in_reentry, shift_task, shift_isr;
 static bool block_sleep, sleep_blocked, resume_sleep, refresh_result;
 static pthread_mutex_t barrier = PTHREAD_MUTEX_INITIALIZER;
@@ -50,6 +51,7 @@ static void rejected_calls(void) {
 #ifndef TEST_SPI_TRANSPORT
 static void record_pin(void) { ++hardware_calls; }
 void x4pro_pin_output(uint32_t pin, bool level) { (void)pin; (void)level; record_pin(); }
+void x4pro_pin_level(uint32_t pin, bool level) { (void)pin; (void)level; record_pin(); }
 void x4pro_pin_release(uint32_t pin) { (void)pin; record_pin(); }
 bool x4pro_pin_read(uint32_t pin) { (void)pin; record_pin(); return true; }
 void x4pro_pin_input(uint32_t pin, bool pullup) { (void)pin; (void)pullup; record_pin(); }

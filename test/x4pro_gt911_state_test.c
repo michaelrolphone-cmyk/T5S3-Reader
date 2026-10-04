@@ -14,7 +14,10 @@ static uint8_t claimed;
 static bool reject_release, reject_probe;
 static unsigned release_calls, claim_calls, pin_writes;
 
-void fake_pin_output(uint32_t pin, bool level) { assert(pin < 49); ++pin_writes; pins[pin] = level; }
+void fake_pin_output(uint32_t pin, bool level) {
+    assert(pin < 49 && pin != X4PRO_PIN_PERIPH_EN); // Bootstrap is the only keep-alive writer.
+    ++pin_writes; pins[pin] = level;
+}
 void fake_pin_level(uint32_t pin, bool level) { fake_pin_output(pin, level); }
 void fake_pin_input(uint32_t pin, bool pullup) { (void)pin; (void)pullup; }
 static uint64_t tick(void *ctx) { (void)ctx; return now; }
@@ -45,6 +48,7 @@ static bool transact(void *ctx, uint64_t handle, const uint8_t *write, size_t wl
     return false;
 }
 int main(void) {
+    pins[X4PRO_PIN_PERIPH_EN] = true; // Early board-alive bootstrap, before package acquisition.
     risc_i2c_bus_contract_v1 bus = {
         {RISC_I2C_BUS_API_V1, sizeof(bus), 0, claim, transact, release},
         RISC_I2C_BUS_CONTRACT_TAG, RISC_I2C_BUS_CONTRACT_V1, RISC_I2C_BUS_SAFE_CONTRACT_FLAGS};

@@ -96,3 +96,6 @@ static inline void x4pro_pin_hold(uint32_t pin, bool hold) {
     card_sleep_off = hold;
     if (hold) ++card_sleep_commits;
 }
+
+uint32_t x4pro_sd_test_cycle_count(void);
+#define X4PRO_SD_CYCLE_COUNT() x4pro_sd_test_cycle_count()

@@ -14,6 +14,7 @@
 #include <esp_attr.h>
 #include <esp_heap_caps.h>
 #include <esp_sleep.h>
+#include <esp_system.h>
 #if defined(BOARD_XTEINK_X4_PRO)
 #include <driver/rtc_io.h>
 #include <sdkconfig.h>
@@ -59,7 +60,9 @@ struct ClockRetention {
   char timeZoneId[40];
 };
 RTC_DATA_ATTR ClockRetention clockState = {};
-RTC_DATA_ATTR uint32_t clockUiWakeMagic = 0;
+// Unlike RTC_DATA_ATTR, NOINIT is not reloaded from the image on software
+// restart. Consume only on that reset cause and clear on every boot.
+RTC_NOINIT_ATTR uint32_t clockUiWakeMagic;
 bool userWakePending = false;
 
 void renderClockFrame(GfxRenderer& gfx, time_t now) {
@@ -167,6 +170,9 @@ void sleepUntilNextMinute() {
     ESP.restart();  // Never strand the user behind an unarmed button wake.
     return;
   }
+  LOG_INF("CLOCK", "Deep sleep armed: timer-us=%llu power-pin=%u time-valid=%d",
+          static_cast<unsigned long long>(waitUs), static_cast<unsigned>(BoardPins::PowerButton),
+          halClock.isSystemTimeValid());
   esp_deep_sleep_start();
 }
 
@@ -255,6 +261,7 @@ void DeskClockSleep::run(GfxRenderer& gfx, HalGPIO& input) {
   clockState.rtcVariantHint = SETTINGS.rtcVariantHint;
   memcpy(clockState.timeZoneId, SETTINGS.timeZoneId, sizeof(clockState.timeZoneId));
   clockState.timeZoneId[sizeof(clockState.timeZoneId) - 1] = '\0';
+  LOG_INF("CLOCK", "Clock entry: time-valid=%d face=%u", halClock.isSystemTimeValid(), clockState.face);
 
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(true);
@@ -269,6 +276,8 @@ void DeskClockSleep::run(GfxRenderer& gfx, HalGPIO& input) {
 
 bool DeskClockSleep::resumeAfterTimerWake() {
   const esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+  LOG_INF("CLOCK", "Wake cause=%d retained=%d time-valid=%d", static_cast<int>(wakeCause),
+          clockState.magic == kClockMagic, halClock.isSystemTimeValid());
 #if defined(BOARD_XTEINK_X4_PRO)
   // EXT1 used the RTC pad. Return it to digital GPIO before the existing
   // ordinary button provider is allowed to acquire and poll it again.
@@ -284,8 +293,9 @@ bool DeskClockSleep::resumeAfterTimerWake() {
   // If a button arrived while a timer-wake repaint was already running, the
   // clock path performs an explicit restart. RTC retention is the only signal
   // available on the following software-reset boot.
-  if (clockUiWakeMagic == kClockUiWakeMagic) {
-    clockUiWakeMagic = 0;
+  const bool requestedUiWake = esp_reset_reason() == ESP_RST_SW && clockUiWakeMagic == kClockUiWakeMagic;
+  clockUiWakeMagic = 0;
+  if (requestedUiWake) {
     clockState.magic = 0;
     userWakePending = true;
     return false;
@@ -308,6 +318,13 @@ bool DeskClockSleep::resumeAfterTimerWake() {
   // display composition may read and release the isolated read-only SD boot
   // store to obtain its ordinary provider; no storage.volume mount occurs.
 #if defined(BOARD_XTEINK_X4_PRO)
+  // Reject an unset/lost SDK epoch before loading any display dependencies.
+  // Ordinary startup owns RTC acquisition and time-setting UI recovery.
+  if (!halClock.isSystemTimeValid()) {
+    clockState.magic = 0;
+    LOG_ERR("CLOCK", "Clock timer wake has no valid time; returning to normal boot");
+    return false;
+  }
   if (!x4BeginClockDisplay()) {
     clockState.magic = 0;
     return false;

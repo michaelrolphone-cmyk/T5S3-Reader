@@ -311,6 +311,9 @@ jobs:
       - name: Run desk clock minute alignment tests
         run: bash test/run_desk_clock_test.sh
 
+      - name: Verify X4 RTC capability and preserved T5 clocks
+        run: bash test/run_x4pro_rtc_test.sh
+
       - name: Run clock sync RTC retry regression
         run: bash test/run_clock_sync_retry_test.sh
 

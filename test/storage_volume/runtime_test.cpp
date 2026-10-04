@@ -19,6 +19,19 @@ bool card_sleep_off;
 bool card_power_off;
 unsigned card_sleep_commits;
 uint64_t card_time;
+uint64_t sd_clock_mux_writes, sd_clock_direction_writes, sd_clock_levels;
+uint32_t sd_clock_cycles;
+unsigned sd_clock_cycle_calls, sd_clock_wraps;
+bool sd_clock_counter_stuck, sd_clock_readback_stuck, sd_clock_check_phases;
+uint32_t x4pro_sd_test_cycle_count(void) {
+    ++sd_clock_cycle_calls;
+    if (!sd_clock_counter_stuck) {
+        const uint32_t before = sd_clock_cycles;
+        sd_clock_cycles += 8;
+        if (sd_clock_cycles < before) ++sd_clock_wraps;
+    }
+    return sd_clock_cycles;
+}
 const risc_driver_v2 *t5_driver_get(uint32_t);
 }
 #ifdef TEST_SPI_TRANSPORT
@@ -103,6 +116,37 @@ int main(int argc, char **argv) {
     assert(Storage.mkdir("/.crosspoint"));
     assert(!Storage.mkdir("/Apps/../escape"));
     assert(!Storage.open("/Apps/../escape",O_WRONLY|O_CREAT));
+#ifndef TEST_SPI_TRANSPORT
+    if (argc > 1 && std::strcmp(argv[1], "clock-registers") == 0) {
+        assert(sd_clock_mux_writes > 80 && sd_clock_direction_writes > 80); // original identification edges retained
+        const auto mux = sd_clock_mux_writes, direction = sd_clock_direction_writes, levels = sd_clock_levels;
+        sd_clock_cycles = UINT32_MAX - 15u;
+        sd_clock_check_phases = true;
+        const std::string bytes(4096, 'Q');
+        assert(Storage.writeFile("/clock-probe", bytes.c_str()));
+        assert(Storage.readFile("/clock-probe") == bytes.c_str());
+        assert(sd_clock_levels > levels + 4096 * 8 * 2);
+        assert(sd_clock_mux_writes == mux && sd_clock_direction_writes == direction &&
+               "selected-card clock edges must not reconfigure CLK");
+        assert(sd_clock_wraps && !card_bad_pin && driver->quiesce());
+        std::free(card_image);
+        std::puts("Production GPIO helpers: identification setup retained, selected-card read/write clock levels only PASS");
+        return 0;
+    }
+#endif
+#ifndef TEST_SPI_TRANSPORT
+    if (argc > 1 && (!std::strcmp(argv[1], "clock-stuck-counter") || !std::strcmp(argv[1], "clock-stuck-readback"))) {
+        const unsigned before = sd_clock_cycle_calls;
+        sd_clock_counter_stuck = !std::strcmp(argv[1], "clock-stuck-counter");
+        sd_clock_readback_stuck = !sd_clock_counter_stuck;
+        auto rejected = Storage.open("/clock-fault", O_WRONLY | O_CREAT);
+        assert(!rejected && !Storage.ready());
+        assert(sd_clock_cycle_calls - before <= 129); // first failing edge, no unbounded retry
+        std::free(card_image);
+        std::puts("SD edge guard: stuck clock read-back/counter fails media I/O within poll bound PASS");
+        return 0;
+    }
+#endif
     std::fprintf(stderr,"settings\n");
     assert(Storage.writeFile("/.crosspoint/settings.json",String("{\"language\":0}")));
     assert(Storage.readFile("/.crosspoint/settings.json")=="{\"language\":0}");

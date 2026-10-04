@@ -16,6 +16,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/lib/hal" \
 echo '12/24-hour clock format tests passed'
 python3 "$repo_dir/test/desk_clock/DeepSleepWiringTest.py"
 python3 "$repo_dir/test/desk_clock/SleepBoundaryTest.py"
+python3 "$repo_dir/test/desk_clock/BootPowerTest.py"
+python3 "$repo_dir/test/desk_clock/ResumeBehaviorTest.py"
 echo 'Deep-sleep clock wiring tests passed'
 preview_dir="$(mktemp -d)"
 trap 'rm -f "$test_binary"; rm -rf "$preview_dir"' EXIT
