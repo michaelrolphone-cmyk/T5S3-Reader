@@ -23,12 +23,11 @@ bool ImageBlock::imageExists() const { return Storage.exists(imagePath.c_str());
 namespace {
 
 std::string getCachePath(const std::string& imagePath) {
-  // Replace extension with .pxc (pixel cache)
-  size_t dotPos = imagePath.rfind('.');
-  if (dotPos != std::string::npos) {
-    return imagePath.substr(0, dotPos) + ".pxc";
-  }
-  return imagePath + ".pxc";
+  // Keep the full source filename: e.g. diagram.jpg and diagram.png must not
+  // share pixels merely because their decoded dimensions happen to match.
+  // Use a new suffix as well: an old cache for diagram.jpg.png would otherwise
+  // collide with the new key for diagram.jpg. Never reuse ambiguous .pxc files.
+  return imagePath + ".pxc2";
 }
 
 bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x, int y, int expectedWidth,

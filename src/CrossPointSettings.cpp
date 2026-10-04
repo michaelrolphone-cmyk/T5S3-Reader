@@ -198,19 +198,32 @@ bool CrossPointSettings::migrateLanguageBinaryFile() {
   if (!Storage.exists(LANG_FILE_BIN)) return false;
 
   FsFile f;
-  if (Storage.openFileForRead("CPS", LANG_FILE_BIN, f)) {
-    uint8_t version;
-    serialization::readPod(f, version);
-    if (version == 1) {
-      uint8_t oldIndex;
-      serialization::readPod(f, oldIndex);
-      if (oldIndex < V1_LANGUAGE_COUNT) {
-        language = static_cast<uint8_t>(V1_LANGUAGES[oldIndex]);
-      }
-    }
+  if (!Storage.openFileForRead("CPS", LANG_FILE_BIN, f)) {
+    return false;
   }
-  Storage.rename(LANG_FILE_BIN, LANG_FILE_BAK);
-  saveToFile();
+
+  // Version 1 stores exactly the version byte and its frozen language index.
+  uint8_t record[2] = {};
+  const bool readOk = f.size() == sizeof(record) &&
+                      f.read(record, sizeof(record)) == static_cast<int>(sizeof(record)) && f.getError() == 0;
+  const bool closed = f.close();
+  if (!readOk || !closed || record[0] != 1 || record[1] >= V1_LANGUAGE_COUNT) {
+    LOG_ERR("CPS", "Failed to read valid legacy language settings");
+    return false;
+  }
+
+  const uint8_t previousLanguage = language;
+  language = static_cast<uint8_t>(V1_LANGUAGES[record[1]]);
+  if (!saveToFile()) {
+    language = previousLanguage;
+    LOG_ERR("CPS", "Failed to save migrated language settings");
+    return false;
+  }
+  if (!Storage.rename(LANG_FILE_BIN, LANG_FILE_BAK)) {
+    // The imported setting is already persisted. Keep the source for retry.
+    LOG_ERR("CPS", "Failed to retire migrated language.bin");
+    return false;
+  }
   LOG_DBG("CPS", "Migrated language.bin into settings.json");
   return true;
 }

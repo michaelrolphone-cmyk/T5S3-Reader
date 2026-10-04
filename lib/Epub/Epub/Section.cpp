@@ -155,7 +155,7 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
 
   // Create cache directory if it doesn't exist
   {
-    const auto sectionsDir = epub->getCachePath() + "/sections";
+    const auto sectionsDir = epub->getCachePath() + EpubContentCache::sections;
     Storage.mkdir(sectionsDir.c_str());
   }
 
@@ -206,7 +206,7 @@ bool Section::createSectionFile(const int fontId, const float lineCompression, c
   // Derive the content base directory and image cache path prefix for the parser
   size_t lastSlash = localPath.find_last_of('/');
   std::string contentBase = (lastSlash != std::string::npos) ? localPath.substr(0, lastSlash + 1) : "";
-  std::string imageBasePath = epub->getCachePath() + "/img_" + std::to_string(spineIndex) + "_";
+  std::string imageBasePath = epub->getCachePath() + EpubContentCache::imagePrefix + std::to_string(spineIndex) + "_";
 
   CssParser* cssParser = nullptr;
   if (embeddedStyle) {
