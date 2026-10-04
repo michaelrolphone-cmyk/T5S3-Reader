@@ -1,0 +1,31 @@
+name: fold-393-394-run
+on:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-393-394-run.yml'
+      - '.github/fold-sh.part0'
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+      - name: Assemble and fold
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import base64
+          from pathlib import Path
+          parts = sorted(Path('.github').glob('fold-sh.part*'))
+          assert parts, 'missing fold-sh.part*'
+          b64 = ''.join(p.read_text().strip() for p in parts)
+          Path('.github/fold-393-394.sh').write_bytes(base64.b64decode(b64))
+          print('script', Path('.github/fold-393-394.sh').stat().st_size, 'from', [p.name for p in parts])
+          PY
+          bash .github/fold-393-394.sh
