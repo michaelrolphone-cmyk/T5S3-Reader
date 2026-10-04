@@ -7,6 +7,7 @@ python3 "$repo_dir/test/util/url_resolution_test.py" --sanitize
 python3 "$repo_dir/test/activities/confirmation_touch_test.py"
 python3 "$repo_dir/test/epub_toc/path_test.py"
 python3 "$repo_dir/test/epub_paths/normalise_test.py"
+python3 "$repo_dir/test/epub_image_cache/image_cache_test.py" --sanitize
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 python3 "$repo_dir/test/activities/footnotes_viewport_test.py" --sanitize
