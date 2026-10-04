@@ -12,7 +12,8 @@ inline bool contains(const char* text) {
 template <class... Args>
 inline void fakeStorageLog(const char*, const char* format, Args... args) {
   char text[512]{};
-  std::snprintf(text, sizeof(text), format, args...);
+  if constexpr (sizeof...(args) == 0) std::snprintf(text, sizeof(text), "%s", format);
+  else std::snprintf(text, sizeof(text), format, args...);
   if (FakeStorageLog::lines.size() < 256) FakeStorageLog::lines.emplace_back(text);
 }
 #define LOG_ERR(...) fakeStorageLog(__VA_ARGS__)
