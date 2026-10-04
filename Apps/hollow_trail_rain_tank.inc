@@ -10,6 +10,8 @@ static int ht_rain_tank_weather_floor(const ht_game *g,int x0,int x1,int floor) 
      * shelter edge. This visual cover adds no collision or character mask. */
     if(ht_max(x0,x1)+cx>HT_RAIN_TANK_X-90 && ht_min(x0,x1)+cx<HT_RAIN_TANK_X+89)
         floor=ht_min(floor,ht_rain_tank_floor()-139-g->camera_y/256);
+    if(ht_max(x0,x1)+cx>HT_SIGNAL_ROOM_LEFT && ht_min(x0,x1)+cx<HT_SIGNAL_ROOM_RIGHT)
+        floor=ht_min(floor,ht_level_land(1)[7].top-HT_SIGNAL_ROOM_HEIGHT-g->camera_y/256);
     return floor;
 }
 static int ht_rain_window_x(void) { return ht_mechanics_by_level[1].ladders[2].x+38; }
@@ -63,28 +65,6 @@ static void ht_city_rain_tank(const ht_game *g) {
         }
         ht_limb(ht_scene,x-87,floor+2,x-51,floor+2,0,0,54);
         ht_limb(ht_scene,x+59,floor+2,x+90,floor+2,0,0,54);
-        ht_checkpoint();
-    }
-    /* The window is on the real upper roof reached by ladder 2, matching
-     * the schoolroom's third route anchor, not an unrelated distant beacon. */
-    int wx=ht_rain_window_x()-cx,roof=ht_level_land(1)[7].top-cy;
-    if(wx+69>=-margin && wx-42<=HT_W+margin) {
-        ht_rect(ht_scene,wx-38,roof-88,101,88,190);
-        ht_rect(ht_scene,wx+44,roof-87,19,87,223);
-        ht_triangle(ht_scene,wx-44,roof-88,wx+11,roof-107,wx+69,roof-88,234);
-        ht_limb(ht_scene,wx-44,roof-88,wx+69,roof-88,2,2,246);
-        for(int row=0;row<7;++row) {
-            int yy=roof-8-row*11;
-            ht_limb(ht_scene,wx-36,yy,wx+42,yy,0,0,164);
-            ht_limb(ht_scene,wx-20+(row%3)*21,yy,wx-20+(row%3)*21,yy-9,0,0,162);
-        }
-        bool lit=ht_rain_window_lit(g->ticks);
-        ht_rect(ht_scene,wx-22,roof-70,42,53,244);
-        ht_rect(ht_scene,wx-18,roof-66,34,45,lit?34:164);
-        ht_rect(ht_scene,wx-16,roof-64,30,39,lit?69:183);
-        ht_rect(ht_scene,wx-26,roof-17,51,4,lit?38:147);
-        ht_limb(ht_scene,wx-1,roof-67,wx-1,roof-21,1,1,225);
-        ht_limb(ht_scene,wx-18,roof-46,wx+16,roof-46,1,1,225);
         ht_checkpoint();
     }
     /* Bounded rain sheets in this court only; stop beneath the tank belly.

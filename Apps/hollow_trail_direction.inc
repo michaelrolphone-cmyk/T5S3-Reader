@@ -13,6 +13,9 @@ static int ht_pace_target(const ht_game *g) {
     };
     int x=ht_clamp(g->x/256,0,3199),span=x/800,u=x%800;
     int speed=walk[g->level][span]+((int)walk[g->level][span+1]-walk[g->level][span])*u/800;
+    if(g->level==1 && g->grounded && g->x/256>=HT_SIGNAL_ROOM_LEFT &&
+       g->x/256<=HT_SIGNAL_ROOM_RIGHT && ht_abs(g->y/256-ht_level_land(1)[7].top)<=3)
+        return 272; /* Set 11: 0.68 of the original 400-Q8 walking speed. */
     speed-=ht_exposure(g)/16;
     if(g->observation_ticks)speed-=24;
     return ht_clamp(speed,256,384);

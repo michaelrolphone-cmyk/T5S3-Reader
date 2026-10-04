@@ -88,6 +88,14 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_schoolroom_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_signal_room_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_relay_test.c" -o "$binary"
+"$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_renderer_test.c" -o "$binary"

@@ -1,6 +1,9 @@
-# Hollow Trail: novella alignment, 1.1.36
+# Hollow Trail: ongoing whole-book alignment
 
-This is an implementation map, not a claim that the 44-set direction is complete.
+This is the ongoing implementation map for the entire book. The assignment ends
+only when all relevant scenes, cutscenes, playable levels and scenery are drawn
+and connected in the game. A merged increment does not pause or complete it.
+The 44-set direction is not complete.
 The novella remains the narrative source; `HOLLOW_TRAIL_PLAYABLE_SCENES.md` remains
 the composition target. Existing ten-chapter traversal, boat quality, 960×270
 foreground option, Y emphasis and #331's slower introduction are retained.
@@ -58,6 +61,15 @@ then returns to the same spawned city state with a neutral-input gate. It does
 not solve the forest puzzle, automatically climb the ladder or substitute for
 city exploration. Later chapter jumps do not trigger it; it is once per session.
 
+## Current connected increment: signal room, 1.1.48
+
+[The empty signal room](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md) connects the rain-tank
+light to a human-scale playable room on the existing upper roof, a two-cycle
+arrival tableau, and player-controlled physical watch-log comparison. The
+existing relay remains player-operated. Source, screenshot and regression
+checks are recorded with the increment; the relay now lights the existing lower windows and earns a reaction shot.
+The full westward transition and window-entry/handprint beats remain unfinished.
+
 ## Scene-by-scene remaining map
 
 “Partial” means there is relevant source/gameplay/art, not full novella parity.
@@ -77,7 +89,7 @@ traversal wholesale with autoplay.
 | 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
 | 10 Rain tank/crossings | [Tank refuge and earned opposite-window tableau, 1.1.45](HOLLOW_TRAIL_RAIN_TANK_1_1_45.md), existing physical roofs retained | Brief submerged street glimpse; connect arrival to empty signal-room inspection |
-| 11 Signal room/relay | Existing relay/log puzzle and narrative | Empty chair/automated wheel staging; reveal rather than assume mechanism |
+| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in the same 1.1.48 continuation; add westward warehouse/siding/pump-country composition and explicit window-entry/handprint beats |
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
 | 14 Stove shed | Narrative fragment only | Cold ordered interior, wrapped pipe, dish rings responding to knocks |
@@ -116,8 +128,9 @@ traversal wholesale with autoplay.
 
 1. Finish Chapter I's mill interaction and clearing terrain without
    replacing tree/rope gameplay; use the new timeline where stillness aids story
-2. Build the schoolroom → rain tank → empty signal-room sequence as connected
-   city spaces, preserving existing traversal and player-operated relay
+2. Continue the connected schoolroom → rain tank → signal-room sequence with
+   the submerged-street glimpse and relay-restoration/westward-view response;
+   preserve existing traversal and the player-operated relay
 3. Continue chapter-by-chapter. The last-door ending is an explicit missing
    product outcome, not something the existing ten-chapter loop already proves
 
