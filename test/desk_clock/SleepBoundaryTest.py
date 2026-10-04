@@ -44,6 +44,7 @@ int main(){
 run(r'''
 #include <cassert>
 #include <cstdio>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -67,6 +68,15 @@ unsigned long millis(){return 0;}
 constexpr unsigned long kDoubleClickWindowMs=400;
 constexpr int eIncrement=1;
 void xTaskNotify(void*,int,int){}
+std::string transitionCalls;
+uint32_t touchEpoch=0;
+void nativeTouchBeginSurfaceTransition(bool requirePresentation){
+ assert(requirePresentation);++touchEpoch;transitionCalls+='f';
+}
+uint32_t nativeTouchPresentationEpoch(){return touchEpoch;}
+void nativeTouchCompleteSurfaceTransition(uint32_t epoch){
+ assert(epoch==touchEpoch);transitionCalls+='c';
+}
 struct Activity {
  std::string name;ActivityResult result=0;
  std::function<void(ActivityResult)>resultHandler;
@@ -96,13 +106,15 @@ int main(){
  ActivityManager manager;unsigned loops=0,exits=0,enters=0;
  manager.currentActivity=std::make_unique<Activity>();manager.currentActivity->name="Settings";
  manager.currentActivity->loopFn=[&]{++loops;manager.pendingAction=ActivityManager::PendingAction::Pop;manager.pendingActivity.reset();};
- manager.currentActivity->exitFn=[&]{++exits;};
+ manager.currentActivity->exitFn=[&]{++exits;transitionCalls+='x';};
  manager.pendingActivity=std::make_unique<Activity>();manager.pendingActivity->name="Sleep";
- manager.pendingActivity->enterFn=[&]{++enters;};
+ manager.pendingActivity->enterFn=[&]{++enters;transitionCalls+='e';};
  manager.pendingAction=ActivityManager::PendingAction::Replace;
  manager.loop();
  assert(loops==0 && exits==1 && enters==1 && manager.currentActivity->name=="Sleep");
+ assert(transitionCalls=="xfec" && touchEpoch==1);
  manager.currentActivity->loopFn=[&]{++loops;};manager.loop();assert(loops==1);
+ assert(transitionCalls=="xfec" && touchEpoch==1);
  std::puts("Production activity transition: pending Sleep cannot be replaced by outgoing finish/relaunch PASS");
 }
 ''')
