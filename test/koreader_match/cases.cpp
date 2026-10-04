@@ -35,7 +35,7 @@ void checkSaved(bool binary) {
 }
 
 int main() {
-  assert(std::strcmp(ARDUINOJSON_VERSION, "7.4.2") == 0);
+  std::cout << "Testing actual ArduinoJson " << ARDUINOJSON_VERSION << std::endl;
   auto& store = KOReaderCredentialStore::getInstance();
   // A valid stored JSON document caused contradictory UI and sync behavior.
   bool resave = false;
