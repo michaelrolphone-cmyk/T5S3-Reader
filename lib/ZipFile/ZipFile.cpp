@@ -5,6 +5,8 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <Arduino.h>
+#include <new>
 
 struct ZipInflateCtx {
   InflateReader reader;  // Must be first — callback casts uzlib_uncomp* to ZipInflateCtx*
@@ -116,7 +118,115 @@ bool ZipFile::loadAllFileStatSlims() {
   return true;
 }
 
+bool ZipFile::cacheSelectedFileStats(const std::vector<std::string>& filenames,
+                                    std::string (*normalize)(const std::string&)) {
+  // Optional optimization only: cap retained names, scan work and elapsed time.
+  // Keep the same live handle through extraction; never reuse this cache on reopen.
+  constexpr size_t MAX_NAMES = 64;
+  constexpr size_t MAX_NAME_BYTES = 4096;
+  constexpr uint16_t MAX_ENTRIES = 4096;
+  constexpr uint32_t MAX_SCAN_MS = 15000;
+  if (!isOpen() || selectedFileStats || !fileStatSlimCache.empty() || filenames.empty() || filenames.size() > MAX_NAMES) {
+    return false;
+  }
+  size_t nameBytes = 0;
+  for (const auto& name : filenames) {
+    if (name.size() >= 256 || name.find('\0') != std::string::npos) return false;
+    nameBytes += name.size() + 1;
+    if (nameBytes > MAX_NAME_BYTES) return false;
+  }
+  const uint32_t started = millis();
+  uint32_t lastYield = started;
+  size_t bytesSinceYield = 0;
+  auto fail = [&]() {
+    selectedFileStats.reset();
+    selectedFileNames.reset();
+    selectedFileCount = 0;
+    lastCentralDirPosValid = false;
+    zipDetails = {0, 0, false};
+    LOG_DBG("ZIP", "Selected metadata unavailable; using ordinary lookups");
+    return false;
+  };
+  // Two bounded non-throwing allocations; failure is only an optimization miss.
+  selectedFileStats.reset(new (std::nothrow) SelectedFileStat[filenames.size()]{});
+  selectedFileNames.reset(new (std::nothrow) char[nameBytes]);
+  if (!selectedFileStats || !selectedFileNames) return fail();
+  size_t nameOffset = 0;
+  for (size_t i = 0; i < filenames.size(); ++i) {
+    // Normalize only one bounded name at a time using the caller's existing
+    // resolver. Refuse expansion beyond the preallocated input-byte budget.
+    const std::string name = normalize ? normalize(filenames[i]) : filenames[i];
+    if (name.size() >= 256 || name.find('\0') != std::string::npos || nameOffset + name.size() + 1 > nameBytes) {
+      return fail();
+    }
+    selectedFileStats[i].nameOffset = static_cast<uint16_t>(nameOffset);
+    memcpy(selectedFileNames.get() + nameOffset, name.c_str(), name.size() + 1);
+    nameOffset += name.size() + 1;
+  }
+  if (!loadZipDetails() || zipDetails.totalEntries > MAX_ENTRIES || !file.seek(zipDetails.centralDirOffset)) return fail();
+  const auto read16 = [](const uint8_t* p) { return static_cast<uint16_t>(p[0] | (uint16_t(p[1]) << 8)); };
+  const auto read32 = [](const uint8_t* p) {
+    return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
+  };
+  for (uint16_t entry = 0; entry < zipDetails.totalEntries; ++entry) {
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= MAX_SCAN_MS) return fail();
+    if ((entry != 0 && entry % 32 == 0) || bytesSinceYield >= 16384 ||
+        static_cast<uint32_t>(now - lastYield) >= 20) {
+      vTaskDelay(1);
+      lastYield = millis();
+      bytesSinceYield = 0;
+    }
+    uint8_t header[46];
+    if (file.read(header, sizeof(header)) != sizeof(header) || read32(header) != 0x02014b50) return fail();
+    const uint16_t nameLen = read16(header + 28);
+    const uint32_t trailing = uint32_t(read16(header + 30)) + read16(header + 32);
+    const uint64_t next = uint64_t(file.position()) + nameLen + trailing;
+    if (next > file.size()) return fail();
+    char name[256];
+    if (nameLen < sizeof(name)) {
+      if (file.read(name, nameLen) != nameLen) return fail();
+      name[nameLen] = '\0';
+      // Preserve the ordinary lookup's first exact C-string match, including
+      // duplicate ZIP members. No hash-only identity or archive-wide map.
+      for (size_t i = 0; i < filenames.size(); ++i) {
+        auto& target = selectedFileStats[i];
+        if (!target.found && strcmp(name, selectedFileNames.get() + target.nameOffset) == 0) {
+          target.stat = FileStatSlim{read16(header + 10), read32(header + 20), read32(header + 24), read32(header + 42)};
+          target.found = true;
+        }
+      }
+    }
+    if (!file.seek(next)) return fail();
+    bool complete = true;
+    for (size_t i = 0; i < filenames.size(); ++i) {
+      if (!selectedFileStats[i].found) { complete = false; break; }
+    }
+    if (complete) break;
+    bytesSinceYield += sizeof(header) + nameLen + trailing;
+  }
+  if (static_cast<uint32_t>(millis() - started) >= MAX_SCAN_MS) return fail();
+  // A missing target or an inconsistent entry count must retain ordinary lookup
+  // behavior rather than turning an incomplete optional table into negative proof.
+  for (size_t i = 0; i < filenames.size(); ++i) {
+    if (!selectedFileStats[i].found) return fail();
+  }
+  selectedFileCount = filenames.size();
+  LOG_DBG("ZIP", "Cached %zu selected member stats", selectedFileCount);
+  return true;
+}
+
 bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
+  if (selectedFileCount != 0) {
+    for (size_t i = 0; i < selectedFileCount; ++i) {
+      const auto& selected = selectedFileStats[i];
+      if (strcmp(filename, selectedFileNames.get() + selected.nameOffset) == 0) {
+        *fileStat = selected.stat;
+        return true;
+      }
+    }
+    return false;
+  }
   if (!fileStatSlimCache.empty()) {
     const auto it = fileStatSlimCache.find(filename);
     if (it != fileStatSlimCache.end()) {
@@ -281,6 +391,7 @@ bool ZipFile::loadZipDetails() {
 }
 
 bool ZipFile::open() {
+  if (selectedFileStats) close();  // Reopening must never carry metadata to another handle.
   if (!Storage.openFileForRead("ZIP", filePath, file)) {
     return false;
   }
@@ -288,6 +399,12 @@ bool ZipFile::open() {
 }
 
 bool ZipFile::close() {
+  if (selectedFileStats) {
+    selectedFileStats.reset();
+    selectedFileNames.reset();
+    selectedFileCount = 0;
+    zipDetails = {0, 0, false};
+  }
   if (file) {
     // Explicit close() required: member variable persists beyond function scope
     file.close();
