@@ -63,16 +63,16 @@ OpdsServer fromNative(const t5_opds_server_t& server) {
 
 uint32_t countServers() {
   if (!active()) return 0;
-  OPDS_STORE.loadFromFile();
+  if (!OPDS_STORE.loadFromFile()) return 0;
   return static_cast<uint32_t>(OPDS_STORE.getCount());
 }
 
 bool readServer(uint32_t index, t5_opds_server_t* out) {
   if (!active() || !out) return false;
-  OPDS_STORE.loadFromFile();
+  *out = {};
+  if (!OPDS_STORE.loadFromFile()) return false;
   const auto* server = OPDS_STORE.getServer(index);
   if (!server) return false;
-  *out = {};
   copyText(out->name, sizeof(out->name), server->name);
   copyText(out->url, sizeof(out->url), server->url);
   copyText(out->username, sizeof(out->username), server->username);
