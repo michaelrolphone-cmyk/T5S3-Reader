@@ -1,0 +1,95 @@
+name: Fold 405 into rollup
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-405-simple.yml'
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply #405 BUG-142 fold
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if grep -q 'version = 1.3.115' platformio.ini \
+             && test -f docs/bugfix/BUG-142.md \
+             && test -f test/opds_response/response_test.cpp \
+             && grep -q 'emittedAny' src/network/CrossPointWebServer.cpp \
+             && grep -q 'opds_response/response_test.py' .github/workflows/platformio-build.yml \
+             && grep -q 'opds_reload/reload_test.py' .github/workflows/platformio-build.yml; then
+            echo "Already folded"
+            rm -f .github/workflows/fold-405-simple.yml
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "temp: cleanup fold-405 helper"
+              git push origin HEAD:fix/consolidated-bugs-20261003-c
+            fi
+            exit 0
+          fi
+
+          git fetch origin fix/bug142-opds-json-separators
+          SRC405=533275e444f32fe1e665a72a6aa1c0fa903e4a49
+
+          git checkout "$SRC405" -- \
+            docs/bugfix/BUG-142.md \
+            src/network/CrossPointWebServer.cpp \
+            test/opds_response/response_test.cpp \
+            test/opds_response/response_test.py
+
+          sed -i -E 's/^version = 1\.3\.[0-9]+$/version = 1.3.115/' platformio.ini
+
+          if ! grep -q 'opds_response/response_test.py' .github/workflows/platformio-build.yml; then
+            python3 - <<'PY'
+from pathlib import Path
+p = Path('.github/workflows/platformio-build.yml')
+text = p.read_text()
+marker = 'test/opds_reload/reload_test.py'
+if marker not in text:
+    raise SystemExit('opds_reload step missing on rollup')
+# Insert the new step immediately after the reload_test.py run line.
+lines = text.splitlines(keepends=True)
+out = []
+inserted = False
+for line in lines:
+    out.append(line)
+    if (not inserted) and marker in line and line.lstrip().startswith('run:'):
+        out.append('\n')
+        out.append('      - name: Verify OPDS JSON separators with actual ArduinoJson\n')
+        # Keep the same matrix env expression as neighboring steps.
+        expr = '$' + '{{ matrix.environment }}'
+        out.append('        run: python3 test/opds_response/response_test.py ".pio/libdeps/' + expr + '/ArduinoJson/src" --sanitize\n')
+        inserted = True
+if not inserted:
+    raise SystemExit('failed to locate opds_reload run line')
+p.write_text(''.join(out))
+print('inserted opds_response step')
+PY
+          fi
+
+          grep -q 'version = 1.3.115' platformio.ini
+          grep -q 'emittedAny' src/network/CrossPointWebServer.cpp
+          grep -q 'opds_reload/reload_test.py' .github/workflows/platformio-build.yml
+          grep -q 'opds_response/response_test.py' .github/workflows/platformio-build.yml
+          test -f docs/bugfix/BUG-142.md
+          test -f test/opds_response/response_test.cpp
+          test -f test/opds_response/response_test.py
+          grep -q '1.1.47' Apps/hollow_trail.json
+          grep -q 'BOOK_CACHE_VERSION = 11' lib/Epub/Epub/BookMetadataCache.cpp
+
+          rm -f .github/workflows/fold-405-simple.yml
+          git add -A
+          git commit -m "Fold #405 BUG-142 into rollup (firmware 1.3.115)"
+          git push origin HEAD:fix/consolidated-bugs-20261003-c
+          echo "Pushed $(git rev-parse HEAD)"
+          git log --oneline -5
