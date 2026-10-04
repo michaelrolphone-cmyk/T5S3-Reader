@@ -44,3 +44,6 @@ c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual \
 if [[ $# -ge 2 ]]; then
   "$binary" "$2" >"${3:?measurement output required}"
 fi
+
+# Actual state JSON codec and legacy migration caller, with the firmware JSON library.
+python3 "$repo_dir/test/state_json/state_test.py" "$json_include" --sanitize
