@@ -1,3 +1,16 @@
+## Active owner-directed ledger reconciliation — 2026-10-04 15:06 UTC
+
+- Sole coordinator: `resume_scan_reconcile_ledger`. Scope: the canonical ledger files in `michaelrolphone-cmyk/T5S3-Reader`, plus read-only bug discovery in Reader and `michaelrolphone-cmyk/RiscRTE`. No implementation repair is claimed by this run.
+- The owner explicitly resumed scanning and authorized direct shared-ledger reconciliation, writes and merges at 14:51 UTC, then directed use of normal native context rather than the unavailable Codex-credit route at 15:05 UTC. This is an explicit owner-directed coordinator supersession, not an inference from a stale timestamp.
+- Previous recorded coordinator `task11_wrap42_20261003` and all its history/work remain preserved below. Its executor still reports in progress without a final result; this run does not assert that the executor stopped or that its local worktree is clean. A pause/handoff message was accepted; no further executor work is a prerequisite or authorized route for this reconciliation.
+- Remote evidence: its BUG-42 repair [PR #375](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/375) merged on 2026-10-03 at 16:59:44 UTC; exact repair head `f1ea32017dff1fc68899ae8c59701223a3a2151a` has all eight hosted checks successful. Current master `1d97f4f4050a2f0ec693d5b0f95b27f7be4e49d2` retains the repaired BaseTheme and regression blobs. Full status reconciliation follows separately.
+- Captured coordination parent: `13f6c55cf482738f583efc58cd922e0afe835108`. Every publication constructs a child of the freshly captured current head and updates this ref non-force. Any divergent pending legacy publication must fail; all later workers must reread this checkpoint and route evidence to this coordinator. Never force, reset, discard local work, or bypass a rejected write.
+- Queue cutoff initially inspected: PR #332 comments through 5981298613 (2026-10-04 14:55:51 UTC), with another refresh required before final publication. Preserve original canonical IDs, aliases and full report provenance. Incorporate repository-qualified routing, real merged-source verification, terminal open-fix states and queued performance evidence; correct misassociated status text without deleting it.
+- Current source baselines: Reader master `1d97f4f4050a2f0ec693d5b0f95b27f7be4e49d2`; RiscRTE main `be74e9408577b9a58d86bfae4e6050c8a7fb88ab`. X4 PR #350 and active RiscRTE/Watch feature and repair branches are unmerged, separately owned, and untouched.
+- Phase: source/evidence review and three-file reconciliation. Ledger-only PR #332 remains the sole coordination PR. Merge permission is limited to the reviewed ledger-only change; it does not authorize code PR merges, release, deployment or device work.
+
+---
+
 ## Published repair / CI pending — canonical #42 — 2026-10-03T03:38:21.121Z
 
 - Claim `task11_wrap42_20261003` remains active. Draft [PR #375](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/375), `fix/text-wrap-leading-token`, directly targets master `3d9bc4f373679f5ae8dd184db6a8d0afa5a40231`. Exact remote head `f1ea32017dff1fc68899ae8c59701223a3a2151a` verified by fetch, ls-remote, and clean matching local checkout.
