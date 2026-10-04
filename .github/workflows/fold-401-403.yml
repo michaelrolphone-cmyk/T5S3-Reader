@@ -1,0 +1,157 @@
+name: Fold 401 and 403 into rollup
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-401-403.yml'
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Fold #401 then #403
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          already=0
+          if grep -q 'version = 1.3.113' platformio.ini \
+             && test -f docs/BUG179_XTC_METADATA_REPAIR.md \
+             && test -f docs/bugfix/BUG-44.md \
+             && test -f test/run_xtc_metadata_test.sh \
+             && test -f test/opds_reload/reload_test.cpp \
+             && grep -q 'run_xtc_metadata_test.sh' test/run_springboard_test.sh \
+             && grep -q 'Verify OPDS reload failure' .github/workflows/platformio-build.yml; then
+            already=1
+          fi
+
+          if [ "$already" = 1 ]; then
+            echo "Both folds already on rollup; cleaning workflow only"
+            rm -f .github/workflows/fold-401-403.yml
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "temp: remove fold-401-403 one-shot workflow"
+              git push origin HEAD:fix/consolidated-bugs-20261003-c
+            fi
+            exit 0
+          fi
+
+          git fetch origin fix/bug179-xtc-metadata-offset fix/bug44-opds-stale-reload
+          SRC401=4a4b20c2819fb9d61bf45918caf9377c02e034eb
+          SRC403=d707533fbce61dcaa2cb6786b3175932709cb0a1
+
+          resolve_version() {
+            local ver="$1"
+            python3 - "$ver" <<'PY'
+import re, sys
+from pathlib import Path
+ver = sys.argv[1]
+p = Path("platformio.ini")
+text = p.read_text()
+text2 = re.sub(
+    r"<<<<<<<[^\n]*\nversion = 1\.3\.\d+\n=======\nversion = 1\.3\.\d+\n>>>>>>>[^\n]*\n",
+    f"version = {ver}\n",
+    text,
+    count=1,
+)
+if "<<<<<<<" in text2:
+    raise SystemExit("unresolved conflict in platformio.ini")
+p.write_text(text2)
+print(f"platformio -> {ver}")
+PY
+          }
+
+          resolve_springboard() {
+            python3 <<'PY'
+import re
+from pathlib import Path
+p = Path("test/run_springboard_test.sh")
+text = p.read_text()
+m = re.search(r"<<<<<<<[^\n]*\n(.*?)\n=======\n(.*?)\n>>>>>>>[^\n]*\n", text, re.S)
+if not m:
+    raise SystemExit("expected springboard conflict")
+ours = m.group(1).rstrip("\n")
+theirs = m.group(2).rstrip("\n")
+combined = ours + "\n" + theirs + "\n"
+text = text[: m.start()] + combined + text[m.end() :]
+if "<<<<<<<" in text:
+    raise SystemExit("unresolved springboard conflict")
+if "run_xtc_metadata_test.sh" not in text:
+    raise SystemExit("missing xtc wire-in")
+if "run_language_migration_test.sh" not in text:
+    raise SystemExit("dropped language migration wire-in")
+p.write_text(text)
+print("springboard: kept rollup + xtc")
+PY
+          }
+
+          if ! test -f docs/BUG179_XTC_METADATA_REPAIR.md; then
+            set +e
+            git cherry-pick "$SRC401"
+            st=$?
+            set -e
+            if [ "$st" -ne 0 ]; then
+              if grep -q '<<<<<<' platformio.ini 2>/dev/null; then
+                resolve_version 1.3.111
+                git add platformio.ini
+              fi
+              if grep -q '<<<<<<' test/run_springboard_test.sh 2>/dev/null; then
+                resolve_springboard
+                git add test/run_springboard_test.sh
+              fi
+              git add -u
+              GIT_EDITOR=true git cherry-pick --continue
+            fi
+            echo "Folded #401 as $(git rev-parse --short HEAD)"
+          fi
+
+          if ! test -f docs/bugfix/BUG-44.md; then
+            set +e
+            git cherry-pick "$SRC403"
+            st=$?
+            set -e
+            if [ "$st" -ne 0 ]; then
+              if grep -q '<<<<<<' platformio.ini 2>/dev/null; then
+                resolve_version 1.3.113
+                git add platformio.ini
+              fi
+              git add -u
+              GIT_EDITOR=true git cherry-pick --continue
+            fi
+            echo "Folded #403 as $(git rev-parse --short HEAD)"
+          fi
+
+          sed -i -E 's/^version = 1\.3\.[0-9]+$/version = 1.3.113/' platformio.ini
+          grep -q 'version = 1.3.113' platformio.ini
+          test -f docs/BUG179_XTC_METADATA_REPAIR.md
+          test -f docs/bugfix/BUG-44.md
+          test -f test/run_xtc_metadata_test.sh
+          test -f test/opds_reload/reload_test.cpp
+          grep -q 'run_xtc_metadata_test.sh' test/run_springboard_test.sh
+          grep -q 'Verify OPDS reload failure' .github/workflows/platformio-build.yml
+          grep -q 'servers.clear()' src/OpdsServerStore.cpp
+          grep -q 'metadataOffset' lib/Xtc/Xtc/XtcParser.cpp
+          grep -q '1.1.47' Apps/hollow_trail.json
+          grep -q 'BOOK_CACHE_VERSION = 11' lib/Epub/Epub/BookMetadataCache.cpp
+
+          if ! git diff --quiet -- platformio.ini; then
+            git add platformio.ini
+            git commit -m "chore: ensure firmware 1.3.113 after #401/#403 fold"
+          fi
+
+          rm -f .github/workflows/fold-401-403.yml
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "temp: remove fold-401-403 one-shot workflow"
+          fi
+          git push origin HEAD:fix/consolidated-bugs-20261003-c
+          echo "Pushed $(git rev-parse HEAD)"
+          git log --oneline -6
