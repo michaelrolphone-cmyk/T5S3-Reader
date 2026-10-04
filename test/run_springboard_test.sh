@@ -13,6 +13,7 @@ SANITIZE=1 bash "$repo_dir/test/run_language_migration_test.sh"
 XTC_SANITIZE=1 bash "$repo_dir/test/run_xtc_metadata_test.sh"
 python3 "$repo_dir/test/activities/confirmation_touch_test.py"
 python3 "$repo_dir/test/epub_toc/path_test.py"
+EPUB_SANITIZE=1 python3 "$repo_dir/test/epub_toc_index/index_test.py"
 python3 "$repo_dir/test/epub_paths/normalise_test.py"
 python3 "$repo_dir/test/epub_image_cache/image_cache_test.py" --sanitize
 binary="$(mktemp)"

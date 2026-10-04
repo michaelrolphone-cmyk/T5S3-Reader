@@ -64,6 +64,12 @@ class BookMetadataCache {
   std::deque<SpineHrefIndexEntry> spineHrefIndex;
   bool useSpineHrefIndex = false;
 
+  // Exact lookup for small spines, bounded independently of TOC/link count.
+  // Keep first-match semantics; the large-book hash index remains unchanged.
+  static constexpr size_t SMALL_SPINE_HREF_BYTES = 8192;
+  std::deque<std::string> smallSpineHrefs;
+  bool useSmallSpineHrefs = false;
+
   // Medium-to-large books benefit from the faster batch/indexed paths well
   // before they hit the "huge EPUB" range.
   static constexpr uint16_t LARGE_SPINE_THRESHOLD = 128;
