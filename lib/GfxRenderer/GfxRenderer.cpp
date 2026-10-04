@@ -1306,6 +1306,91 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   return widthPx;
 }
 
+bool GfxRenderer::getTextPrefixMetrics(const int fontId, const std::string& text, TextPrefixMetrics& metrics,
+                                       const EpdFontFamily::Style style) const {
+  // The chapter parser caps tokens at 200 bytes. This optional, allocation-free path
+  // performs at most 200 RAM-only steps; oversized tokens keep the ordinary path.
+  if (text.empty() || text.size() > TextPrefixMetrics::MAX_BYTES) return false;
+  auto sdIt = sdCardFonts_.find(fontId);
+  const bool sd = sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable();
+  const auto fontIt = fontMap.find(fontId);
+  const EpdFontData* data = fontIt == fontMap.end() ? nullptr : fontIt->second.getData(style);
+  // Lazy glyph callbacks may perform I/O or change their cache. Do not speculate
+  // through those callbacks while measuring every prefix.
+  if (!sd && (!data || data->glyphMissHandler)) return false;
+  const EpdFont font(data);
+  const uint8_t sdStyle = sd ? resolveSdCardStyle(*sdIt->second, style) : 0;
+  const uint16_t hyphenAdvance = sd ? sdIt->second->getAdvance('-', sdStyle) : 0;
+  // A zero can mean a cache miss. Fall back to getTextAdvanceX so its SD-miss
+  // policy (including on-demand metrics) remains authoritative after integration.
+  if (sd && hyphenAdvance == 0) return false;
+
+  struct State {
+    int finishedPx = 0;
+    uint32_t beforeCp = 0, lastCp = 0;
+    int32_t beforeAdvance = 0, lastAdvance = 0;
+    bool canLigate = false;
+  } state;
+  const auto append = [&font](State& value, uint32_t cp) {
+    // Keep the last two glyphs pending: extending the last greedy ligature can
+    // change both its own advance and the kerning from its preceding glyph.
+    const uint32_t ligature = value.canLigate ? font.getLigature(value.lastCp, cp) : 0;
+    if (ligature) {
+      value.lastCp = ligature;
+    } else {
+      if (utf8IsCombiningMark(cp)) {
+        value.canLigate = false;  // A skipped mark still stops ligature lookahead.
+        return;
+      }
+      if (value.beforeCp) {
+        value.finishedPx += fp4::toPixel(value.beforeAdvance + font.getKerning(value.beforeCp, value.lastCp));
+      }
+      value.beforeCp = value.lastCp;
+      value.beforeAdvance = value.lastAdvance;
+      value.lastCp = cp;
+      value.canLigate = true;
+    }
+    const EpdGlyph* glyph = font.getGlyph(value.lastCp);
+    value.lastAdvance = glyph ? glyph->advanceX : 0;
+  };
+  const auto width = [&font](const State& value) {
+    return value.finishedPx +
+           (value.beforeCp ? fp4::toPixel(value.beforeAdvance + font.getKerning(value.beforeCp, value.lastCp)) : 0) +
+           fp4::toPixel(value.lastAdvance);
+  };
+
+  int32_t widthFP = 0;
+  const auto* begin = reinterpret_cast<const uint8_t*>(text.c_str());
+  const auto* cursor = begin;
+  const auto* end = begin + text.size();
+  while (cursor < end) {
+    const uint32_t cp = utf8NextCodepoint(&cursor);
+    // The fallback also preserves the decoder's malformed-input behavior and
+    // embedded NUL handling; never consume a partial table on failure.
+    if (cp == 0 || cp == REPLACEMENT_GLYPH || cursor > end) return false;
+    if (cp != 0x00AD) {  // Match measureWordWidth's removal of soft hyphens.
+      if (sd) {
+        const uint16_t advance = sdIt->second->getAdvance(cp, sdStyle);
+        if (advance == 0) return false;
+        widthFP += advance;
+      } else {
+        append(state, cp);
+      }
+    }
+    const size_t offset = cursor - begin;
+    if (sd) {
+      metrics.plain[offset] = static_cast<uint16_t>(fp4::toPixel(widthFP));
+      metrics.hyphenated[offset] = static_cast<uint16_t>(fp4::toPixel(widthFP + hyphenAdvance));
+    } else {
+      metrics.plain[offset] = static_cast<uint16_t>(width(state));
+      State withHyphen = state;
+      append(withHyphen, '-');
+      metrics.hyphenated[offset] = static_cast<uint16_t>(width(withHyphen));
+    }
+  }
+  return true;
+}
+
 int GfxRenderer::getFontAscenderSize(const int fontId) const {
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) {
