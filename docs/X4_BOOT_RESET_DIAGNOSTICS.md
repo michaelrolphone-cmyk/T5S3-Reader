@@ -64,8 +64,94 @@ A stage names the last operation entered, not proof of its completion or a
 hardware root cause. A failure reason is copied when an existing return path
 rejects setup. Optional RTC/battery absence retains its ordinary diagnostics;
 it does not become a new boot admission rule. A record at `home-present`
-without a failure can identify work still inside the existing first-render
-wait. `ready` means that first physical presentation reported completion.
+without a failure means the first destination presentation has not yet been
+observed as successful. `requestUpdate(true)` queues the render task; it does
+not wait synchronously. `ready` means that first physical presentation reported
+completion. The heartbeat cannot emit a summary while its owner is still
+inside a non-returning SDK call, and an early ROM/core failure can precede the
+first diagnostic checkpoint.
+
+## Follow-through after the diagnostic delivery
+
+The following investigation used published source
+`aa9b6075d9be03614090c7228d6384a223a306c2`, tree
+`1202b77694372fb4d1762bc9c6f757868fccdb71`, firmware 1.3.122. Its firmware
+ELF SHA-256 was
+`148580112236bfea5d2702894b2eef788dc8a4bc8f0aefa80703c2a956b294e4`.
+This follow-through changes tests and documentation only.
+
+The production boot orchestration and loop were executed with injected mount,
+package-validation, release and activation failures. In each case four modeled
+minutes of disconnected loop iterations left `ready=0`. Switching the modeled
+USB connection on for another ten seconds caused no additional mount,
+validation, release or activation. Even a repeated bootstrap call returned
+the cached failure. A successful first presentation remains the positive
+control. These are software control-flow results, not a physical timing or
+USB-power model.
+
+The production `SdBootReader.cpp` was also executed against SDK/FatFs endpoint
+doubles. Returned host/slot/card/filesystem failures unwind without publishing
+the ordinary storage owner. A command requested with a long timeout is capped
+at 250 ms; an expired operation refuses the next command. Uncertain file close,
+controller deinitialization and rail parking retain bootstrap ownership and
+prevent a second owner. This covers failures that return to Reader.
+
+### The wrapper does not bound every SDK hardware poll
+
+The linked firmware identifies its SDK as `v4.4.7-dirty`. The matching
+[IDF host source](https://github.com/espressif/esp-idf/blob/v4.4.7/components/driver/sdmmc_host.c#L71)
+busy-polls controller reset bits without a timeout. Its clock-update and
+start-command paths also poll hardware without a deadline. The
+[transaction layer](https://github.com/espressif/esp-idf/blob/v4.4.7/components/driver/sdmmc_transaction.c#L108)
+takes its request mutex with `portMAX_DELAY`; command timeouts are applied to
+individual event waits. Reader checks its operation deadline before and after
+these calls, so it cannot interrupt a call that never returns.
+
+The actual delivered ELF confirms the reset loop at `sdmmc_host_reset`
+`0x420d7458`: its branches at `0x420d7491`, `0x420d7499` and `0x420d74a1`
+return directly to register reads at `0x420d748c`, without a timer call.
+A source-extracted SDK register experiment returned when the modeled reset
+bits cleared, but remained in the loop after the modeled 20-second Reader
+deadline when a bit stayed set. The external host test timeout stopped that
+negative experiment. This establishes a lower-layer boundedness limitation,
+not evidence that the device hit it or that USB attachment would clear it.
+The 250 ms/20 s/45 s limits must not be described as an end-to-end guarantee
+against stuck SDK hardware polling. A safe future repair would have to
+propagate checked SDK failure and preserve controller ownership; simply
+returning while a worker still owns the bus would be unsafe.
+
+`test/bootstrap_store/sdk_polling_probe.py` preserves that supplemental
+experiment. It requires the caller to supply the pinned official
+`sdmmc_host.c`, checks its SHA-256 before extracting the function, and never
+downloads code itself. Run it with that file path as its sole argument. It is
+not an automatic CI assertion that the SDK must keep this limitation; a future
+SDK repair should replace the probe with a checked-timeout regression.
+
+### Qualified reference differences
+
+[Pinned FreeInk SD initialization](https://github.com/Free-Ink/freeink-sdk/blob/aef1a6c89e36f331b2e1aacbbf7ce0debdeb732a/libs/hardware/SDCardManager/src/SdmmcBlockDevice.cpp)
+configures the host/slot before the same 80 ms OFF / 120 ms ON cycle, sets the
+slot's internal-pullup flag, validates a sector-0 read and allows up to four
+complete read-only mount attempts. Reader cycles the gate before host/slot
+configuration and admits one attempt. The actual pin assignments agree.
+These differences are hypotheses for later discriminating evidence, not a
+reason to change rails or introduce retries now. Espressif explicitly says
+[internal pullups are insufficient](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32s3/api-reference/peripherals/sdmmc_host.html#c.SDMMC_SLOT_FLAG_INTERNAL_PULLUP);
+the flag is not proof that the board lacks its required external pullups.
+
+The pinned Arduino 2.0.17 core performs CPU/PSRAM/NVS initialization before
+calling setup. In the selected USB mode it does not wait for USB enumeration
+there. The HWCDC USB bus-reset handler changes connection state and posts an
+event; it does not restart Reader's setup. A host-driven hardware reset is a
+separate possibility. The X4 Pro's GPIO0 side key is a boot strap, unlike its
+GPIO3 power key, so holding that side key during reset can prevent normal ROM
+boot; there is no evidence that this happened in the reported test.
+
+The first retained `packages` failure currently distinguishes the stage but
+uses a coarse reason for mount, package-validation and handoff refusals. A
+live failed boot, a stalled lower-layer call, a new reset and physical power
+assistance remain separate hypotheses. No one of them is established by the
+old e-paper image alone.
 
 ## Checks and remaining evidence
 
