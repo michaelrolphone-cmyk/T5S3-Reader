@@ -302,8 +302,15 @@ bool JsonSettingsIO::loadKOReader(KOReaderCredentialStore& store, const char* js
     if (!store.password.empty() && needsResave) *needsResave = true;
   }
   store.serverUrl = doc["serverUrl"] | std::string("");
-  uint8_t method = doc["matchMethod"] | (uint8_t)0;
-  store.matchMethod = static_cast<DocumentMatchMethod>(method);
+  // Keep the persisted mode inside the two-value enum before any consumer sees it.
+  // Filename is the existing default, including for missing legacy settings.
+  const auto methodValue = doc["matchMethod"];
+  const uint8_t method = methodValue.is<uint8_t>() ? methodValue.as<uint8_t>() : 0;
+  store.setMatchMethod(static_cast<DocumentMatchMethod>(method));
+  if (!methodValue.isNull() &&
+      (!methodValue.is<uint8_t>() || method > static_cast<uint8_t>(DocumentMatchMethod::BINARY)) && needsResave) {
+    *needsResave = true;
+  }
 
   LOG_DBG("KRS", "Loaded KOReader credentials for user: %s", store.username.c_str());
   return true;
