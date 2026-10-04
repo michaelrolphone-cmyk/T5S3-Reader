@@ -314,10 +314,14 @@ static void ht_bind_native(uint8_t *memory) {
     ht_native_a=memory+HT_MEMORY;
     ht_native_b=ht_native_a+HT_NATIVE_PIXELS;
 }
+#define HT_SIGNAL_LOG_X 2170
+#define HT_SIGNAL_ROOM_LEFT 2065
+#define HT_SIGNAL_ROOM_RIGHT 2280
+#define HT_SIGNAL_ROOM_HEIGHT 84
 static int ht_evidence_platform(unsigned level,int item) { return level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:item==1?p->right-45:p->left+42;
+    return level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
 }
 static bool ht_evidence_found(const ht_game *game,unsigned page) {
     return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
@@ -333,6 +337,16 @@ static int ht_evidence_near(const ht_game *game) {
 }
 static bool ht_schoolroom_near(const ht_game *g) {
     return g->level==1 && ht_evidence_near(g)==0;
+}
+static bool ht_signal_room_near(const ht_game *g) {
+    return g->level==1 && ht_evidence_near(g)==2;
+}
+/* The last city narration belongs at the newly connected signal room, not
+ * several roofs after the player has already watched its empty mechanism. */
+static unsigned ht_story_beat_at(const ht_game *g) {
+    bool reached_room=g->grounded && g->x/256>=HT_SIGNAL_ROOM_LEFT &&
+        g->x/256<=HT_SIGNAL_ROOM_RIGHT && ht_abs(g->y/256-ht_level_land(1)[7].top)<=3;
+    return g->level==1 && (g->story_seen[1]>=3 || reached_room)?2u:ht_story_beat(g->story_x);
 }
 static int ht_inspect(void) {
     int item=ht_evidence_near(&ht);
@@ -1982,7 +1996,7 @@ static void ht_narration_hash(const char *text) {
 }
 static void ht_narration(const ht_game *game) {
     ht_narration_key=2166136261u;
-    unsigned beat=ht_story_beat(game->story_x);
+    unsigned beat=ht_story_beat_at(game);
     ht_rect(ht_scene,57,230,366,23,255);
     for(int line=0;line<2;++line) {
         const char *text=ht_chapters[game->level].lines[beat][line];
@@ -2045,6 +2059,7 @@ static void ht_puzzle_prompt(const ht_game *game) {
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
+        if(game->level==1 && item==2)continue; /* The log lies beside the signal-room chair. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         if(x< -12-ht_view_margin() || x>=HT_W+12+ht_view_margin()) continue;

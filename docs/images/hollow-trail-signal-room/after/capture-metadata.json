@@ -1,0 +1,149 @@
+{
+  "source_commit": "c6cef2870755c7cbe7a90d735f05c8d183e4a296",
+  "version": "1.1.48",
+  "signal_room_present": true,
+  "baseline_study_note": "Actual journal compact fallback because host has no reader.typography provider",
+  "source_sha256": {
+    "hollow_trail.c": "c225825603a828776c38cfafb68e96eda8678f55a7922ca2dc77813b9aa295e8",
+    "hollow_trail.json": "54d5f2231e3f709c007cd59decc5125ba3b4437eeccae30b59e4352d2c446aff",
+    "hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+    "hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+    "hollow_trail_character_pose.inc": "ff7093eddab7c524004d09514377ba5050d757b6f0624e611f547dc7c063ffd5",
+    "hollow_trail_city_draw.inc": "c29eef309b67c2cda2dfdfb61a94f3997aa26325ea315f4c51734274756f5747",
+    "hollow_trail_cutscene.inc": "c8cbc62d5957eec07897038fc456c2e9e125e6f29d1a8b07911338fe6305ce8b",
+    "hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+    "hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+    "hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+    "hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+    "hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+    "hollow_trail_engine.inc": "89c2e87f60d586b2107714c12a3815c7c72326b49bab40445ccb07b4dccfef23",
+    "hollow_trail_evidence.inc": "71e1fc0a6bbaf46861e2cf558682c1693c31bd603b9c46ba610f842bacc7daab",
+    "hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+    "hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+    "hollow_trail_forest_draw.inc": "9fecb00c8682c7ff60743e270d36321ad23deef8ad673e4def8c954a6795c9d6",
+    "hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+    "hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+    "hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+    "hollow_trail_journal.inc": "ff680e3e183b1260fec9c7c565c562dc0a76b672855e1bb50360ca9abc6d79f3",
+    "hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+    "hollow_trail_lore.inc": "697f578fd9bf0870073660348de01406128c0329a9f6f61f7c6dd0253baa1cc3",
+    "hollow_trail_maps.inc": "3583c463b5c13b6926f2b45faf7e87762b69b8db0fd4b716ae9461e3ce2dafcb",
+    "hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+    "hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+    "hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+    "hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+    "hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+    "hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+    "hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+    "hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+    "hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+    "hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+    "hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+    "hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+    "hollow_trail_terrain_draw.inc": "ea33bd83e1c10498e8ac9dc4ccc78d9623fd394151d9f86dd8cd15ebb37b0a5a",
+    "hollow_trail_traversal.inc": "7c7b8dcbe69471c53450153bf67625a93d1901b668f4f091239e50220ada4f2e",
+    "hollow_trail_traversal_draw.inc": "ec7558a9702e8814b68bce7bc7c231117e223375e10f4419950c228f15ec89ba",
+    "hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0"
+  },
+  "captures": [
+    {
+      "shot": "window-lit",
+      "tick": 8,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "b68b6020d3c892cac87b2cbdcfa2da70fdb06075289d54c215c2e81120850757",
+      "mono_sha256": "22c4fc8883e60b585ef76d82917233314f4f4db5471566e9e0d23b6a26144b12"
+    },
+    {
+      "shot": "window-dark",
+      "tick": 80,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "8891ad7566eacb0a8ac791d8d88ebba9159d8a6dbc8d6ff1535a702517d53798",
+      "mono_sha256": "0faa15a83df924d27f8c2ffd85b96f185f3707a8b93720be94af4265c634a643"
+    },
+    {
+      "shot": "room-log",
+      "tick": 8,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "7e66d2687db277886acc8a36e63bcdea96bbd04fe366df712041bf4b604d8c88",
+      "mono_sha256": "d310c1a887fe4b765c9dca50b4980872ae67119f5ef30571e3504aac38365743"
+    },
+    {
+      "shot": "room-wide",
+      "tick": 80,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "8cb05676e0ba9a415306679e47f760b399a9b6c913f67f1b260bf0cf63106f4e",
+      "mono_sha256": "48a356173b182f23b230067fd455abb65357cacd5ae1b804e562cc4acf9eae0c"
+    },
+    {
+      "shot": "refuge-sightline",
+      "tick": 8,
+      "rain_tableau_tick": 170,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "27aebb88b3c90f4e4babcdb5af044f1e6df8bf7bb423e9e79e723a070ffe65fb",
+      "mono_sha256": "96f0cb21e12e3812988ab16cc3c2fbb4021f36021304690b827d1d9182936b7e"
+    },
+    {
+      "shot": "study-room",
+      "tick": 8,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "3251bc998795d7291320dc9a7bf93f0ee7e2113903d8617333c73e425fa10fc5",
+      "mono_sha256": "50a972227bfc6fec78968995eac745c56677a4bcb95380b8e517ec921d046762"
+    },
+    {
+      "shot": "study-separated",
+      "tick": 8,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "39d9e6756c8d22d7c7e87ced34d69d8810a404621d70e391f53ef9f9da359df0",
+      "mono_sha256": "1a252acd543b85322a005a6d70f1506af03c5d92f5e803c64d6c71a562d06599"
+    },
+    {
+      "shot": "study-aligned",
+      "tick": 8,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "b4fdde2498c2e32b288d1067cb0dda1ead1e6135886853fc1392865442590a2e",
+      "mono_sha256": "d36399f39c9fb2b1616d117dddefd186f09a71f90a25f97f66b35855551fd07b"
+    },
+    {
+      "shot": "arrival-hold",
+      "tick": 232,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "628694e0d32088bdc6c8bb86b3cbae5923aa06f2e1badaa4077ccc4b3a1cca35",
+      "mono_sha256": "8a3da67818e08f12590fa5e3c49b670cda16c241b1b310c4819e4ccf7082cea6"
+    },
+    {
+      "shot": "arrival-handoff",
+      "tick": 576,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "0d293403271ae041865ce2f6e71d8330a7cbb276c5d9b674d1a388c752816475",
+      "mono_sha256": "e4b101d31797739f0588c297cc44bd6aad892c9aa87f5c76b6d3b8a862e708b8"
+    },
+    {
+      "shot": "read-log",
+      "tick": 8,
+      "rain_tableau_tick": null,
+      "width": 960,
+      "height": 540,
+      "gray_sha256": "1464f0279e477f62cf94ff1e98b25603ccefea3a51d59dc674a219786b8d5a51",
+      "mono_sha256": "6535d883ddb6c22949f73ce055445391c4dc527e4d761b5dd108083acb3c43d7"
+    }
+  ]
+}

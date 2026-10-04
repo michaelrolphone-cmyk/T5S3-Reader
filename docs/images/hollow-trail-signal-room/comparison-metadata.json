@@ -1,0 +1,97 @@
+{
+  "before_source_commit": "1d97f4f4050a2f0ec693d5b0f95b27f7be4e49d2",
+  "after_source_commit": "c6cef2870755c7cbe7a90d735f05c8d183e4a296",
+  "width": 960,
+  "height": 540,
+  "pairs": [
+    {
+      "shot": "window-lit",
+      "tick": 8,
+      "changed_pixels": {
+        "gray": 176382,
+        "mono": 41088
+      }
+    },
+    {
+      "shot": "window-dark",
+      "tick": 80,
+      "changed_pixels": {
+        "gray": 175564,
+        "mono": 36494
+      }
+    },
+    {
+      "shot": "room-log",
+      "tick": 8,
+      "changed_pixels": {
+        "gray": 171681,
+        "mono": 42877
+      }
+    },
+    {
+      "shot": "room-wide",
+      "tick": 80,
+      "changed_pixels": {
+        "gray": 39133,
+        "mono": 10519
+      }
+    },
+    {
+      "shot": "refuge-sightline",
+      "tick": 8,
+      "changed_pixels": {
+        "gray": 38466,
+        "mono": 7188
+      }
+    },
+    {
+      "shot": "study-room",
+      "tick": 8,
+      "changed_pixels": {
+        "gray": 464187,
+        "mono": 244668
+      }
+    },
+    {
+      "shot": "study-separated",
+      "tick": 8,
+      "changed_pixels": {
+        "gray": 464187,
+        "mono": 215576
+      }
+    },
+    {
+      "shot": "study-aligned",
+      "tick": 8,
+      "changed_pixels": {
+        "gray": 464187,
+        "mono": 213755
+      }
+    },
+    {
+      "shot": "arrival-hold",
+      "tick": 232,
+      "changed_pixels": {
+        "gray": 306099,
+        "mono": 73816
+      }
+    },
+    {
+      "shot": "arrival-handoff",
+      "tick": 576,
+      "changed_pixels": {
+        "gray": 174756,
+        "mono": 40892
+      }
+    },
+    {
+      "shot": "read-log",
+      "tick": 8,
+      "changed_pixels": {
+        "gray": 41736,
+        "mono": 35878
+      }
+    }
+  ],
+  "method": "Full, unscaled C-renderer frames, grayscale above and packed mono below. Comparison canvas crops verified byte-for-byte against originals."
+}
