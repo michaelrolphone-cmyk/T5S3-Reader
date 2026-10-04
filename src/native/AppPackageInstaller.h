@@ -1,5 +1,7 @@
 #pragma once
 
+struct StorageGenerationStamp;
+
 // Transitional adapter for the existing /Apps/<name>.elf and .json layout.
 // Only a validated ELF basename is accepted; paths are runtime-constructed.
 // These functions do not authenticate publisher signatures or grant rights.
@@ -22,7 +24,10 @@ bool recoverAppPair(const char* filename);
 // directory before any rename, recover each discovered package independently,
 // and report false if any candidate is unsafe. Never delete unknown content.
 // Call before the springboard presence check and before installed enumeration.
-bool recoverAppInventory();
+// Optionally report a clean, unchanged observation that no .bak entry exists.
+// This is a negative lookup hint, not recovery/validation authority. Callers
+// must recheck the storage generation at each use; failures clear the output.
+bool recoverAppInventory(StorageGenerationStamp* noBackups = nullptr);
 
 // Delete only the two known disposable .part paths after recovery succeeds.
 bool clearAppStage(const char* filename);

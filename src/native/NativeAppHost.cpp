@@ -1203,7 +1203,8 @@ bool installedRefresh() {
   auto* s = current();
   if (!s) return false;
   s->installed.clear();
-  if (!RuntimePackages::recoverAppInventory())
+  StorageGenerationStamp noBackups{};
+  if (!RuntimePackages::recoverAppInventory(&noBackups))
     LOG_ERR("APPSTORE", "Some legacy app updates require manual recovery");
   HalFile dir = Storage.open("/Apps", O_RDONLY);
   if (!dir.isOpen() || !dir.isDirectory()) return false;
@@ -1247,8 +1248,11 @@ bool installedRefresh() {
     if (filename != std::string(manifest.file_name).substr(0, std::strlen(manifest.file_name) - 4) + ".json") continue;
     if (!std::strcmp(manifest.file_name, "springboard.elf")) continue;
     if (!Storage.exists((std::string("/Apps/") + manifest.file_name).c_str())) continue;
-    if (Storage.exists((std::string("/Apps/") + manifest.file_name + ".bak").c_str()) ||
-        Storage.exists((std::string("/Apps/") + filename + ".bak").c_str())) continue;
+    // Recovery already saw every entry. Only skip negative backup pathname
+    // scans while that complete observation is still coherent and quiescent.
+    if (!Storage.unchanged(noBackups) &&
+        (Storage.exists((std::string("/Apps/") + manifest.file_name + ".bak").c_str()) ||
+         Storage.exists((std::string("/Apps/") + filename + ".bak").c_str()))) continue;
     if (s->installed.size() >= 128) break;
     s->installed.push_back(manifest);
   }

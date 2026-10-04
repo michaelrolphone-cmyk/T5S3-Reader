@@ -215,7 +215,7 @@ class LiveInstallContract(unittest.TestCase):
             legacy.index('Storage.exists(elf.c_str())'),
         )
         installed = HOST[HOST.index('bool installedRefresh()'):HOST.index('\nuint32_t installedCount()')]
-        self.assertLess(installed.index('recoverAppInventory()'),
+        self.assertLess(installed.index('recoverAppInventory(&noBackups)'),
                         installed.index('Storage.open("/Apps", O_RDONLY)'))
         self.assertIn('recoverAppPair(selectedName.c_str())', boot)
 

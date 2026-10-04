@@ -9,12 +9,15 @@
 #include <freertos/task.h>
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 
 namespace RuntimePackages {
 
-bool recoverAppInventory() {
+bool recoverAppInventory(StorageGenerationStamp* noBackups) {
+  if (noBackups) *noBackups = {};
+  const auto scanGeneration = Storage.generation();
   if (!Storage.ready()) return false;
   HalFile directory = Storage.open("/Apps", O_RDONLY);
   if (!directory.isOpen() || !directory.isDirectory()) {
@@ -27,6 +30,7 @@ bool recoverAppInventory() {
   std::vector<std::string> candidates;
   candidates.reserve(128);
   bool complete = true;
+  bool foundBackup = false;
   size_t entries = 0;
   const uint32_t began = millis();
   uint32_t yielded = began, reported = began;
@@ -49,6 +53,16 @@ bool recoverAppInventory() {
     if (++entries > 1024) {
       complete = false;
       break;
+    }
+    // Include directories and case variants: a pathname existence check would
+    // also find these on FAT. Reuse this already bounded traversal, not another
+    // per-app directory search. The hint retains no filenames.
+    const size_t nameLength = std::strlen(entry.name);
+    if (nameLength >= 4) {
+      const char* suffix = entry.name + nameLength - 4;
+      if (suffix[0] == '.' && (suffix[1] == 'b' || suffix[1] == 'B') &&
+          (suffix[2] == 'a' || suffix[2] == 'A') && (suffix[3] == 'k' || suffix[3] == 'K'))
+        foundBackup = true;
     }
     if (entry.isDirectory) continue;
     std::string elf;
@@ -98,6 +112,8 @@ bool recoverAppInventory() {
     esp_task_wdt_reset();
     vTaskDelay(1);
   }
+  if (noBackups && allRecovered && !foundBackup && Storage.unchanged(scanGeneration))
+    *noBackups = scanGeneration;
   return allRecovered;
 }
 
