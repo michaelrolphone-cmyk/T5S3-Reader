@@ -1,0 +1,59 @@
+name: Fold 392 remaining
+on:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-392-remaining.yml'
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply remaining #392 files and clean workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if test -f test/epub_image_cache/image_cache_test.cpp \
+             && grep -q 'epub_image_cache/image_cache_test.py' test/run_springboard_test.sh \
+             && grep -q 'rendition_v1_img_0_0' test/epub_image_cache/image_cache_test.cpp; then
+            echo "Remaining files already present; cleaning workflow only"
+            rm -f .github/workflows/fold-392-remaining.yml
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "temp: remove fold-392-remaining one-shot workflow"
+              git push origin HEAD:fix/consolidated-bugs-20261003-c
+            fi
+            exit 0
+          fi
+
+          python3 <<'PY'
+          import base64, tarfile, io
+          b64 = """PLACEHOLDER_B64"""
+          data = base64.b64decode(b64)
+          with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
+              tar.extractall(".")
+              print("extracted", tar.getnames())
+          PY
+
+          test -f test/epub_image_cache/image_cache_test.cpp
+          grep -q 'rendition_v1_img_0_0' test/epub_image_cache/image_cache_test.cpp
+          grep -q 'epub_image_cache/image_cache_test.py' test/run_springboard_test.sh
+          grep -q 'version = 1.3.98' platformio.ini
+          grep -q 'pxc2' lib/Epub/Epub/blocks/ImageBlock.cpp
+          test -f test/epub_image_cache/image_cache_test.py
+          test -f docs/bugfix/BUG-242.md
+
+          rm -f .github/workflows/fold-392-remaining.yml
+          git add -A
+          git commit -m "Fold #392 BUG-242: image_cache_test.cpp and springboard wiring"
+          git push origin HEAD:fix/consolidated-bugs-20261003-c
+          echo "Pushed $(git rev-parse HEAD)"
