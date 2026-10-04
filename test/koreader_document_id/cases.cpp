@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
     }
   }
   for (const auto& path : {std::string{"/Books/name.epub"}, std::string{"name.epub"},
-                           std::string{"/Books/\u00e9\u66f8.epub"}}) {
+                           std::string{"/Books/é書.epub"}}) {
     resetCase(0, Fixture::Fault::Open);
     assert(KOReaderDocumentId::calculateFromFilename(path) == HashFixture::digest);
     const auto name = path.substr(path.find_last_of('/') == std::string::npos ? 0 : path.find_last_of('/') + 1);
