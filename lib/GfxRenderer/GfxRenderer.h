@@ -173,6 +173,17 @@ class GfxRenderer {
   int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
   /// Returns the kerning adjustment between two adjacent codepoints.
   int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
+  // Operation-local EPUB token metrics. Only UTF-8 codepoint boundaries are populated.
+  // False means the caller must retain ordinary measurement (oversized/invalid input,
+  // lazy glyphs or missing SD advances). No font/renderer state is retained or mutated.
+  struct TextPrefixMetrics {
+    static constexpr size_t MAX_BYTES = 200;
+    uint16_t plain[MAX_BYTES + 1];
+    uint16_t hyphenated[MAX_BYTES + 1];
+  };
+  bool getTextPrefixMetrics(int fontId, const std::string& text, TextPrefixMetrics& metrics,
+                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+
   int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;

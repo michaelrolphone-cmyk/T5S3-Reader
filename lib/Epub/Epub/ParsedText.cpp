@@ -539,6 +539,21 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   int chosenWidth = -1;
   bool chosenNeedsHyphen = true;
 
+  // Exact bounded metrics avoid reconstructing and decoding every candidate
+  // prefix. Keep the original path for unsupported fonts/tokens and all failures.
+  GfxRenderer::TextPrefixMetrics prefixMetrics;
+  size_t candidateBytes = 0;
+  if (word.size() <= GfxRenderer::TextPrefixMetrics::MAX_BYTES) {
+    for (const auto& info : breakInfos) {
+      if (info.byteOffset < word.size()) candidateBytes += info.byteOffset;
+      if (candidateBytes > word.size() * 4) break;
+    }
+  }
+  // Sparse pattern breaks can be cheaper to measure directly. Build the table
+  // only when repeated prefix traversal exceeds four complete token traversals.
+  const bool havePrefixMetrics = candidateBytes > word.size() * 4 &&
+                                 renderer.getTextPrefixMetrics(fontId, word, prefixMetrics, style);
+
   // Iterate over each legal breakpoint and retain the widest prefix that still fits.
   for (const auto& info : breakInfos) {
     const size_t offset = info.byteOffset;
@@ -547,7 +562,9 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
     }
 
     const bool needsHyphen = info.requiresInsertedHyphen;
-    const int prefixWidth = measureWordWidth(renderer, fontId, word.substr(0, offset), style, needsHyphen);
+    const int prefixWidth = havePrefixMetrics
+                                ? (needsHyphen ? prefixMetrics.hyphenated[offset] : prefixMetrics.plain[offset])
+                                : measureWordWidth(renderer, fontId, word.substr(0, offset), style, needsHyphen);
     if (prefixWidth > availableWidth || prefixWidth <= chosenWidth) {
       continue;  // Skip if too wide or not an improvement
     }
