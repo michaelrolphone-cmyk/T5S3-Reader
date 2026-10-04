@@ -32,6 +32,10 @@ bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed,
     OrdinaryPackagePlan* inspection);
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed,
+    OrdinaryPackagePlan* inspection, OrdinaryInspectionDiagnostic* diagnostic);
 
 // Shared legacy-upgrade adapter. Legacy ABI-1 is accepted only at the exact
 // managed target/backup; ordinary stage/source verification stays independent.

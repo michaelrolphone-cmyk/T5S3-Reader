@@ -35,6 +35,7 @@
 #include "CrossPointSettings.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
+#include "components/StartupScreen.h"
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
 #include "native/NativeBatteryGauge.h"
@@ -185,14 +186,10 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
         return;
     }
     Board::restoreBacklightLevel(SETTINGS.backlightLevel);
-    // E-paper retains its previous frame across reset. Present a brief
-    // startup frame so a fresh boot is visible before an identical Home
-    // image is drawn. This is X4-only and adds no NVS or storage write.
+    // Reuse the same complete RiscRTE logo as T5's renderer fallback. X4
+    // presents one static frame under its existing provider display owner.
     if (!deskClockUserWake) {
-    renderer.clearScreen();
-    renderer.drawCenteredText(UI_12_FONT_ID, 72, "Starting Reader");
-    renderer.drawCenteredText(UI_10_FONT_ID, 116, "X4 Pro");
-    renderer.displayBuffer(DisplayPresentMode::Clean);
+    StartupScreen::staticLogo(renderer);
     LOG_INF("X4", "boot splash present=%d", provider_surface->lastPresentSucceeded() ? 1 : 0);
     provider_surface->clearPresentStatus();
     }

@@ -56,7 +56,7 @@ def check_i2c_sdk_contract():
 
 
 def build_one(name):
-    if name in ("x4pro_i2c", "x4pro_sd", "t5s3_sd"):
+    if name in ("x4pro_i2c", "x4pro_sd", "t5s3_sd", "x4pro_frontlight"):
         check_i2c_sdk_contract()
     if name == "x4pro_rtc":
         subprocess.run([CC, "-std=c11", "-Wall", "-Wextra", "-Werror", "-fsyntax-only",

@@ -30,6 +30,7 @@ static unsigned long nowMs;
 unsigned long millis(){return nowMs;}
 void delay(unsigned n){nowMs+=n;assert(nowMs<10000);}
 void esp_task_wdt_reset(){}
+void nativeTouchBeginSurfaceTransition(bool=false){}
 template<class... T>void logStub(T...){}
 #define LOG_INF(...) logStub(__VA_ARGS__)
 #define LOG_ERR(...) logStub(__VA_ARGS__)

@@ -28,6 +28,18 @@ void nativeTouchDiscardGestures();
 // Only the display owner that begins the boundary may release it after a
 // successful presentation; release also discards queued/held old-image input.
 void nativeTouchSuppressCoordinates(bool suppressed);
+// A change of interactive surface uses the same focus/snapshot neutral fence.
+// Begin while owning the renderer, after any loading frame. Only a successful
+// presentation started in that epoch may enable coordinates for the new view.
+// This never suppresses physical Home, navigation, or wake activity.
+// Activity renders defer completion until render() returns, since one render
+// can present an intermediate loading popup before its final destination.
+void nativeTouchBeginSurfaceTransition(bool deferUntilRenderComplete = false);
+uint32_t nativeTouchPresentationEpoch();
+// Async presentation bridges query the pending epoch before accepting a frame.
+bool nativeTouchAwaitingSurfacePresentation(uint32_t& epoch);
+void nativeTouchSurfacePresented(uint32_t presentedEpoch, bool succeeded);
+void nativeTouchCompleteSurfaceTransition(uint32_t presentedEpoch);
 bool nativeTouchGetTap(NativeTouchPoint& point);
 bool nativeTouchGetContact(NativeTouchPoint& point);
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs);
@@ -39,7 +51,7 @@ bool nativeTouchTakeHomePress();
 // Copied counters for diagnostics; no provider pointers escape the consumer.
 struct NativeTouchDiagnostics {
   uint32_t polls = 0, pollFailures = 0, gaps = 0, events = 0;
-  uint32_t taps = 0, tapOverflows = 0, outages = 0;
+  uint32_t taps = 0, tapOverflows = 0, outages = 0, expiredGestures = 0, consumerStalls = 0;
   uint32_t maxServiceMs = 0, maxCaptureGapMs = 0;
 };
 NativeTouchDiagnostics nativeTouchDiagnostics();

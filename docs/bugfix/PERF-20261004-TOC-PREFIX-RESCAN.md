@@ -1,3 +1,27 @@
+# Base integration checkpoint — 2026-10-04 08:00 UTC
+
+- repository_full_name: michaelrolphone-cmyk/T5S3-Reader
+- stable source alias: michaelrolphone-cmyk/T5S3-Reader::PERF-20261004-TOC-PREFIX-RESCAN
+- canonical_key: pending sole-coordinator assignment
+- owner: fix_reader_performance_0610
+- source_ref / target_branch: xteink-x4-pro-boot
+- original reproduction baseline_sha: 60e5a78b79e5a196e2265aa8bad3200af5a82479
+- refreshed integration baseline_sha: 9a209d8794d725393ddbb48d3880c03b9af29ba4
+- captured repair head / first parent: b58ca427c0872fbcb9d83ab380e951fa124d1d02
+- merge second parent: 9a209d8794d725393ddbb48d3880c03b9af29ba4
+- repair_branch: perf/toc-prefix-rescan
+- target_pr: https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/396
+- resumed claim: https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/332#issuecomment-5977913791
+- phase: local merged-tree validation; new exact-head CI pending
+
+The working base advanced to firmware 1.3.105 and made this existing repair unmergeable. Merge it into the existing repair branch without rewriting either history. The only conflict was the platformio.ini version line: retain this repair's unshipped 1.3.106, above the actual 1.3.105 base. Separate PR398's 1.3.108 reservation is not part of this integration and does not justify renumbering the same unshipped repair. No separately distributed package is changed relative to the new base.
+
+Preserve every new PR350 file byte-for-byte except that explicitly resolved version line. The exact-href TOC implementation, focused fixtures and Springboard test hook remain byte-identical to the preceding repaired head. Firmware 1.3.105 app inventory, touch epochs, frontlight 0.1.3, provider diagnostics, boot logo, workflows and their tests are retained. The original lower-read-cost/output-equivalence evidence below remains valid for the unchanged TOC implementation; all tests and hosted checks must be re-evaluated for this combined tree.
+
+No PR350/default/ledger branch write, merge of the PR, release, deployment or device action. The earlier completion text below is historical; final status is recorded in PR396 and the original ledger conversation after exact-head CI completes.
+
+---
+
 # TOC prefix-rescan repair checkpoint
 
 - repository_full_name: michaelrolphone-cmyk/T5S3-Reader

@@ -82,9 +82,10 @@ bool readManifest(const char* directory, const char* name,
 
 // A partial OWNED stage may lack some declared files. For all other paths a
 // missing manifest plus nonempty directory is ambiguous and never purged.
-bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full, bool managedMetadata = true, uint64_t* sizes = nullptr) {
+bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full, bool managedMetadata = true,
+               uint64_t* sizes = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr) {
   if (!root) return false;
-  OrdinarySdTreeOps ops(root, &plan, sizes);
+  OrdinarySdTreeOps ops(root, &plan, sizes, diagnostic);
   return ordinaryTreeInventory(plan, ops, full, managedMetadata);
 }
 bool purgeKnown(const char* root, const OrdinaryPackagePlan& plan,
@@ -187,7 +188,8 @@ class SdHash {
 };
 class SdDirectory {
  public:
-  explicit SdDirectory(const char* path) : root_(path) {}
+  explicit SdDirectory(const char* path, OrdinaryInspectionDiagnostic* diagnostic = nullptr)
+      : root_(path), diagnostic_(diagnostic) {}
   bool readManifest(char* output, size_t capacity, size_t& length) {
     // Read directly into the caller's heap-owned workspace. The previous
     // second 4 KiB stack buffer overflowed loopTask during nested hashing.
@@ -197,7 +199,7 @@ class SdDirectory {
   bool exactEntries(const OrdinaryPackagePlan& plan) {
     // Both initial and final exact-tree walks check declared sizes. Reuse
     // those observations within this verifier instead of reopening each child.
-    validSizes_ = inventory(root_.c_str(), plan, true, true, sizes_);
+    validSizes_ = inventory(root_.c_str(), plan, true, true, sizes_, diagnostic_);
     plan_ = &plan;
     return validSizes_;
   }
@@ -219,6 +221,7 @@ class SdDirectory {
   bool validSizes_ = false;
   std::string root_;
   OrdinarySequentialSdReader reader_;
+  OrdinaryInspectionDiagnostic* diagnostic_;
 };
 class SdStage {
  public:
@@ -299,20 +302,24 @@ struct Ops {
   }
 };
 bool verifyCanonical(const char* path, const PackageRuntimePolicy& policy,
-                     uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true, OrdinaryPackagePlan* inspection = nullptr) {
+                     uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true,
+                     OrdinaryPackagePlan* inspection = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr) {
   if (verifyContents) Storage.invalidateObservations();
   // readManifest and both exactEntries passes independently open this same
   // directory. Avoid a fourth path walk just to repeat its existence/type check.
   if (!path || !resolver) return false;
-  SdDirectory directory(path);
+  SdDirectory directory(path, diagnostic);
   SdHash hash;
   uint8_t io[kOrdinaryIoBytes]{};
   if (inspection) {
     std::unique_ptr<char[]> text(new (std::nothrow) char[kManifestBytes]{});
     size_t length = 0;
-    if (!text || !directory.readManifest(text.get(), kManifestBytes, length) ||
-        !parseOrdinaryManifest(text.get(), length, *inspection) ||
-        !verifyOrdinaryDirectory(*inspection, directory, hash, resolver, policy, io, verifyContents)) return false;
+    if (!text) return diagnostic ? diagnostic->fail("manifest-allocation") : false;
+    if (!directory.readManifest(text.get(), kManifestBytes, length))
+      return diagnostic ? diagnostic->fail("manifest-read", kOrdinaryManifestName) : false;
+    if (!parseOrdinaryManifest(text.get(), length, *inspection))
+      return diagnostic ? diagnostic->fail("manifest-parse", kOrdinaryManifestName) : false;
+    if (!verifyOrdinaryDirectory(*inspection, directory, hash, resolver, policy, io, verifyContents, diagnostic)) return false;
     observed = inspection->identity;
     return true;
   }
@@ -358,12 +365,20 @@ bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
 bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed, OrdinaryPackagePlan* inspection) {
+  return inspectInstalledOrdinarySdDirectory(managedDirectory, policy, resolveCapability, observed, inspection, nullptr);
+}
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed, OrdinaryPackagePlan* inspection,
+    OrdinaryInspectionDiagnostic* diagnostic) {
   observed = {};
+  if (diagnostic) *diagnostic = {};
   if (managedDirectory &&
       (!std::strcmp(managedDirectory, kCdcCanonicalRoot) || !std::strcmp(managedDirectory, kCdcAliasRoot)) &&
-      cdcMigrationPendingOnSd()) return false;
-  return Storage.ready() && safeSourcePath(managedDirectory) &&
-      verifyCanonical(managedDirectory, policy, resolveCapability, observed, false, inspection);
+      cdcMigrationPendingOnSd()) return diagnostic ? diagnostic->fail("migration-pending") : false;
+  if (!Storage.ready() || !safeSourcePath(managedDirectory))
+    return diagnostic ? diagnostic->fail("storage-or-path") : false;
+  return verifyCanonical(managedDirectory, policy, resolveCapability, observed, false, inspection, diagnostic);
 }
 bool verifyManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id,
     const PackageRuntimePolicy& policy, uint32_t (*resolver)(const char*),

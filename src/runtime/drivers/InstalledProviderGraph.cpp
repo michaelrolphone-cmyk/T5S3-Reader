@@ -336,6 +336,8 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
     if (available < minimumApi)
         return providerFail("Provider dependency unavailable", capability);
 
+    loadError[0] = 0;
+
     size_t accepted = 0;
     for (const Root& root : kRoots) {
         HalFile directory = Storage.open(root.path, O_RDONLY);
@@ -379,6 +381,9 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
         if (!directory.close()) return providerFail("Provider directory close failed", root.path);
         if (accepted > 1) break;
     }
+    // Preserve a concrete transitive failure already found while registering
+    // this chain, rather than replacing it with the parent's generic name.
+    if (!accepted && loadError[0]) return false;
     if (accepted != 1)
         return providerFail(accepted ? "Provider dependency ambiguous"
                                      : "Provider dependency unavailable",

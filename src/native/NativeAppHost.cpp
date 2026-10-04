@@ -10,6 +10,7 @@
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
 #include "NativeTouchInput.h"
+#include "NativeVideoBridge.h"
 #include "NativeOnlineAppInstall.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
 #include "AppCatalogIndex.h"
@@ -118,7 +119,6 @@ struct Session {
   char catalogDownloadError[128]{};
   bool catalogNeedsRefresh = false;
   bool backExitsApp = true;
-  bool inputStarted = false;
   bool exiting = false;
   bool presenting = false;
   bool pendingHomeSingle = false;
@@ -131,11 +131,6 @@ std::string lastLaunchError;
 bool homeRequested = false;
 bool firmwareActionPending = false;
 Session* current() { return session && !session->presenting && session->owner == xTaskGetCurrentTaskHandle() ? session : nullptr; }
-void beginAppInput(Session& s) {
-  if (s.inputStarted) return;
-  nativeTouchDiscardGestures();
-  s.inputStarted = true;
-}
 int32_t width() { auto* s = current(); return s ? s->renderer.getScreenWidth() : 0; }
 int32_t height() { auto* s = current(); return s ? s->renderer.getScreenHeight() : 0; }
 void clear() {
@@ -227,7 +222,7 @@ bool copyUiFrame(uint8_t* destination, size_t capacity, t5_app_frame_t* frame) {
 bool touchContact(t5_app_contact_t* out) {
   auto* s=current();
   if (!s || !out) return false;
-  beginAppInput(*s);
+  nativeVideoServiceTouchPresentation();
   *out={};
   MappedInputManager::TouchPoint point{};
   out->down=s->input.getTouchContact(point,s->renderer);
@@ -304,7 +299,7 @@ void setBackExitsApp(bool enabled) {
 bool pollInput(t5_app_input_t* out, uint32_t waitMs, bool wait) {
   auto* s = current();
   if (!s || !out) return false;
-  beginAppInput(*s);
+  nativeVideoServiceTouchPresentation();
   esp_task_wdt_reset();
   if (wait) delay(std::max(1u, std::min(waitMs, 50u)));
   s->input.update();
@@ -394,7 +389,7 @@ bool pollNowait(t5_app_input_t* out) {
 bool takeTouchSwipe(t5_app_swipe_t* out) {
   auto* s = current();
   if (!s || !out || s->exiting) return false;
-  beginAppInput(*s);
+  nativeVideoServiceTouchPresentation();
   MappedInputManager::TouchPoint start{}, end{};
   if (!s->input.getTouchSwipe(start, end, s->renderer)) return false;
   *out = {static_cast<int16_t>(start.x), static_cast<int16_t>(start.y),
@@ -1212,20 +1207,37 @@ bool installedRefresh() {
     LOG_ERR("APPSTORE", "Some legacy app updates require manual recovery");
   HalFile dir = Storage.open("/Apps", O_RDONLY);
   if (!dir.isOpen() || !dir.isDirectory()) return false;
-  while (s->installed.size() < 128) {
-    esp_task_wdt_reset();
-    HalFile file = dir.openNextFile();
-    if (!file.isOpen()) break;
-    char name[128]{};
-    file.getName(name, sizeof(name));
-    const bool isDir = file.isDirectory();
-    file.close();
-    const std::string filename(name);
-    if (isDir) {
+  // Metadata-only enumeration avoids reopening every unrelated ELF/sidecar.
+  // Complete the bounded traversal before publishing any partial inventory.
+  const uint32_t scanBegan = millis();
+  uint32_t yielded = scanBegan, reported = scanBegan;
+  size_t entries = 0;
+  bool complete = false;
+  for (;;) {
+    const uint32_t now = millis();
+    if (now - scanBegan >= 30000u) break;
+    if ((entries && (entries & 15u) == 0) || now - yielded >= 8u) {
+      esp_task_wdt_reset();
+      delay(1);
+      yielded = millis();
+    }
+    if (now - reported >= 1000u) {
+      LOG_DBG("APP", "Inventory entries=%u apps=%u", (unsigned)entries, (unsigned)s->installed.size());
+      reported = now;
+    }
+    HalFile::DirectoryEntry entry{};
+    if (!dir.readDirectoryEntry(entry)) {
+      complete = dir.getError() == 0;
+      break;
+    }
+    if (++entries > 1024) break;
+    const std::string filename(entry.name);
+    if (entry.isDirectory) {
       RuntimePackages::Identity identity{};
       t5_app_manifest_t manifest{};
-      if (!verifiedManagedApp(name, identity, &manifest) ||
+      if (!verifiedManagedApp(entry.name, identity, &manifest) ||
           !std::strcmp(manifest.file_name, "springboard.elf")) continue;
+      if (s->installed.size() >= 128) break;
       s->installed.push_back(manifest);
       continue;
     }
@@ -1237,9 +1249,15 @@ bool installedRefresh() {
     if (!Storage.exists((std::string("/Apps/") + manifest.file_name).c_str())) continue;
     if (Storage.exists((std::string("/Apps/") + manifest.file_name + ".bak").c_str()) ||
         Storage.exists((std::string("/Apps/") + filename + ".bak").c_str())) continue;
+    if (s->installed.size() >= 128) break;
     s->installed.push_back(manifest);
   }
-  dir.close();
+  const bool closed = dir.close();
+  if (!complete || !closed || millis() - scanBegan >= 30000u) {
+    s->installed.clear();
+    LOG_ERR("APP", "App inventory incomplete; refusing partial results");
+    return false;
+  }
   LOG_INF("APP", "Inventory count=%u ms=%lu", (unsigned)s->installed.size(),
           (unsigned long)(millis()-inventoryBegan));
   std::sort(s->installed.begin(), s->installed.end(), [](const t5_app_manifest_t& a, const t5_app_manifest_t& b) {
@@ -1527,7 +1545,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     displayName = preview.display_name;
     icon = preview.icon;
   }
-  nativeTouchDiscardGestures();
+  nativeTouchBeginSurfaceTransition(true);
   StartupScreen::app(renderer, displayName.c_str(), icon);
   launchStage("loading-screen");
   // Keep the render lock through launch so an outstanding activity repaint
@@ -1594,6 +1612,9 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeNavigationBoundary();
   input.clearInjectedButtonTap();
   input.update();
+  // The loading frame is not the app's interactive surface. Apps may poll
+  // during initialization; keep coordinates fenced until their first frame.
+  nativeTouchBeginSurfaceTransition();
   Session active{renderer, input, xTaskGetCurrentTaskHandle()};
   session = &active;
   nativeNetworkBegin();
@@ -1632,7 +1653,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
-  nativeTouchDiscardGestures();
+  nativeTouchBeginSurfaceTransition(true);
   nativeNavigationBoundary();
   nativeNavigationRetry(); // An installer may have added the navigation provider.
   nativeSettingsEnd();
@@ -1667,6 +1688,7 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
   LOG_INF("APP", "Apps loading frame ms=%lu", (unsigned long)(millis()-appsBegan));
   auto showError = [&](const char* message) {
     RenderLock lock;
+    nativeTouchBeginSurfaceTransition();
     renderer.clearScreen();
     renderer.drawText(UI_12_FONT_ID, 24, 40, "Apps");
     const std::string msg(message);
@@ -1682,6 +1704,8 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       MappedInputManager::TouchPoint point{};
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
+    // A second queued dismissal must not activate the resumed Home/launcher.
+    nativeTouchBeginSurfaceTransition(true);
   };
   auto storageUnavailable = [&]() {
     if (Storage.ready()) return false;

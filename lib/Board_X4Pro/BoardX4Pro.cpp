@@ -1,4 +1,5 @@
 #include "BoardX4Pro.h"
+#include "FrontlightLevels.h"
 #include "../../src/native/NativeBatteryGauge.h"
 extern bool halStoragePrepareForSleep();
 extern void halStorageMediaUnavailable();
@@ -24,9 +25,7 @@ bool attachFrontlight(const risc_frontlight_api_v1* api) {
 }
 void initBacklight() {}
 void setBacklightLevel(uint8_t level) {
-  // The current board provider supports on/off only. Keep the shared saved
-  // 0..10 preference intact; any nonzero preference turns the light on.
-  if (frontlight) (void)frontlight->set_level(frontlight->context, level ? 1 : 0, 1);
+  if (frontlight) (void)frontlight->set_level(frontlight->context, frontlightTenthsPercent(level), 1000);
 }
 void restoreBacklightLevel(uint8_t level) { setBacklightLevel(level); }
 void prepareSdBus() {}

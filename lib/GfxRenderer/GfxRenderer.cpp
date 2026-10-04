@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "FontCacheManager.h"
+#include "../../src/native/NativeTouchInput.h"
 
 namespace {
 
@@ -1070,14 +1071,17 @@ void GfxRenderer::invertScreen() const {
   }
 }
 
-void GfxRenderer::displayBuffer(const DisplayPresentMode refreshMode) const {
+void GfxRenderer::displayBuffer(const DisplayPresentMode refreshMode, bool interactive) const {
+  const uint32_t touchEpoch = nativeTouchPresentationEpoch();
   if (!initialized || !frameBuffer || !display.isReady()) {
+    if (interactive) nativeTouchSurfacePresented(touchEpoch, false);
     LOG_ERR("GFX", "Refusing displayBuffer before a validated, ready display surface");
     return;
   }
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   display.displayBuffer(refreshMode);
+  if (interactive) nativeTouchSurfacePresented(touchEpoch, display.lastPresentSucceeded());
 }
 
 void GfxRenderer::requestNextRefresh(const DisplayPresentMode refreshMode) const {
@@ -1410,8 +1414,13 @@ bool GfxRenderer::captureGrayscaleBaseBuffer() const {
 }
 
 void GfxRenderer::displayGrayBuffer(const DisplayPresentMode refreshMode) const {
-  if (!initialized || !frameBuffer || !display.isReady()) return;
+  const uint32_t touchEpoch = nativeTouchPresentationEpoch();
+  if (!initialized || !frameBuffer || !display.isReady()) {
+    nativeTouchSurfacePresented(touchEpoch, false);
+    return;
+  }
   display.displayGrayBuffer(refreshMode);
+  nativeTouchSurfacePresented(touchEpoch, display.lastPresentSucceeded());
 }
 
 void GfxRenderer::freeBwBufferChunks() {

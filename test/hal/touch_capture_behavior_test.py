@@ -32,7 +32,7 @@ fixture = r'''
 static std::deque<risc_touch_event_v1> events;
 static bool pollOk = true, gap = false, busyNext = false;
 static uint64_t serial;
-static bool snapshotRace, snapshotFails;
+static bool snapshotRace, snapshotFails, homeSnapshotRace;
 static risc_touch_snapshot_v1 state{};
 static bool mockPoll(void*, size_t) { return pollOk; }
 static int32_t mockNext(void*, uint64_t, risc_touch_event_v1* out) {
@@ -43,6 +43,12 @@ static int32_t mockNext(void*, uint64_t, risc_touch_event_v1* out) {
 }
 static bool mockSnapshot(void*, risc_touch_snapshot_v1* out) {
   if (snapshotFails) return false;
+  if (homeSnapshotRace) {
+    homeSnapshotRace=false;
+    risc_touch_event_v1 e{};e.sequence=++serial;e.timestamp_ms=nowMs;
+    e.kind=RISC_TOUCH_EVENT_BUTTON_DOWN;e.id=0;events.push_back(e);
+    state.sequence=serial;
+  }
   if (snapshotRace) {
     snapshotRace=false;
     risc_touch_event_v1 e{};
@@ -172,7 +178,7 @@ int main(int argc, char**) {
   pollOk=false; serviceProvider(); nowMs+=1100; serviceProvider();
   assert(nativeTouchGetTap(p));
   // Unsigned elapsed-time check also works across millis rollover.
-  pollOk=true; serviceProvider(); nowMs=UINT32_MAX-50;
+  pollOk=true; serviceProvider(); coordinateConsumerStarted=false; nowMs=UINT32_MAX-50;
   queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();
   pollOk=false; serviceProvider(); nowMs=60; serviceProvider();
   pollOk=true; queue(RISC_TOUCH_EVENT_UP); serviceProvider();
@@ -185,6 +191,67 @@ int main(int argc, char**) {
   queue(RISC_TOUCH_EVENT_DOWN); serviceProvider();
   queue(RISC_TOUCH_EVENT_UP); serviceProvider();
   assert(nativeTouchGetTap(p) && !nativeTouchGetTap(p));
+
+  // The sampler stays live through a 25-second blocked UI; its completed
+  // coordinate queue is bounded but no longer replays as an input log.
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_MOVE,180);queue(RISC_TOUCH_EVENT_UP,180);serviceProvider();
+  nowMs+=25000;coordinateConsumerStarted=false; // Isolate per-event expiry from consumer-stall policy.
+  assert(!nativeTouchGetTap(p)&&!nativeTouchGetSwipe(p,end));
+  assert(nativeTouchDiagnostics().expiredGestures==2);
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  nowMs+=1500;assert(nativeTouchGetTap(p)); // ordinary short refresh latency
+  // A known physical long hold is not a stale queued gesture.
+  queue(RISC_TOUCH_EVENT_DOWN);serviceProvider();
+  unsigned long longHeld=0;
+  for(unsigned i=0;i<30;++i){nowMs+=1000;assert(nativeTouchGetHold(p,longHeld));}
+  assert(longHeld==30000);
+  queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(nativeTouchGetTap(p));
+  // But a raw backlog DOWN must not become a new contact after 20 seconds.
+  queue(RISC_TOUCH_EVENT_DOWN);nowMs+=20000;serviceProvider();
+  assert(!nativeTouchGetContact(p));
+  queue(RISC_TOUCH_EVENT_MOVE,180);queue(RISC_TOUCH_EVENT_UP,180);serviceProvider();
+  assert(!nativeTouchGetTap(p)&&!nativeTouchGetSwipe(p,end));
+  // Completion timestamps remain valid across millis rollover.
+  coordinateConsumerStarted=false;nowMs=UINT32_MAX-100;queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  nowMs=100;assert(nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  nowMs+=25000;assert(!nativeTouchGetTap(p));
+  // Context change stays closed through loading, intermediate popup and a
+  // failed destination presentation; retry opens only after render returns.
+  nativeTouchBeginSurfaceTransition(true);serviceProvider();
+  const auto firstEpoch=nativeTouchPresentationEpoch();
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();
+  nativeTouchSurfacePresented(firstEpoch,true);
+  assert(!nativeTouchGetTap(p));
+  nativeTouchSurfacePresented(firstEpoch,false);
+  nativeTouchCompleteSurfaceTransition(firstEpoch);
+  assert(surfaceTransitionPending);
+  nativeTouchSurfacePresented(firstEpoch,true);
+  queue(RISC_TOUCH_EVENT_DOWN);serviceProvider(); // finger held through final frame
+  nativeTouchCompleteSurfaceTransition(firstEpoch);serviceProvider();
+  assert(!surfaceTransitionPending&&!nativeTouchGetContact(p));
+  queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(!nativeTouchGetTap(p));
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(nativeTouchGetTap(p));
+  // An outgoing render cannot release a newer context, nor release the
+  // independent flip/orientation suppression owned by the display.
+  nativeTouchBeginSurfaceTransition();const auto outgoing=nativeTouchPresentationEpoch();
+  nativeTouchBeginSurfaceTransition();const auto incoming=nativeTouchPresentationEpoch();
+  nativeTouchSurfacePresented(outgoing,true);assert(surfaceTransitionPending);
+  nativeTouchSuppressCoordinates(true);nativeTouchSurfacePresented(incoming,true);serviceProvider();
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(!nativeTouchGetTap(p));
+  nativeTouchSuppressCoordinates(false);serviceProvider();
+  queue(RISC_TOUCH_EVENT_DOWN);queue(RISC_TOUCH_EVENT_UP);serviceProvider();assert(nativeTouchGetTap(p));
+  // Snapshot retries keep coordinates fenced without swallowing Home. Include
+  // a second subscriber publishing Home between next(empty) and snapshot.
+  nativeTouchBeginSurfaceTransition();homeSnapshotRace=true;serviceProvider();serviceProvider();
+  assert(nativeTouchTakeHomePress(captured)&&captured==nowMs);
+  assert(!nativeTouchTakeHomePress(captured));
+  snapshotFails=true;nativeTouchDiscardGestures();
+  home.sequence=++serial;home.timestamp_ms=nowMs;process(home);
+  serviceProvider();assert(nativeTouchTakeHomePress(captured));
+  snapshotFails=false;serviceProvider();
+  nativeTouchSurfacePresented(nativeTouchPresentationEpoch(),true);serviceProvider();
   const auto stats = nativeTouchDiagnostics();
   assert(stats.pollFailures >= 6 && stats.gaps == 2 && stats.outages == 2);
   assert(stats.taps >= 4 && stats.events > stats.taps);
@@ -239,6 +306,22 @@ int main() {
   report_one(3,100,200);serviceProvider();report_release();serviceProvider();assert(nativeTouchGetTap(p));
   // A held launch contact crossing focus must lift, then a fresh contact works.
   report_one(3,100,200);serviceProvider();nativeTouchDiscardGestures();serviceProvider();
+  report_release();serviceProvider();assert(!nativeTouchGetTap(p));
+  report_one(3,100,200);serviceProvider();report_release();serviceProvider();assert(nativeTouchGetTap(p));
+
+  // Real GT911 report/consumer queue under a 30-second consumer stall.
+  for (unsigned tap=0;tap<12;++tap) {
+    nowMs+=1000;fake_ms=nowMs;report_one(3,100,200);serviceProvider();
+    nowMs+=30;fake_ms=nowMs;report_release();serviceProvider();
+  }
+  nowMs+=18000;fake_ms=nowMs;
+  assert(!nativeTouchGetTap(p));
+  nativeTouchBeginSurfaceTransition();serviceProvider();
+  const auto epoch=nativeTouchPresentationEpoch();
+  report_one(3,100,200);serviceProvider();
+  nowMs+=25000;fake_ms=nowMs;
+  nativeTouchSurfacePresented(epoch,false);assert(!nativeTouchGetContact(p));
+  nativeTouchSurfacePresented(epoch,true);serviceProvider();
   report_release();serviceProvider();assert(!nativeTouchGetTap(p));
   report_one(3,100,200);serviceProvider();report_release();serviceProvider();assert(nativeTouchGetTap(p));
   assert(api->unsubscribe(nullptr,subscription));
