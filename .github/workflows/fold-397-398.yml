@@ -1,0 +1,20 @@
+name: fold-397-398-once
+on:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-397-398.yml'
+      - '.github/fold-397-398.sh'
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+      - name: Fold #397 and #398
+        run: bash .github/fold-397-398.sh
