@@ -16,7 +16,7 @@ jobs:
           ref: fix/consolidated-bugs-20261003-c
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Patch CrossPoint emittedAny and cleanup helpers
+      - name: Patch CrossPoint emittedAny
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -33,17 +33,16 @@ jobs:
 
           grep -q 'emittedAny' src/network/CrossPointWebServer.cpp
           grep -q 'version = 1.3.115' platformio.ini
-          test -f docs/bugfixes/BUG-142.md
+          test -f docs/bugfix/BUG-142.md
           test -f test/opds_response/response_test.py
 
-          rm -f .github/workflows/fold-405-simple.yml \
-                .github/workflows/fold-405-apply.yml \
-                .github/workflows/fold-405-cpp.yml \
-                scripts/fold_405_apply.py \
-                scripts/fold_405_cpp_only.py
-
-          git add -A
-          git status
+          # Do not delete or modify workflow files (GITHUB_TOKEN lacks workflows permission).
+          # Leave helper cleanup to MCP.
+          git add src/network/CrossPointWebServer.cpp test/opds_response/response_test.cpp
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
           git commit -m "Fold #405 BUG-142: emittedAny separator fix (firmware 1.3.115)"
           git push origin HEAD:fix/consolidated-bugs-20261003-c
           echo "Pushed $(git rev-parse HEAD)"
