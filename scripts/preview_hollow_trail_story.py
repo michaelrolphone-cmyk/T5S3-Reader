@@ -15,6 +15,7 @@ selection = parser.add_mutually_exclusive_group()
 selection.add_argument('--rain-shelter', action='store_true', help='Render active post-fuse rain at refuge edges, zooms and handoff')
 selection.add_argument('--mill-entry', action='store_true', help='Render the barred mill door, broken shutter and register along the existing route')
 selection.add_argument('--service-lamps', action='store_true', help='Render both Oil Fields service lamps across the former signal cycle')
+selection.add_argument('--cab-step', action='store_true', help='Render the existing locomotive cab tread at close and wide framing')
 args = parser.parse_args()
 repo = pathlib.Path(__file__).resolve().parents[1]
 out = args.output.resolve()
@@ -67,6 +68,9 @@ elif args.service_lamps:
              ('service-wide', 80, 'Wide framing at the first lamp'),
              ('service-far', 0, 'Second service lamp at cycle start'),
              ('service-far', 80, 'Second service lamp during the former pause')]
+elif args.cab_step:
+    shots = [('cab-close', 0, 'Close: three-leaf plant rooted on the iron cab tread'),
+             ('cab-wide', 0, 'Wide: unchanged locomotive and parallel track')]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -79,7 +83,12 @@ int main(int argc,char **argv) {
  ht_bind(mem);ht_bind_native(mem);memset(&ht,0,sizeof(ht));ht.level=0;ht_spawn(true);
  ht_camera_mode=HT_CAMERA_NATIVE;
  bool gameplay=false;
- if(!strncmp(argv[1],"wet-",4)) {
+ if(!strncmp(argv[1],"cab-",4)) {
+  ht.level=3;ht_select_level(3);ht_spawn(true);
+  ht.x=760*256;ht.y=220*256;ht.camera=560*256;ht.camera_y=40*256;ht.grounded=true;
+  ht.intimacy=!strcmp(argv[1],"cab-close")?256:0;ht.vista=!strcmp(argv[1],"cab-wide")?256:0;
+  ht.ticks=(unsigned)atoi(argv[2]);gameplay=true;
+ } else if(!strncmp(argv[1],"wet-",4)) {
   ht.level=1;ht_select_level(1);ht_spawn(true);
   ht.x=(HT_RAIN_TANK_X+(!strcmp(argv[1],"wet-left")?-87:!strcmp(argv[1],"wet-right")?86:0))*256;
   ht.y=ht_rain_tank_floor()*256;ht.camera=ht.x-200*256;ht.camera_y=ht.y-180*256;ht.grounded=true;
