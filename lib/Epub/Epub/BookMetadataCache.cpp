@@ -1,5 +1,6 @@
 #include "BookMetadataCache.h"
 
+#include <Arduino.h>
 #include <Logging.h>
 #include <Serialization.h>
 #include <ZipFile.h>
@@ -27,6 +28,8 @@ inline void maybeYieldDuringBuild(const int iteration) {
 /* ============= WRITING / BUILDING FUNCTIONS ================ */
 
 bool BookMetadataCache::beginWrite() {
+  smallSpineHrefs.clear();
+  useSmallSpineHrefs = false;
   buildMode = true;
   spineCount = 0;
   tocCount = 0;
@@ -49,6 +52,8 @@ bool BookMetadataCache::endContentOpfPass() {
 
 bool BookMetadataCache::beginTocPass() {
   LOG_DBG("BMC", "Beginning toc pass");
+  smallSpineHrefs.clear();
+  useSmallSpineHrefs = false;
 
   if (!Storage.openFileForRead("BMC", cachePath + tmpSpineBinFile, spineFile)) {
     return false;
@@ -81,6 +86,46 @@ bool BookMetadataCache::beginTocPass() {
     LOG_DBG("BMC", "Using fast index for %d spine items", spineCount);
   } else {
     useSpineHrefIndex = false;
+    // At most 127 strings / 8 KiB of href bytes. Read the immutable scratch
+    // spine once, rather than its prefix again for every subsection anchor.
+    // This optional acceleration falls back to the existing exact scan on
+    // oversized input, incomplete I/O or budget exhaustion; no partial cache.
+    constexpr uint32_t INDEX_BUDGET_MS = 1000;
+    constexpr uint32_t INDEX_YIELD_MS = 20;
+    const uint32_t started = millis();
+    uint32_t checkpoint = started;
+    size_t hrefBytes = 0;
+    for (int i = 0; i < spineCount; ++i) {
+      uint32_t length = 0;
+      size_t cumulativeSize = 0;
+      int16_t tocIndex = -1;
+      if (spineFile.read(&length, sizeof(length)) != sizeof(length) ||
+          length > SMALL_SPINE_HREF_BYTES - hrefBytes) {
+        break;
+      }
+      std::string href(length, '\0');
+      if ((length && spineFile.read(&href[0], length) != static_cast<int>(length)) ||
+          spineFile.read(&cumulativeSize, sizeof(cumulativeSize)) != sizeof(cumulativeSize) ||
+          spineFile.read(&tocIndex, sizeof(tocIndex)) != sizeof(tocIndex)) {
+        break;
+      }
+      hrefBytes += length;
+      smallSpineHrefs.push_back(std::move(href));
+      const uint32_t now = millis();
+      if ((i + 1) % BUILD_YIELD_INTERVAL == 0 || uint32_t(now - checkpoint) >= INDEX_YIELD_MS) {
+        vTaskDelay(1);
+        checkpoint = millis();
+      }
+      if (uint32_t(millis() - started) >= INDEX_BUDGET_MS) {
+        break;
+      }
+    }
+    useSmallSpineHrefs = smallSpineHrefs.size() == spineCount;
+    if (!useSmallSpineHrefs) {
+      smallSpineHrefs.clear();
+      smallSpineHrefs.shrink_to_fit();
+    }
+    spineFile.seek(0);
   }
 
   return true;
@@ -91,6 +136,9 @@ bool BookMetadataCache::endTocPass() {
   tocFile.close();
   spineFile.close();
 
+  smallSpineHrefs.clear();
+  smallSpineHrefs.shrink_to_fit();
+  useSmallSpineHrefs = false;
   spineHrefIndex.clear();
   spineHrefIndex.shrink_to_fit();
   useSpineHrefIndex = false;
@@ -348,7 +396,14 @@ void BookMetadataCache::createTocEntry(const std::string& title, const std::stri
 
   int16_t spineIndex = -1;
 
-  if (useSpineHrefIndex) {
+  if (useSmallSpineHrefs) {
+    const auto it = std::find(smallSpineHrefs.begin(), smallSpineHrefs.end(), href);
+    if (it != smallSpineHrefs.end()) {
+      spineIndex = static_cast<int16_t>(it - smallSpineHrefs.begin());
+    } else {
+      LOG_DBG("BMC", "createTocEntry: Could not find spine item for TOC href %s", href.c_str());
+    }
+  } else if (useSpineHrefIndex) {
     uint64_t targetHash = fnvHash64(href);
     uint16_t targetLen = static_cast<uint16_t>(href.size());
 
