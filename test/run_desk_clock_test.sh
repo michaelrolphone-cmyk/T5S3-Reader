@@ -17,6 +17,7 @@ echo '12/24-hour clock format tests passed'
 python3 "$repo_dir/test/desk_clock/DeepSleepWiringTest.py"
 python3 "$repo_dir/test/desk_clock/SleepBoundaryTest.py"
 python3 "$repo_dir/test/desk_clock/BootPowerTest.py"
+python3 "$repo_dir/test/desk_clock/BootDiagnosticsTest.py"
 python3 "$repo_dir/test/desk_clock/ResumeBehaviorTest.py"
 echo 'Deep-sleep clock wiring tests passed'
 preview_dir="$(mktemp -d)"
