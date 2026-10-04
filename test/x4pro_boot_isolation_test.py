@@ -52,7 +52,7 @@ class X4BootIsolation(unittest.TestCase):
         boot = (ROOT / "src/platform/X4DiagnosticBoot.cpp").read_text()
         setup = boot.split("void x4DiagnosticSetup(bool deskClockUserWake)", 1)[1].split("bool x4DiagnosticLoop()", 1)[0]
         for stage, operation in (("Packages", "loadPlatformSdPackages()"),
-                ("Storage", 'acquire("storage.volume"'), ("Display", "bindDisplay()"),
+                ("StorageMount", 'acquire("storage.volume"'), ("Display", "bindDisplay()"),
                 ("Settings", "SETTINGS.loadFromFile()"), ("Rtc", "halClock.begin()"),
                 ("Fonts", "setupDisplayAndFonts()"), ("ReaderState", "setupReaderState()"),
                 ("HomePrepare", "resumeSavedReaderActivity()"), ("HomePresent", "activityManager.requestUpdate(true)")):

@@ -21,6 +21,9 @@ uint32_t nowMs=0;
 std::vector<std::string> lines;
 void capture(const char* fmt,...) { char text[256]; va_list ap;va_start(ap,fmt);
   const int n=vsnprintf(text,sizeof(text),fmt,ap);va_end(ap);assert(n>=0 && n<256);lines.emplace_back(text); }
+// Match firmware headers included before this interface by main.cpp.
+#define Serial MySerialImpl::instance
+#define Storage HalStorage::getInstance()
 #include "platform/X4BootDiagnostics.cpp"
 using namespace X4BootDiagnostics;
 bool contains(const char* part){for(const auto& l:lines)if(l.find(part)!=std::string::npos)return true;return false;}

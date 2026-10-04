@@ -3,7 +3,7 @@
 
 namespace X4BootDiagnostics {
 enum class Stage : uint32_t {
-  Entry, BoardPower, Serial, ClockResume, Packages, Storage, Frontlight,
+  Entry, BoardPower, SerialSetup, ClockResume, Packages, StorageMount, Frontlight,
   Navigation, Display, PowerManager, Settings, Rtc, Touch, Fonts, ReaderState,
   Splash, Battery, HomePrepare, HomePresent, Ready, Count
 };

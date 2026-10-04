@@ -526,7 +526,7 @@ void setup() {
   X4BootDiagnostics::begin(static_cast<uint32_t>(esp_reset_reason()));
   X4BootDiagnostics::mark(X4BootDiagnostics::Stage::BoardPower);
   if (!x4BootPowerReady) X4BootDiagnostics::fail("board-alive setup rejected");
-  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::Serial);
+  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::SerialSetup);
 #ifdef ENABLE_SERIAL_LOG
   Serial.begin(115200);
   const unsigned long x4SerialStart = millis();

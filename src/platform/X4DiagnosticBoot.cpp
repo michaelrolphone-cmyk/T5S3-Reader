@@ -144,7 +144,7 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
         LOG_ERR("X4", "External boot packages unavailable or invalid; no embedded fallback");
         return;
     }
-    X4BootDiagnostics::mark(Stage::Storage);
+    X4BootDiagnostics::mark(Stage::StorageMount);
     if (!acquire("storage.volume",storage_lease)) { refused(RuntimeInstalledProviders::lastError()); return; }
     auto* volume=static_cast<const risc_storage_volume_api_v1*>(storage_lease.interface);
     if (!volume || volume->api_version!=1 || volume->struct_size<sizeof(*volume)) {
