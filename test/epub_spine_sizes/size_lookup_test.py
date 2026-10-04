@@ -11,6 +11,7 @@ with tempfile.TemporaryDirectory(prefix='epub-spine-size-') as tmp:
     (build/'freertos').mkdir()
     (build/'freertos/FreeRTOS.h').write_text('#pragma once\n#include <cstdint>\n#include <cstdlib>\n')
     (build/'freertos/task.h').write_text('#pragma once\nvoid vTaskDelay(int);\n')
+    (build/'Arduino.h').write_text('#pragma once\n#include <cstdint>\nuint32_t millis();\nvoid vTaskDelay(int);\n')
     (build/'Logging.h').write_text('#pragma once\ntemplate<class... T> inline void logDiscard(T&&...){}\n#define LOG_ERR(...) logDiscard(__VA_ARGS__)\n#define LOG_DBG(...) logDiscard(__VA_ARGS__)\n')
     (build/'FsHelpers.h').write_text('#pragma once\n#include <string>\nnamespace FsHelpers {std::string normalisePath(const std::string&);}\n')
     s=(SOURCE/'lib/FsHelpers/FsHelpers.cpp').read_text();a=s.index('std::string normalisePath(');b=s.index('\n}',a)+2
