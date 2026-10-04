@@ -1,0 +1,20 @@
+name: fold-407-runner-once
+on:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-407-runner.yml'
+      - '.github/fold-407-runner.sh'
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+      - name: Wire BUG-74 runner
+        run: bash .github/fold-407-runner.sh
