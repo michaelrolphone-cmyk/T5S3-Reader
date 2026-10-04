@@ -59,6 +59,7 @@ done
 python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
 python3 "$repo_dir/test/native_apps/native_ui_refresh_contract_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
+python3 "$repo_dir/test/native_apps/springboard_storage_unavailable_test.py"
 python3 "$repo_dir/test/native_apps/global_home_overlay_contract_test.py"
 python3 "$repo_dir/test/native_apps/global_home_overlay_behavior_test.py"
 python3 "$repo_dir/test/native_apps/required_app_workflow_contract_test.py"

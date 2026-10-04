@@ -1683,6 +1683,13 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       if (input.wasTouchTapped(point, renderer) || input.wasAnyPressed() || input.wasTouchHomeButtonPressed()) break;
     }
   };
+  auto storageUnavailable = [&]() {
+    if (Storage.ready()) return false;
+    LOG_ERR("APP", "Runtime SD storage unavailable; Apps cannot inspect installed files");
+    showError("SD card unavailable. Check card and matching SD files.");
+    return true;
+  };
+  if (storageUnavailable()) return false;
   // Recover canonical package transactions before resolving the launcher.
   // resolveInstalledAppPath() prefers a verified /Apps/<id>/springboard.elf
   // package and falls back to the legacy loose /Apps/springboard.elf pair.
@@ -1690,18 +1697,21 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     LOG_ERR("APPSTORE", "Some managed apps require manual recovery");
 
   for (;;) {
+    if (storageUnavailable()) return false;
     // Resolve on every return to the Springboard. The App Store can migrate a
     // bootstrapped loose Springboard into its canonical package while this Apps
     // session is active, so caching the original path would immediately go stale.
     std::string springboard;
     if (!resolveInstalledAppPath("springboard.elf", springboard)) {
-      showError("Install Springboard or copy springboard.elf and .json to /Apps.");
+      if (!storageUnavailable())
+        showError("Install Springboard or copy springboard.elf and .json to /Apps.");
       return false;
     }
     LOG_INF("APP", "Apps resolved ms=%lu", (unsigned long)(millis()-appsBegan));
     const auto result = runNativeApp(springboard.c_str(), renderer, input);
     if (result != ESP_OK) {
-      showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
+      if (!storageUnavailable())
+        showError(lastLaunchError.empty() ? "Apps launcher failed." : lastLaunchError.c_str());
       return false;
     }
     if (idleSleepRequested()) return false;
@@ -1711,16 +1721,21 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     const std::string selectedName = selected.substr(selected.find_last_of('/') + 1);
     if (t5_safe_elf_name(selectedName.c_str()) &&
         !RuntimePackages::recoverAppPair(selectedName.c_str())) {
+      if (storageUnavailable()) return false;
       showError("Application update cannot be safely recovered.");
       continue;
     }
     const std::string sidecar = selected.substr(3, selected.size() - 7) + ".json";
-    if (!Storage.exists(sidecar.c_str())) { showError("Application manifest is missing."); continue; }
+    if (!Storage.exists(sidecar.c_str())) {
+      if (storageUnavailable()) return false;
+      showError("Application manifest is missing."); continue;
+    }
     const auto appResult = runNativeApp(selected.c_str(), renderer, input);
     if (idleSleepRequested()) return false;
     if (firmwareActionPending) return true;
     if (homeRequested) return false;
     if (appResult != ESP_OK) {
+      if (storageUnavailable()) return false;
       showError(lastLaunchError.empty() ? "Application launch failed." : lastLaunchError.c_str());
     }
   }

@@ -16,6 +16,7 @@ uint32_t card_sectors = 131072;
 bool card_bad_crc, card_reject_write, card_busy_forever, card_bad_pin;
 unsigned card_reads, card_writes;
 bool card_sleep_off;
+bool card_power_off;
 unsigned card_sleep_commits;
 uint64_t card_time;
 const risc_driver_v2 *t5_driver_get(uint32_t);
@@ -40,6 +41,9 @@ static void format(bool partitioned) {
     for(unsigned fat=0;fat<2;++fat) { uint8_t *p=card_image+(size_t)(base+32+fat*1024)*512;put32(p,0xffffff8);put32(p+4,0xffffffff);put32(p+8,0xfffffff); }
 }
 #include "directory_iteration_test.inc"
+#ifndef TEST_SPI_TRANSPORT
+#include "bootstrap_handoff.inc"
+#endif
 int main(int argc, char **argv) {
     card_image=static_cast<uint8_t*>(std::calloc(card_sectors,512));assert(card_image);
     format(argc>1 && std::strcmp(argv[1],"mbr")==0);
@@ -54,6 +58,28 @@ int main(int argc, char **argv) {
         ,{"spi.bus",1,&SpiCardFixture::api}
 #endif
     };
+#ifndef TEST_SPI_TRANSPORT
+    if (argc > 1 && std::strcmp(argv[1], "bootstrap-hold") == 0) {
+        // Execute the current production SdBootReader cleanup, not a second
+        // list of assumed pin writes. Its checked deinit leaves power held off.
+        assert(BootstrapHandoff::unmount() == BootstrapHandoff::ESP_OK);
+        assert(!BootstrapHandoff::claimed.held && card_sleep_off && card_power_off);
+        assert(driver->start(deps, sizeof(deps) / sizeof(deps[0])));
+        char why[80]{}; api->last_error(nullptr, why, sizeof(why));
+        std::fprintf(stderr, "bootstrap handoff: hold=%d power_off=%d mounted=%d reason=%s sectors=%u\n",
+                     card_sleep_off, card_power_off, api->ready(nullptr), why, card_reads);
+        assert(!card_sleep_off && !card_power_off && api->ready(nullptr) && card_reads &&
+               "bootstrap SD release required");
+        assert(Storage.bindVolume(api));
+        assert(Storage.mkdir("/Apps") && Storage.writeFile("/Apps/probe.txt", String("retained content")));
+        assert(Storage.readFile("/Apps/probe.txt") == "retained content");
+        assert(driver->quiesce()); driver->stop();
+        assert(sd_mutex_creates == sd_mutex_deletes && !card_bad_pin);
+        std::free(card_image);
+        std::puts("actual bootstrap cleanup to SD provider mount/read/write PASS");
+        return 0;
+    }
+#endif
     auto invalidClock=clock;invalidClock.monotonic_ms=nullptr;
     deps[0].api=&invalidClock;
     assert(!driver->start(deps,sizeof(deps)/sizeof(deps[0])));

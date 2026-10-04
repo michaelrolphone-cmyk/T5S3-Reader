@@ -19,3 +19,24 @@ The mutex switch is X4-only. `STORAGE_TRANSPORT=spi python3
 test/storage_volume/run_test.py` checks the unchanged T5 SPI admission/transport.
 The exact ABI1 + libc imports are checked with the production loader matcher by
 `test/x4pro_import_match_test.py` after target builds.
+
+## Bootstrap power-hold handoff
+
+The X4 runner compiles the exact production `SdBootReader::unmount()` into a
+small host fixture. Its controller/GPIO endpoints are doubles; the production
+cleanup must release the controller, park CLK/CMD/DAT and hold active-low GPIO5
+HIGH before relinquishing ownership. The actual SD provider/FatFs/HAL then
+starts from that state and must release the hold, mount, write and read.
+The wire model now honors both the latched hold and card power. Previously it
+ignored SD power writes and could return valid card responses while power was
+held off, so a standalone successful inventory replay missed this handoff.
+
+A negative build removes only the provider's initial hold-release call, matching
+SD0.2.1's initialization transition. It must fail the same success assertion with
+zero sector reads and an unavailable volume. This is explicitly a transition
+negative control, not a second maintained copy of the old driver. The exact
+historical0.2.1 provider was separately replayed during the investigation.
+Unpowered CMD-low is modeled as an invalid CMD8 response; real floating voltage
+may instead produce a timeout. This does not claim physical electrical proof.
+T5 SPI behavior and all existing directory, write, sleep and mutex-failure
+scenarios remain covered by their unchanged production paths.

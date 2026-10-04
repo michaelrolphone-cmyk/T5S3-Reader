@@ -6,6 +6,7 @@ import tempfile
 import platform
 import sys
 import os
+from bootstrap_handoff import header as bootstrap_header
 SANITIZER = "undefined" if platform.system() == "Darwin" else "address,undefined"
 ENV = dict(os.environ, ASAN_OPTIONS="detect_leaks=0", UBSAN_OPTIONS="halt_on_error=1")
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,6 +14,8 @@ SPI = os.environ.get('STORAGE_TRANSPORT') == 'spi'
 with tempfile.TemporaryDirectory() as temp:
     build = Path(temp)
     objects=[]
+    if not SPI:
+        (build/'bootstrap_handoff.inc').write_text(bootstrap_header(ROOT))
     for source in ('Drivers/t5s3_sd/driver.c' if SPI else 'Drivers/x4pro_sd/driver.c',
                    'Drivers/storage_fatfs/fatfs/ff.c','Drivers/storage_fatfs/fatfs/ffunicode.c',
                    'test/storage_volume/os_cpu_fake.c'):
@@ -22,7 +25,7 @@ with tempfile.TemporaryDirectory() as temp:
         objects.append(str(out))
     common = ['c++', '-std=c++17', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
               '-fsanitize='+SANITIZER, '-pthread', '-DBOARD_T5S3_PRO' if SPI else '-DBOARD_XTEINK_X4_PRO', '-Wno-overloaded-virtual',
-              '-Itest/storage_volume/stubs', '-Ilib/hal', '-Isdk/driver']
+              '-Itest/storage_volume/stubs', '-Ilib/hal', '-Isdk/driver', '-I'+str(build)]
     extra = []
     if SPI: common.append('-DTEST_SPI_TRANSPORT')
     if len(sys.argv) > 1:
@@ -41,6 +44,33 @@ with tempfile.TemporaryDirectory() as temp:
     binary=build/'storage'
     subprocess.run([*common, *extra, 'test/storage_volume/runtime_test.cpp',
                     'lib/hal/HalStorageVolume.cpp', *objects, '-o', str(binary)], cwd=ROOT, check=True)
+    if not SPI:
+        subprocess.run([str(binary),'bootstrap-hold'],cwd=ROOT,check=True,timeout=120,env=ENV)
+        # SD0.2.1's init sequence never released the bootstrap hold. The exact
+        # historical provider was reproduced during investigation; this bounded
+        # negative control removes only that transition from the current driver.
+        # Keep all real transport/FatFs/mutex code and avoid a frozen driver fork.
+        original=(ROOT/'Drivers/x4pro_sd/driver.c').read_text()
+        release='    x4pro_pin_hold(X4PRO_PIN_SD_PWR, false);'
+        assert original.count(release)==1
+        legacy=original.replace(release,'    /* SD0.2.1 init: no hold release. */')
+        legacy=legacy.replace('#include "../x4pro_i2c/os_cpu_v1.h"',
+                              '#include "'+str(ROOT/'Drivers/x4pro_i2c/os_cpu_v1.h')+'"')
+        legacy=legacy.replace('#include "../storage_fatfs/volume.c"',
+                              '#include "'+str(ROOT/'Drivers/storage_fatfs/volume.c')+'"')
+        legacy_source=build/'legacy-hold.c'; legacy_source.write_text(legacy)
+        legacy_object=build/'legacy-hold.o'
+        subprocess.run(['cc','-std=c11','-O1','-g','-Wall','-Wextra','-Werror','-Wno-overflow','-fsanitize='+SANITIZER,
+                        '-pthread','-D_XOPEN_SOURCE=700','-Isdk/driver','-Itest/storage_volume/fake','-IDrivers/x4pro_board',
+                        '-c',str(legacy_source),'-o',str(legacy_object)],cwd=ROOT,check=True)
+        legacy_binary=build/'legacy-hold'
+        subprocess.run([*common,*extra,'test/storage_volume/runtime_test.cpp','lib/hal/HalStorageVolume.cpp',
+                        str(legacy_object),*objects[1:],'-o',str(legacy_binary)],cwd=ROOT,check=True)
+        negative=subprocess.run([str(legacy_binary),'bootstrap-hold'],cwd=ROOT,timeout=120,env=ENV,
+                                text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        assert negative.returncode != 0 and 'bootstrap SD release required' in negative.stderr, negative.stderr
+        assert 'hold=1 power_off=1 mounted=0 reason=CMD8 response invalid sectors=0' in negative.stderr, negative.stderr
+        print('legacy SD0.2.1 hold transition independently fails the bootstrap regression')
     for layout in ('superfloppy','mbr'):
         for failure in ([], ['busy-timeout']):
             subprocess.run([str(binary),layout,*failure],cwd=ROOT,check=True,timeout=120,env=ENV)

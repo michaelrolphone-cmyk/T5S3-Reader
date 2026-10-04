@@ -10,6 +10,7 @@ extern uint32_t card_sectors;
 extern bool card_bad_crc, card_reject_write, card_busy_forever, card_bad_pin;
 extern unsigned card_reads, card_writes;
 extern bool card_sleep_off;
+extern bool card_power_off;
 extern unsigned card_sleep_commits;
 static uint8_t cmd_bits[48], reply_bits[136], write_bytes[512];
 static unsigned cmd_count, reply_count, reply_at, data_at, write_at, token_at;
@@ -25,7 +26,11 @@ static void fake_tick(void) {
 static inline void x4pro_pin_output(uint32_t pin, bool high) {
     if (pin == X4PRO_PIN_SD_CLK) { if (!high) fake_tick(); return; }
     if (pin == X4PRO_PIN_SD_CMD) { if (cmd_count < 48) cmd_bits[cmd_count++] = high; else card_bad_pin = true; return; }
-    if (pin == X4PRO_PIN_SD_PWR) return;
+    if (pin == X4PRO_PIN_SD_PWR) {
+        // A held output cannot be changed by writing GPIO or IO_MUX registers.
+        if (!card_sleep_off) card_power_off = high;
+        return;
+    }
     if (pin == X4PRO_PIN_SD_DAT0 && write_pending) {
         if (!write_at) { if (high) card_bad_pin = true; memset(write_bytes, 0, sizeof(write_bytes)); write_crc = 0; }
         else if (write_at <= 4096) { unsigned bit = write_at - 1; write_bytes[bit / 8] |= (uint8_t)high << (7 - bit % 8); }
@@ -65,6 +70,9 @@ static inline void x4pro_pin_release(uint32_t pin) {
     for (unsigned i = 0; i < reply_count; ++i) reply_bits[i] = (reply[i / 8] >> (7 - i % 8)) & 1;
 }
 static inline bool x4pro_pin_read(uint32_t pin) {
+    // Model an unpowered card with CMD/DAT low. Physical floating levels may
+    // instead time out; neither is a valid card response. No file was read.
+    if (card_power_off && (pin == X4PRO_PIN_SD_CMD || pin == X4PRO_PIN_SD_DAT0)) return false;
     if (pin == X4PRO_PIN_SD_CMD) return !reply_active || reply_bits[reply_at];
     if (pin != X4PRO_PIN_SD_DAT0) { card_bad_pin = true; return true; }
     if (token_active) {
