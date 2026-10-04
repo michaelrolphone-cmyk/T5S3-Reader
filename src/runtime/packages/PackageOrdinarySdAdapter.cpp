@@ -83,10 +83,11 @@ bool readManifest(const char* directory, const char* name,
 // A partial OWNED stage may lack some declared files. For all other paths a
 // missing manifest plus nonempty directory is ambiguous and never purged.
 bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full, bool managedMetadata = true,
-               uint64_t* sizes = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr) {
+               uint64_t* sizes = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr,
+               OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict) {
   if (!root) return false;
   OrdinarySdTreeOps ops(root, &plan, sizes, diagnostic);
-  return ordinaryTreeInventory(plan, ops, full, managedMetadata);
+  return ordinaryTreeInventory(plan, ops, full, managedMetadata, copyMetadata);
 }
 bool purgeKnown(const char* root, const OrdinaryPackagePlan& plan,
                 bool ownedPartial) {
@@ -188,8 +189,9 @@ class SdHash {
 };
 class SdDirectory {
  public:
-  explicit SdDirectory(const char* path, OrdinaryInspectionDiagnostic* diagnostic = nullptr)
-      : root_(path), diagnostic_(diagnostic) {}
+  explicit SdDirectory(const char* path, OrdinaryInspectionDiagnostic* diagnostic = nullptr,
+                       OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict)
+      : root_(path), diagnostic_(diagnostic), copyMetadata_(copyMetadata) {}
   bool readManifest(char* output, size_t capacity, size_t& length) {
     // Read directly into the caller's heap-owned workspace. The previous
     // second 4 KiB stack buffer overflowed loopTask during nested hashing.
@@ -199,7 +201,7 @@ class SdDirectory {
   bool exactEntries(const OrdinaryPackagePlan& plan) {
     // Both initial and final exact-tree walks check declared sizes. Reuse
     // those observations within this verifier instead of reopening each child.
-    validSizes_ = inventory(root_.c_str(), plan, true, true, sizes_, diagnostic_);
+    validSizes_ = inventory(root_.c_str(), plan, true, true, sizes_, diagnostic_, copyMetadata_);
     plan_ = &plan;
     return validSizes_;
   }
@@ -222,6 +224,7 @@ class SdDirectory {
   std::string root_;
   OrdinarySequentialSdReader reader_;
   OrdinaryInspectionDiagnostic* diagnostic_;
+  OrdinaryCopyMetadata copyMetadata_;
 };
 class SdStage {
  public:
@@ -303,12 +306,13 @@ struct Ops {
 };
 bool verifyCanonical(const char* path, const PackageRuntimePolicy& policy,
                      uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true,
-                     OrdinaryPackagePlan* inspection = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr) {
+                     OrdinaryPackagePlan* inspection = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr,
+                     OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict) {
   if (verifyContents) Storage.invalidateObservations();
   // readManifest and both exactEntries passes independently open this same
   // directory. Avoid a fourth path walk just to repeat its existence/type check.
   if (!path || !resolver) return false;
-  SdDirectory directory(path, diagnostic);
+  SdDirectory directory(path, diagnostic, copyMetadata);
   SdHash hash;
   uint8_t io[kOrdinaryIoBytes]{};
   if (inspection) {
@@ -378,7 +382,8 @@ bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
       cdcMigrationPendingOnSd()) return diagnostic ? diagnostic->fail("migration-pending") : false;
   if (!Storage.ready() || !safeSourcePath(managedDirectory))
     return diagnostic ? diagnostic->fail("storage-or-path") : false;
-  return verifyCanonical(managedDirectory, policy, resolveCapability, observed, false, inspection, diagnostic);
+  return verifyCanonical(managedDirectory, policy, resolveCapability, observed, false, inspection, diagnostic,
+                         OrdinaryCopyMetadata::InspectInstalled);
 }
 bool verifyManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id,
     const PackageRuntimePolicy& policy, uint32_t (*resolver)(const char*),

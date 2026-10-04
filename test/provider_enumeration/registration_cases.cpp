@@ -63,6 +63,35 @@ int main() {
   assert(!selected && std::strstr(loadError, "Provider dependency ambiguous"));
   assert(Storage.writeFile("/Drivers/c-target/provider-abi.v1",
       "os-cpu-abi=1\nprovides=test.other\napi=1\n"));
+  // Copy metadata may sort before the target. Do not truncate selection or
+  // miss an ambiguous provider beyond the old 64-raw-entry boundary.
+  for (unsigned n=0;n<64;++n)
+    assert(Storage.writeFile(("/Drivers/._copy-"+std::to_string(n)).c_str(), "inert"));
+  assert(Storage.writeFile("/Drivers/.DS_Store", "inert"));
+  FakeSd::entryNames["/drivers/.ds_store"]=".DS_Store";
+  assert(registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
+  assert(selected==1);
+  package("z-late-target", "test.target");
+  assert(!registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
+  assert(!selected && std::strstr(loadError, "Provider dependency ambiguous"));
+  assert(Storage.remove("/Drivers/z-late-target/provider-abi.v1"));
+  assert(Storage.rmdir("/Drivers/z-late-target"));
+  assert(Storage.writeFile("/Drivers/._copy-overflow", "inert"));
+  assert(!registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
+  assert(!selected && std::strstr(loadError, "entry limit exceeded"));
+  assert(Storage.remove("/Drivers/._copy-overflow"));
+  for (unsigned n=3;n<64;++n)
+    assert(Storage.writeFile(("/Drivers/unused-"+std::to_string(n)).c_str(), "ordinary"));
+  assert(registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
+  assert(Storage.writeFile("/Drivers/zz-overflow", "ordinary"));
+  assert(!registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
+  assert(!selected && std::strstr(loadError, "entry limit exceeded"));
+  assert(Storage.remove("/Drivers/zz-overflow"));
+  for (unsigned n=3;n<64;++n)
+    assert(Storage.remove(("/Drivers/unused-"+std::to_string(n)).c_str()));
+  for (unsigned n=0;n<64;++n)
+    assert(Storage.remove(("/Drivers/._copy-"+std::to_string(n)).c_str()));
+  assert(Storage.remove("/Drivers/.DS_Store"));
   FakeSd::failClose = "/drivers";
   assert(!registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
   assert(!selected && std::strstr(loadError, "Provider directory close failed"));

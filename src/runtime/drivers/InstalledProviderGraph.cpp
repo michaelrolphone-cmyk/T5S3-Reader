@@ -5,6 +5,7 @@
 #include "native/NativeStreamBridge.h"
 #include "DeviceProviderExecutorV2.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/InstalledProviderRootScan.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinaryStage.h"
@@ -345,7 +346,8 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
             if (directory.isOpen()) (void)directory.close();
             continue;
         }
-        for (size_t i = 0; i < 64 && accepted <= 1; ++i) {
+        InstalledProviderRootScan scan;
+        while (accepted <= 1) {
             ordinaryCooperativeYield(1, 1);
             HalFile::DirectoryEntry item;
             if (!directory.readDirectoryEntry(item)) {
@@ -355,6 +357,12 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
                 }
                 break;
             }
+            const auto classification = scan.observe(item.name, item.isDirectory);
+            if (classification == InstalledProviderRootScan::Entry::Exhausted) {
+                (void)directory.close();
+                return providerFail("Provider directory entry limit exceeded", root.path);
+            }
+            if (classification == InstalledProviderRootScan::Entry::CopyMetadata) continue;
             auto& id = frame.id;
             const size_t length = std::strlen(item.name);
             const bool valid = item.isDirectory && length && length < sizeof(id) &&
@@ -541,14 +549,17 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
             }
             // One extra probe distinguishes the exact bound from truncation.
             bool complete = false;
-            for (size_t visited = 0; visited <= 64; ++visited) {
+            InstalledProviderRootScan scan;
+            while (true) {
                 ordinaryCooperativeYield(1, 1);
                 HalFile::DirectoryEntry item;
                 if (!directory.readDirectoryEntry(item)) {
                     complete = directory.getError() == 0;
                     break;
                 }
-                if (visited == 64) break;
+                const auto classification = scan.observe(item.name, item.isDirectory);
+                if (classification == InstalledProviderRootScan::Entry::Exhausted) break;
+                if (classification == InstalledProviderRootScan::Entry::CopyMetadata) continue;
                 const size_t length = std::strlen(item.name);
                 const bool valid = item.isDirectory && length &&
                     length < sizeof(frame->id) && safeId(item.name);

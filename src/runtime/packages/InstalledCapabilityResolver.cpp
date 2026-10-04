@@ -1,5 +1,6 @@
 #include "ProviderAbiProfile.h"
 #include "InstalledCapabilityResolver.h"
+#include "InstalledProviderRootScan.h"
 #include "PackageOrdinaryManifest.h"
 #include "PackageOrdinarySdAdapter.h"
 #include "PackageOrdinaryStage.h"
@@ -20,7 +21,6 @@ namespace {
 constexpr PackageRuntimePolicy kPolicy{
     "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr size_t kMaxDepth = 8;
-constexpr size_t kMaxEntriesPerRoot = 64;
 // A healthy native-SD inventory can need over two seconds for bounded FAT
 // directory/metadata reads. Match the storage operation's finite 15s envelope
 // instead of discarding the entire capability snapshot at an arbitrary 2s.
@@ -92,6 +92,7 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable, Insp
     }
     if (!directory.isDirectory()) { (void)directory.close(); return false; }
     size_t examined = 0;
+    InstalledProviderRootScan scan;
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
     const TickType_t started = xTaskGetTickCount();
 #endif
@@ -112,9 +113,12 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable, Insp
         if (directory.getError()) { (void)directory.close(); return false; }
         break;
       }
-      if (examined++ == kMaxEntriesPerRoot) { (void)directory.close(); return false; }
+      ++examined;
       const char* id = item.name;
       const size_t n = std::strlen(id);
+      const auto entry = scan.observe(id, item.isDirectory);
+      if (entry == InstalledProviderRootScan::Entry::Exhausted) { (void)directory.close(); return false; }
+      if (entry == InstalledProviderRootScan::Entry::CopyMetadata) continue;
       const bool candidate = item.isDirectory && n > 0 && n < sizeof(item.name) && safeId(id);
       if (!candidate) continue;
       char path[160]{};

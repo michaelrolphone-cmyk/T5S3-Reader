@@ -23,6 +23,8 @@ bool verifyOrdinarySdDirectory(const char* managedDirectory,
 
 // Runtime inspection: manifest, inventory, sizes and ELF headers; no hashing.
 // Installation/update verification above remains independent and mandatory.
+// Exact inert host-copy companions are tolerated only here; they cannot stand
+// in for declared members. Stage/source verification and purge remain strict.
 bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed);
