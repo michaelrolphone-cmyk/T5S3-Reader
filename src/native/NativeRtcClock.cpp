@@ -72,10 +72,20 @@ bool nativeRtcRead(risc_rtc_time_v2* out) {
     const auto* api = acquire();
     if (!api) return false;
     risc_rtc_time_v2 sample{};
-    const bool ok = api->read(api->context, &sample) && risc_rtc_valid_time_v2(&sample);
+    const bool readOk = api->read(api->context, &sample);
+    const bool valid = readOk && risc_rtc_valid_time_v2(&sample);
+    if (!readOk) {
+        // Copy before release can unmap the provider. The diagnostic callback
+        // consumes the existing failure, without another time read or retry.
+        char reason[112]{};
+        const bool diagnostic = RuntimeInstalledProviders::copyProviderError(lease, reason, sizeof(reason));
+        LOG_ERR("CLK", "RTC read rejected: %s", diagnostic ? reason : "no provider diagnostic");
+        (void)diagnostic;
+    } else if (!valid) {
+        LOG_ERR("CLK", "RTC read rejected: provider returned invalid calendar");
+    }
     const bool released = release();
-    if (!ok) LOG_ERR("CLK", "RTC read rejected: I/O, stopped clock, voltage loss, or invalid calendar");
-    if (!ok || !released) return false;
+    if (!valid || !released) return false;
     *out = sample;
     return true;
 }
@@ -85,8 +95,13 @@ bool nativeRtcWrite(const risc_rtc_time_v2* value) {
     const auto* api = acquire();
     if (!api) return false;
     const bool ok = api->write(api->context, value);
+    if (!ok) {
+        char reason[112]{};
+        const bool diagnostic = RuntimeInstalledProviders::copyProviderError(lease, reason, sizeof(reason));
+        LOG_ERR("CLK", "RTC write rejected: %s", diagnostic ? reason : "no provider diagnostic");
+        (void)diagnostic;
+    }
     const bool released = release();
-    if (!ok) LOG_ERR("CLK", "RTC write rejected or I/O failed");
     return ok && released;
 }
 bool nativeRtcSuspend() {

@@ -13,7 +13,9 @@
 namespace RuntimePackages {
 class OrdinarySdTreeOps {
  public:
-  explicit OrdinarySdTreeOps(const char* root) : root_(root), started_(now()) {}
+  explicit OrdinarySdTreeOps(const char* root, const OrdinaryPackagePlan* plan = nullptr,
+                            uint64_t* sizes = nullptr)
+      : root_(root), started_(now()), plan_(plan), sizes_(sizes) {}
   bool checkpoint() {
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
     vTaskDelay(1);
@@ -29,20 +31,27 @@ class OrdinarySdTreeOps {
   }
   template<class Visitor>
   bool visit(const char* relative, Visitor visitor) {
-    if (!checkpoint()) return false;
+    if (!checkpoint() || (sizes_ && !plan_)) return false;
     HalFile directory = Storage.open(path(relative).c_str(), O_RDONLY);
     if (!directory.isOpen()) return false;
     if (!directory.isDirectory()) { (void)directory.close(); return false; }
     bool good = true;
     size_t count = 0;
     while (good && checkpoint()) {
-      HalFile entry = directory.openNextFile();
-      if (!entry.isOpen()) { good = directory.getError() == 0; break; }
-      char name[128]{};
-      const size_t length = entry.getName(name, sizeof(name));
+      HalFile::DirectoryEntry entry;
+      if (!directory.readDirectoryEntry(entry)) { good = directory.getError() == 0; break; }
+      const size_t length = std::strlen(entry.name);
       good = ++count <= kMaxPackageEntries * kPackageResourceDepth + 2 &&
-          length && length < sizeof(name) && visitor(name, entry.isDirectory());
-      if (!entry.close()) good = false;
+          length && length < sizeof(entry.name) && visitor(entry.name, entry.isDirectory);
+      if (good && sizes_ && !entry.isDirectory) {
+        const std::string name = relative[0] ? std::string(relative) + "/" + entry.name : entry.name;
+        for (size_t i = 0; i < plan_->entryCount; ++i) {
+          if (name != plan_->entries[i].name) continue;
+          if (entry.size != plan_->entries[i].sizeBytes) good = false;
+          sizes_[i] = entry.size;
+          break;
+        }
+      }
     }
     if (!checkpoint()) good = false;
     return directory.close() && good;
@@ -76,5 +85,7 @@ class OrdinarySdTreeOps {
   }
   std::string root_;
   uint64_t started_;
+  const OrdinaryPackagePlan* plan_;
+  uint64_t* sizes_;
 };
 } // namespace RuntimePackages

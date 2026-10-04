@@ -1,6 +1,7 @@
 #include "native/NativeBatteryGauge.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include <BoardX4Pro.h>
+#include <Logging.h>
 #include <RiscBatteryGaugeV1.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -107,6 +108,7 @@ void failedSamples() {
   expectSample(3800, 67, true);
   readOk = false;
   tickAt(5000);
+  assert(nativeDiagnosticContains("Installed battery sample rejected: fixture battery sample rejected"));
   expectUnavailable();
   readOk = true;
   tickAt(9999);
@@ -152,6 +154,7 @@ void unavailableRetry() {
   tickAt(UINT32_MAX - 9999u);
   for (uint32_t t = 0; t < 20000; t += 10) tickAt(t);
   assert(acquisitions == 1 && reads == 0);
+  assert(nativeDiagnosticContains("Installed battery provider unavailable: fixture battery acquisition rejected"));
   expectUnavailable();
   acquireOk = true;
   tickAt(20000);
@@ -288,6 +291,14 @@ bool release(Lease* lease) {
   if (releaseOk) { *lease = {}; outstanding = {}; }
   return releaseOk;
 }
+bool copyProviderError(const Lease& value, char* out, size_t capacity) {
+  ownerCallback();
+  assert(value.interface && value.grant.slot == outstanding.grant.slot &&
+         value.grant.generation == outstanding.grant.generation && !releaseAttempted);
+  std::snprintf(out, capacity, "%s", "fixture battery sample rejected");
+  return true;
+}
+const char* lastError() { return "fixture battery acquisition rejected"; }
 } // namespace RuntimeInstalledProviders
 
 int main(int argc, char** argv) {

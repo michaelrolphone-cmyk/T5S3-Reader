@@ -298,6 +298,13 @@ const void* GraphV2::interfaceFor(GrantV2 grant) const {
   return nodes_[slot.node].module.capability();
 }
 
+bool GraphV2::copyProviderError(GrantV2 grant, char* destination, size_t capacity) const {
+  if (!destination || !capacity) return false;
+  destination[0] = 0;
+  if (!interfaceFor(grant)) return false;
+  return nodes_[grants_[grant.slot - 1].node].module.copyProviderError(destination, capacity);
+}
+
 bool GraphV2::grantStream(GrantV2 grant, uint32_t consumer, uint32_t endpoint, uint32_t rights) {
   if (!interfaceFor(grant) || !streamHost_ || !streamHost_->grant || !streamHost_->revokeGrant)
     return false;

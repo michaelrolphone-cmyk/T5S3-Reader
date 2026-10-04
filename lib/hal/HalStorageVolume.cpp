@@ -217,7 +217,14 @@ bool HalStorage::rename(const char *from, const char *to) {
 }
 bool HalStorage::openFileForRead(const char*, const char *path, HalFile& file) {
   if (file.impl && !file.close()) return false;
-  file = open(path); return file.isOpen() && !file.isDirectory();
+  HalStorage::StorageLock lock;
+  if (!lock || !initialized || !mediaReady() || !path) return false;
+  // This API requests a regular file; the provider's file_open rejects
+  // directories. No preliminary stat/path traversal is needed.
+  const uint32_t handle = extended->file_open(volume->context, path, RISC_STORAGE_OPEN_READ);
+  if (!handle) return false;
+  file.impl = std::make_unique<HalFile::Impl>(handle, false, false, path);
+  return true;
 }
 bool HalStorage::openFileForRead(const char *mod, const std::string& path, HalFile& file) { return openFileForRead(mod, path.c_str(), file); }
 bool HalStorage::openFileForRead(const char *mod, const String& path, HalFile& file) { return openFileForRead(mod, path.c_str(), file); }
@@ -301,6 +308,32 @@ void HalFile::rewindDirectory() {
   if (!extended->dir_rewind(volume->context, impl->handle)) impl->error = 1;
 }
 bool HalFile::close() { HalStorage::StorageLock lock; return lock && (!impl || impl->closeLocked()); }
+bool HalFile::readDirectoryEntry(DirectoryEntry& result) {
+  result = {};
+  HalStorage::StorageLock lock;
+  if (!lock) return false;
+  if (!impl) return false;
+  if (!impl->handle || !impl->directory || impl->error || !mediaReady() || !lock.initialized()) {
+    impl->error = 1;
+    return false;
+  }
+  risc_storage_dirent_v1 entry{};
+  if (!volume->dir_next(volume->context, impl->handle, &entry)) {
+    if (extended->handle_error(volume->context, impl->handle, true)) impl->error = 1;
+    return false;
+  }
+  if (!lock.initialized() || !mediaReady()) { impl->error = 1; return false; }
+  const size_t n = strnlen(entry.name, sizeof(entry.name));
+  if (!n || n >= sizeof(entry.name) || n >= sizeof(result.name) || entry.is_directory > 1 ||
+      std::strchr(entry.name, '/') || std::strchr(entry.name, '\\') ||
+      !std::strcmp(entry.name, ".") || !std::strcmp(entry.name, "..")) {
+    impl->error = 1;
+    return false;
+  }
+  std::memcpy(result.name, entry.name, n + 1);
+  result.size = entry.size; result.isDirectory = entry.is_directory;
+  return true;
+}
 HalFile HalFile::openNextFile() {
   HalStorage::StorageLock lock;
   if (!lock || !impl || !impl->handle || !impl->directory || impl->error || !mediaReady()) return {};

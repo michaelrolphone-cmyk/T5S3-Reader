@@ -25,6 +25,17 @@ int main(int argc, char** argv) {
   auto childGrant = graph.acquire("cap.child", 1);
   assert(childGrant.slot && graph.interfaceFor(childGrant));
   assert(*static_cast<const int*>(graph.interfaceFor(childGrant)) == 42);
+  char diagnostic[64]{};
+  assert(graph.copyProviderError(childGrant, diagnostic, sizeof(diagnostic)));
+  assert(!std::strcmp(diagnostic, "fixture diagnostic"));
+  assert(*static_cast<const int*>(graph.interfaceFor(childGrant)) == 43);
+  auto stale = childGrant; ++stale.generation;
+  assert(!graph.copyProviderError(stale, diagnostic, sizeof(diagnostic)) && !diagnostic[0]);
+  assert(!graph.copyProviderError({}, diagnostic, sizeof(diagnostic)));
+  assert(!graph.copyProviderError(childGrant, nullptr, 5));
+  assert(!graph.copyProviderError(childGrant, diagnostic, 0));
+  assert(*static_cast<const int*>(graph.interfaceFor(childGrant)) == 43);
+  assert(graph.copyProviderError(childGrant, diagnostic, 4) && !std::strcmp(diagnostic, "fix"));
   // Lazy installed-provider admission must be append-only and safe while the
   // already loaded dependency chain and its consumer grant remain live.
   assert(graph.addVerified(other));
@@ -41,6 +52,7 @@ int main(int argc, char** argv) {
   retained[1] = otherGrant; ++retained[1].generation;
   assert(!graph.drainExcept(retained, 2));
   assert(graph.release(childGrant));
+  assert(!graph.copyProviderError(childGrant, diagnostic, sizeof(diagnostic)) && !diagnostic[0]);
   assert(graph.drainExcept(&otherGrant, 1));
   assert(!graph.drainExcept(&childGrant, 1));
   assert(!graph.release(childGrant) && !graph.interfaceFor(childGrant));

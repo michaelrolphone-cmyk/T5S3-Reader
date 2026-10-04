@@ -2,6 +2,9 @@
 
 ## Report and scope
 
+The latest physical follow-through is recorded below. Earlier sections describe
+the source fixes and evidence available at the 1.3.99 handoff.
+
 The owner reports a visible `--:--` sleep clock, no useful button wake, and
 clarifies that the X4 Pro does not boot without USB. This is a failed physical
 test of the earlier candidate. The latest log identifies the matching SD
@@ -141,3 +144,61 @@ spacing, wrap-around, stuck counter/read-back, bootstrap power holds and existin
 storage failure/lifetime behavior. Target disassembly confirms GPIO read-back,
 CCOUNT comparisons and both bounded loops. Reduced register writes are measured
 in the model; electrical waveforms and device launch speed remain unmeasured.
+
+## Full-inventory follow-through (1.3.102)
+
+The owner confirms that battery-only boot works with 1.3.99 and the matching SD
+files, but startup remains slow, battery telemetry is unavailable and the clock
+shows `--:--`. The new boot log gives a common software failure before either
+optional peripheral starts:
+
+- Settings finish at 5.503 s; the first `/Drivers` inventory times out at
+  21.299 s after 30 entries. RTC capability acquisition fails before I2C/RTC
+  activation. I2C and GT911 then start successfully.
+- The battery inventory times out at 39.466 s after 29 entries. Home entry
+  takes another 14.121 s, and its first frame is reported at 55.987 s.
+- Battery retries repeat the full failed scan: a 15.748 s owner-loop stall,
+  then a 16.810 s stall after the CPU changes to its ordinary 80 MHz idle mode.
+
+The 15 s limit exposes the read amplification; increasing the old 2 s limit
+did not solve this workload. A timed-out scan publishes no snapshot, so there
+is no successful inventory for the generation cache to reuse. The log does
+not yet establish whether the hardware RTC contains valid time or what the
+CW2017 would return after successful admission.
+
+The repair reduces redundant filesystem work without changing the 15 s
+deadline, entry bounds, device timing or RTC policy. A copied directory-entry
+cursor uses the existing `storage.volume.dir_next` metadata without opening
+each child. Legacy SdFat retains its checked child-open/close implementation.
+Package inspection checks every declared size during both exact-tree walks
+and reuses those observations within that inspection; ELF headers remain
+checked. The resolver consumes the plan already parsed by that same verified
+inspection. Known regular-file reads use the existing `openFileForRead` API
+without a separate provider stat. Provider registration/enumeration use the
+same cursor and refuse directory read/close failures.
+
+A real SD 0.2.3/GPIO/FatFs/HAL/inspector/resolver model contains the accepted
+nine-package payloads plus 31 distinct, structurally valid synthetic package
+identities. It measures 13,535 → 3,095 sector reads and 74,890 → 45,635
+metadata/header bytes for a complete 40-package capability snapshot. No payload
+hashing was removed. At an injected 3 ms per sector, the previous scan refuses
+after 21 entries; the repaired scan completes in 11.933 modeled seconds and
+the next unchanged-generation lookup uses zero I/O. A 5 ms workload still
+reaches the finite deadline and publishes nothing. These are sensitivity
+tests and operation counts, not measurements of the owner's SD card. A second,
+durable 40-provider fixture with longer names crosses an additional FAT
+directory boundary and completes at 3,383 sectors/12.941 modeled seconds. The
+separate 16-slot active graph/metadata enumerator bound is unchanged.
+
+Diagnostics now report inventory, registration and activation durations and
+preserve the provider's existing startup/read failure reason. Copied runtime
+diagnostics require the exact live lease and happen before release; stale or
+pending-release grants cannot call the provider. RTC unavailability, read I/O,
+STOP/VL and invalid calendar remain distinguishable without another probe or
+register read. Three Home entry timings separate recents, pinned-app resolution
+and cover preparation without changing their work or cache behavior.
+
+Firmware advances to 1.3.102. All nine driver sources, ABIs and package versions
+remain unchanged; the matching 1.3.99 SD files remain applicable. The delivered
+1.3.99 files are immutable. New physical battery telemetry, RTC time recovery,
+startup speed, sleep/wake and current measurements remain pending.

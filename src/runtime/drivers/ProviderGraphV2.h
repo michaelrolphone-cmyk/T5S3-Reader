@@ -52,6 +52,9 @@ class GraphV2 final {
   // Trusted capability broker only; consumer is an authenticated context ID.
   bool grantStream(GrantV2, uint32_t consumer, uint32_t endpoint, uint32_t rights);
   const void* interfaceFor(GrantV2 grant) const;
+  // Copy diagnostics only while this exact grant still permits callbacks.
+  // Never expose provider pointers or revive stale/pending-release grants.
+  bool copyProviderError(GrantV2 grant, char* destination, size_t capacity) const;
   bool shutdown();
   // Checked lifecycle barrier for firmware-owned persistent capabilities.
   // Every live grant must be explicitly retained by exact generation. Only

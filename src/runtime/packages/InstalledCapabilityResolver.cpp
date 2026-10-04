@@ -30,11 +30,8 @@ constexpr uint32_t kInventoryRootBudgetMs = 15000;
 bool readSmall(const char* path, char* buffer, size_t capacity, size_t& length) {
   length = 0;
   if (!path || !buffer || capacity < 2) return false;
-  HalFile file = Storage.open(path, O_RDONLY);
-  if (!file.isOpen() || file.isDirectory()) {
-    if (file.isOpen()) (void)file.close();
-    return false;
-  }
+  HalFile file;
+  if (!Storage.openFileForRead("CAPS", path, file)) return false;
   const uint64_t size = file.fileSize64();
   if (!size || size >= capacity) {
     (void)file.close();
@@ -99,18 +96,15 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable) {
 #endif
       // Metadata-only inspection still yields between bounded directory items.
       ordinaryCooperativeYield(1, 1);
-      HalFile item = directory.openNextFile();
-      if (!item.isOpen()) {
+      HalFile::DirectoryEntry item;
+      if (!directory.readDirectoryEntry(item)) {
         if (directory.getError()) { (void)directory.close(); return false; }
         break;
       }
-      if (examined++ == kMaxEntriesPerRoot) {
-        (void)item.close(); (void)directory.close(); return false;
-      }
-      char id[64]{};
-      const size_t n = item.getName(id, sizeof(id));
-      const bool candidate = item.isDirectory() && n > 0 && n < sizeof(id) && safeId(id);
-      if (!item.close()) { (void)directory.close(); return false; }
+      if (examined++ == kMaxEntriesPerRoot) { (void)directory.close(); return false; }
+      const char* id = item.name;
+      const size_t n = std::strlen(id);
+      const bool candidate = item.isDirectory && n > 0 && n < sizeof(item.name) && safeId(id);
       if (!candidate) continue;
       char path[160]{};
       if (std::snprintf(path, sizeof(path), "%s/%s", root, id) >=
@@ -119,7 +113,7 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable) {
       // trusting a declaration merely because its own dependency claims it.
       Identity installed{};
       if (!inspectInstalledOrdinarySdDirectory(path, kPolicy,
-              [](const char*) -> uint32_t { return UINT32_MAX; }, installed)) {
+              [](const char*) -> uint32_t { return UINT32_MAX; }, installed, plan.get())) {
         // A metadata refusal can be transient (for example allocation failure)
         // without a storage mutation. Never indefinitely cache that omission.
         reusable = false;
@@ -136,14 +130,8 @@ bool snapshotCandidates(std::vector<Candidate>& candidates, bool& reusable) {
       uint32_t advertised = 0, osCpuAbi = 0;
       if (!parseProfile(profile, capability, advertised, osCpuAbi)) { reusable = false; continue; }
       char manifest[192]{};
-      if (std::snprintf(manifest, sizeof(manifest), "%s/.package.json", path) >=
-          static_cast<int>(sizeof(manifest))) continue;
       size_t length = 0;
-      *plan = OrdinaryPackagePlan{};
-      if (!readSmall(manifest, json.get(), 4097, length) ||
-          !parseOrdinaryManifest(json.get(), length, *plan) ||
-          std::strcmp(plan->identity.id, id) ||
-          plan->identity.kind != installed.kind) { reusable = false; continue; }
+      if (std::strcmp(plan->identity.id, id) || plan->identity.kind != installed.kind) { reusable = false; continue; }
       bool sourceDeclared=false;
       for(size_t i=0;i<plan->entryCount;++i)
         if(!std::strcmp(plan->entries[i].name,"manifest.json"))sourceDeclared=true;

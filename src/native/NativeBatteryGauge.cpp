@@ -8,6 +8,7 @@
 #include <RiscBatteryGaugeV1.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <cstdio>
 
 namespace {
 constexpr uint32_t kPollMs = 5000;
@@ -84,7 +85,7 @@ bool acquire(uint32_t now) {
     // A grantless failed start is still graph-owned. Acquisition cannot reset
     // a quiescence-uncertain node; it remains unavailable until its lifecycle
     // owner recovers it or reboot. Never guess a provider ID or shut down peers.
-    LOG_DBG("BATTERY", "Installed battery provider unavailable");
+    LOG_DBG("BATTERY", "Installed battery provider unavailable: %s", RuntimeInstalledProviders::lastError());
     return false;
   }
   const auto* candidate = static_cast<const risc_battery_gauge_api_v1*>(lease.interface);
@@ -115,8 +116,13 @@ void nativeBatteryTick() {
   // One fixed sample operation per turn, with no consumer-side retry loop.
   // Duration depends on the provider; this cache cannot enforce its timeout or
   // preempt a callback. Bad samples fail closed and retain the lifetime lease.
-  if (!api->read(api->context, &sample) || sample.percent > 100 ||
-      sample.charging > 1 || !sample.millivolts) {
+  const bool readOk = api->read(api->context, &sample);
+  if (!readOk || sample.percent > 100 || sample.charging > 1 || !sample.millivolts) {
+    char reason[112]{};
+    if (readOk) std::snprintf(reason, sizeof(reason), "%s", "provider returned invalid sample");
+    else if (!RuntimeInstalledProviders::copyProviderError(lease, reason, sizeof(reason)))
+      std::snprintf(reason, sizeof(reason), "%s", "read rejected; no provider diagnostic");
+    LOG_DBG("BATTERY", "Installed battery sample rejected: %s", reason);
     publish(nullptr);
     return;
   }

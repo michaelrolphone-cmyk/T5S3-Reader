@@ -2,7 +2,14 @@
 // one failure/mutation after the real directory read has released its mutex.
 static const risc_storage_volume_api_v1* dirTestApi;
 static const risc_storage_volume_api_v1_ext* dirTestExt;
-static unsigned dirTestStats;
+static unsigned dirTestStats, dirTestFileOpens, dirTestDirOpens, dirTestBadEntry;
+static uint32_t dirTestLastClosedFile;
+static uint32_t dirTestFileOpen(void* context, const char* path, uint32_t flags) {
+    ++dirTestFileOpens; return dirTestExt->file_open(context, path, flags);
+}
+static uint32_t dirTestDirOpen(void* context, const char* path) {
+    ++dirTestDirOpens; return dirTestApi->dir_open(context, path);
+}
 static bool dirTestFailFileClose, dirTestFailDirClose;
 static void (*dirTestAfterNext)(const risc_storage_dirent_v1&);
 static bool dirTestStat(void* context, const char* path, uint64_t* size, bool* directory) {
@@ -10,10 +17,16 @@ static bool dirTestStat(void* context, const char* path, uint64_t* size, bool* d
 }
 static bool dirTestNext(void* context, uint32_t handle, risc_storage_dirent_v1* entry) {
     if (!dirTestApi->dir_next(context, handle, entry)) return false;
+    if (dirTestBadEntry == 1) std::memset(entry->name, 'x', sizeof(entry->name));
+    if (dirTestBadEntry == 2) entry->name[0] = 0;
+    if (dirTestBadEntry == 3) std::strcpy(entry->name, "../bad");
+    if (dirTestBadEntry == 4) std::strcpy(entry->name, "..");
+    if (dirTestBadEntry == 5) entry->is_directory = 2;
     if (dirTestAfterNext) { auto fn=dirTestAfterNext; dirTestAfterNext=nullptr; fn(*entry); }
     return true;
 }
 static bool dirTestFileClose(void* context, uint32_t handle, bool commit) {
+    dirTestLastClosedFile = handle;
     if (dirTestFailFileClose) { dirTestFailFileClose=false; return false; }
     return dirTestApi->file_close(context, handle, commit);
 }
@@ -28,10 +41,14 @@ static void dirTestWrite(const char* path, const char* bytes) {
     assert(dirTestApi->file_close(nullptr,handle,true));
 }
 static void dirTestIoFailure(const risc_storage_dirent_v1&) {
+    uint64_t size=0;
+    const auto file=dirTestApi->file_open_read(nullptr,"/race/item",&size);
+    assert(file && size);
     card_bad_crc=true;
-    uint64_t size=0; bool directory=false;
-    assert(!dirTestApi->stat(nullptr,"/force-root-sector-read",&size,&directory));
+    char byte{};
+    assert(!dirTestApi->file_read(nullptr,file,&byte,1));
     assert(!dirTestApi->ready(nullptr));
+    assert(dirTestApi->file_close(nullptr,file,true));
 }
 static unsigned dirTestMutation;
 static void dirTestMutate(const risc_storage_dirent_v1& entry) {
@@ -45,11 +62,65 @@ static void directoryIterationTests(const char* scenario, const risc_driver_v2* 
     dirTestApi=api; dirTestExt=risc_storage_volume_extension(api);
     auto hooks=*dirTestExt; hooks.base.struct_size=sizeof(hooks);
     hooks.base.stat=dirTestStat; hooks.base.dir_next=dirTestNext;
+    hooks.base.dir_open=dirTestDirOpen; hooks.file_open=dirTestFileOpen;
     hooks.base.file_close=dirTestFileClose; hooks.dir_close_checked=dirTestDirClose;
     assert(Storage.bindVolume(&hooks.base));
     assert(Storage.mkdir("/race")); dirTestWrite("/race/item","original");
     Storage.invalidateObservations();
-    if (!std::strcmp(scenario,"directory-races")) {
+    if (!std::strcmp(scenario,"directory-metadata")) {
+        assert(Storage.mkdir("/race/subdir"));
+        auto parent=Storage.open("/race"); assert(parent);
+        const auto generation=Storage.generation();
+        dirTestStats=dirTestFileOpens=dirTestDirOpens=0;
+        HalFile::DirectoryEntry entry;
+        assert(parent.readDirectoryEntry(entry) && !std::strcmp(entry.name,"item") && !entry.isDirectory && entry.size==8);
+        assert(parent.readDirectoryEntry(entry) && !std::strcmp(entry.name,"subdir") && entry.isDirectory);
+        assert(!parent.readDirectoryEntry(entry) && !parent.getError());
+        assert(!dirTestStats && !dirTestFileOpens && !dirTestDirOpens && Storage.unchanged(generation));
+        parent.rewindDirectory(); assert(parent.readDirectoryEntry(entry));
+        assert(!Storage.begin() && parent.close() && Storage.begin());
+    } else if (!std::strcmp(scenario,"directory-metadata-errors")) {
+        for (unsigned mode=1;mode<=5;++mode) {
+            auto parent=Storage.open("/race"); assert(parent); dirTestBadEntry=mode;
+            HalFile::DirectoryEntry entry;
+            assert(!parent.readDirectoryEntry(entry) && parent.getError());
+            dirTestBadEntry=0; assert(!parent.readDirectoryEntry(entry)); assert(parent.close());
+        }
+        auto parent=Storage.open("/race"); HalFile::DirectoryEntry entry;
+        Storage.markUnavailable(); assert(api->ready(nullptr));
+        assert(!parent.readDirectoryEntry(entry) && parent.getError());
+        assert(parent.close() && Storage.begin());
+        parent=Storage.open("/race"); dirTestAfterNext=dirTestIoFailure;
+        assert(!parent.readDirectoryEntry(entry) && parent.getError());
+        card_bad_crc=false; assert(parent.close() && Storage.begin());
+        parent=Storage.open("/race"); dirTestIoFailure({});
+        assert(!parent.readDirectoryEntry(entry) && parent.getError());
+        card_bad_crc=false; assert(parent.close() && Storage.begin());
+    } else if (!std::strcmp(scenario,"directory-direct-read")) {
+        HalFile file; dirTestStats=dirTestFileOpens=0;
+        assert(Storage.openFileForRead("test","/race/item",file));
+        assert(!dirTestStats && dirTestFileOpens==1 && file.fileSize64()==8);
+        char bytes[9]{}; assert(file.read(bytes,8)==8 && !std::strcmp(bytes,"original"));
+        assert(file.close());
+        assert(!Storage.openFileForRead("test","/race",file));
+        assert(!Storage.openFileForRead("test","/missing",file));
+        Storage.markUnavailable(); assert(api->ready(nullptr));
+        assert(!Storage.openFileForRead("test","/race/item",file) && Storage.begin());
+        assert(Storage.openFileForRead("test","/race/item",file));
+        dirTestFailFileClose=true;
+        assert(!Storage.openFileForRead("test","/new-path",file));
+        const auto retained=dirTestLastClosedFile;
+        char name[128]{}; assert(file.isOpen() && file.getName(name,sizeof(name)) && !std::strcmp(name,"item"));
+        assert(file.fileSize64()==8 && !Storage.begin() && !driver->quiesce());
+        assert(file.close() && dirTestLastClosedFile==retained);
+        assert(!Storage.generation().quiescent && !Storage.begin());
+    } else if (!std::strcmp(scenario,"directory-metadata-close")) {
+        auto parent=Storage.open("/race"); HalFile::DirectoryEntry entry;
+        assert(parent.readDirectoryEntry(entry)); dirTestFailDirClose=true;
+        assert(!parent.close() && parent.isOpen() && parent.getError());
+        assert(!Storage.begin() && !driver->quiesce());
+        assert(parent.close() && !Storage.generation().quiescent && !Storage.begin());
+    } else if (!std::strcmp(scenario,"directory-races")) {
         // Missing child, file -> directory, directory -> file, and same-type
         // replacement. The open must check the real current object, not invent
         // a handle or use the size from the preceding metadata observation.

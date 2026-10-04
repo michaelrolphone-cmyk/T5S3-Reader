@@ -156,6 +156,7 @@ class HalStorage::StorageLock {
     xSemaphoreTake(HalStorage::getInstance().storageMutex, portMAX_DELAY);
 #endif
   }
+  bool initialized() const { return HalStorage::getInstance().initialized; }
   ~StorageLock() {
     risc_sd_spi_end_operation();  // Failed owners cannot unlock/unwind here.
     xSemaphoreGive(HalStorage::getInstance().storageMutex);
@@ -453,6 +454,7 @@ class HalFile::Impl {
   FsFile file;
   bool writable = false;
   bool tracked = false;
+  uint8_t directoryError = 0;
 };
 
 HalFile::HalFile() = default;
@@ -713,6 +715,34 @@ bool HalFile::close() {
   }
   return closed;
 }
+bool HalFile::readDirectoryEntry(DirectoryEntry& result) {
+  result = {};
+  if (storageBackendUnavailable()) return false;
+  HalStorage::StorageLock lock;
+  if (!impl) return false;
+  if (!lock.initialized() || !impl->file.isOpen() || !impl->file.isDirectory() || impl->directoryError) {
+    impl->directoryError = 1;
+    return false;
+  }
+  // SdFat's public cursor opens a child. Keep that existing path and checked
+  // close under the same mutex on legacy boards; volume providers use dir_next.
+  auto child = impl->file.openNextFile();
+  if (!child.isOpen()) {
+    if (impl->file.getError()) { impl->directoryError = 1; storageGeneration.mutationAttempt(); }
+    return false;
+  }
+  const size_t n = child.getName(result.name, sizeof(result.name));
+  bool good = n && n < sizeof(result.name) && !std::strchr(result.name, '/') &&
+      !std::strchr(result.name, '\\') && std::strcmp(result.name, ".") && std::strcmp(result.name, "..");
+  if (good) {
+    result.isDirectory = child.isDirectory();
+    result.size = result.isDirectory ? 0 : child.fileSize();
+  }
+  if (child.getError()) good = false;
+  if (!closeRaw(child)) good = false;
+  if (!good) { impl->directoryError = 1; result = {}; }
+  return good;
+}
 HalFile HalFile::openNextFile() {
   if (storageBackendUnavailable()) return {};
   HalStorage::StorageLock lock;
@@ -723,7 +753,11 @@ HalFile HalFile::openNextFile() {
 }
 uint8_t HalFile::getError() const {
   if (storageBackendUnavailable()) return 255;
-  HAL_FILE_WRAPPED_CALL(getError, );
+  HalStorage::StorageLock lock;
+  if (!impl) return 1;
+  const uint8_t rawError = impl->file.getError();
+  if (rawError) storageGeneration.mutationAttempt();
+  return impl->directoryError ? impl->directoryError : rawError;
 }
 bool HalFile::isOpen() const {
   if (storageBackendUnavailable()) return false;

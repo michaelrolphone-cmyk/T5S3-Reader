@@ -2,6 +2,7 @@
 #include "native/NativeRtcClock.h"
 #include "runtime/drivers/InstalledProviderGraph.h"
 #include <HalClock.h>
+#include <Logging.h>
 #include <RiscI2cBusV1.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -20,6 +21,7 @@ static const risc_driver_v2* driver;
 static uint8_t regs[16];
 static bool busHeld, releaseOk = true, readOk = true, writeOk = true, present = true, partial = false;
 static unsigned acquisitions, releases, reads, writes, claims;
+static int failedReadRegister = -1;
 static uint32_t generation;
 static RuntimeInstalledProviders::Lease outstanding;
 static time_t epoch;
@@ -42,7 +44,7 @@ static bool transact(void*, uint64_t token, const uint8_t* w, size_t wn,
     callbackCheck(); assert(busHeld && token == 77 && w && wn && timeout == 30);
     assert(w[0] + (rn ? rn : wn - 1) <= sizeof(regs));
     if (rn) {
-        ++reads; assert(wn == 1); if (!readOk) return false;
+        ++reads; assert(wn == 1); if (!readOk || w[0] == failedReadRegister) return false;
         memcpy(r, regs + w[0], rn);
     } else {
         ++writes; assert(wn > 1); if (!writeOk) return false;
@@ -74,6 +76,16 @@ bool release(Lease* out) {
     assert(out->grant.slot == outstanding.grant.slot && out->grant.generation == outstanding.grant.generation);
     if (!driver->quiesce()) { out->interface = nullptr; return false; }
     *out = {}; outstanding = {}; return true;
+}
+bool copyProviderError(const Lease& value, char* out, size_t capacity) {
+    callbackCheck();
+    assert(value.interface && value.grant.slot == outstanding.grant.slot &&
+           value.grant.generation == outstanding.grant.generation && busHeld);
+    const auto* diagnostic = reinterpret_cast<const risc_driver_diagnostics_v2*>(driver);
+    const unsigned beforeReads = reads, beforeWrites = writes;
+    const bool copied = diagnostic->last_error(out, capacity);
+    assert(reads == beforeReads && writes == beforeWrites);
+    return copied;
 }
 const char* lastError() { return "fixture RTC unavailable"; }
 }
@@ -110,10 +122,21 @@ static void invalid() {
         valid(); regs[fault.index] = fault.value;
         assert(!halClock.syncSystemTimeFromRtc() && !epoch && !sets && !writes && !busHeld);
     }
+    assert(nativeDiagnosticContains("RTC read rejected: rtc voltage-low: time invalid"));
+    assert(nativeDiagnosticContains("RTC read rejected: rtc stopped/test mode"));
+    assert(nativeDiagnosticContains("RTC read rejected: rtc invalid BCD"));
+    assert(nativeDiagnosticContains("RTC read rejected: rtc invalid calendar"));
     valid(); regs[7] = 2; regs[5] = 0x29; // 2026 is not leap year.
     assert(!halClock.syncSystemTimeFromRtc());
     regs[8] = 0x24; assert(halClock.syncSystemTimeFromRtc());
+    failedReadRegister = 2;
+    assert(!halClock.syncSystemTimeFromRtc());
+    assert(nativeDiagnosticContains("RTC read rejected: rtc read I/O"));
+    failedReadRegister = -1;
     readOk = false; assert(!halClock.syncSystemTimeFromRtc());
+    // Admission reads fail before the time read and report an unavailable
+    // capability; a live provider read fault retains its distinct diagnostic.
+    assert(nativeDiagnosticContains("RTC capability unavailable"));
 }
 static void writeTime() {
     configure();

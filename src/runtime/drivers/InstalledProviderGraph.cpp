@@ -13,6 +13,7 @@
 #include "runtime/packages/PackageVerificationReceipt.h"
 #include <HalStorage.h>
 #include <Arduino.h>
+#include <Logging.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -84,6 +85,15 @@ bool providerFail(const char* stage, const char* identity) {
     return false;
 }
 
+void traceStage(const char* capability, const char* stage, uint32_t started, bool okay) {
+    // One completion record per existing acquisition stage, never per file,
+    // bus transfer or polling tick. Unsigned subtraction permits millis wrap.
+    (void)capability; (void)stage; (void)started; (void)okay;
+    LOG_INF("PROV", "acquire capability=%s stage=%s elapsed_ms=%lu ok=%d reason=%s",
+            capability, stage, static_cast<unsigned long>(millis() - started),
+            okay ? 1 : 0, okay ? "none" : lastError());
+}
+
 bool pathFor(char (&out)[160], const char* root, const char* id, const char* file) {
     const int length = std::snprintf(out, sizeof(out), "%s/%s/%s", root, id, file);
     return length > 0 && static_cast<size_t>(length) < sizeof(out);
@@ -91,11 +101,8 @@ bool pathFor(char (&out)[160], const char* root, const char* id, const char* fil
 uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
     length = 0;
     if (!Storage.ready() || !name) return nullptr;
-    HalFile file = Storage.open(name, O_RDONLY);
-    if (!file.isOpen() || file.isDirectory()) {
-        if (file.isOpen()) (void)file.close();
-        return nullptr;
-    }
+    HalFile file;
+    if (!Storage.openFileForRead("PROV", name, file)) return nullptr;
     const uint64_t bytes = file.fileSize64();
     if (!bytes || bytes > maximum || bytes > SIZE_MAX - 1u) {
         (void)file.close();
@@ -338,14 +345,20 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
         }
         for (size_t i = 0; i < 64 && accepted <= 1; ++i) {
             ordinaryCooperativeYield(1, 1);
-            HalFile item = directory.openNextFile();
-            if (!item.isOpen()) break;
+            HalFile::DirectoryEntry item;
+            if (!directory.readDirectoryEntry(item)) {
+                if (directory.getError()) {
+                    (void)directory.close();
+                    return providerFail("Provider directory read failed", root.path);
+                }
+                break;
+            }
             auto& id = frame.id;
-            const size_t length = item.getName(id, sizeof(id));
-            const bool valid = item.isDirectory() && length && length < sizeof(id) &&
-                               safeId(id);
-            (void)item.close();
+            const size_t length = std::strlen(item.name);
+            const bool valid = item.isDirectory && length && length < sizeof(id) &&
+                               safeId(item.name);
             if (!valid) continue;
+            std::memcpy(id, item.name, length + 1);
             auto& name = frame.name;
             if (!pathFor(name, root.path, id, "provider-abi.v1")) continue;
             size_t profileSize = 0;
@@ -363,7 +376,7 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
                             capability, available, verified, ancestry, depth))
                 ++accepted;
         }
-        (void)directory.close();
+        if (!directory.close()) return providerFail("Provider directory close failed", root.path);
         if (accepted > 1) break;
     }
     if (accepted != 1)
@@ -525,19 +538,17 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
             bool complete = false;
             for (size_t visited = 0; visited <= 64; ++visited) {
                 ordinaryCooperativeYield(1, 1);
-                HalFile item = directory.openNextFile();
-                if (!item.isOpen()) {
+                HalFile::DirectoryEntry item;
+                if (!directory.readDirectoryEntry(item)) {
                     complete = directory.getError() == 0;
                     break;
                 }
-                if (visited == 64) {
-                    (void)item.close(); break;
-                }
-                const size_t length = item.getName(frame->id, sizeof(frame->id));
-                const bool valid = item.isDirectory() && length &&
-                    length < sizeof(frame->id) && safeId(frame->id);
-                if (!item.close()) { *cursor = SIZE_MAX; break; }
+                if (visited == 64) break;
+                const size_t length = std::strlen(item.name);
+                const bool valid = item.isDirectory && length &&
+                    length < sizeof(frame->id) && safeId(item.name);
                 if (!valid) continue;
+                std::memcpy(frame->id, item.name, length + 1);
                 if (RuntimePackages::cdcLineage(root.kind, frame->id) &&
                     RuntimePackages::cdcMigrationPendingOnSd()) continue;
                 if (count == kMaxProviders ||
@@ -592,7 +603,9 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out) {
     if (out) *out = {};
     loadError[0] = 0;
-    if (!out || !providerId || !capability || !version || !prepare()) return false;
+    if (!out || !providerId || !capability || !version)
+        return providerFail("Invalid provider acquisition request", providerId);
+    if (!prepare()) return providerFail("Provider preparation failed", providerId);
     if (!graph->hasProvider(providerId, capability, version)) {
         std::unique_ptr<InstalledCapabilitySnapshot,
                         void(*)(InstalledCapabilitySnapshot*)>
@@ -640,6 +653,12 @@ bool release(Lease* lease) {
     if (okay) *lease = {};
     return okay;
 }
+bool copyProviderError(const Lease& lease, char* destination, size_t capacity) {
+    if (!destination || !capacity) return false;
+    destination[0] = 0;
+    return graph && lease.interface && graph->interfaceFor(lease.grant) == lease.interface &&
+           graph->copyProviderError(lease.grant, destination, capacity);
+}
 bool recoverFailedProvider(const char* providerId, const char* capability,
                            uint32_t version) {
     // A grantless failed start can retain the mapped provider and its exact
@@ -651,20 +670,32 @@ bool recoverFailedProvider(const char* providerId, const char* capability,
 bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out) {
     if (out) *out = {};
     loadError[0] = 0;
-    if (!out || !capability || !minimumVersion || !prepare()) return false;
+    if (!out || !capability || !minimumVersion)
+        return providerFail("Invalid capability acquisition request", capability);
+    if (!prepare()) return providerFail("Provider preparation failed", capability);
     // Board profile selections share this graph with ordinary SD providers.
     // Never discover a second owner of an already selected boot capability.
     for(size_t i=0;i<bootstrapCount;++i)
         if(bootstrap[i].api>=minimumVersion && !std::strcmp(bootstrap[i].capability,capability))
             return acquire(bootstrap[i].id,capability,bootstrap[i].api,out);
+    uint32_t stageStarted = millis();
     std::unique_ptr<InstalledCapabilitySnapshot, void(*)(InstalledCapabilitySnapshot*)>
         verified(captureInstalledCapabilities(), releaseInstalledCapabilities);
+    if (!verified) providerFail("Provider metadata snapshot failed", capability);
+    traceStage(capability, "inventory", stageStarted, verified != nullptr);
+    if (!verified) return false;
+    stageStarted = millis();
     std::unique_ptr<ProviderAncestry> ancestry(new (std::nothrow) ProviderAncestry{});
     uint32_t selected = 0;
-    if (!verified || !ancestry || !registerCapability(*graph, verified.get(), capability,
-            minimumVersion, &selected, *ancestry, 0)) return false;
+    if (!ancestry) providerFail("Provider registration allocation failed", capability);
+    const bool registered = ancestry && registerCapability(*graph, verified.get(), capability,
+            minimumVersion, &selected, *ancestry, 0);
+    traceStage(capability, "registration", stageStarted, registered);
+    if (!registered) return false;
+    stageStarted = millis();
     const auto grant = graph->acquire(capability, selected);
     const void* interface = graph->interfaceFor(grant);
+    traceStage(capability, "activation", stageStarted, interface != nullptr);
     if (!interface) {
         if (grant.slot && !graph->release(grant)) *out = {grant, nullptr};
         return false;

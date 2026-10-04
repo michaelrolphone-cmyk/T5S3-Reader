@@ -7,6 +7,7 @@
 
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/packages/PackageOrdinaryManifest.h"
 using namespace RuntimePackages;
 namespace {
 bool mutateDuringInspect = false;
@@ -14,13 +15,18 @@ bool refuseInspectionOnce = false;
 }
 namespace RuntimePackages {
 bool inspectInstalledOrdinarySdDirectory(const char* path, const PackageRuntimePolicy&, uint32_t (*)(const char*),
-                                         Identity& observed) {
+                                         Identity& observed, OrdinaryPackagePlan* plan) {
   if (refuseInspectionOnce) { refuseInspectionOnce = false; return false; }
   if (mutateDuringInspect) {
     mutateDuringInspect = false;
     assert(Storage.writeFile("/interleaved", "changed"));
   }
-  if (!Storage.exists((std::string(path) + "/.package.json").c_str())) return false;
+  auto manifest = Storage.open((std::string(path) + "/.package.json").c_str());
+  if (!manifest.isOpen()) return false;
+  std::string bytes(manifest.fileSize64(), '\0');
+  const bool parsed = plan && manifest.read(bytes.data(), bytes.size()) == static_cast<int>(bytes.size()) &&
+      parseOrdinaryManifest(bytes.data(), bytes.size(), *plan);
+  if (!manifest.close() || !parsed) return false;
   const char* id = std::strrchr(path, '/') + 1;
   return makeIdentity(Kind::Driver, id, "1.0.0", "driver.elf", false, &observed);
 }

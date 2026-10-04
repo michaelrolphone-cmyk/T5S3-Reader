@@ -67,8 +67,11 @@ bool ModuleV2::copyProviderError(char* destination, size_t capacity) const {
   destination[0] = 0;
   if (driver_ && driver_->struct_size >= sizeof(risc_driver_diagnostics_v2)) {
     const auto* diagnostics = reinterpret_cast<const risc_driver_diagnostics_v2*>(driver_);
-    if (diagnostics->last_error && diagnostics->last_error(destination, capacity) && destination[0])
-      return true;
+    if (diagnostics->last_error) {
+      const bool copied = diagnostics->last_error(destination, capacity);
+      destination[capacity - 1] = 0;
+      if (copied && destination[0]) return true;
+    }
   }
   if (!error_[0]) return false;
   std::snprintf(destination, capacity, "%s", error_);
@@ -140,7 +143,14 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     char detail[112]{};
     if (diagnostics->last_error && diagnostics->last_error(detail, sizeof(detail))) {
       detail[sizeof(detail) - 1] = 0;
-      if (detail[0]) std::snprintf(error_, sizeof(error_), "%s: %s", expectedId, detail);
+      if (detail[0]) {
+        std::snprintf(error_, sizeof(error_), "%s: %s", expectedId, detail);
+        // The driver already supplied this reason; do not perform another
+        // probe/read or replace it with the generic start-rejected message.
+#ifdef ESP_PLATFORM
+        LOG_ERR("PROV", "PROVREF id=%s failure=%s", expectedId, detail);
+#endif
+      }
     }
   }
   if (!error_[0]) report(expectedId, "start rejected; update driver for diagnostics");

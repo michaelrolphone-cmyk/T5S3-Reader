@@ -119,6 +119,15 @@ class HalFile : public Print {
   bool isDirectory() const;
   void rewindDirectory();
   bool close();
+  // Metadata cursor: volume backends avoid child opens; legacy SdFat uses
+  // its checked open/close cursor. No child handle escapes this method.
+  // false is clean EOF only when getError() is zero. A failure is sticky.
+  struct DirectoryEntry {
+    char name[128]{};
+    uint64_t size = 0;
+    bool isDirectory = false;
+  };
+  bool readDirectoryEntry(DirectoryEntry& entry);
   HalFile openNextFile();
   // SdFat directory read errors must not be mistaken for clean enumeration end.
   uint8_t getError() const;

@@ -55,6 +55,9 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
 // Metadata/dependencies use the same ordinary package admission as named apps.
 bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out);
 bool release(Lease* lease);
+// Copied provider diagnostic; serialized owner only, before releasing the
+// live lease. Does not enumerate storage, reacquire, or retry an operation.
+bool copyProviderError(const Lease& lease, char* destination, size_t capacity);
 // Attach only a live exact capability lease to the authenticated app context.
 // Registry rights are revoked when this lease or either context terminates.
 bool attachStream(const Lease&, uint32_t endpoint, uint32_t rights);

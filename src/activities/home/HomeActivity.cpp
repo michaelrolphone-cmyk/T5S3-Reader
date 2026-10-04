@@ -8,6 +8,7 @@
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <HalStorage.h>
+#include <Logging.h>
 #include <I18n.h>
 #include <Utf8.h>
 #include <Xtc.h>
@@ -206,12 +207,22 @@ void HomeActivity::onEnter() {
   pendingHomeAppArtifact.clear();
   lastVisibleTextPrewarmKey.clear();
   const auto& metrics = UITheme::getInstance().getMetrics();
+  auto stageStarted = millis();
   loadRecentBooks(metrics.homeRecentBooksCount);
+  LOG_INF("HOME", "enter phase=recents elapsed_ms=%lu count=%u",
+          static_cast<unsigned long>(millis() - stageStarted), static_cast<unsigned>(recentBooks.size()));
+  stageStarted = millis();
   loadHomeApps();
+  LOG_INF("HOME", "enter phase=pinned-apps elapsed_ms=%lu count=%u",
+          static_cast<unsigned long>(millis() - stageStarted), static_cast<unsigned>(homeApps.size()));
+  stageStarted = millis();
   recentsLoaded = !needsRecentCovers(metrics.homeCoverHeight);
   // Build missing thumbnails while the independent loading screen is visible,
   // rather than freezing navigation immediately after showing a usable Home.
   if (StartupScreen::isLoading() && !recentsLoaded) loadRecentCovers(metrics.homeCoverHeight);
+  LOG_INF("HOME", "enter phase=covers elapsed_ms=%lu ready=%d",
+          static_cast<unsigned long>(millis() - stageStarted), recentsLoaded ? 1 : 0);
+  (void)stageStarted;
   requestUpdate();
 }
 
