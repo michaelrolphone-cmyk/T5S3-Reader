@@ -64,6 +64,7 @@ int getKerning(int,uint32_t,uint32_t,EpdFontFamily::Style=EpdFontFamily::REGULAR
     prefix += 'uint64_t measure_calls=0,measure_codepoints=0,prefix_calls=0;\n'
     prefix += 'uint32_t measuredNext(const uint8_t** p){auto cp=utf8NextCodepoint(p);if(cp)++measure_codepoints;return cp;}\n'
     prefix += function('uint8_t resolveSdCardStyle(') + '\n'
+    prefix += function('uint16_t sdCardAdvance(') + '\n'
     prefix += function('void GfxRenderer::ensureSdCardFontReady(int fontId, const std::vector') + '\n'
     (d / 'measurement.cpp').write_text(prefix + '#define utf8NextCodepoint measuredNext\n' + methods + '\n#undef utf8NextCodepoint\n')
     (d / 'ParsedText.cpp').write_text(source('lib/Epub/Epub/ParsedText.cpp'))
