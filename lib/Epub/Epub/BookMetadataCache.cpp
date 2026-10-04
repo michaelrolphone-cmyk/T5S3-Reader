@@ -236,6 +236,13 @@ bool BookMetadataCache::buildBookBin(const std::string& epubPath, const BookMeta
     useBatchSizes = true;
   }
 
+  // Opt in without scanning: prepare only after an ordinary lookup wraps.
+  // Sequential-prefix books retain their cheap cursor path. Optional offsets
+  // cap at 1024 entries/16 KiB; duplicate members and failures retain scans.
+  if (spineCount >= 8 && spineCount < LARGE_SPINE_THRESHOLD) {
+    zip.enableSizeLookupOffsets();
+  }
+
   uint32_t cumSize = 0;
   spineFile.seek(0);
   int lastSpineTocIndex = -1;

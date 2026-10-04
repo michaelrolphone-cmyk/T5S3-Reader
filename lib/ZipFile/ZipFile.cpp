@@ -5,6 +5,7 @@
 #include <Logging.h>
 
 #include <algorithm>
+#include <new>
 
 struct ZipInflateCtx {
   InflateReader reader;  // Must be first — callback casts uzlib_uncomp* to ZipInflateCtx*
@@ -148,6 +149,7 @@ bool ZipFile::loadFileStatSlim(const char* filename, FileStatSlim* fileStat) {
     if (file.read(&sig, 4) != 4 || sig != 0x02014b50) {
       // End of central directory
       if (!wrapped && lastCentralDirPosValid && startPos != zipDetails.centralDirOffset) {
+        if (sizeLookupEnabled) sizeLookupWrapped = true;
         // Wrap around to beginning
         file.seek(zipDetails.centralDirOffset);
         wrapped = true;
@@ -281,6 +283,9 @@ bool ZipFile::loadZipDetails() {
 }
 
 bool ZipFile::open() {
+  sizeLookupOffsets.reset();
+  sizeLookupCount = 0;
+  sizeLookupEnabled = sizeLookupWrapped = sizeLookupAttempted = false;
   if (!Storage.openFileForRead("ZIP", filePath, file)) {
     return false;
   }
@@ -288,6 +293,9 @@ bool ZipFile::open() {
 }
 
 bool ZipFile::close() {
+  sizeLookupOffsets.reset();
+  sizeLookupCount = 0;
+  sizeLookupEnabled = sizeLookupWrapped = sizeLookupAttempted = false;
   if (file) {
     // Explicit close() required: member variable persists beyond function scope
     file.close();
@@ -297,7 +305,113 @@ bool ZipFile::close() {
   return true;
 }
 
+bool ZipFile::prepareSizeLookupOffsets() {
+  constexpr uint16_t MAX_ENTRIES = 1024;
+  constexpr uint32_t MAX_SCAN_MS = 15000;
+  static_assert(sizeof(SizeLookupOffset) <= 16, "Size lookup offsets exceed the 16 KiB budget");
+  if (!isOpen() || sizeLookupOffsets || !fileStatSlimCache.empty()) return false;
+  const uint32_t started = millis();
+  uint32_t lastYield = started;
+  size_t bytesSinceYield = 0;
+  // This preparation does not change the ordinary scan cursor. Any failure
+  // discards the entire optional table; the existing lookup still owns errors.
+  auto fail = [&]() {
+    sizeLookupOffsets.reset();
+    sizeLookupCount = 0;
+    LOG_DBG("ZIP", "Size lookup offsets unavailable; using ordinary scans");
+    return false;
+  };
+  if (!loadZipDetails() || zipDetails.totalEntries == 0 || zipDetails.totalEntries > MAX_ENTRIES) return false;
+  sizeLookupOffsets.reset(new (std::nothrow) SizeLookupOffset[zipDetails.totalEntries]{});
+  if (!sizeLookupOffsets || !file.seek(zipDetails.centralDirOffset)) return fail();
+  const auto read16 = [](const uint8_t* p) { return uint16_t(p[0] | (uint16_t(p[1]) << 8)); };
+  const auto read32 = [](const uint8_t* p) {
+    return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
+  };
+  for (uint16_t i = 0; i < zipDetails.totalEntries; ++i) {
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= MAX_SCAN_MS) return fail();
+    if ((i != 0 && i % 32 == 0) || bytesSinceYield >= 16384 ||
+        static_cast<uint32_t>(now - lastYield) >= 20) {
+      vTaskDelay(1);
+      lastYield = millis();
+      bytesSinceYield = 0;
+    }
+    const uint64_t offset = file.position();
+    uint8_t header[46];
+    if (file.read(header, sizeof(header)) != sizeof(header) || read32(header) != 0x02014b50) return fail();
+    const uint16_t nameLen = read16(header + 28);
+    const uint32_t trailing = uint32_t(read16(header + 30)) + read16(header + 32);
+    const uint64_t next = offset + sizeof(header) + nameLen + trailing;
+    if (next > file.size() || next > UINT32_MAX) return fail();
+    auto& entry = sizeLookupOffsets[i];
+    entry.offset = UINT32_MAX;  // The ordinary scanner skips names >=256 bytes.
+    entry.next = static_cast<uint32_t>(next);
+    if (nameLen < 256) {
+      char name[256];
+      if (file.read(name, nameLen) != nameLen) return fail();
+      name[nameLen] = '\0';
+      // Match the existing scanner's C-string identity, including embedded NULs.
+      entry.hash = fnvHash64(name, strlen(name));
+      entry.offset = static_cast<uint32_t>(offset);
+    }
+    if (!file.seek(next)) return fail();
+    bytesSinceYield += sizeof(header) + nameLen + trailing;
+  }
+  // An inaccurate entry count must not hide later duplicates or malformed
+  // records. Only the ordinary EOCD terminator makes this table eligible.
+  uint8_t signature[4];
+  if (file.read(signature, sizeof(signature)) != sizeof(signature) || read32(signature) != 0x06054b50 ||
+      static_cast<uint32_t>(millis() - started) >= MAX_SCAN_MS) return fail();
+  sizeLookupCount = zipDetails.totalEntries;
+  LOG_DBG("ZIP", "Prepared %u bounded size lookup offsets", sizeLookupCount);
+  return true;
+}
+
+bool ZipFile::getIndexedInflatedFileSize(const char* filename, size_t* size) {
+  const uint64_t hash = fnvHash64(filename, strlen(filename));
+  const SizeLookupOffset* match = nullptr;
+  for (uint16_t i = 0; i < sizeLookupCount; ++i) {
+    const auto& entry = sizeLookupOffsets[i];
+    if (entry.offset == UINT32_MAX || entry.hash != hash) continue;
+    // Keep the original circular scanner for duplicate names and hash buckets.
+    // It chooses the first exact member after the previous successful lookup.
+    if (match) return false;
+    match = &entry;
+  }
+  if (!match) return false;
+  const auto read16 = [](const uint8_t* p) { return uint16_t(p[0] | (uint16_t(p[1]) << 8)); };
+  const auto read32 = [](const uint8_t* p) {
+    return uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
+  };
+  auto fail = [&]() {
+    sizeLookupOffsets.reset();
+    sizeLookupCount = 0;
+    return false;
+  };
+  uint8_t header[46];
+  if (!file.seek(match->offset) || file.read(header, sizeof(header)) != sizeof(header) ||
+      read32(header) != 0x02014b50) return fail();
+  const uint16_t nameLen = read16(header + 28);
+  const uint64_t next = uint64_t(match->offset) + sizeof(header) + nameLen +
+                        uint32_t(read16(header + 30)) + read16(header + 32);
+  char name[256];
+  if (nameLen >= sizeof(name) || next != match->next || next > file.size() ||
+      file.read(name, nameLen) != nameLen) return fail();
+  name[nameLen] = '\0';
+  if (strcmp(name, filename) != 0 || !file.seek(next)) return fail();
+  *size = static_cast<size_t>(read32(header + 24));
+  lastCentralDirPos = static_cast<uint32_t>(next);
+  lastCentralDirPosValid = true;
+  return true;
+}
+
 bool ZipFile::getInflatedFileSize(const char* filename, size_t* size) {
+  if (sizeLookupEnabled && sizeLookupWrapped && !sizeLookupAttempted) {
+    sizeLookupAttempted = true;
+    prepareSizeLookupOffsets();
+  }
+  if (sizeLookupCount != 0 && getIndexedInflatedFileSize(filename, size)) return true;
   FileStatSlim fileStat = {};
   if (!loadFileStatSlim(filename, &fileStat)) {
     return false;
