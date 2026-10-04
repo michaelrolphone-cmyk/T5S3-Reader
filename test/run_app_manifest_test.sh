@@ -14,6 +14,11 @@ c++ -std=c++17 -Wall -Wextra -Werror \
 "$binary"
 echo 'Runtime app manifest tests passed'
 
+# KOReader mode loading uses the same pinned real JSON parser as firmware.
+python3 "$repo_dir/test/koreader_match/match_test.py" "$json_include"
+python3 "$repo_dir/test/koreader_match/match_test.py" "$json_include" --sanitize
+
+
 # Exercise the same parser as the real loose-admission callback, alongside
 # production HalStorage and owned-buffer admission instead of a parser mock.
 c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual \
@@ -44,3 +49,6 @@ c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual \
 if [[ $# -ge 2 ]]; then
   "$binary" "$2" >"${3:?measurement output required}"
 fi
+
+# Actual state JSON codec and legacy migration caller, with the firmware JSON library.
+python3 "$repo_dir/test/state_json/state_test.py" "$json_include" --sanitize
