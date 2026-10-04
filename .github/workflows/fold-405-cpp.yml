@@ -1,0 +1,49 @@
+name: Fold 405 cpp only
+on:
+  push:
+    branches: [fix/consolidated-bugs-20261003-c]
+    paths:
+      - '.github/workflows/fold-405-cpp.yml'
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/consolidated-bugs-20261003-c
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch CrossPoint emittedAny and cleanup helpers
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if grep -q 'emittedAny' src/network/CrossPointWebServer.cpp; then
+            echo "already patched"
+          else
+            python3 scripts/fold_405_cpp_only.py
+          fi
+
+          git fetch origin fix/bug142-opds-json-separators
+          git checkout 533275e444f32fe1e665a72a6aa1c0fa903e4a49 -- test/opds_response/response_test.cpp
+
+          grep -q 'emittedAny' src/network/CrossPointWebServer.cpp
+          grep -q 'version = 1.3.115' platformio.ini
+          test -f docs/bugfixes/BUG-142.md
+          test -f test/opds_response/response_test.py
+
+          rm -f .github/workflows/fold-405-simple.yml \
+                .github/workflows/fold-405-apply.yml \
+                .github/workflows/fold-405-cpp.yml \
+                scripts/fold_405_apply.py \
+                scripts/fold_405_cpp_only.py
+
+          git add -A
+          git status
+          git commit -m "Fold #405 BUG-142: emittedAny separator fix (firmware 1.3.115)"
+          git push origin HEAD:fix/consolidated-bugs-20261003-c
+          echo "Pushed $(git rev-parse HEAD)"
