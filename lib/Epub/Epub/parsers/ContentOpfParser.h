@@ -32,7 +32,7 @@ class ContentOpfParser final : public Print {
   FsFile tempItemStore;
   std::string coverItemId;
 
-  // Index for fast idref→href lookup (used only for large EPUBs)
+  // Large manifests sort this index; small manifests retain document order.
   struct ItemIndexEntry {
     uint32_t idHash;      // FNV-1a hash of itemId
     uint16_t idLen;       // length for collision reduction
@@ -40,6 +40,14 @@ class ContentOpfParser final : public Print {
   };
   std::deque<ItemIndexEntry> itemIndex;
   bool useItemIndex = false;
+
+  // Optional small-manifest cursor hint. No additional index/string allocation.
+  // Repeated manifests and incomplete/oversized temporary files use the old scan.
+  bool seenManifest = false;
+  bool smallItemIndexComplete = false;
+  uint32_t smallItemBytes = 0;
+  static constexpr size_t SMALL_ITEM_FIELD_LIMIT = 4096;
+  static constexpr uint32_t SMALL_ITEM_FILE_LIMIT = 128 * 1024;
 
   static constexpr uint16_t LARGE_SPINE_THRESHOLD = 128;
 

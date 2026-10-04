@@ -8,6 +8,8 @@ bash "$repo_dir/test/run_native_battery_gauge_test.sh"
 python3 "$repo_dir/test/hal/battery_presentation_test.py"
 python3 "$repo_dir/test/activities/confirmation_touch_test.py"
 python3 "$repo_dir/test/epub_toc/path_test.py"
+CXXFLAGS="${CXXFLAGS:-} -fsanitize=address,undefined -fno-omit-frame-pointer" \
+  python3 "$repo_dir/test/epub_opf_index/run_test.py"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 # Keep the standalone Board/frontlight fixture linked as the CI provider step is.

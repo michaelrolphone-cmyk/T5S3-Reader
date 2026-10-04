@@ -106,7 +106,11 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
 
   if (self->state == IN_PACKAGE && (strcmp(name, "manifest") == 0 || strcmp(name, "opf:manifest") == 0)) {
     self->state = IN_MANIFEST;
+    self->smallItemIndexComplete = !self->seenManifest && self->itemIndex.empty();
+    self->seenManifest = true;
+    self->smallItemBytes = 0;
     if (!Storage.openFileForWrite("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
+      self->smallItemIndexComplete = false;
       LOG_ERR("COF", "Couldn't open temp items file for writing. This is probably going to be a fatal error.");
     }
     return;
@@ -115,7 +119,12 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
   if (self->state == IN_PACKAGE && (strcmp(name, "spine") == 0 || strcmp(name, "opf:spine") == 0)) {
     self->state = IN_SPINE;
     if (!Storage.openFileForRead("COF", self->cachePath + itemCacheFile, self->tempItemStore)) {
+      self->smallItemIndexComplete = false;
       LOG_ERR("COF", "Couldn't open temp items file for reading. This is probably going to be a fatal error.");
+    }
+    if (self->smallItemIndexComplete &&
+        (self->tempItemStore.size() != self->smallItemBytes || self->tempItemStore.getError())) {
+      self->smallItemIndexComplete = false;
     }
 
     // Sort item index for binary search if we have enough items
@@ -175,6 +184,19 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
       }
     }
 
+    // Only use a small-file cursor hint when the existing records form a complete
+    // bounded file. position() is local handle metadata, not an extra SD read.
+    if (self->smallItemIndexComplete) {
+      if (!self->tempItemStore || self->itemIndex.size() >= LARGE_SPINE_THRESHOLD - 1 ||
+          itemId.size() > SMALL_ITEM_FIELD_LIMIT || href.size() > SMALL_ITEM_FIELD_LIMIT ||
+          self->tempItemStore.position() != self->smallItemBytes ||
+          itemId.size() + href.size() + 8 > SMALL_ITEM_FILE_LIMIT - self->smallItemBytes) {
+        self->smallItemIndexComplete = false;
+      } else {
+        self->smallItemBytes += static_cast<uint32_t>(itemId.size() + href.size() + 8);
+      }
+    }
+
     // Record index entry for fast lookup later
     if (self->tempItemStore) {
       ItemIndexEntry entry;
@@ -187,6 +209,10 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
     // Write items down to SD card
     serialization::writeString(self->tempItemStore, itemId);
     serialization::writeString(self->tempItemStore, href);
+    if (self->smallItemIndexComplete &&
+        (self->tempItemStore.position() != self->smallItemBytes || self->tempItemStore.getError())) {
+      self->smallItemIndexComplete = false;
+    }
 
     if (itemId == self->coverItemId) {
       self->coverItemHref = href;
@@ -258,10 +284,32 @@ void XMLCALL ContentOpfParser::startElement(void* userData, const XML_Char* name
               ++it;
             }
           } else {
-            // Slow path: linear scan (for small manifests, keeps original behavior)
-            // TODO: This lookup is slow as need to scan through all items each time.
-            //       It can take up to 200ms per item when getting to 1500 items.
-            self->tempItemStore.seek(0);
+            // Keep the original sequential decoder and exact-ID match. The first
+            // possible hash/length match is a safe starting point in a complete
+            // small manifest. Insertion order preserves first-duplicate semantics
+            // even under hash collisions; missing/ineligible hints still scan all.
+            // This allocation-free memory-only loop visits at most 127 entries;
+            // it adds no blocking I/O or new long-running operation.
+            uint32_t startOffset = 0;
+            if (self->smallItemIndexComplete && idref.size() <= SMALL_ITEM_FIELD_LIMIT) {
+              const auto hash = fnvHash(idref);
+              for (const auto& entry : self->itemIndex) {
+                if (entry.idHash == hash && entry.idLen == idref.size()) {
+                  startOffset = entry.fileOffset;
+                  break;
+                }
+              }
+            }
+            if (!self->tempItemStore.seek(startOffset) && startOffset != 0) {
+              // One optional seek retry, using exactly the original scan path.
+              // A sticky/failed retry must not enter the unchecked decoder at
+              // an unknown position after an optimization-only seek failure.
+              if (!self->tempItemStore.seek(0) || self->tempItemStore.getError()) {
+                LOG_ERR("COF", "Couldn't restore temp items cursor");
+                XML_StopParser(self->parser, XML_FALSE);
+                return;
+              }
+            }
             std::string itemId;
             while (self->tempItemStore.available()) {
               serialization::readString(self->tempItemStore, itemId);
@@ -345,7 +393,9 @@ void XMLCALL ContentOpfParser::endElement(void* userData, const XML_Char* name) 
 
   if (self->state == IN_MANIFEST && (strcmp(name, "manifest") == 0 || strcmp(name, "opf:manifest") == 0)) {
     self->state = IN_PACKAGE;
-    self->tempItemStore.close();
+    if (!self->tempItemStore.close()) {
+      self->smallItemIndexComplete = false;
+    }
     return;
   }
 
