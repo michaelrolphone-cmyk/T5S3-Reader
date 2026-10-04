@@ -1506,6 +1506,7 @@ void CrossPointWebServer::handleGetOpdsServers() const {
   char output[512];
   constexpr size_t outputSize = sizeof(output);
   JsonDocument doc;
+  bool emittedAny = false;
 
   for (size_t i = 0; i < servers.size(); i++) {
     doc.clear();
@@ -1519,8 +1520,10 @@ void CrossPointWebServer::handleGetOpdsServers() const {
     const size_t written = serializeJson(doc, output, outputSize);
     if (written >= outputSize) continue;
 
-    if (i > 0) server->sendContent(",");
+    // Oversized records are skipped, so source indices do not count emitted objects.
+    if (emittedAny) server->sendContent(",");
     server->sendContent(output);
+    emittedAny = true;
   }
 
   server->sendContent("]");

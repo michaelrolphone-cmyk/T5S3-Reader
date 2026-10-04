@@ -82,7 +82,7 @@ int main() {
   const OpdsServer normal{"Library", "https://example.test/catalog", "reader", "do-not-expose-secret"};
   OpdsServer large = normal;
   large.name = std::string(600, 'A');
-  // Original baseline fails here: its response starts with "[," .
+  // Original baseline fails here: its response starts with "[,".
   verify({large, normal}, http);
   verify({}, http);
   verify({normal}, http);
@@ -115,7 +115,7 @@ int main() {
           "oversized escaped object fixture");
   verify({escaped, normal}, http);
   auto unicode = normal;
-  unicode.name = "Librairie \u00e9 \u8aad\u66f8 \ud83d\udcda \"quoted\"";
+  unicode.name = "Librairie é 読書 📚 \"quoted\"";
   unicode.url += "?q=\"a\"&path=\\";
   unicode.username = "reader\nnext\tline";
   verify({large, unicode, large, normal}, http);
