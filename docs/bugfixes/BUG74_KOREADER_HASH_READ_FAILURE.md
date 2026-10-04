@@ -59,3 +59,5 @@ merge, release, deployment or device operation is part of this repair.
 
 The shared ledger branch and its recorded writer remain untouched. Publication
 stays **Awaiting merge** until integration is independently established.
+
+Rolled into [#384](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/384) on `fix/consolidated-bugs-20261003-c`.
