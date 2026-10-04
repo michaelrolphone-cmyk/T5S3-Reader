@@ -14,3 +14,6 @@ c++ -std=c++17 -O1 -Wall -Wextra -Werror \
   "$repo_dir/lib/EpdFont/EpdFontFamily.cpp" "$repo_dir/lib/Utf8/Utf8.cpp" -o "$build_dir/test"
 "$build_dir/test" "$build_dir/sd"
 echo 'Font Awesome tests passed with shipped cpfont files'
+
+python3 "$repo_dir/test/font_metrics/advance_cache_test.py"
+SD_FONT_SANITIZE=1 python3 "$repo_dir/test/font_metrics/advance_cache_test.py"

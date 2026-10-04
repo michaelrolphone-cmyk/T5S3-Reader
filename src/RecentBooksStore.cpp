@@ -125,8 +125,16 @@ bool RecentBooksStore::loadFromFile() {
   // Fall back to binary migration
   if (Storage.exists(RECENT_BOOKS_FILE_BIN)) {
     if (loadFromBinaryFile()) {
-      saveToFile();
-      Storage.rename(RECENT_BOOKS_FILE_BIN, RECENT_BOOKS_FILE_BAK);
+      // Keep the migration source available for a later boot if publishing
+      // the JSON replacement fails.
+      if (!saveToFile()) {
+        LOG_ERR("RBS", "Failed to save migrated recent books; keeping recent.bin");
+        return false;
+      }
+      if (!Storage.rename(RECENT_BOOKS_FILE_BIN, RECENT_BOOKS_FILE_BAK)) {
+        LOG_ERR("RBS", "Saved recent.json but could not retire recent.bin");
+        return false;
+      }
       LOG_DBG("RBS", "Migrated recent.bin to recent.json");
       return true;
     }

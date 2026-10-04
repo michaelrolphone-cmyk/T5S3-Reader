@@ -1,3 +1,30 @@
+# Working-base integration — 2026-10-04 15:17 UTC
+
+- repository_full_name: michaelrolphone-cmyk/T5S3-Reader
+- canonical_key: michaelrolphone-cmyk/T5S3-Reader::BUG-262
+- stable source alias: michaelrolphone-cmyk/T5S3-Reader::PERF-20261004-TOC-PREFIX-RESCAN
+- owner: fix_reader_performance_0610
+- source_ref / target_branch: xteink-x4-pro-boot
+- original reproduction baseline_sha: 60e5a78b79e5a196e2265aa8bad3200af5a82479
+- refreshed integration baseline_sha / merge second parent: f7789f784424e31d9f47c4c59e0d95e1f8eb7d7a
+- captured repair head / merge first parent: 62198120f4d706304ec826c789ae261228ec7519
+- current master included by the new base: 1d97f4f4050a2f0ec693d5b0f95b27f7be4e49d2
+- repair_branch: perf/toc-prefix-rescan
+- target_pr: https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/396
+- resumed claim: https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/332#issuecomment-5981455649
+- firmware: base 1.3.120 -> repair 1.3.121, confirmed by the active sole ledger coordinator
+- phase: combined-tree verification; new exact-head hosted CI pending
+
+This run resumes only the existing TOC repair after the workspace replacement and working-base advance. Preserve both complete histories through a non-force two-parent merge; do not rewrite the old fix or modify PR350. The old 1.3.106 must not regress base 1.3.120, so the coordinator reserved 1.3.121 after checking active owners.
+
+Conflicts are limited to the firmware version and adjacent Springboard test-runner insertions. Retain the new base's path-normalization/image-cache tests as well as this repair's TOC-index test and every other runner entry. Production BookMetadataCache merges cleanly: retain base cache generation 11 and the BUG-173 resetTocEntries method while preserving the bounded exact small-spine lookup. Extend the focused regression to verify that failed-nav reset, failed scratch reopen and retry preserve the completed lookup without additional spine I/O. Earlier source baselines without resetTocEntries retain the original cost-regression route.
+
+The original 60e5a78b source was restored and rerun: its measured 127-spine/1270-link cost remains 325120 reads, and it fails the repaired read bound. Its TOC output SHA256 is still ba78e810ab875a3f1abdf8dd58c059f1ba1a464a280954e0d80ec51eacc57343. Fresh combined-tree normal/sanitized output, relevant full aggregates and exact-head CI are the required current evidence; older green heads do not qualify this merge.
+
+Sole ledger coordinator resume_scan_reconcile_ledger owns canonical/file reconciliation; no shared ledger files are changed here. No other repair/default/PR350/Grok branch write, PR merge, release, deployment, device operation or hardware claim. Earlier sections below are preserved historical checkpoints; final status is recorded in PR396 and the original ledger conversation.
+
+---
+
 # Base integration checkpoint — 2026-10-04 08:00 UTC
 
 - repository_full_name: michaelrolphone-cmyk/T5S3-Reader

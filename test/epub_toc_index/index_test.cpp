@@ -189,6 +189,31 @@ static void edgeCases() {
     assert(cache.beginTocPass()); checkEntries(cache, {href(127), href(0), "missing"}, {127, 0, -1});
     assert(cache.endTocPass()); assert(cache.endWrite()); assert(cache.cleanupTmpFiles());
   }
+#ifdef PERF_HAS_TOC_RESET
+  // BUG-173's newer failed-nav reset must retain the completed exact lookup,
+  // including a failed reset reopen and subsequent NCX-style retry.
+  reset();
+  {
+    BookMetadataCache cache("/cache");
+    writeSpine(cache, {"first", "last"}); assert(cache.beginTocPass());
+    const auto reads = io[spinePath].reads;
+    cache.createTocEntry("discarded nav prefix", "first", "prefix", 1);
+    assert(cache.getTocCount() == 1);
+    assert(cache.resetTocEntries()); assert(cache.getTocCount() == 0);
+    assert(io[spinePath].live == 1);
+    checkEntries(cache, {"last", "first", "missing"}, {1, 0, -1});
+    assert(cache.getTocCount() == 3 && io[spinePath].reads == reads);
+    Storage.failWriteOpens = 1;
+    assert(!cache.resetTocEntries()); assert(cache.getTocCount() == 3);
+    cache.createTocEntry("ignored after reset failure", "first", "", 0);
+    assert(cache.getTocCount() == 3);
+    assert(cache.resetTocEntries()); assert(cache.getTocCount() == 0);
+    checkEntries(cache, {"first", "last"}, {0, 1});
+    assert(cache.getTocCount() == 2 && io[spinePath].reads == reads);
+    assert(cache.endTocPass()); assert(cache.endWrite()); assert(cache.cleanupTmpFiles());
+  }
+  std::cout << "small_spine_lookup_survives_failed_nav_reset_and_retry=PASS\n";
+#endif
   // Budget fallback and elapsed-time scheduler cooperation across tick wrap.
   reset();
   {

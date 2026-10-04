@@ -4,6 +4,9 @@
 #include <cstring>
 
 namespace RuntimePackages {
+// Only read-only inspection of an installed tree tolerates inert host-copy
+// metadata. Source/stage verification and deletion keep exact ownership.
+enum class OrdinaryCopyMetadata { Strict, InspectInstalled };
 // Store directory prefixes as references into the immutable plan, not a
 // recursive filesystem walk or a 14 KiB path array. At most 16*7 parents.
 struct OrdinaryTreeLayout {
@@ -42,24 +45,60 @@ inline void ordinaryTreeDirectory(const OrdinaryPackagePlan& plan,
 // visit(directory, callback) MUST distinguish read failure from clean EOF,
 // bound enumeration and yield/check deadlines. No unknown directory is entered.
 template<class Ops>
-bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full, bool managedMetadata = false) {
+bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full, bool managedMetadata = false,
+                           OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict) {
   OrdinaryTreeLayout tree{};
   if (!ordinaryTreeLayout(plan, tree)) return false;
   bool files[kMaxPackageEntries]{}, directories[kMaxPackageEntries * (kPackageResourceDepth - 1)]{};
   bool manifest = false, receipt = false;
+  constexpr size_t kDirectorySlots = kMaxPackageEntries * (kPackageResourceDepth - 1);
+  constexpr size_t kCompanionSlots = kMaxPackageEntries + kDirectorySlots + 2;
+  bool companions[kCompanionSlots]{};
+  const bool allowCopies = full && copyMetadata == OrdinaryCopyMetadata::InspectInstalled;
   size_t items = 0;
   for (size_t scan = 0; scan <= tree.count; ++scan) {
     char parent[128]{};
     if (scan) ordinaryTreeDirectory(plan, tree.directories[scan - 1], parent);
     if (scan && !ops.exists(parent)) { if (full) return false; else continue; }
+    bool finderMetadata = false;
     if (!ops.visit(parent, [&](const char* basename, bool isDirectory) {
-      if (++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u) || !basename ||
-          std::strchr(basename, '/')) return false;
+      if (!basename || std::strchr(basename, '/') || std::strchr(basename, '\\')) return false;
+      // These bytes never supply a package member, identity or authorization.
+      // Do not open/hash them, follow a copy-like directory, or accept arbitrary
+      // dot files. One Finder record per already-declared directory is bounded.
+      if (allowCopies && !isDirectory && !std::strcmp(basename, ".DS_Store")) {
+        if (finderMetadata) return false;
+        finderMetadata = true;
+        return true;
+      }
+      const bool companion = allowCopies && !isDirectory && basename[0] == '.' && basename[1] == '_';
+      const char* leaf = basename + (companion ? 2 : 0);
       char path[128]{};
-      const size_t p = std::strlen(parent), n = std::strlen(basename);
+      const size_t p = std::strlen(parent), n = strnlen(leaf, sizeof(path));
       if (!n || p + (p ? 1 : 0) + n >= sizeof(path)) return false;
       if (p) { std::memcpy(path, parent, p); path[p] = '/'; }
-      std::memcpy(path + p + (p ? 1 : 0), basename, n + 1);
+      std::memcpy(path + p + (p ? 1 : 0), leaf, n + 1);
+      if (companion) {
+        // Accept at most one inert ._ companion of each exact declared leaf,
+        // directory prefix or manager metadata name. The real-member bitmaps
+        // below remain mandatory, so a companion cannot replace missing data.
+        size_t slot = kCompanionSlots;
+        for (size_t f = 0; f < plan.entryCount; ++f)
+          if (!std::strcmp(plan.entries[f].name, path)) slot = f;
+        for (size_t d = 0; d < tree.count; ++d) {
+          const auto& directory = tree.directories[d];
+          if (directory.length == std::strlen(path) &&
+              !std::memcmp(plan.entries[directory.entry].name, path, directory.length))
+            slot = kMaxPackageEntries + d;
+        }
+        if (!std::strcmp(path, kOrdinaryManifestName)) slot = kMaxPackageEntries + kDirectorySlots;
+        if (managedMetadata && !std::strcmp(path, kPackageReceiptName))
+          slot = kMaxPackageEntries + kDirectorySlots + 1;
+        if (slot == kCompanionSlots || companions[slot]) return false;
+        companions[slot] = true;
+        return true;
+      }
+      if (++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u)) return false;
       if (!std::strcmp(path, kOrdinaryManifestName)) {
         if (isDirectory || manifest) return false;
         manifest = true;

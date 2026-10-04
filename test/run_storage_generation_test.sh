@@ -17,5 +17,8 @@ python3 test/hal/storage_inventory_test.py
 python3 test/hal/storage_compat_import_test.py
 python3 test/hal/storage_file_lifetime_test.py
 
-# Reuse the shared U1 bounded, generation-tagged provider enumeration test.
+# Retained metadata and copied root companions preserve complete enumeration.
 python3 test/provider_enumeration/run_test.py --sanitize
+
+# Preserve the merged CDC negative-observation regression.
+python3 test/resources/cdc_prepare_performance_test.py --current-only

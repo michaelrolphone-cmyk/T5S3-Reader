@@ -182,6 +182,12 @@ jobs:
       - name: Verify actual runtime sidecar parser and owned app admission
         run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
 
+      - name: Verify OPDS reload failure and recovery with actual ArduinoJson
+        run: python3 test/opds_reload/reload_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitize
+
+      - name: Verify OPDS JSON separators with actual ArduinoJson
+        run: python3 test/opds_response/response_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitize
+
       - name: Verify actual Arduino HTTP body-loop termination
         run: python3 test/runtime_network/http_client_body_budget_test.py "$HOME/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src/HTTPClient.cpp"
       - name: Record production serial and USB target references
@@ -284,7 +290,9 @@ jobs:
         run: bash test/run_storage_generation_test.sh
 
       - name: Verify full provider inventory through actual SD and package inspection
-        run: python3 test/storage_volume/inventory_test.py
+        run: |
+          python3 test/storage_volume/inventory_test.py
+          python3 test/storage_volume/copy_metadata_test.py
 
       - name: Verify lab target and partition guards
         run: python3 -B test/lab/test_esp32_lab.py

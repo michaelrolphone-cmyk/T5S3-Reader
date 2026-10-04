@@ -9,6 +9,8 @@ ROOT = Path(os.environ.get('EPUB_SOURCE_ROOT', str(HERE.parents[1])))
 flags = ['-std=c++17', '-O2', '-g', '-Wall', '-Wextra', '-Werror',
          '-Wno-unused-function', '-Wno-unused-variable', '-Wno-misleading-indentation',
          '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections']
+if 'bool resetTocEntries();' in (ROOT / 'lib/Epub/Epub/BookMetadataCache.h').read_text():
+    flags += ['-DPERF_HAS_TOC_RESET']
 if os.environ.get('EPUB_BASELINE') == '1':
     flags += ['-DPERF_EXPECT_BASELINE']
 if os.environ.get('EPUB_SANITIZE') == '1':

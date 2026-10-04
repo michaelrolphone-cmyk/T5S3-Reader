@@ -1,0 +1,3 @@
+retrigger after fold #401 BUG-179 and #403 BUG-44
+firmware 1.3.113
+head before retrigger: 2c810150b853e7d65ede33063f565aebc57d4ba2

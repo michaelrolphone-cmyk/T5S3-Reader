@@ -9,6 +9,7 @@ struct Ops {
   std::map<std::string, bool> nodes;
   std::vector<std::string> removed, visited;
   std::string failVisit;
+  std::string repeatBasename;
   int failRemove = -1;
   bool exists(const char* path) { return nodes.count(path); }
   template<class Visitor> bool visit(const char* path, Visitor visitor) {
@@ -20,6 +21,7 @@ struct Ops {
       const auto suffix = node.first.substr(prefix.size());
       if (suffix.find('/') != std::string::npos || suffix.empty()) continue;
       if (!visitor(suffix.c_str(), node.second)) return false;
+      if (suffix == repeatBasename && !visitor(suffix.c_str(), node.second)) return false;
     }
     return true;
   }
@@ -85,5 +87,39 @@ int main() {
   assert(purgeOrdinaryTree(empty,tombstone,false));
   tombstone.nodes={{"",true},{"owner.txt",false}};
   assert(!purgeOrdinaryTree(empty,tombstone,false) && tombstone.nodes.count("owner.txt"));
+  // Finder metadata can accompany copied installed files without supplying
+  // any real member or deletion authority. Namespace/type matching is exact.
+  auto copied=fixture();
+  for (const char* name : {"._.package.json", "._app.elf", "._assets", "assets/._fonts",
+                          "assets/._images", "assets/fonts/._body.bin", "assets/images/._logo.bin",
+                          ".DS_Store", "assets/.DS_Store", "assets/fonts/.DS_Store", "assets/images/.DS_Store"})
+    copied.nodes[name]=false;
+  const auto inspect=[&](Ops& o) {
+    return ordinaryTreeInventory(p,o,true,true,OrdinaryCopyMetadata::InspectInstalled);
+  };
+  const auto original=copied.nodes;
+  assert(inspect(copied));
+  assert(!ordinaryTreeInventory(p,copied,true,true));
+  assert(!ordinaryTreeInventory(p,copied,false,true,OrdinaryCopyMetadata::InspectInstalled));
+  assert(!purgeOrdinaryTree(p,copied,false,true));
+  assert(copied.nodes==original && copied.removed.empty());
+  for (const char* required : {".package.json", "app.elf", "assets/fonts/body.bin", "assets/images/logo.bin"}) {
+    auto o=copied;o.nodes.erase(required);assert(!inspect(o));
+  }
+  for (const char* name : {"._unknown", "._App.elf", "._app.elf.exe", "owner.txt",
+                          "assets/._owner.txt", ".hidden", "assets/.ds_store"}) {
+    auto o=copied;o.nodes[name]=false;assert(!inspect(o));
+  }
+  for (const char* name : {"._app.elf", "._assets", ".DS_Store", "assets/fonts/._body.bin"}) {
+    auto o=copied;o.nodes[name]=true;assert(!inspect(o));
+  }
+  for (const char* repeated : {"._.package.json", "._assets", "._body.bin", ".DS_Store", "app.elf"}) {
+    auto o=copied;o.repeatBasename=repeated;assert(!inspect(o));
+  }
+  copied.nodes[kPackageReceiptName]=false;
+  copied.nodes[std::string("._")+kPackageReceiptName]=false;
+  assert(inspect(copied));
+  assert(!ordinaryTreeInventory(p,copied,true,false,OrdinaryCopyMetadata::InspectInstalled));
+  std::puts("Installed copy metadata: exact inert companions, genuine members, aliases/types/duplicates and strict purge PASS");
   std::puts("Declared resource tree: bounded inventory, unknown preservation, read faults, manifest-last cleanup and restart PASS");
 }
