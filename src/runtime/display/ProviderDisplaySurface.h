@@ -41,7 +41,7 @@ class ProviderDisplaySurface final : public DisplaySurface {
   bool supportsSleep() const { return ready_ && sleepSupported_; }
   DisplaySurfaceInfo getSurfaceInfo() const override { return info_; }
   uint8_t* getFrameBuffer() const override { return ready_ ? raster_ : nullptr; }
-  bool lastPresentSucceeded() const { return lastPresentSucceeded_; }
+  bool lastPresentSucceeded() const override { return lastPresentSucceeded_; }
   uint8_t lastPresentState() const { return lastPresentState_; }
   // A boot splash must not be mistaken for the subsequent Home present.
   void clearPresentStatus() { lastPresentSucceeded_ = false; lastPresentState_ = 0; }

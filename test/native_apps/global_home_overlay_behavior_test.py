@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 host = (ROOT/'src/native/NativeAppHost.cpp').read_text()
 menu = (ROOT/'src/activities/GlobalMenuActivity.cpp').read_text()
 poll = host[host.index('bool pollInput('):host.index('\nbool poll(t5_app_input_t*')]
-current = host[host.index('Session* current()'):host.index('void beginAppInput(')]
+current = host[host.index('Session* current()'):host.index('int32_t width()')]
 modal = menu[menu.index('GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal('):menu.index('\nvoid GlobalMenuActivity::render(RenderLock&&)')]
 confirm = menu[menu.index('bool modalShutdownConfirmed('):menu.index('\n}  // namespace')]
 prefix = r'''
@@ -104,7 +104,8 @@ struct Session {std::string launchPath;int owner=1;MappedInputManager input;GfxR
 Session* session; bool homeRequested=false;
 constexpr unsigned long kNativeHomeDoubleClickWindowMs=400;
 
-void beginAppInput(Session&) {}
+void nativeTouchBeginSurfaceTransition(bool=false){}
+void nativeVideoServiceTouchPresentation(){}
 void nativeProviderOwnerTick() {}
 bool serviceIdleSleep(bool){return false;} // These cases cover Home/modal routing; idle has a separate actual-host fixture.
 struct {unsigned buttons=0;} navigationFrame;

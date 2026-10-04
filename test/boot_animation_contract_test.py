@@ -33,7 +33,7 @@ class BootAnimationContract(unittest.TestCase):
             path = Path(temp)
             (path / "boot_loading_source.inc").write_text(
                 re.sub(r"^#include[^\n]*", "", SOURCE, flags=re.MULTILINE))
-            for board in ([], ["-DBOARD_T5S3_PRO"]):
+            for board in ([], ["-DBOARD_T5S3_PRO"], ["-DBOARD_XTEINK_X4_PRO"]):
                 binary = path / "boot-loading"
                 subprocess.run(["c++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
                                 "-Wno-unused-function", "-pthread", *board,

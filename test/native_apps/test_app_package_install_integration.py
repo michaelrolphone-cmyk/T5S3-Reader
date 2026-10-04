@@ -220,8 +220,8 @@ class LiveInstallContract(unittest.TestCase):
         self.assertIn('recoverAppPair(selectedName.c_str())', boot)
 
     def test_inventory_does_not_rename_open_directory_or_mapped_app(self):
-        self.assertIn('appRecoveryCandidate(name, elf)', INVENTORY)
-        self.assertLess(INVENTORY.index('directory.close();\n  if (!complete)'),
+        self.assertIn('appRecoveryCandidate(entry.name, elf)', INVENTORY)
+        self.assertLess(INVENTORY.index('if (!directory.close()'),
                         INVENTORY.index('recoverAppPair(elf.c_str())'))
         self.assertIn('native_app_current_path()', INVENTORY)
         self.assertIn('if (active && mapped == active && backedUp)', INVENTORY)

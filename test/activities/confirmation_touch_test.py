@@ -59,6 +59,7 @@ modal_call = (
 
 harness = r"""
 #include <cstdint>
+#include <cassert>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -67,6 +68,8 @@ enum class EpdFontFamily { BOLD, REGULAR };
 enum class DisplayPresentMode { Quality };
 enum class StrId { STR_SHUTDOWN, STR_SHUTDOWN_PROMPT, STR_CANCEL, STR_CONFIRM };
 constexpr int UI_10_FONT_ID = 10;
+static bool surfaceFenced = false;
+void nativeTouchBeginSurfaceTransition() { surfaceFenced = true; }
 
 struct ActivityResult { bool isCancelled = true; };
 
@@ -79,7 +82,7 @@ public:
     std::string truncatedText(int, const char* text, int, EpdFontFamily) const { return text; }
     void clearScreen() {}
     void drawCenteredText(int, int, const char*, bool, EpdFontFamily) {}
-    void displayBuffer(DisplayPresentMode) {}
+    void displayBuffer(DisplayPresentMode) { assert(surfaceFenced); surfaceFenced = false; }
 };
 
 class MappedInputManager {

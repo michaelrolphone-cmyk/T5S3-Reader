@@ -927,7 +927,7 @@ Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message) cons
   const int textX = x + (w - textWidth) / 2;
   const int textY = y + margin - 2;
   renderer.drawText(UI_12_FONT_ID, textX, textY, message, true, EpdFontFamily::BOLD);
-  renderer.displayBuffer();
+  renderer.displayBuffer(DisplayPresentMode::LowLatency, false);
   return Rect{x, y, w, h};
 }
 
@@ -941,7 +941,7 @@ void BaseTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
 
   renderer.fillRect(barX, barY, fillWidth, barHeight, true);
 
-  renderer.displayBuffer(DisplayPresentMode::LowLatency);
+  renderer.displayBuffer(DisplayPresentMode::LowLatency, false);
 }
 
 void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage,

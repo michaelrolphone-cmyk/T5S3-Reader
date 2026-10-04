@@ -125,7 +125,9 @@ class GfxRenderer {
   // Screen ops
   int getScreenWidth() const;
   int getScreenHeight() const;
-  void displayBuffer(DisplayPresentMode refreshMode = DisplayPresentMode::LowLatency) const;
+  // Temporary loading/progress frames cannot admit input to the destination.
+  void displayBuffer(DisplayPresentMode refreshMode = DisplayPresentMode::LowLatency,
+                     bool interactive = true) const;
   void requestNextRefresh(DisplayPresentMode refreshMode = DisplayPresentMode::Quality) const;
   void requestNextDisplayEffect(DisplayEffect effect) const;
   void requestNextPageTurnEffect(bool isForwardTurn) const;

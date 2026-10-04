@@ -1,6 +1,7 @@
 #define HAL_STORAGE_IMPL
 #include <HalStorage.h>
 #include <SdFat.h>
+#include <Logging.h>
 
 #include <cassert>
 #include <iostream>
@@ -15,8 +16,8 @@ bool refuseInspectionOnce = false;
 }
 namespace RuntimePackages {
 bool inspectInstalledOrdinarySdDirectory(const char* path, const PackageRuntimePolicy&, uint32_t (*)(const char*),
-                                         Identity& observed, OrdinaryPackagePlan* plan) {
-  if (refuseInspectionOnce) { refuseInspectionOnce = false; return false; }
+                                         Identity& observed, OrdinaryPackagePlan* plan, OrdinaryInspectionDiagnostic* diagnostic) {
+  if (refuseInspectionOnce) { refuseInspectionOnce = false; return diagnostic->fail("fixture-inspection"); }
   if (mutateDuringInspect) {
     mutateDuringInspect = false;
     assert(Storage.writeFile("/interleaved", "changed"));
@@ -53,6 +54,7 @@ int main() {
   releaseInstalledCapabilities(warm);
   assert(Storage.writeFile("/changed", "x"));
   assert(!versionInInstalledSnapshot(snapshot, "test.clock"));
+  assert(FakeStorageLog::contains("reason=storage-generation-changed"));
   auto* refreshed = captureInstalledCapabilities();
   assert(refreshed && versionInInstalledSnapshot(refreshed, "test.clock") == 1);
   assert(FakeSd::opens > opened && FakeSd::reads > read);
@@ -61,6 +63,8 @@ int main() {
   refuseInspectionOnce = true;
   auto* omitted = captureInstalledCapabilities();
   assert(omitted && !versionInInstalledSnapshot(omitted, "test.clock"));
+  assert(FakeStorageLog::contains("path=/Drivers/clock stage=fixture-inspection"));
+  assert(FakeStorageLog::contains("requested=test.clock cause=no-inspected-candidate"));
   releaseInstalledCapabilities(omitted);
   auto* retry = captureInstalledCapabilities();
   assert(retry && versionInInstalledSnapshot(retry, "test.clock") == 1);
@@ -96,6 +100,41 @@ int main() {
   FakeSd::failDirectory = "/drivers";
   assert(!captureInstalledCapabilities());
   FakeSd::failDirectory.clear();
+  const auto installDependency = [&](const char* id, const char* capability, const char* dependency, unsigned minimum) {
+    const std::string root = std::string("/Drivers/") + id;
+    if (!Storage.exists(root.c_str())) assert(Storage.mkdir(root.c_str()));
+    auto text = manifest;
+    text.replace(text.find("\"id\":\"clock\""), 12, std::string("\"id\":\"") + id + "\"");
+    text.replace(text.find("\"requires\":[]"), 13,
+        std::string("\"requires\":[{\"capability\":\"") + dependency + "\",\"min_api\":" + std::to_string(minimum) + "}]");
+    assert(Storage.writeFile((root + "/.package.json").c_str(), text));
+    assert(Storage.writeFile((root + "/provider-abi.v1").c_str(),
+        std::string("os-cpu-abi=1\nprovides=") + capability + "\napi=1\n"));
+  };
+  installDependency("bus", "test.bus", "test.clock", 1);
+  installDependency("battery", "board.battery", "test.bus", 1);
+  auto* chain = captureInstalledCapabilities();
+  assert(chain && versionInInstalledSnapshot(chain, "board.battery") == 1);
+  releaseInstalledCapabilities(chain);
+  assert(Storage.writeFile("/Drivers/clock/provider-abi.v1", "invalid"));
+  chain = captureInstalledCapabilities();assert(chain);
+  FakeStorageLog::lines.clear();
+  const auto queryReads = FakeSd::reads;
+  for (unsigned i=0;i<10;++i) assert(!versionInInstalledSnapshot(chain, "board.battery"));
+  assert(FakeSd::reads == queryReads && FakeStorageLog::lines.size() == 4);
+  assert(FakeStorageLog::contains("dependency=test.clock provider=bus required=1 available=0"));
+  releaseInstalledCapabilities(chain);
+  assert(Storage.writeFile("/Drivers/clock/provider-abi.v1", "os-cpu-abi=1\nprovides=test.clock\napi=1\n"));
+  installDependency("bus", "test.bus", "test.clock", 2);
+  chain = captureInstalledCapabilities();assert(chain);
+  assert(!versionInInstalledSnapshot(chain, "board.battery"));
+  assert(FakeStorageLog::contains("cause=required-api dependency=test.clock provider=bus required=2 available=1"));
+  releaseInstalledCapabilities(chain);
+  installDependency("bus", "test.bus", "board.battery", 1);
+  chain = captureInstalledCapabilities();assert(chain);
+  assert(!versionInInstalledSnapshot(chain, "board.battery"));
+  assert(FakeStorageLog::contains("cause=cycle"));
+  releaseInstalledCapabilities(chain);
   for (unsigned i = 0; i < 64; ++i) assert(Storage.mkdir(("/Drivers/extra" + std::to_string(i)).c_str()));
   assert(!captureInstalledCapabilities());
   std::cout << "Production capability metadata cache: zero-IO reuse, mutation/remount invalidation, interleaving, uncached compatible raw session, directory I/O "

@@ -42,6 +42,8 @@ def main() -> None:
 #include <vector>
 
 enum class DisplayPresentMode { Clean, Quality, Balanced, LowLatency };
+uint32_t nativeTouchPresentationEpoch(){return 0;}
+void nativeTouchSurfacePresented(uint32_t,bool){}
 static unsigned long start_ms = 0;
 static unsigned long millis() { return 100; }
 template<typename... Args> void logStub(Args...) {}
@@ -55,6 +57,7 @@ struct Surface {
   mutable unsigned clears = 0;
   unsigned presents = 0;
   bool isReady() const { return ready; }
+  bool lastPresentSucceeded() const { return ready; }
   void clearScreen(uint8_t color) const {
     ++clears;
     std::memset(pixels, color, bytes);
@@ -67,7 +70,7 @@ struct GfxRenderer {
   uint8_t* frameBuffer;
   uint32_t frameBufferSize;
   void clearScreen(uint8_t color = 0xff) const;
-  void displayBuffer(DisplayPresentMode mode = DisplayPresentMode::Quality) const;
+  void displayBuffer(DisplayPresentMode mode = DisplayPresentMode::Quality, bool interactive=true) const;
 };
 ''' + methods + r'''
 static void all(const std::vector<uint8_t>& bytes, uint8_t expected) {

@@ -399,6 +399,7 @@ void HalDisplay::pushPanelCanvas(const RefreshMode mode, const lgfx::epd_mode::e
 }
 
 void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen) {
+  presentSucceeded = false;
   static bool warnedUnavailable = false;
   if (!displayReady || !frameBuffer || !gfx || !panelCanvas) {
     if (!warnedUnavailable) {
@@ -453,9 +454,11 @@ void HalDisplay::displayBuffer(HalDisplay::RefreshMode mode, bool turnOffScreen)
   forcedRefreshPending = false;
   pendingDisplayEffect = EFFECT_NONE;
   grayscaleBaseCaptured = false;
+  presentSucceeded = true;
 }
 
 void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, HalDisplay::RefreshMode mode) {
+  presentSucceeded = false;
   if (!previousBuffer || !displayReady || !gfx || !panelCanvas || !frameBuffer || mode == FULL_REFRESH ||
       forceFullRefresh) {
     displayBuffer(mode);
@@ -558,6 +561,7 @@ void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, HalDisplay::Re
   forcedRefreshPending = false;
   pendingDisplayEffect = EFFECT_NONE;
   grayscaleBaseCaptured = false;
+  presentSucceeded = true;
 }
 
 void HalDisplay::refreshDisplay(HalDisplay::RefreshMode mode, bool turnOffScreen) { displayBuffer(mode, turnOffScreen); }
@@ -659,6 +663,7 @@ void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
 }
 
 void HalDisplay::displayGrayBuffer(HalDisplay::RefreshMode mode) {
+  presentSucceeded = false;
   static bool warnedGrayUnavailable = false;
   if (!displayReady || !frameBuffer || !gfx || !panelCanvas || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
     if (!warnedGrayUnavailable) {
@@ -699,6 +704,7 @@ void HalDisplay::displayGrayBuffer(HalDisplay::RefreshMode mode) {
   forceFullRefresh = false;
   pendingDisplayEffect = EFFECT_NONE;
   grayscaleBaseCaptured = false;
+  presentSucceeded = true;
 }
 
 uint16_t HalDisplay::getDisplayWidth() const { return DISPLAY_WIDTH; }

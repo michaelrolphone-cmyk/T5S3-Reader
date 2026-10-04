@@ -57,7 +57,9 @@ class HalDisplay : public DisplaySurface {
   // The provider remains the sole owner of panel pins and refresh operations.
   bool attachProvider(ProviderDisplaySurface& surface);
   void detachProvider();
-  bool lastPresentSucceeded() const;
+  bool lastPresentSucceeded() const override;
+#else
+  bool lastPresentSucceeded() const override { return displayReady && presentSucceeded; }
 #endif
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and
@@ -251,6 +253,7 @@ class HalDisplay : public DisplaySurface {
   uint8_t* grayscaleBaseBuffer = nullptr;
   bool grayscaleBaseCaptured = false;
   bool displayReady = false;
+  bool presentSucceeded = false;
   bool flipOutput = false;
   bool flipTouchBoundaryPending = false;
   bool forceFullRefresh = true;

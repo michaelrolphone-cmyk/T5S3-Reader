@@ -141,6 +141,18 @@ int main() {
         if(fault==1)assert(Storage.writeFile((path+"/driver.elf").c_str(),"short"));
         if(fault==2)assert(Storage.writeFile((path+"/unexpected").c_str(),"unowned"));
         if(fault==3)assert(Storage.writeFile((path+"/provider-abi.v1").c_str(),"invalid"));
+        // Diagnostic capture must preserve admission and perform precisely
+        // the same SD reads as the existing silent inspection.
+        OrdinaryPackagePlan inspected;
+        OrdinaryInspectionDiagnostic diagnostic;
+        auto inspectedReads=card_reads;
+        assert(!inspectInstalledOrdinarySdDirectory(path.c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity,&inspected));
+        const auto silentReads=card_reads-inspectedReads;inspectedReads=card_reads;
+        assert(!inspectInstalledOrdinarySdDirectory(path.c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity,&inspected,&diagnostic));
+        assert(card_reads-inspectedReads==silentReads);
+        assert(!std::strcmp(diagnostic.stage,fault==0?"elf-header":"initial-tree"));
+        const char* rejected=fault==2?"unexpected":fault==3?"provider-abi.v1":"driver.elf";
+        assert(!std::strcmp(diagnostic.entry,rejected));
         auto* bad=captureInstalledCapabilities();assert(bad && !versionInInstalledSnapshot(bad,"rtc.clock") && versionInInstalledSnapshot(bad,"board.battery")==1);
         releaseInstalledCapabilities(bad);const auto rejectedReads=card_reads;
         bad=captureInstalledCapabilities();assert(bad && card_reads>rejectedReads);releaseInstalledCapabilities(bad);
@@ -153,11 +165,15 @@ int main() {
     auto hooks=*inspectorExt;hooks.base.struct_size=sizeof(hooks);
     hooks.file_open=inspectorOpen;hooks.base.file_read=inspectorRead;hooks.base.file_close=inspectorClose;
     assert(Storage.bindVolume(&hooks.base));
+    OrdinaryPackagePlan inspected;
+    OrdinaryInspectionDiagnostic diagnostic;
     changeFinalSize=true;
-    assert(!inspectInstalledOrdinarySdDirectory(packagePath(39).c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity));
+    assert(!inspectInstalledOrdinarySdDirectory(packagePath(39).c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity,&inspected,&diagnostic));
+    assert(!std::strcmp(diagnostic.stage,"final-tree") && !std::strcmp(diagnostic.entry,"privileged-imports.v1"));
     assert(!changeFinalSize);install(39);
     failManifestClose=true;manifestCloseAttempts=0;
-    assert(!inspectInstalledOrdinarySdDirectory(packagePath(39).c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity));
+    assert(!inspectInstalledOrdinarySdDirectory(packagePath(39).c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity,&inspected,&diagnostic));
+    assert(!std::strcmp(diagnostic.stage,"manifest-read") && !std::strcmp(diagnostic.entry,".package.json"));
     assert(manifestCloseAttempts==2 && !Storage.generation().quiescent && !Storage.begin());
     assert(driver->quiesce());driver->stop();std::free(card_image);
     std::printf("Actual SD/FatFs/HAL/inspector/resolver: 40 providers %u sectors/%llu modeled ms; warm zero I/O, deadline, malformed/header/size/tree failures and retry PASS\n",sectors,(unsigned long long)elapsed);

@@ -14,6 +14,9 @@ prefix=r'''
 static bool borrowed=false,available=true,stopOkay=true;
 static unsigned starts,stops;
 bool nativeVideoForceStop();
+static uint32_t nativeProviderStreamConsumer(){return 0;}
+static bool nativeTouchAwaitingSurfacePresentation(uint32_t&){return false;}
+static void nativeTouchSurfacePresented(uint32_t,bool){}
 extern "C" bool native_hardware_display_is_borrowed(){return borrowed;}
 static bool startEngine(t5_video_surface_v1*,uint8_t){++starts;return true;}
 static bool stopEngine(){++stops;return stopOkay;}

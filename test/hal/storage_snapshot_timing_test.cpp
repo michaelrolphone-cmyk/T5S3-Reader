@@ -1,6 +1,7 @@
 #define HAL_STORAGE_IMPL
 #include <HalStorage.h>
 #include <SdFat.h>
+#include <Logging.h>
 #include <freertos/task.h>
 #include <cassert>
 #include <cstdio>
@@ -31,7 +32,7 @@ void install(unsigned index) {
 }
 }
 namespace RuntimePackages {
-bool inspectInstalledOrdinarySdDirectory(const char* path, const PackageRuntimePolicy&, uint32_t (*)(const char*), Identity& observed, OrdinaryPackagePlan* plan) {
+bool inspectInstalledOrdinarySdDirectory(const char* path, const PackageRuntimePolicy&, uint32_t (*)(const char*), Identity& observed, OrdinaryPackagePlan* plan, OrdinaryInspectionDiagnostic*) {
   auto manifest = Storage.open((std::string(path) + "/.package.json").c_str());
   if (!manifest.isOpen()) return false;
   std::string bytes(manifest.fileSize64(), '\0');
@@ -77,6 +78,7 @@ int main() {
   assert(Storage.writeFile("/Drivers/rtc/provider-abi.v1", "invalid profile\n"));
   auto* malformed = captureInstalledCapabilities();
   assert(malformed && !versionInInstalledSnapshot(malformed, "rtc.clock") && versionInInstalledSnapshot(malformed, "board.battery") == 1);
+  assert(FakeStorageLog::contains("path=/Drivers/rtc stage=provider-profile"));
   releaseInstalledCapabilities(malformed);
   const unsigned malformedReads = FakeSd::reads;
   auto* stillMalformed = captureInstalledCapabilities();

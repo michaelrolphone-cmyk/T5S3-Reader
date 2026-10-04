@@ -135,7 +135,7 @@ struct HalDisplay {
   enum RefreshMode {FULL_REFRESH,HALF_REFRESH,BALANCED_REFRESH,FAST_REFRESH};
   enum DisplayEffect {EFFECT_NONE};
   bool flipOutput=false,flipTouchBoundaryPending=false,displayReady=true,externalOwner=false;
-  bool forceFullRefresh=false,forcedRefreshPending=false,grayscaleBaseCaptured=false;
+  bool forceFullRefresh=false,forcedRefreshPending=false,grayscaleBaseCaptured=false,presentSucceeded=false;
   unsigned refreshCycleCount=0;
   RefreshMode forcedRefreshMode=FULL_REFRESH;
   DisplayEffect pendingDisplayEffect=EFFECT_NONE;
@@ -152,12 +152,12 @@ int main(){
   HalDisplay display;
   display.setFlipOutput(true);assert(suppressed&&display.forceFullRefresh);
   panel.failure=true;display.displayBuffer(HalDisplay::FAST_REFRESH);
-  assert(suppressed&&!display.displayReady&&display.forceFullRefresh&&display.flipTouchBoundaryPending);
+  assert(suppressed&&!display.displayReady&&display.forceFullRefresh&&display.flipTouchBoundaryPending&&!display.presentSucceeded);
   panel.failure=false;display.displayBuffer(HalDisplay::FAST_REFRESH);
   assert(suppressed&&suppressionCalls==1); // Skipped present cannot release.
   display.displayReady=true; // Successful backend recovery permits a new present.
   display.displayBuffer(HalDisplay::FAST_REFRESH);
-  assert(!suppressed&&!queuedTouches&&!display.forceFullRefresh&&!display.flipTouchBoundaryPending);
+  assert(!suppressed&&!queuedTouches&&!display.forceFullRefresh&&!display.flipTouchBoundaryPending&&display.presentSucceeded);
   assert(suppressionCalls==2);
   display.setFlipOutput(true);assert(suppressionCalls==2);
   display.setFlipOutput(false);assert(suppressed&&display.forceFullRefresh);

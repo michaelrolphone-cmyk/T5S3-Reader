@@ -29,31 +29,30 @@ bool recoverAppInventory() {
   bool complete = true;
   size_t entries = 0;
   const uint32_t began = millis();
-  uint32_t yielded = began;
+  uint32_t yielded = began, reported = began;
   for (;;) {
     const uint32_t now = millis();
     if (now - began >= 30000u) { complete = false; break; }
     if ((entries && (entries & 15u) == 0) || now - yielded >= 8u) {
       esp_task_wdt_reset(); vTaskDelay(1); yielded = millis();
     }
-    HalFile file = directory.openNextFile();
-    if (!file.isOpen()) break;
+    if (now - reported >= 1000u) {
+      LOG_DBG("APPSTORE", "Recovery scan entries=%u transactions=%u",
+              (unsigned)entries, (unsigned)candidates.size());
+      reported = now;
+    }
+    HalFile::DirectoryEntry entry{};
+    if (!directory.readDirectoryEntry(entry)) {
+      complete = directory.getError() == 0;
+      break;
+    }
     if (++entries > 1024) {
-      file.close();
       complete = false;
       break;
     }
-    char name[160]{};
-    const size_t length = file.getName(name, sizeof(name));
-    const bool isDirectory = file.isDirectory();
-    file.close();
-    if (isDirectory) continue;
-    if (length == 0 || length >= sizeof(name)) {
-      complete = false;
-      break;
-    }
+    if (entry.isDirectory) continue;
     std::string elf;
-    if (!appRecoveryCandidate(name, elf)) continue;
+    if (!appRecoveryCandidate(entry.name, elf)) continue;
     if (std::find(candidates.begin(), candidates.end(), elf) != candidates.end()) continue;
     if (candidates.size() >= 256) {
       complete = false;
@@ -65,7 +64,7 @@ bool recoverAppInventory() {
       vTaskDelay(1);
     }
   }
-  directory.close();
+  if (!directory.close() || millis() - began >= 30000u) complete = false;
   if (!complete) {
     LOG_ERR("APPSTORE", "App inventory too large or unreadable; refusing partial recovery");
     return false;

@@ -161,6 +161,7 @@ void HalDisplay::drawImageTransparent(const uint8_t* imageData, const uint16_t x
 }
 
 void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
+  presentSucceeded = false;
   (void)turnOffScreen;
   static bool warnedUnavailable = false;
   if (!displayReady || !frameBuffer || !epdFrameBuffer) {
@@ -214,9 +215,11 @@ void HalDisplay::displayBuffer(RefreshMode mode, bool turnOffScreen) {
   forcedRefreshPending = false;
   forceFullRefresh = false;
   pendingDisplayEffect = EFFECT_NONE;
+  presentSucceeded = true;
 }
 
 void HalDisplay::displayBufferDiff(const uint8_t* previousBuffer, const RefreshMode mode) {
+  presentSucceeded = false;
   // The current EPD47 backend still submits a full-screen image. Keep the API
   // available so shared desk-clock code builds; T5S3 Paper Pro uses the
   // clipped differential path in HalDisplay.cpp.
@@ -312,6 +315,7 @@ void HalDisplay::cleanupGrayscaleBuffers(const uint8_t* bwBuffer) {
 }
 
 void HalDisplay::displayGrayBuffer(RefreshMode mode) {
+  presentSucceeded = false;
   static bool warnedGrayUnavailable = false;
   if (!displayReady || !frameBuffer || !epdFrameBuffer || !grayscaleLsbBuffer || !grayscaleMsbBuffer) {
     if (!warnedGrayUnavailable) {
@@ -363,6 +367,7 @@ void HalDisplay::displayGrayBuffer(RefreshMode mode) {
   forceFullRefresh = false;
   pendingDisplayEffect = EFFECT_NONE;
   grayscaleBaseCaptured = false;
+  presentSucceeded = true;
 }
 
 uint16_t HalDisplay::getDisplayWidth() const { return DISPLAY_WIDTH; }

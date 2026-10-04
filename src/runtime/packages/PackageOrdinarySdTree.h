@@ -14,8 +14,8 @@ namespace RuntimePackages {
 class OrdinarySdTreeOps {
  public:
   explicit OrdinarySdTreeOps(const char* root, const OrdinaryPackagePlan* plan = nullptr,
-                            uint64_t* sizes = nullptr)
-      : root_(root), started_(now()), plan_(plan), sizes_(sizes) {}
+                            uint64_t* sizes = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr)
+      : root_(root), started_(now()), plan_(plan), sizes_(sizes), diagnostic_(diagnostic) {}
   bool checkpoint() {
 #if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
     vTaskDelay(1);
@@ -52,6 +52,7 @@ class OrdinarySdTreeOps {
           break;
         }
       }
+      if (!good && diagnostic_) diagnostic_->fail("tree-entry", entry.name);
     }
     if (!checkpoint()) good = false;
     return directory.close() && good;
@@ -87,5 +88,6 @@ class OrdinarySdTreeOps {
   uint64_t started_;
   const OrdinaryPackagePlan* plan_;
   uint64_t* sizes_;
+  OrdinaryInspectionDiagnostic* diagnostic_;
 };
 } // namespace RuntimePackages

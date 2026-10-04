@@ -19,7 +19,8 @@ PACKAGES = {
     "x4pro-panel": None,
     "x4pro-buttons": [],
     "x4pro-rtc": [],
-    "x4pro-frontlight": [],
+    "x4pro-frontlight": sorted(["xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
+                                  "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
     "x4pro-sd": sorted(["memcpy", "memcmp", "memset", "strlen", "strchr",
                            "xPortInIsrContext", "xQueueCreateMutex", "xQueueGenericSend",
                            "xQueueSemaphoreTake", "xTaskGetCurrentTaskHandle", "vQueueDelete"]),
@@ -71,7 +72,7 @@ int main(int argc, char **argv) {
         if (package == "x4pro-panel" and found not in ([], ["memset"])) or \
                 (package != "x4pro-panel" and found != expected):
             raise SystemExit(f"{package} imports {found} != {expected}")
-        if package in ("x4pro-sd", "t5s3-sd"):
+        if package in ("x4pro-sd", "t5s3-sd", "x4pro-frontlight"):
             compiler = os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
             if compiler:
                 disassembly = subprocess.check_output([compiler.replace("gcc", "objdump"), "-d", str(elf)], text=True)

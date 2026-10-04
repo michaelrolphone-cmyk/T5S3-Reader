@@ -92,7 +92,7 @@ void drawBootFrame(GfxRenderer& renderer, int rows) {
   }
 }
 
-void bootWithRenderer(GfxRenderer& renderer) {
+void presentStaticLogo(GfxRenderer& renderer) {
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
   // Slow-panel fallback presents one useful loading frame, without spending
@@ -100,6 +100,10 @@ void bootWithRenderer(GfxRenderer& renderer) {
   drawBootFrame(renderer, 4);
   renderer.displayBuffer(DisplayPresentMode::Quality);
   renderer.setRenderMode(mode);
+}
+
+void bootWithRenderer(GfxRenderer& renderer) {
+  presentStaticLogo(renderer);
   bootBackend = BootBackend::Renderer;
 }
 
@@ -772,6 +776,8 @@ bool finishVideoBoot(GfxRenderer& renderer) {
 #endif
 
 }  // namespace
+
+void staticLogo(GfxRenderer& renderer) { presentStaticLogo(renderer); }
 
 void boot(GfxRenderer& renderer) {
   loading.store(true, std::memory_order_release);

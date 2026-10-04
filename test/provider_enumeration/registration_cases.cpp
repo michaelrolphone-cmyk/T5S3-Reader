@@ -11,6 +11,7 @@ struct ProviderAncestry { RegistrationFrame frames[kMaxProviders]; };
 char loadError[160]{};
 unsigned registrations = 0;
 bool failAfterRegistration = false;
+bool failDependency = false;
 bool providerFail(const char* stage, const char* identity) {
   std::snprintf(loadError, sizeof(loadError), "%s: %s", stage, identity);
   return false;
@@ -18,6 +19,7 @@ bool providerFail(const char* stage, const char* identity) {
 bool registerOne(RuntimeProviders::GraphV2&, const char*, const char*, Kind,
                  const char*, uint32_t, const InstalledCapabilitySnapshot*, ProviderAncestry&, size_t) {
   ++registrations;
+  if (failDependency) return providerFail("Provider dependency ambiguous", "test.bus");
   if (failAfterRegistration) FakeSd::failDirectory = "/drivers";
   return true;
 }
@@ -50,6 +52,12 @@ int main() {
   assert(selected == 1 && !loadError[0]);
   assert(!registerCapability(graph, &snapshot, "absent", 1, &selected, ancestry, 0));
   assert(!selected && std::strstr(loadError, "Provider dependency unavailable: absent"));
+  failDependency = true;
+  assert(!registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
+  assert(!selected && std::strstr(loadError, "Provider dependency ambiguous: test.bus"));
+  failDependency = false;
+  assert(!registerCapability(graph, &snapshot, "no-match", 1, &selected, ancestry, 0));
+  assert(!selected && std::strstr(loadError, "Provider dependency unavailable: no-match"));
   package("c-target", "test.target");
   assert(!registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
   assert(!selected && std::strstr(loadError, "Provider dependency ambiguous"));
