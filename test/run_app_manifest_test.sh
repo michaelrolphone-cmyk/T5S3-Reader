@@ -3,6 +3,7 @@
 set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 json_include="${1:?Usage: run_app_manifest_test.sh /path/to/ArduinoJson/src}"
+python3 "$repo_dir/test/web_settings/settings_response_test.py" "$json_include" --sanitize
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
 c++ -std=c++17 -Wall -Wextra -Werror \

@@ -22,6 +22,7 @@
 #include "OpdsServerStore.h"
 #include "SdCardFontGlobals.h"
 #include "SettingsList.h"
+#include "SettingsJsonWriter.h"
 #include "WebDAVHandler.h"
 #include "html/FilesPageHtml.generated.h"
 #include "html/FontsPageHtml.generated.h"
@@ -1204,10 +1205,8 @@ void CrossPointWebServer::handleGetSettings() const {
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
-  server->sendContent("[");
-
-  char output[512];
-  constexpr size_t outputSize = sizeof(output);
+  SettingsJsonWriter output(*server);
+  output.write('[');
   bool seenFirst = false;
   JsonDocument doc;
 
@@ -1276,21 +1275,26 @@ void CrossPointWebServer::handleGetSettings() const {
         continue;
     }
 
-    const size_t written = serializeJson(doc, output, outputSize);
-    if (written >= outputSize) {
-      LOG_DBG("WEB", "Skipping oversized setting JSON for: %s", s.key);
-      continue;
+    if (doc.overflowed()) {
+      LOG_DBG("WEB", "Could not allocate setting JSON for: %s", s.key);
+      output.abort();
+      return;
     }
 
     if (seenFirst) {
-      server->sendContent(",");
+      output.write(',');
     } else {
       seenFirst = true;
     }
-    server->sendContent(output);
+    serializeJson(doc, output);
+    if (!output.flush()) {
+      LOG_DBG("WEB", "Settings response interrupted at: %s", s.key);
+      return;
+    }
   }
 
-  server->sendContent("]");
+  output.write(']');
+  if (!output.flush()) return;
   server->sendContent("");
   LOG_DBG("WEB", "Served settings API");
 }
