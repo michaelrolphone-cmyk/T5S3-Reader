@@ -4,6 +4,7 @@ on:
     branches: [fix/consolidated-bugs-20261003-c]
     paths:
       - '.github/workflows/fold-392-remaining.yml'
+      - '.github/fold-392-remaining.b64'
   workflow_dispatch:
 jobs:
   apply:
@@ -26,7 +27,7 @@ jobs:
              && grep -q 'epub_image_cache/image_cache_test.py' test/run_springboard_test.sh \
              && grep -q 'rendition_v1_img_0_0' test/epub_image_cache/image_cache_test.cpp; then
             echo "Remaining files already present; cleaning workflow only"
-            rm -f .github/workflows/fold-392-remaining.yml
+            rm -f .github/workflows/fold-392-remaining.yml .github/fold-392-remaining.b64
             git add -A
             if ! git diff --cached --quiet; then
               git commit -m "temp: remove fold-392-remaining one-shot workflow"
@@ -35,13 +36,15 @@ jobs:
             exit 0
           fi
 
+          test -f .github/fold-392-remaining.b64
           python3 <<'PY'
           import base64, tarfile, io
-          b64 = """PLACEHOLDER_B64"""
+          from pathlib import Path
+          b64 = Path('.github/fold-392-remaining.b64').read_text().strip()
           data = base64.b64decode(b64)
-          with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
-              tar.extractall(".")
-              print("extracted", tar.getnames())
+          with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as tar:
+              tar.extractall('.')
+              print('extracted', tar.getnames())
           PY
 
           test -f test/epub_image_cache/image_cache_test.cpp
@@ -52,7 +55,7 @@ jobs:
           test -f test/epub_image_cache/image_cache_test.py
           test -f docs/bugfix/BUG-242.md
 
-          rm -f .github/workflows/fold-392-remaining.yml
+          rm -f .github/workflows/fold-392-remaining.yml .github/fold-392-remaining.b64
           git add -A
           git commit -m "Fold #392 BUG-242: image_cache_test.cpp and springboard wiring"
           git push origin HEAD:fix/consolidated-bugs-20261003-c
