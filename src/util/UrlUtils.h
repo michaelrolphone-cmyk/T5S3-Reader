@@ -19,9 +19,10 @@ std::string ensureProtocol(const std::string& url);
 std::string extractHost(const std::string& url);
 
 /**
- * Build full URL from server URL and path.
- * If path starts with /, it's an absolute path from the host root.
- * Otherwise, it's relative to the server URL.
+ * Resolve a URI reference against a server/feed document URL (RFC 3986).
+ * Relative paths use the containing directory unless the base ends in '/'.
+ * Preserve query/fragment delimiters and escaped bytes; normalize path dots.
+ * A server configured without a protocol retains the http:// default.
  */
 std::string buildUrl(const std::string& serverUrl, const std::string& path);
 
