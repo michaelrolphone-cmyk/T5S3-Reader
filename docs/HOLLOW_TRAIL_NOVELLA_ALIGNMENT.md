@@ -67,8 +67,8 @@ city exploration. Later chapter jumps do not trigger it; it is once per session.
 light to a human-scale playable room on the existing upper roof, a two-cycle
 arrival tableau, and player-controlled physical watch-log comparison. The
 existing relay remains player-operated. Source, screenshot and regression
-checks are recorded with the increment; lower-window relay lighting and the
-full westward transition remain unfinished.
+checks are recorded with the increment; the relay now lights the existing lower windows and earns a reaction shot.
+The full westward transition and window-entry/handprint beats remain unfinished.
 
 ## Scene-by-scene remaining map
 
@@ -89,7 +89,7 @@ traversal wholesale with autoplay.
 | 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
 | 10 Rain tank/crossings | [Tank refuge and earned opposite-window tableau, 1.1.45](HOLLOW_TRAIL_RAIN_TANK_1_1_45.md), existing physical roofs retained | Brief submerged street glimpse; connect arrival to empty signal-room inspection |
-| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Add westward warehouse/siding/pump-country composition and lower-window lighting response after relay restoration |
+| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in the same 1.1.48 continuation; add westward warehouse/siding/pump-country composition and explicit window-entry/handprint beats |
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
 | 14 Stove shed | Narrative fragment only | Cold ordered interior, wrapped pipe, dish rings responding to knocks |

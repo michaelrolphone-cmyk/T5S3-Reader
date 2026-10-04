@@ -3,7 +3,7 @@
  * language, but a fixed 32 ms cue track owns camera, actor pose, depth and
  * scene progression. Forward-X tableaus look down world X: screen X is world Y,
  * screen Y is world Z and world X controls perspective, fog and occlusion. */
-enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO, HT_CUTSCENE_MILL, HT_CUTSCENE_CITY, HT_CUTSCENE_RAIN, HT_CUTSCENE_SIGNAL };
+enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO, HT_CUTSCENE_MILL, HT_CUTSCENE_CITY, HT_CUTSCENE_RAIN, HT_CUTSCENE_SIGNAL, HT_CUTSCENE_RELAY };
 enum { HT_CUT_KITCHEN, HT_CUT_GRASS, HT_CUT_DEPARTURE, HT_CUT_ORCHARD, HT_CUT_MILL };
 enum { HT_CUT_VIEW_PROFILE, HT_CUT_VIEW_FORWARD_X };
 enum { HT_CUT_FACE_FRONT, HT_CUT_FACE_BACK, HT_CUT_FACE_LEFT_3Q, HT_CUT_FACE_RIGHT_3Q };
@@ -74,13 +74,22 @@ static const ht_cutscene_cue ht_signal_cues[]={
     {160,448,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,16,0,0,0,0,0,38,38,0,0,300,300},
     {448,576,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,38,0,0,0,300,384},
 };
+/* The player restores the existing relay. Look down to see its consequence,
+ * then return to the untouched operator position and neutral input. */
+#define HT_RELAY_REACTION_TICKS 432u
+static const ht_cutscene_cue ht_relay_cues[]={
+    {0,160,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,17,0,0,0,0,0,0,42,0,0,384,240},
+    {160,320,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,18,0,0,0,0,0,42,42,0,0,240,240},
+    {320,432,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,42,0,0,0,240,384},
+};
 static const ht_cutscene_timeline ht_cutscene_tracks[]={
     {NULL,0,0,0},
     {ht_intro_cues,(uint8_t)(sizeof(ht_intro_cues)/sizeof(ht_intro_cues[0])),0,HT_INTRO_TICKS},
     {ht_mill_cues,3,0,340},
     {ht_city_cues,3,1,430},
     {ht_rain_cues,3,1,420},
-    {ht_signal_cues,3,1,576}
+    {ht_signal_cues,3,1,576},
+    {ht_relay_cues,3,1,HT_RELAY_REACTION_TICKS}
 };
 static ht_cutscene_state ht_cutscene;
 static ht_game ht_cutscene_anchor;
@@ -106,6 +115,10 @@ static bool ht_cutscene_signal_arrival(const ht_game *before,const ht_game *afte
         before->x<2090*256 && after->x>=2090*256 && after->x-before->x<=8*256 &&
         after->grounded && ht_abs(after->y/256-ht_level_land(1)[7].top)<=3 &&
         after->traversal.mode==HT_FREE;
+}
+static bool ht_cutscene_relay_restored(const ht_game *before,const ht_game *after) {
+    return !(ht_cutscene_seen&16u) && before->level==1 && after->level==1 &&
+        !before->puzzle.solved && after->puzzle.solved && ht_puzzle_near(after)==3;
 }
 static const ht_cutscene_timeline *ht_cutscene_track(const ht_cutscene_state *s) {
     return s->id<sizeof(ht_cutscene_tracks)/sizeof(ht_cutscene_tracks[0])?
@@ -157,6 +170,7 @@ static void ht_cutscene_begin(unsigned id) {
     if(id==HT_CUTSCENE_CITY)ht_cutscene_seen|=2u;
     if(id==HT_CUTSCENE_RAIN)ht_cutscene_seen|=4u;
     if(id==HT_CUTSCENE_SIGNAL)ht_cutscene_seen|=8u;
+    if(id==HT_CUTSCENE_RELAY)ht_cutscene_seen|=16u;
 }
 static bool ht_cutscene_step(ht_cutscene_state *s) {
     if(!s->active)return false;
@@ -434,6 +448,8 @@ static void ht_cutscene_caption(unsigned caption) {
         {"THROUGH THE RAIN, A LIGHT.","THREE FLASHES. A PAUSE. THREE AGAIN."},
         {"NO ONE MOVED INSIDE.","THE CHAIR FACED THE WINDOW."},
         {"THE WHEEL TURNED. THE LIGHT FLASHED.","I WATCHED THE WHOLE SEQUENCE TWICE."},
+        {"A ROW OF WINDOWS BELOW ME LIT.","SO DID THE SIGNAL BEHIND MY SHOULDER."},
+        {"I HAD MADE A WAY OUT.","I HAD ALSO MADE THE CITY CALL AGAIN."},
     };
     if(caption>=sizeof(lines)/sizeof(lines[0]))return;
     ht_narration_key=2166136261u;
@@ -575,6 +591,11 @@ static ht_game ht_cutscene_arrival_view(const ht_cutscene_state *s) {
          * The center hold uses the existing widest city framing. */
         view.intimacy=(uint16_t)(view.intimacy*(85-shift)/85);
         view.vista=(uint16_t)(view.vista+(256-view.vista)*shift/85);
+    } else if(s->id==HT_CUTSCENE_RELAY) {
+        view.camera_y+=shift*64*256/42;
+        view.ticks+=s->tick;
+        view.intimacy=(uint16_t)(view.intimacy*(42-shift)/42);
+        view.vista=(uint16_t)(view.vista+(256-view.vista)*shift/42);
     } else if(s->id==HT_CUTSCENE_SIGNAL) {
         view.ticks+=s->tick;
         /* Ease from the actual framing, including an already-wide arrival. */
@@ -592,6 +613,7 @@ static void ht_cutscene_draw_arrival(const ht_cutscene_state *s) {
     ht_game view=ht_cutscene_arrival_view(s);
     ht_world_scale=ht_scene_scale(&view);
     ht_draw_traversal(&view);
+    if(s->id==HT_CUTSCENE_RELAY)ht_draw_puzzle(&view);
     ht_character(view.x/256-view.camera/256,(view.y-view.camera_y)/256,&view);
     ht_forest_foreground(&view);ht_city_observer_foreground(&view);
     ht_world_scale=256;ht_native_foreground_half_y=false;
@@ -631,7 +653,7 @@ static void ht_cutscene_render(const ht_cutscene_state *s) {
     ht_native_foreground_half_y=false;
     ht_scene=ht_native_active?ht_native_a:ht_scene_low;
     if(s->id==HT_CUTSCENE_INTRO && s->tick>=2020)ht_cutscene_draw_intro_arrival(s,cue);
-    else if(s->id==HT_CUTSCENE_MILL || s->id==HT_CUTSCENE_CITY || s->id==HT_CUTSCENE_RAIN || s->id==HT_CUTSCENE_SIGNAL)ht_cutscene_draw_arrival(s);
+    else if(s->id==HT_CUTSCENE_MILL || s->id==HT_CUTSCENE_CITY || s->id==HT_CUTSCENE_RAIN || s->id==HT_CUTSCENE_SIGNAL || s->id==HT_CUTSCENE_RELAY)ht_cutscene_draw_arrival(s);
     else if(cue->pose==HT_CUT_POSE_THREAD)ht_cutscene_draw_latch(s,cue);
     else if(cue->view==HT_CUT_VIEW_FORWARD_X) {
         if(cue->scene==HT_CUT_KITCHEN)ht_cutscene_draw_kitchen_forward(s,cue);

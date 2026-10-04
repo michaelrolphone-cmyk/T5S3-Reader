@@ -334,11 +334,22 @@ static void ht_input_update(uint32_t wait) {
         }
         else if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
         else if(ht_traversal_interact()) { /* A grabs/releases a nearby traversal object. */ }
-        else if(ht_puzzle_near(&ht)>=0) (void)ht_interact();
+        else if(ht_puzzle_near(&ht)>=0) {
+            ht_game before=ht;
+            (void)ht_interact();
+            if(ht_cutscene_relay_restored(&before,&ht)) {
+                ht_cutscene_begin(HT_CUTSCENE_RELAY);
+                jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
+            }
+        }
         else (void)ht_observe();
 
         if(reading) { jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; }
         ++scene_revision;
+        if(ht_cutscene.active) {
+            quitting|=(down&HT_EXIT)!=0;
+            previous=held=0;jump_down=pause_down=false;last_poll=now;return;
+        }
     }
     quitting|=(down&HT_EXIT)!=0;
     previous=held=buttons; last_poll=now;

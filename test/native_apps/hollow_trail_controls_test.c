@@ -222,6 +222,49 @@ static void signal_arrival_controls(void) {
         assert(quitting);host_exit=false;ht_cutscene.active=false;
     }
 }
+
+static void relay_controls(void) {
+    const unsigned a[2]={1,2};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=(HT_PUZZLE_FIRST+3*HT_PUZZLE_SPACING)*256;ht.y=200*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);ht.puzzle.value[0]=1;press(source,a[source]);
+        assert(!ht.puzzle.solved && !ht_cutscene.active && ht.puzzle.feedback==HT_CROSSOVER_SHORT);
+        ht.puzzle.value[0]=2;ht.puzzle.value[1]=1;ht.puzzle.value[2]=2;
+        press(source,a[source]);
+        assert(ht.puzzle.solved && ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_RELAY);
+        assert(!held && !jump_down && !pause_down);ht_game frozen=ht;
+        reports[source][0].hat=2;
+        while(ht_cutscene.active) {ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(ht_input_rearm && !held && !reading && !quitting);
+        ht_input(32);assert(ht_input_rearm && !held && ht.x==frozen.x && ht.y==frozen.y);
+        assert(ht.evidence==frozen.evidence && ht.puzzle.solved);
+        assert(!memcmp(ht.puzzle.value,frozen.puzzle.value,sizeof(ht.puzzle.value)));
+        /* Normal gate-opening animation resumes; held A/Right cannot act. */
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
+        assert(!ht_input_rearm);press(source,a[source]);assert(!ht_cutscene.active && ht.puzzle.solved);
+    }
+    /* Simultaneous device Confirm/Back must not lose the real exit request
+     * when the just-restored relay begins its reaction on that same poll. */
+    pad=hid_pad=NULL;memset(reports,0,sizeof(reports));mapped=0;
+    ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;
+    memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+    ht.x=(HT_PUZZLE_FIRST+3*HT_PUZZLE_SPACING)*256;ht.y=200*256;ht.grounded=true;
+    ht.puzzle.value[0]=2;ht.puzzle.value[1]=1;ht.puzzle.value[2]=2;
+    ht_cutscene.active=false;ht_cutscene_seen=0;simulation_started=false;
+    reading=paused=quitting=loading=debug_jump=false;held=previous=0;
+    ht_input(1);mapped=T5_APP_BUTTON_CONFIRM|T5_APP_BUTTON_BACK;ht_input(1);
+    assert(quitting && ht.puzzle.solved && ht_cutscene.active);
+}
+
 int main(void) {
     app=&fake_app; pad=&xapi; hid_pad=&hapi;
     /* Receiver face-label correction reported on hardware for 1.0.15. */
@@ -402,5 +445,6 @@ int main(void) {
     motion_emphasis_controls();
     rain_controls();
     signal_arrival_controls();
+    relay_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

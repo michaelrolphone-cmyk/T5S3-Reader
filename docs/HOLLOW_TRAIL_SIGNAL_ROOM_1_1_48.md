@@ -49,15 +49,16 @@ concept art. Device contrast, ghosting and FPS are not inferred from them.
 ## Remaining Chapter II and whole-book work
 
 - The brief submerged-street glimpse before the fuse crossing is still missing.
-- Set 11 still needs the full westward warehouse/siding/pump-country transition
-  and the explicit lower-window lighting response to the player-operated relay.
+- Set 11 still needs the full westward warehouse/siding/pump-country transition,
+  explicit window entry and the handprint/lowering-hand beat. Its lower-window
+  relay response is implemented by the continuation below.
 - Earlier set-4/5/6/7 details and mill desk movement remain on the gap map.
 - Later chapters still have their existing playable traversal and puzzles, but
   many narrative spaces/interactions remain partial. Set 44's dedicated final
   door and static waiting end are still absent; the old ten-chapter loop does
   not demonstrate completion of that ending.
 
-## Version and verification
+## Version and signal-room checkpoint verification
 
 Hollow Trail **1.1.47 → 1.1.48**. Current master and the live release index both
 used 1.1.47 before this increment. Minimum firmware stays 1.3.37. The app's
@@ -84,3 +85,28 @@ retained. The app-specific Xtensa builder checks ELF structure, ordinary ZIP
 export/validation and source/sidecar/package/catalog version agreement.
 
 No merge, release, installation or device flash is part of this increment.
+
+## Same-PR continuation: the restored relay has a visible consequence
+
+The existing final city roof's lower windows now illuminate only when the real
+three-bank circuit has been solved and tested by the player. No other chapter or
+roof changes. A wrong/scorched arrangement cannot trigger the lights or shot.
+
+A once-per-session 432-tick reaction eases down to the row of windows, holds the
+novella's consequence, and returns to the exact operator position/framing with
+neutral input required. It neither solves the relay nor moves the player. Normal
+gate-opening animation resumes after the shot; held A/Right cannot operate or walk.
+The existing puzzle is visible throughout. The wider industrial vista is still
+an open task; this response does not claim that scenery is finished.
+
+[Actual before/after close and reaction views](images/hollow-trail-relay-response/README.md)
+include grayscale and packed mono. The unsolved control is byte-identical.
+Targeted relay/control sanitizer, renderer/route and final app-package checks are
+recorded in the PR. The version remains 1.1.48 for this cumulative unreleased PR.
+
+Relay-response final local checks passed: ASan/UBSan relay and real controls
+(including simultaneous Confirm/Back), existing renderer goldens, complete route,
+signal-room and cutscene regressions, changed-source version guard and Xtensa
+ELF/ordinary ZIP/catalog validation. Final relay-candidate ELF SHA-256: `8e21988cea3eec7e407ca2d64ea4a1fb5e8aef924dbe7733a6a570b87811ceaa`.
+The earlier full aggregate/CI result belongs to the signal-room checkpoint;
+the PR records the relay head’s fresh hosted results separately.
