@@ -93,26 +93,57 @@ bool JsonSettingsIO::loadState(CrossPointState& s, const char* json) {
     return false;
   }
 
-  s.openEpubPath = doc["openEpubPath"] | std::string("");
-  memset(s.recentSleepImages, 0, sizeof(s.recentSleepImages));
+  // Validate before touching live state: syntactically valid JSON can still be
+  // a different document, and recovery must not publish its default values.
+  if (!doc.is<JsonObject>() || !doc["openEpubPath"].is<std::string>()) return false;
+  const JsonObjectConst object = doc.as<JsonObjectConst>();
+  if ((!object["readerActivityLoadCount"].isUnbound() &&
+       !object["readerActivityLoadCount"].is<uint8_t>()) ||
+      (!object["lastSleepFromReader"].isUnbound() && !object["lastSleepFromReader"].is<bool>()) ||
+      (!object["lastSleepImage"].isUnbound() && !object["lastSleepImage"].is<uint8_t>())) return false;
+
+  const bool hasRing = !object["recentSleepImages"].isUnbound() ||
+                       !object["recentSleepPos"].isUnbound() || !object["recentSleepFill"].isUnbound();
+  if (hasRing) {
+    if (!object["recentSleepImages"].is<JsonArrayConst>() || !object["recentSleepPos"].is<uint8_t>() ||
+        !object["recentSleepFill"].is<uint8_t>()) return false;
+    const JsonArrayConst ring = object["recentSleepImages"].as<JsonArrayConst>();
+    if (ring.size() > CrossPointState::SLEEP_RECENT_COUNT ||
+        object["recentSleepPos"].as<uint8_t>() >= CrossPointState::SLEEP_RECENT_COUNT ||
+        object["recentSleepFill"].as<uint8_t>() > ring.size()) return false;
+    const unsigned pos = object["recentSleepPos"].as<uint8_t>();
+    const unsigned fill = object["recentSleepFill"].as<uint8_t>();
+    for (unsigned i = 0; i < fill; ++i) {
+      if ((pos + CrossPointState::SLEEP_RECENT_COUNT - 1 - i) % CrossPointState::SLEEP_RECENT_COUNT >=
+          ring.size()) return false;
+    }
+    for (JsonVariantConst value : ring) {
+      if (!value.is<uint16_t>()) return false;
+    }
+  }
+
+  CrossPointState candidate;
+  candidate.openEpubPath = doc["openEpubPath"] | std::string("");
+  memset(candidate.recentSleepImages, 0, sizeof(candidate.recentSleepImages));
   JsonArrayConst recentArr = doc["recentSleepImages"];
   const int actualCount = recentArr.isNull() ? 0
                                              : std::min(static_cast<int>(recentArr.size()),
                                                         static_cast<int>(CrossPointState::SLEEP_RECENT_COUNT));
-  for (int i = 0; i < actualCount; i++) s.recentSleepImages[i] = recentArr[i] | static_cast<uint16_t>(0);
-  s.recentSleepPos = doc["recentSleepPos"] | static_cast<uint8_t>(0);
-  if (s.recentSleepPos >= CrossPointState::SLEEP_RECENT_COUNT)
-    s.recentSleepPos = actualCount > 0 ? s.recentSleepPos % CrossPointState::SLEEP_RECENT_COUNT : 0;
-  s.recentSleepFill = doc["recentSleepFill"] | static_cast<uint8_t>(0);
-  s.recentSleepFill = static_cast<uint8_t>(std::min(static_cast<int>(s.recentSleepFill), actualCount));
+  for (int i = 0; i < actualCount; i++) candidate.recentSleepImages[i] = recentArr[i] | static_cast<uint16_t>(0);
+  candidate.recentSleepPos = doc["recentSleepPos"] | static_cast<uint8_t>(0);
+  if (candidate.recentSleepPos >= CrossPointState::SLEEP_RECENT_COUNT)
+    candidate.recentSleepPos = actualCount > 0 ? candidate.recentSleepPos % CrossPointState::SLEEP_RECENT_COUNT : 0;
+  candidate.recentSleepFill = doc["recentSleepFill"] | static_cast<uint8_t>(0);
+  candidate.recentSleepFill = static_cast<uint8_t>(std::min(static_cast<int>(candidate.recentSleepFill), actualCount));
   // Migrate legacy single-image field from old state.json (pre-recency-buffer).
   // Only seeds the buffer if the new buffer is empty (fresh migration, not a resave).
-  if (s.recentSleepFill == 0 && !doc["lastSleepImage"].isNull()) {
+  if (candidate.recentSleepFill == 0 && !doc["lastSleepImage"].isNull()) {
     const uint8_t legacy = doc["lastSleepImage"] | static_cast<uint8_t>(UINT8_MAX);
-    if (legacy != UINT8_MAX) s.pushRecentSleep(static_cast<uint16_t>(legacy));
+    if (legacy != UINT8_MAX) candidate.pushRecentSleep(static_cast<uint16_t>(legacy));
   }
-  s.readerActivityLoadCount = doc["readerActivityLoadCount"] | static_cast<uint8_t>(0);
-  s.lastSleepFromReader = doc["lastSleepFromReader"] | false;
+  candidate.readerActivityLoadCount = doc["readerActivityLoadCount"] | static_cast<uint8_t>(0);
+  candidate.lastSleepFromReader = doc["lastSleepFromReader"] | false;
+  s = std::move(candidate);
   return true;
 }
 
@@ -302,8 +333,15 @@ bool JsonSettingsIO::loadKOReader(KOReaderCredentialStore& store, const char* js
     if (!store.password.empty() && needsResave) *needsResave = true;
   }
   store.serverUrl = doc["serverUrl"] | std::string("");
-  uint8_t method = doc["matchMethod"] | (uint8_t)0;
-  store.matchMethod = static_cast<DocumentMatchMethod>(method);
+  // Keep the persisted mode inside the two-value enum before any consumer sees it.
+  // Filename is the existing default, including for missing legacy settings.
+  const auto methodValue = doc["matchMethod"];
+  const uint8_t method = methodValue.is<uint8_t>() ? methodValue.as<uint8_t>() : 0;
+  store.setMatchMethod(static_cast<DocumentMatchMethod>(method));
+  if (!methodValue.isNull() &&
+      (!methodValue.is<uint8_t>() || method > static_cast<uint8_t>(DocumentMatchMethod::BINARY)) && needsResave) {
+    *needsResave = true;
+  }
 
   LOG_DBG("KRS", "Loaded KOReader credentials for user: %s", store.username.c_str());
   return true;
