@@ -20,6 +20,10 @@ end = source.index('\nvoid ', start + 1)
 with tempfile.TemporaryDirectory(prefix='web-settings-') as directory:
     build = Path(directory)
     (build / 'handler.inc').write_text(source[start:end])
+    current = (root / source_path).read_text()
+    abort_start = current.index('  void abortResponse() {')
+    abort_end = current.index('\n  }', abort_start) + len('\n  }')
+    (build / 'abort_response.inc').write_text(current[abort_start:abort_end])
     command = [os.environ.get('CXX', 'c++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
                '-I' + str(root / 'test/web_settings/stubs'), '-I' + str(args.arduino_json.resolve()),
                '-I' + str(root / 'src'), '-I' + str(build),

@@ -105,6 +105,13 @@ class CrossPointHttpServer : public WebServer {
  public:
   using WebServer::WebServer;
 
+  void abortResponse() {
+    // client() returns a shared WiFiClient copy. Stop the actual owner and
+    // suppress WebServer's automatic successful chunk terminator on return.
+    _chunked = false;
+    _currentClient.stop();
+  }
+
   void handleClient() override {
     if (_currentStatus == HC_NONE) {
       _currentClient = _server.available();
@@ -1205,7 +1212,7 @@ void CrossPointWebServer::handleGetSettings() const {
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
-  SettingsJsonWriter output(*server);
+  SettingsJsonWriter<CrossPointHttpServer> output(*static_cast<CrossPointHttpServer*>(server.get()));
   output.write('[');
   bool seenFirst = false;
   JsonDocument doc;

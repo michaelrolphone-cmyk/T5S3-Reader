@@ -10,9 +10,10 @@
 
 // ArduinoJson writer for the settings response. A setting can contain all 128
 // SD font names; its size must not be limited to one HTTP output chunk.
+template <typename Server>
 class SettingsJsonWriter {
  public:
-  explicit SettingsJsonWriter(WebServer& server) : server_(server), started_(millis()) {}
+  explicit SettingsJsonWriter(Server& server) : server_(server), started_(millis()) {}
 
   size_t write(uint8_t value) { return write(&value, 1); }
 
@@ -52,7 +53,7 @@ class SettingsJsonWriter {
     if (failed_) return;
     failed_ = true;
     used_ = 0;
-    server_.client().stop();
+    server_.abortResponse();
   }
 
  private:
@@ -66,7 +67,7 @@ class SettingsJsonWriter {
   }
 
   static constexpr size_t kMaxBytes = 256 * 1024;
-  WebServer& server_;
+  Server& server_;
   const uint32_t started_;
   char buffer_[512];
   size_t used_ = 0;
