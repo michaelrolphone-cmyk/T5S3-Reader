@@ -232,6 +232,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/src/native" -I"$repo_dir/src" \
   "$repo_dir/test/native_apps/native_sd_firmware_bridge_test.cpp" -o "$binary"
 "$binary"
+python3 "$repo_dir/test/firmware_flasher/segment_limit_test.py" --sanitize
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"
