@@ -29,7 +29,16 @@ std::vector<SettingInfo> settings;
 const auto& getSettingsList(const int*) { return settings; }
 struct { int value = 0; const int& registry() { return value; } } sdFontSystem;
 struct { const char* get(int id) { return id == 0 ? "Font Family" : "Reader"; } } I18N;
-class CrossPointWebServer { public: WebServer* server; void handleGetSettings() const; };
+class CrossPointHttpServer : public WebServer {
+ public:
+#include "abort_response.inc"
+};
+struct ServerRef {
+  WebServer* value;
+  WebServer* get() const { return value; }
+  WebServer* operator->() const { return value; }
+};
+class CrossPointWebServer { public: ServerRef server; void handleGetSettings() const; };
 struct TestAllocator : ArduinoJson::Allocator {
   bool fail = false;
   size_t live = 0;
@@ -58,8 +67,10 @@ struct TestJsonDocument : ArduinoJson::JsonDocument {
 static void require(bool condition, const char* description) {
   if (!condition) { std::cerr << "FAIL: " << description << '\n'; std::exit(1); }
 }
-static JsonDocument response(WebServer& server) {
+static JsonDocument response(CrossPointHttpServer& server) {
   CrossPointWebServer{&server}.handleGetSettings();
+  server.finalizeResponse();
+  require(server.finalizationAttempts == 0, "no automatic extra finalization");
   require(allocator.live == 0, "per-request JSON allocation cleanup");
   require(server.status == 200 && server.alive && server.stops == 0, "successful response");
   require(server.terminators == 1, "one terminal chunk after JSON closes");
@@ -69,7 +80,7 @@ static JsonDocument response(WebServer& server) {
   return parsed;
 }
 static void verifyEnum(const SettingInfo& setting) {
-  settings = {setting}; WebServer server; auto result = response(server);
+  settings = {setting}; CrossPointHttpServer server; auto result = response(server);
   require(result.size() == 1, "fontFamily must not disappear at the 512-byte boundary");
   require(result[0]["options"].size() == setting.enumStringValues.size(), "all choices retained");
   for (size_t i = 0; i < setting.enumStringValues.size(); ++i)
@@ -77,9 +88,9 @@ static void verifyEnum(const SettingInfo& setting) {
 }
 int main() {
   // Empty/action-only responses and every pre-existing setting kind.
-  settings.clear(); WebServer empty; require(response(empty).size() == 0, "empty list");
+  settings.clear(); CrossPointHttpServer empty; require(response(empty).size() == 0, "empty list");
   SettingInfo skip; skip.key = nullptr; SettingInfo action; action.type = SettingType::ACTION;
-  settings = {skip, action}; WebServer skipped; require(response(skipped).size() == 0, "actions skipped");
+  settings = {skip, action}; CrossPointHttpServer skipped; require(response(skipped).size() == 0, "actions skipped");
   SettingInfo normal; normal.enumStringValues = {"Noto Serif", "Noto Sans"}; verifyEnum(normal);
 
   // Exact serialized object lengths straddling the old fixed-buffer limit.
@@ -112,7 +123,7 @@ int main() {
   SettingInfo field = zone; field.key = "field"; field.type = SettingType::STRING;
   SettingInfo translated; translated.key = "builtin"; translated.enumValues = {0, 1};
   settings = {toggle, fonts, skip, value, action, text, zone, translated, field};
-  WebServer mixed; auto result = response(mixed);
+  CrossPointHttpServer mixed; auto result = response(mixed);
   require(result.size() == 7 && result[0]["type"] == "toggle", "mixed settings without stray commas");
   require(result[1]["value"] == 129 && result[1]["options"].size() == 130, "dynamic getter");
   require(result[2]["min"] == 0 && result[2]["max"] == 10 && result[2]["step"] == 2, "value range");
@@ -120,32 +131,44 @@ int main() {
   require(result[4]["value"] == "Europe/Paris" && result[4]["type"] == "timezone", "timezone offset");
   require(result[5]["options"][0] == "Font Family" && result[6]["value"] == "Europe/Paris", "translated enum/string field");
   for (int repeat = 0; repeat < 20; ++repeat) {
-    WebServer retry; response(retry); require(retry.body == mixed.body, "independent repeated requests");
+    CrossPointHttpServer retry; response(retry); require(retry.body == mixed.body, "independent repeated requests");
   }
 
+  // A copied client shares the socket: stop() must affect only that copy.
+  CrossPointHttpServer ownership;
+  ownership.client().stop();
+  require(ownership.alive && ownership.stops == 0, "client copy does not close owned socket");
+  ownership.abortResponse();
+  require(!ownership.alive && ownership.stops == 1, "actual owner closes socket");
   // Partial network output is aborted, never presented as a successful short list.
-  settings = {fonts}; WebServer broken; broken.failAfter = 2;
+  settings = {fonts}; CrossPointHttpServer broken; broken.failAfter = 2;
   CrossPointWebServer{&broken}.handleGetSettings();
   require(!broken.alive && broken.stops == 1 && broken.terminators == 0, "disconnect cleanup");
-  broken = WebServer{}; response(broken);
+  broken.finalizeResponse();
+  require(broken.finalizationAttempts == 0, "no auto terminator after disconnect");
+  broken.reset(); response(broken);
   allocator.fail = true;
-  WebServer exhausted; CrossPointWebServer{&exhausted}.handleGetSettings();
+  CrossPointHttpServer exhausted; CrossPointWebServer{&exhausted}.handleGetSettings();
   require(exhausted.stops == 1 && exhausted.terminators == 0 && allocator.live == 0,
           "allocation failure aborts response and releases JSON state");
+  exhausted.finalizeResponse();
+  require(exhausted.finalizationAttempts == 0 && !exhausted.alive, "allocation abort remains closed after finalization");
   allocator.fail = false;
-  exhausted = WebServer{}; response(exhausted);
-  WebServer expired; expired.sendDelay = 15000;
+  exhausted.reset(); response(exhausted);
+  CrossPointHttpServer expired; expired.sendDelay = 15000;
   CrossPointWebServer{&expired}.handleGetSettings();
   require(!expired.alive && expired.stops == 1 && expired.terminators == 0, "elapsed-time bound");
-  WebServer lost; lost.alive = false; CrossPointWebServer{&lost}.handleGetSettings();
+  expired.finalizeResponse();
+  require(expired.finalizationAttempts == 0, "no auto terminator after deadline");
+  CrossPointHttpServer lost; lost.alive = false; CrossPointWebServer{&lost}.handleGetSettings();
   require(lost.stops == 1 && lost.chunks.empty() && lost.terminators == 0, "initial disconnect");
-  testMillis = UINT32_MAX - 3; WebServer rollover; rollover.sendDelay = 2; response(rollover);
-  testMillis = UINT32_MAX - 3; WebServer lateRollover; lateRollover.sendDelay = 15000;
+  testMillis = UINT32_MAX - 3; CrossPointHttpServer rollover; rollover.sendDelay = 2; response(rollover);
+  testMillis = UINT32_MAX - 3; CrossPointHttpServer lateRollover; lateRollover.sendDelay = 15000;
   CrossPointWebServer{&lateRollover}.handleGetSettings();
   require(lateRollover.stops == 1 && lateRollover.terminators == 0, "deadline across clock rollover");
 
   // Direct writer boundary and no accidental empty-buffer HTTP termination.
-  testMillis = 0; WebServer writerServer; SettingsJsonWriter writer(writerServer);
+  testMillis = 0; CrossPointHttpServer writerServer; SettingsJsonWriter writer(writerServer);
   require(writer.flush() && writerServer.terminators == 0, "empty flush is not EOF");
   const std::string bytes(256 * 1024, 'x');
   require(writer.write(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size()) == bytes.size(), "byte budget boundary");
