@@ -1,4 +1,5 @@
 #include "CssParser.h"
+#include "../ContentCachePaths.h"
 
 #include <Arduino.h>
 #include <Logging.h>
@@ -663,7 +664,7 @@ CssStyle CssParser::parseInlineStyle(const std::string& styleValue) { return par
 // Cache serialization
 
 // Cache file name (version is CssParser::CSS_CACHE_VERSION)
-constexpr char rulesCache[] = "/css_rules.cache";
+constexpr const char* rulesCache = EpubContentCache::cssRules;
 
 bool CssParser::hasCache() const { return Storage.exists((cachePath + rulesCache).c_str()); }
 

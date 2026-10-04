@@ -1,0 +1,6 @@
+Folded into rollup #384 on 2026-10-03:
+- #387 U1 provider enumeration cache from a383c65169afad73ccfaa0cee47d53d747a65953
+- #388 BUG-216 NTP millis rollover budget from ef6bbf74eae72d23686545c4b504dc718bed3d41
+- Fold commit: bc2a2876bc56043a35a61a7e782822f411c4c1c5
+- Firmware: 1.3.92
+- BOOK_CACHE_VERSION: 10 (unchanged)

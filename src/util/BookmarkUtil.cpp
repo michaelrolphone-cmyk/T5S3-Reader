@@ -1,5 +1,7 @@
 #include "BookmarkUtil.h"
 
+#include <Utf8.h>
+
 #include <algorithm>
 #include <cctype>
 #include <string>
@@ -27,7 +29,7 @@ std::string BookmarkUtil::getBookmarkPath(const std::string& bookPath) {
 std::string BookmarkUtil::sanitizeBookmarkSummary(std::string summary) {
   summary.erase(
       std::unique(summary.begin(), summary.end(),
-                  [](char a, char b) { return std::isspace(a) && std::isspace(b); }),
+                  [](unsigned char a, unsigned char b) { return std::isspace(a) && std::isspace(b); }),
       summary.end());
   summary.erase(std::remove(summary.begin(), summary.end(), '\n'), summary.end());
   summary.erase(summary.begin(),
@@ -40,7 +42,7 @@ std::string BookmarkUtil::sanitizeBookmarkSummary(std::string summary) {
       summary.end());
 
   if (summary.size() > 72) {
-    summary.resize(72);
+    summary.resize(utf8SafeTruncateBuffer(summary.c_str(), 72));
   }
 
   return summary;
