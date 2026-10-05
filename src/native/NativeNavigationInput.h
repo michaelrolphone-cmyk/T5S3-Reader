@@ -6,6 +6,8 @@
 void nativeNavigationTick();
 void nativeNavigationConfigure(bool enabled);
 const risc_input_navigation_frame_v1& nativeNavigationFrame();
+// Single-button duration, retained only on its matching release frame.
+// Ambiguous simultaneous input has no scalar duration. Cleared at boundaries.
 unsigned long nativeNavigationHeldMs();
 bool nativeNavigationClaim(uint32_t token, const char* capability, uint32_t version);
 void nativeNavigationRelease(uint32_t token);

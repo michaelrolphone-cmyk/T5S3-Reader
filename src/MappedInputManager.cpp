@@ -147,7 +147,16 @@ bool MappedInputManager::wasAnyReleased() const {
 
 unsigned long MappedInputManager::getHeldTime() const {
   if (hasInjectedButtonTap) return 0;
-  return nativeNavigationFrame().buttons ? nativeNavigationHeldMs() : gpio.getHeldTime();
+  const auto& frame = nativeNavigationFrame();
+  if (frame.buttons || frame.pressed || frame.released) {
+    // Never attribute a provider gesture to a simultaneous local GPIO event.
+    if (gpio.wasAnyPressed() || gpio.wasAnyReleased()) return 0;
+    for (uint8_t button = HalGPIO::BTN_BACK; button <= HalGPIO::BTN_PCA; ++button) {
+      if (gpio.isPressed(button)) return 0;
+    }
+    return nativeNavigationHeldMs();
+  }
+  return gpio.getHeldTime();
 }
 
 bool MappedInputManager::wasTouchTapped(TouchPoint& point, const GfxRenderer& renderer) const {
