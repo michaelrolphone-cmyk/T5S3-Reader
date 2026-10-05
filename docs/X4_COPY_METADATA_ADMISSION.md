@@ -75,3 +75,18 @@ part of this repair. A later chip-level failure or an RTC with invalid/unset tim
 must still be diagnosed from the existing provider errors; accepting the package
 is not proof of a valid clock or a healthy gauge sample. No physical success is
 claimed from these software checks.
+
+
+## Hardware follow-up: generic AppleDouble tolerance (firmware 1.3.125)
+
+Physical X4 testing of the consolidated 1.3.124 image reproduced installed-tree
+rejection of regular Finder AppleDouble files such as
+`._privileged-imports.v1` despite the earlier declared-companion model.
+Installed package inspection now treats any bounded regular `._*` entry as
+inert host-copy metadata. These bytes are never opened, hashed, executed or
+used for identity/authorization, and they cannot replace a required real
+member. Copy-looking directories, ordinary unknown files, strict source/stage
+verification, integrity verification and purge/delete ownership remain
+fail-closed. The copied-SD regression now covers an undeclared AppleDouble
+sidecar in addition to declared companions and the existing directory/unknown
+file refusal cases.
