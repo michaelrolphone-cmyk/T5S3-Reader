@@ -107,7 +107,7 @@ traversal wholesale with autoplay.
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
 | 14 Stove shed | [Physical shed/pipe interaction](HOLLOW_TRAIL_STOVE_SHED_1_1_49.md): cold stove, wrapped pipe, dish rings/shudder, deliberate reply and unanswered wait | Broader ration/distribution story remains separate |
-| 15 Distribution | Existing vessel puzzle/evidence | Physical paired lists/eighth line and progressive steady lamp line |
+| 15 Distribution | [Physical paired lists](HOLLOW_TRAIL_DISTRIBUTION_LISTS_1_1_49.md): tied can row, nested lists, empty/marked eighth line and reversible comparison; existing vessel puzzle retained | Gust/caught blank sheet, notebook gesture and feed-driven steady lamp line remain |
 | 16 Carriage/rail dawn | Existing train/yard art | Wheel-less sleeping carriage and coherent dawn reveal |
 | 17 HOME ticket | [Station inspection](HOLLOW_TRAIL_STATION_TICKET_1_1_49.md): relocated HOME ticket, reversible crease, cancellation book, warning and same-world blocked cutting | Relative warning → cancellation → collapse order is preserved; no calendar dates invented |
 | 18 Trestle/cabin | Existing crossing/route puzzle | Under-track bracing route, wool contact and five-legged dog at lever |

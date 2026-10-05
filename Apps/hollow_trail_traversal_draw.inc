@@ -1,4 +1,5 @@
 #include "hollow_trail_material_detail.inc"
+#include "hollow_trail_distribution_draw.inc"
 #include "hollow_trail_station_draw.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
@@ -103,6 +104,7 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_city_signal_room(g);
     ht_stove_room(g,0,0);
     ht_station_room(g);
+    ht_distribution_room(g,48);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);

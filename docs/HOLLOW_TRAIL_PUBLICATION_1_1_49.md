@@ -44,3 +44,12 @@ the original game raster pixels, with grayscale and packed monochrome shown.
 
 Version remains one cumulative unreleased **1.1.48 → 1.1.49** update, minimum
 firmware **1.3.37**. No merge, release, installation or device operation.
+
+## Distribution-list continuation
+
+[The tied cans and paired lists](HOLLOW_TRAIL_DISTRIBUTION_LISTS_1_1_49.md)
+continue Chapter III with source checkpoint `2af1404c` and
+[six actual comparisons](images/hollow-trail-distribution-lists/README.md).
+The original capture baseline is published `5e196e9c`. The source/check
+record above describes the earlier checkpoint; PR414 records the current head
+and its hosted checks.
