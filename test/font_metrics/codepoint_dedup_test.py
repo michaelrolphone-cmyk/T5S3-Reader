@@ -21,11 +21,13 @@ if indexed:
     helper = helper.replace('std::lower_bound(codepoints, end, cp)',
         'std::lower_bound(codepoints, end, cp, [](uint32_t a, uint32_t b) { ++membershipComparisons; return a < b; })')
     helper = helper.replace('*found != cp', '(++membershipComparisons, *found != cp)')
+    helper = helper.replace('std::move_backward(found, end, end + 1);',
+        'shiftedWords += end - found; std::move_backward(found, end, end + 1);')
 else:
     assert helper.count('if (codepoints[i] == cp)') == 1
     helper = helper.replace('if (codepoints[i] == cp)', 'if ((++membershipComparisons, codepoints[i] == cp))')
 source = source[:start] + helper + source[end:]
-source = source.replace('namespace {', 'uint64_t membershipComparisons = 0;\nnamespace {', 1)
+source = source.replace('namespace {', 'uint64_t membershipComparisons = 0, shiftedWords = 0;\nnamespace {', 1)
 flags = ['-std=c++17', '-O1', '-g', '-Wall', '-Wextra', '-Werror']
 if indexed:
     flags += ['-DINDEXED_COLLECTION']

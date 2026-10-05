@@ -37,21 +37,32 @@ static std::vector<uint32_t> collect(const std::vector<std::string>& words,uint3
   }
   actual.resize(count);std::sort(actual.begin(),actual.end());return actual;
 }
-static void checkCollection(const std::vector<std::string>& words,uint32_t cap) {
+static void checkCollection(const std::vector<std::string>& words,uint32_t cap,const char* order="mixed") {
   std::set<uint32_t> expected;bool expectedHit=false;
+  uint64_t expectedShifts=0;
   for(const auto& word:words) {
     auto p=reinterpret_cast<const unsigned char*>(word.c_str());
     while(*p) {
       const auto cp=utf8NextCodepoint(&p);if(!cp)break;
-      if(!expected.count(cp)) {if(expected.size()==cap){expectedHit=true;break;}expected.insert(cp);}
+      if(!expected.count(cp)) {
+        if(expected.size()==cap){expectedHit=true;break;}
+        expectedShifts+=std::distance(expected.upper_bound(cp),expected.end());
+        expected.insert(cp);
+      }
     }
     if(expectedHit)break;
   }
+  membershipComparisons=shiftedWords=0;
   bool hit;const auto actual=collect(words,cap,hit);
   assert(hit==expectedHit);assert(actual==std::vector<uint32_t>(expected.begin(),expected.end()));
+#ifdef INDEXED_COLLECTION
+  assert(shiftedWords==expectedShifts);
+#endif
+  std::cout<<"collection cap="<<cap<<" order="<<order<<" admitted="<<actual.size()
+           <<" comparisons="<<membershipComparisons<<" shifted_words="<<shiftedWords<<'\n';
   snapshot<<"set "<<cap<<' '<<hit;for(auto cp:actual)snapshot<<' '<<cp;snapshot<<'\n';
 }
-static void ioReset() {reads=bytes=opens=seeks=closes=0;membershipComparisons=0;yields=0;}
+static void ioReset() {reads=bytes=opens=seeks=closes=0;membershipComparisons=shiftedWords=0;yields=0;}
 static void saveAdvances(SdCardFont& font,int result) {
   snapshot<<"adv "<<result<<' '<<reads<<' '<<bytes<<' '<<opens<<' '<<seeks<<' '<<closes;
   for(unsigned style=0;style<4;++style) for(unsigned cp=0x4e00;cp<0x4e00+1024;++cp)
@@ -69,7 +80,7 @@ int main(int argc,char**argv) {
       if(order==2){std::mt19937 gen(42);std::shuffle(cps.begin(),cps.end(),gen);}
       std::vector<std::string> words;for(auto cp:cps)words.push_back(encode(cp));
       words.insert(words.begin()+std::min<size_t>(cap,words.size()),encode(cps[0]));
-      checkCollection(words,cap);
+      checkCollection(words,cap,order==0?"ascending":order==1?"descending":"shuffled");
     }
   }
   for(unsigned unique:{64u,128u,256u,512u}) for(unsigned repeat:{1u,4u,16u,64u}) {
@@ -90,7 +101,8 @@ int main(int argc,char**argv) {
       if(membershipComparisons>uint64_t(unique)*repeat*11){std::cerr<<"membership cost bound failed: "<<membershipComparisons<<'\n';return 1;}
 #endif
       saveAdvances(font,result);
-      std::cout<<"unique="<<unique<<" repeat="<<repeat<<" warm="<<warm<<" comparisons="<<membershipComparisons<<" reads="<<reads<<" yields="<<yields<<'\n';
+      std::cout<<"unique="<<unique<<" repeat="<<repeat<<" warm="<<warm<<" comparisons="<<membershipComparisons
+               <<" shifted_words="<<shiftedWords<<" reads="<<reads<<" yields="<<yields<<'\n';
     }
   }
   {
