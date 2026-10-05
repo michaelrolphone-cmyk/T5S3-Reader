@@ -89,6 +89,12 @@ static void ht_journal_input(uint32_t down) {
         else if((down&(HT_RIGHT|HT_DOWN)) && count) ht_journal_selection=(ht_journal_selection+1)%count;
     } else {
         if(down&(HT_BACK|HT_EXIT|HT_PAUSE|HT_ACCEPT)) {
+            if((down&HT_ACCEPT) && journal_page==5 && ht_cutscene_watch_read(&ht) &&
+               ht_journal_page_ready && ht_journal_next==ht_journal_length &&
+               ht_read_submitted_revision==scene_revision) {
+                reading=false;ht_cutscene_begin(HT_CUTSCENE_WATCH);
+                ht_input_rearm=true;held=previous=0;return;
+            }
             if((down&HT_ACCEPT) && journal_page==HT_DOOR_JOURNAL && ht.door_stage==HT_DOOR_NOTEBOOK &&
                ht_journal_page_ready && ht_journal_next==ht_journal_length &&
                ht_read_submitted_revision==scene_revision) {

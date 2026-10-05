@@ -100,7 +100,7 @@ traversal wholesale with autoplay.
 | 8 Service terrace | Ladder puddle, rubbed bolt/arrows, cage/nest/tank, held arrival, and [vanished-house wall with two exposed rooms](images/hollow-trail-vanished-house/README.md) along the schoolroom-to-upper-roof route | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
 | 10 Rain tank/crossings | [Tank refuge and earned opposite-window tableau, 1.1.45](HOLLOW_TRAIL_RAIN_TANK_1_1_45.md), existing physical roofs retained | Brief submerged street glimpse; connect arrival to empty signal-room inspection |
-| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in 1.1.48; [earned westward warehouse/siding/pump-country view](HOLLOW_TRAIL_WESTERN_VIEW_1_1_49.md) in the cumulative 1.1.49 continuation. Explicit window-entry/handprint and winter-bedside-watch memory remain |
+| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in 1.1.48; [earned westward warehouse/siding/pump-country view](HOLLOW_TRAIL_WESTERN_VIEW_1_1_49.md) in the cumulative 1.1.49 continuation. [Earned winter bedside-watch memory](HOLLOW_TRAIL_WATCH_MEMORY_1_1_49.md) now follows actual log completion. Explicit window-entry/handprint remains |
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
 | 14 Stove shed | Narrative fragment only | Cold ordered interior, wrapped pipe, dish rings responding to knocks |
@@ -140,7 +140,7 @@ traversal wholesale with autoplay.
 1. Continue Chapter I's explicit mill entry/memory and clearing terrain without
    replacing the implemented desk, tree or rope gameplay; use the timeline where stillness aids story
 2. Continue the connected schoolroom → rain tank → signal-room sequence with
-   the submerged-street glimpse, explicit window entry/handprint and the winter bedside-watch memory;
+   the submerged-street glimpse and explicit window entry/handprint;
    preserve existing traversal and the player-operated relay
 3. Continue chapter-by-chapter. The [dedicated last-door ending](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md)
    now follows the tower; the remaining partial/missing sets above still need their own increments

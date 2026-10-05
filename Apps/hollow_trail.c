@@ -271,6 +271,12 @@ static void ht_input_update(uint32_t wait) {
             ht_journal_open(1);reading=true;ht_input_rearm=true;
             simulation_started=false;simulation_accumulator=0;++scene_revision;
         }
+        if(ht_cutscene.id==HT_CUTSCENE_WATCH && (buttons&(HT_BACK|HT_JOURNAL))) {
+            ht_cutscene.active=false;ht_cutscene.finished=true;
+            ht_cutscene.tick=HT_WATCH_MEMORY_TICKS;reading=false;
+            if(buttons&HT_JOURNAL){ht_journal_open(5);reading=true;}
+            ht_input_rearm=true;simulation_started=false;simulation_accumulator=0;++scene_revision;
+        }
         previous=held=0;jump_down=pause_down=false;last_poll=now;return;
     }
     uint32_t down=buttons&~previous;
