@@ -19,6 +19,7 @@ if [[ $# -gt 0 ]]; then
   exit 0
 fi
 BOOKMARK_TEST_SANITIZERS=1 bash "$repo_dir/test/run_bookmark_summary_test.sh"
+BOOKMARK_TOGGLE_SANITIZE=1 python3 "$repo_dir/test/bookmark_toggle/toggle_test.py"
 python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
 WRAP_TEST_SANITIZE=1 python3 "$repo_dir/test/text_wrap_regression.py"
 python3 "$repo_dir/test/koreader_document_id/document_id_test.py" --sanitize
