@@ -133,7 +133,7 @@ traversal wholesale with autoplay.
 | 41 Settlement | Existing houses/mast | Connected alleys/retaining walls, mundane occupancy traces, ambiguous windows |
 | 42 Tower | Existing climbing/channel boat | Eight hooks/bench, older masonry and visibly steadier boat handling |
 | 43 Cabinet | Existing exclusive choice and testimony | Modest literal room, physical evidence floor, shutters/lamps/pantry-lamp sequence |
-| 44 Final door | Missing; game still loops after final chapter | Dedicated unwired street, shoes, notebook, unpatterned knock and static waiting end |
+| 44 Final door | [Playable Chapter XI, same unreleased 1.1.49](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md): yard pause, unwired street, physical shoes, notebook, unpatterned knock and held waiting frame | Refine human-scale materials/poses against owner feedback; preserve the unanswered end |
 
 ## Next coherent increments
 
@@ -142,8 +142,8 @@ traversal wholesale with autoplay.
 2. Continue the connected schoolroom → rain tank → signal-room sequence with
    the submerged-street glimpse, explicit window entry/handprint and the winter bedside-watch memory;
    preserve existing traversal and the player-operated relay
-3. Continue chapter-by-chapter. The last-door ending is an explicit missing
-   product outcome, not something the existing ten-chapter loop already proves
+3. Continue chapter-by-chapter. The [dedicated last-door ending](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md)
+   now follows the tower; the remaining partial/missing sets above still need their own increments
 
 ## Verification record
 

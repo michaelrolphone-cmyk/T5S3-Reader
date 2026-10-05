@@ -151,6 +151,10 @@ static void ht_advance(uint32_t now) {
            before.camera_y!=ht.camera_y || memcmp(&before.traversal,&ht.traversal,sizeof(ht.traversal)) ||
            before.story_x!=ht.story_x || before.level!=ht.level || before.stride!=ht.stride || before.facing!=ht.facing || before.laps!=ht.laps)
             ++scene_revision;
+        if(before.door_stage!=ht.door_stage) {
+            held=previous=0;jump_down=pause_down=false;ht_input_rearm=true;
+            simulation_accumulator=0;++scene_revision;break;
+        }
         if(ht_cutscene_mill_arrival(&before,&ht)) {
             ht_cutscene_begin(HT_CUTSCENE_MILL);
             held=previous=0;jump_down=pause_down=false;
@@ -334,8 +338,14 @@ static void ht_input_update(uint32_t wait) {
         jump_down=pause_down=false; simulation_started=false; simulation_accumulator=0; ++scene_revision;
     }
     if(!reading && (down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
-        int page=ht_final_near(&ht)?-1:ht_inspect();
-        if(ht_final_near(&ht)) { ht_journal_tower(); reading=true; }
+        int page=ht.door_stage?-1:ht_final_near(&ht)?-1:ht_inspect();
+        if(ht.door_stage) {
+            if(ht.door_stage==HT_DOOR_NOTEBOOK) {ht_journal_open(HT_DOOR_JOURNAL);reading=true;}
+            else if(ht_door_interact()) {
+                jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
+                ht_input_rearm=true;buttons=0;
+            }
+        } else if(ht_final_near(&ht)) { ht_journal_tower(); reading=true; }
         else if(ht_cutscene_register_inspected(page,&ht)) {
             ht_cutscene_begin(HT_CUTSCENE_REGISTER);
             jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
@@ -490,7 +500,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     if(quitting) goto cleanup;
     uint32_t last_frame=app->millis()-HT_FRAME_INTERVAL_MS, last_submit=app->millis();
     uint32_t drawn_revision=0, prepared_revision=0;
-    bool prepared=false,prepared_reader=false;
+    bool prepared=false,prepared_reader=false,prepared_door=false,display_door=false;
     uint32_t prepared_since=0,prepared_render_ms=0,prepared_pack_ms=0;
     bool prepared_staged=false;
     bool prepared_profile=false;
@@ -552,6 +562,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const bool rendering_signal=ht_signal_room_studying;
             const unsigned rendering_signal_focus=ht_signal_room_focus,rendering_signal_ticks=ht_signal_room_ticks;
             prepared_reader=rendering_reading;
+            prepared_door=rendering_game.door_stage!=HT_DOOR_NONE;
             prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal;
             if(rendering_reading) ht_journal_render();
             else if(rendering_signal) {
@@ -573,7 +584,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             ht_render_scene();
             prepared_timing=ht_render_last;
             /* Initial instructions dismiss automatically after walking. */
-            if(rendering_game.x<230*256 && rendering_game.checkpoint==0 && !ht_cutscene.finished) {
+            if(!rendering_game.door_stage && rendering_game.x<230*256 && rendering_game.checkpoint==0 && !ht_cutscene.finished) {
                 ht_rect(ht_scene,72,38,336,81,0);
                 ht_text(98,45,ht_chapters[rendering_game.level].title,2);
                 ht_text(98,66,"LEFT/RIGHT MOVE   B / UP JUMP",1);
@@ -583,15 +594,18 @@ __attribute__((visibility("default"))) void app_main(void) {
             }
             if(!rendering_paused) {
                 ht_narration(&rendering_game);
-                ht_observation_prompt(&rendering_game);
-                ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
+                if(!rendering_game.door_stage) {
+                    ht_observation_prompt(&rendering_game);
+                    ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
+                }
             }
             if(rendering_paused) {
                 ht_rect(ht_scene,72,40,336,216,0);
                 ht_text(88,48,"HOLLOW TRAIL 1.1.49",1);
                 ht_text(192,60,"PAUSED",2);
                 char chapter[64];
-                snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
+                if(!debug_select && ht.door_stage) snprintf(chapter,sizeof(chapter),"XI / A DOOR WITHOUT A LIGHT");
+                else snprintf(chapter,sizeof(chapter),"LEVEL %02u / %s",(debug_select?debug_level:ht.level)+1,
                     ht_chapters[debug_select?debug_level:ht.level].title);
                 ht_text(88,84,chapter,1);
                 ht_text(88,99,debug_select?"L/R CHOOSE   A LOAD   X CANCEL":"L/R CHOOSE LEVEL   A JOURNAL",1);
@@ -667,7 +681,9 @@ __attribute__((visibility("default"))) void app_main(void) {
             uint32_t output_ms=app->millis()-pack_start;
             if(quitting) break;
             if(debug_jump) {prepared=false;continue;}
-            bool cropped=display_initialized && !prepared_reader && !display_reading;
+            /* Chapter XI has no vignette. Submit its full raster, and clear
+             * its edge rows when an explicit replay returns to framed play. */
+            bool cropped=display_initialized && !prepared_reader && !display_reading && !prepared_door && !display_door;
             if(video->submit(cropped?ht_dirty_top:0,cropped?ht_dirty_height:0)) {
                 if(prepared_narration!=display_narration) {
                     if(HT_HAS(video,t5_video_api_v1,reinforce_black) && video->reinforce_black)
@@ -675,6 +691,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                     display_narration=prepared_narration;
                 }
                 display_reading=prepared_reader;
+                display_door=prepared_door;
                 if(prepared_reader) ht_read_submitted_revision=prepared_revision;
                 display_initialized=true;
                 last_submit=app->millis(); drawn_revision=prepared_revision; prepared=false;

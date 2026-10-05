@@ -29,6 +29,7 @@ static int ht_person_rung(int world,int top,int offset,int side) {
 static int ht_person_ground(const ht_game *g,int x,int feet) {
     if(!g->grounded || g->traversal.support)return feet;
     int world=x+g->camera/256;
+    if(g->door_stage)return ht_door_ground(world)-g->camera_y/256;
     for(int i=0;i<HT_PLATFORMS;++i)for(int part=0;part<3;++part) {
         int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top))break;
         if(world<l || world>=r)continue;

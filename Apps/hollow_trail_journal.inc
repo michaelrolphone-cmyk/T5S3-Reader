@@ -1,7 +1,20 @@
 /* Full-resolution book pages. Only reader.typography can supply reader fonts. */
 #include "hollow_trail_lore.inc"
 #include "hollow_trail_endings.inc"
-#define HT_JOURNAL_RECORDS (HT_LEVELS*4+2)
+/* Canonical black-handle page is the exact Chapter XI notebook passage.
+ * The alternate mechanism remains an explicit game branch; it cannot claim
+ * that the sealed original was seen or copied. */
+static const char ht_door_notebook_book[] =
+    "I took out the notebook.\n\nNear the beginning, beneath the city map, I found the sentence I had written in the schoolroom: She had been trying to stay where someone could see her. I had left a space underneath it.\n\nI looked at the space without filling it.\n\nThen I turned to a clean page near the end. My pencil was short; I had been gripping it too hard. I wrote the date as well as I could reckon it and described the room at the top of the tower. The black handle, the shutter, the seal. I copied her instruction exactly. I did not improve the order of the sentences or leave out the place where I had first misunderstood them.\n\nBelow that I wrote what I had done.\n\nI broke the feed because I thought it would free her.\n\nI waited until I could read the sentence without reaching to change it.\n\nOn the next line I wrote:\n\nI still want to find her.";
+static const char ht_door_notebook_alternate[] =
+    "I took out the notebook.\n\n"
+    "The original was sealed behind its shutter. I wrote down what I had seen the live pen do, and copied the words it addressed to me: 'There is a place for you here. Finish what I could not.'\n\n"
+    "Below that I wrote what I had done.\n\n"
+    "I completed the circuit because I believed she knew what she was doing.\n\n"
+    "I waited until I could read the sentence without reaching to change it.\n\n"
+    "On the next line I wrote:\n\nI still want to find her.";
+#define HT_JOURNAL_RECORDS (HT_LEVELS*4+3)
+#define HT_DOOR_JOURNAL (HT_LEVELS*4+2)
 static bool ht_journal_deciding,ht_journal_confirm,ht_journal_page_ready;
 static unsigned ht_journal_choice;
 static uint32_t ht_read_submitted_revision;
@@ -31,9 +44,11 @@ static unsigned ht_journal_list(unsigned ids[HT_JOURNAL_RECORDS]) {
     for(unsigned i=0;i<HT_LEVELS*3;++i) if(ht_evidence_found(&ht,i)) ids[count++]=i;
     for(unsigned i=0;i<HT_LEVELS;++i) if(ht.story_seen[i]) ids[count++]=HT_LEVELS*3+i;
     for(unsigned i=0;i<2;++i) if(ht.endings&(1u<<i)) ids[count++]=HT_LEVELS*4+i;
+    if(ht.door_notebook)ids[count++]=HT_DOOR_JOURNAL;
     return count;
 }
 static const char *ht_journal_title(unsigned id) {
+    if(id==HT_DOOR_JOURNAL)return "A DOOR WITHOUT A LIGHT";
     if(id>=HT_LEVELS*4) return id==HT_LEVELS*4?"ARCHIVE: THE ORIGINAL":"ARCHIVE: THE LIVE PEN";
     if(id==HT_LEVELS*3-1 && ht.last_verdict) return "THE CHANGED TESTIMONY";
     return id<HT_LEVELS*3?ht_evidence[id/3][id%3].title:ht_chapters[id-HT_LEVELS*3].title;
@@ -74,6 +89,12 @@ static void ht_journal_input(uint32_t down) {
         else if((down&(HT_RIGHT|HT_DOWN)) && count) ht_journal_selection=(ht_journal_selection+1)%count;
     } else {
         if(down&(HT_BACK|HT_EXIT|HT_PAUSE|HT_ACCEPT)) {
+            if((down&HT_ACCEPT) && journal_page==HT_DOOR_JOURNAL && ht.door_stage==HT_DOOR_NOTEBOOK &&
+               ht_journal_page_ready && ht_journal_next==ht_journal_length &&
+               ht_read_submitted_revision==scene_revision) {
+                ht.door_notebook=true;ht.door_stage=HT_DOOR_GRIEF;ht.door_tick=0;reading=false;
+                ht_input_rearm=true;held=previous=0;return;
+            }
             if((down&HT_ACCEPT) && journal_page==HT_LEVELS*3-1 && ht.verdict &&
                ht_journal_page_ready && ht_journal_next==ht_journal_length &&
                ht_read_submitted_revision==scene_revision) {
@@ -113,7 +134,7 @@ static void ht_journal_frame(void) {
     }
     /* A chapter stamp and hand-drawn trail sketch form a visual page rail. */
     ht_rect(ht_scene,63,30,1,207,170);
-    char stamp[8];snprintf(stamp,sizeof(stamp),"%02u",ht.level+1);
+    char stamp[8];snprintf(stamp,sizeof(stamp),"%02u",ht.door_stage?11:ht.level+1);
     ht_text(32,35,stamp,2);ht_text(31,55,"TRAIL",1);
     ht_limb(ht_scene,47,217,40,118,2,1,255);
     for(int i=0;i<5;++i) {
@@ -172,7 +193,18 @@ static void ht_journal_render(void) {
         snprintf(footer,sizeof(footer),"%u/%u | Arrows select | A read | X trail",count?ht_journal_selection+1:0,count);
     } else {
         snprintf(title,sizeof(title),"%s",ht_journal_title(journal_page));
-        if(journal_page>=HT_LEVELS*4) {
+        if(journal_page==HT_DOOR_JOURNAL) {
+            const char *page=ht.verdict==2?ht_door_notebook_alternate:ht_door_notebook_book;
+            /* A debug jump may bypass the schoolroom. Do not manufacture its
+             * remembered page; a normal book route keeps the exact passage. */
+            const char *school=ht_evidence_found(&ht,3)?
+                "She had been trying to stay where someone could see her.\n\n":"";
+            if(ht.verdict==2)snprintf(ht_journal_body,sizeof(ht_journal_body),"%s%s",school,page);
+            else if(!ht_evidence_found(&ht,3)) {
+                const char *clean=strstr(page,"Then I turned to a clean page");
+                snprintf(ht_journal_body,sizeof(ht_journal_body),"I took out the notebook.\n\n%s",clean?clean:page);
+            } else snprintf(ht_journal_body,sizeof(ht_journal_body),"%s",page);
+        } else if(journal_page>=HT_LEVELS*4) {
             snprintf(ht_journal_body,sizeof(ht_journal_body),"%s",ht_final_testimony[journal_page-HT_LEVELS*4]);
         } else if(journal_page==HT_LEVELS*3-1 && ht.last_verdict) {
             snprintf(ht_journal_body,sizeof(ht_journal_body),"%s",ht_final_testimony[ht.last_verdict-1]);
@@ -189,7 +221,8 @@ static void ht_journal_render(void) {
                 used+=(size_t)n;
             }
         }
-        snprintf(footer,sizeof(footer),journal_page==HT_LEVELS*3-1 && ht.verdict && !ht.verdict_read?
+        snprintf(footer,sizeof(footer),journal_page==HT_DOOR_JOURNAL && ht.door_stage==HT_DOOR_NOTEBOOK?
+            "Page %u | L/R | A on last page: close":journal_page==HT_LEVELS*3-1 && ht.verdict && !ht.verdict_read?
             "Page %u | L/R | A on last page: leave":"Page %u | L/R pages | X journal",ht_journal_leaf+1);
     }
     ht_journal_length=strlen(ht_journal_body);

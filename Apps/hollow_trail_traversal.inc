@@ -445,6 +445,7 @@ static void ht_forest_log_collision(int old_x) {
     }
 }
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
+    if(ht.door_stage) {ht_door_step(direction);return;}
     bool jump_request=jump_pressed;
     int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
     bool was_grounded=ht.grounded;
@@ -668,7 +669,8 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         ++ht.deaths;ht_spawn(false);return;
     }
     if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved && ht.puzzle.opening==48 && !ht_final_locked(&ht)) {
-        if(++ht.level==HT_LEVELS) {ht.level=0;++ht.laps;} ht_spawn(true);return;
+        if(ht.level==HT_LEVELS-1) {ht_door_begin();return;}
+        ++ht.level;ht_spawn(true);return;
     }
     ht.camera+=(ht_clamp(ht.x/256-200,-120,HT_GOAL-260)*256-ht.camera)/8;
     ht.camera_y+=(ht_clamp(ht.y/256-180-ht_vista_lift(&ht),-300,100)*256-ht.camera_y)/8;

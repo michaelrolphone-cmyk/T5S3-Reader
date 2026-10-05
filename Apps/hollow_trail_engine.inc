@@ -1,4 +1,4 @@
-/* Hollow Trail — deterministic ten-chapter platformer and PSRAM raster pipeline.
+/* Hollow Trail — deterministic ten-chapter route and final-door epilogue and PSRAM raster pipeline.
  * Baseline world/overlays are 480x270 with lower-resolution cached scenery;
  * the native A/B path rasterizes procedural geometry at the panel's 960x540
  * resolution. No textures, random frame noise, floating-point library,
@@ -128,6 +128,9 @@ typedef struct {
     ht_puzzle_state puzzle;
     uint8_t verdict,last_verdict,endings; /* 0 undecided; 1 break; 2 complete; archive bitmask. */
     bool verdict_read;
+    uint8_t door_stage; /* Chapter XI: independent of the ten evidence/puzzle slots. */
+    uint16_t door_tick;
+    bool door_notebook;
     uint8_t story_seen[HT_LEVELS]; /* Reached narration beats; retained with evidence. */
     uint32_t evidence; /* Thirty discoveries, retained across chapters this run. */
 } ht_game;
@@ -381,7 +384,7 @@ static int ht_puzzle_near(const ht_game *game) {
     return -1;
 }
 static bool ht_final_near(const ht_game *game) {
-    return game->level==HT_LEVELS-1 && game->puzzle.solved && game->grounded &&
+    return !game->door_stage && game->level==HT_LEVELS-1 && game->puzzle.solved && game->grounded &&
         game->x/256>=HT_PUZZLE_GATE-22 && game->y/256==ht_level_land(game->level)[9].top;
 }
 static bool ht_final_locked(const ht_game *game) {
@@ -515,6 +518,7 @@ static bool ht_observe(void) {
     ht.observation=(uint8_t)(ht.level*2+scene+1);ht.observation_ticks=220;return true;
 }
 static void ht_spawn(bool restart) {
+    if(!restart && ht.door_stage)return; /* No death/respawn can erase the held ending. */
     int16_t scrape_left=ht.traversal.mill_scrape_left,scrape_right=ht.traversal.mill_scrape_right;
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
     uint8_t scene_evidence=restart?0:ht.scene_evidence;
@@ -556,6 +560,7 @@ static void ht_spawn(bool restart) {
         ht.traversal.rope_py[i]=ht.traversal.rope_oy[i]=(m->rope_anchor_y+m->rope_length*i/(HT_ROPE_NODES-1))*256;
     }
 }
+#include "hollow_trail_final_door.inc"
 #include "hollow_trail_traversal.inc"
 
 static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
@@ -1660,7 +1665,9 @@ static bool ht_grotto_opaque(const ht_game *g) {
     return g->level==4 && g->camera/256<=700;
 }
 
+#include "hollow_trail_final_door_draw.inc"
 static void ht_render_scene_from(const ht_game *source,bool character) {
+    if(source->door_stage) {ht_door_render(source,character);return;}
     memset(&ht_render_last,0,sizeof(ht_render_last));
     uint32_t stage=ht_render_now();
     ht_game game=*source;
@@ -2031,6 +2038,7 @@ static void ht_narration_hash(const char *text) {
 }
 static void ht_narration(const ht_game *game) {
     ht_narration_key=2166136261u;
+    if(game->door_stage) {ht_door_caption(game);return;}
     unsigned beat=ht_story_beat_at(game);
     ht_rect(ht_scene,57,230,366,23,255);
     for(int line=0;line<2;++line) {

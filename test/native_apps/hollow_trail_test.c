@@ -295,15 +295,17 @@ int main(void) {
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
     const unsigned required_mechanics[HT_LEVELS]={104,4,5,12,16,5,6,28,14,20};
-    for(int tick=0;tick<HT_LEVELS*4500 && !ht.laps;++tick) {
+    for(int tick=0;tick<HT_LEVELS*4500 && !ht.door_stage;++tick) {
         walk_route_tick();
         if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);
         visited|=1u<<ht.level;
     }
-    assert(visited==(1u<<HT_LEVELS)-1 && ht.laps==1 && ht.deaths==0);
+    assert(visited==(1u<<HT_LEVELS)-1 && !ht.laps && ht.deaths==0);
+    assert(ht.door_stage==HT_DOOR_YARD && walk_mechanics==required_mechanics[HT_LEVELS-1]);
     assert(ht.evidence==((1u<<30)-1));
-    assert(ht.level==0 && ht.story_x==0);
-    assert(ht.x==95*256 && ht.checkpoint==0);
+    assert(ht.level==HT_LEVELS-1 && ht.verdict_read && ht.x==32*256);
+    /* Chapter XI is independently exercised through real app/journal input. */
+    ht.level=0;ht_spawn(true);
     for(unsigned level=0;level<HT_LEVELS;++level) {
         ht.level=level;
         /* A failed jump returns to the latest checkpoint, not the start. */
@@ -550,7 +552,10 @@ int main(void) {
         }
         for(int tick=0;tick<48;++tick) ht_step(0,false,false);
         ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.vy=0; ht_step(1,false,false);
-        assert(ht.level==(level+1)%HT_LEVELS && !ht.puzzle.solved && ht.puzzle.progress==0);
+        if(level==HT_LEVELS-1) {
+            assert(ht.level==level && ht.door_stage==HT_DOOR_YARD && ht.puzzle.solved);
+            assert(ht.verdict==2 && ht.verdict_read && !ht.laps);
+        } else assert(ht.level==level+1 && !ht.puzzle.solved && ht.puzzle.progress==0);
     }
     ht.level=8; ht_spawn(true); ht.puzzle.stage=1; ht.grounded=true;ht.y=ht_land[9].top*256;
     ht.x=HT_PUZZLE_FIRST*256; assert(ht_interact());
@@ -714,7 +719,7 @@ int main(void) {
             tones|=1u<<((frame[n]>>shift)&3);
         assert(tones==15);
     }
-    printf("Hollow Trail: complete route, loop, checkpoints, trench hazards, deterministic 2bpp frames PASS (%.1f ms/host frame)\n",
+    printf("Hollow Trail: complete route, final-door handoff, checkpoints, trench hazards, deterministic 2bpp frames PASS (%.1f ms/host frame)\n",
            (double)(clock()-start)*1000.0/CLOCKS_PER_SEC/12.0);
     free(frame); free(memory); return 0;
 }
