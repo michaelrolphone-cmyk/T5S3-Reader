@@ -3,6 +3,8 @@
 #if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
 #define HAL_STORAGE_IMPL
 #include "HalStorage.h"
+#include "HalReadBudget.h"
+#include "HalWriteBudget.h"
 #include <Arduino.h>
 #include <Logging.h>
 #include <algorithm>
@@ -268,6 +270,15 @@ bool HalFile::seekCur(int64_t delta) {
   return seek64(delta < 0 ? offset - (static_cast<uint64_t>(-(delta + 1)) + 1) : offset + static_cast<uint64_t>(delta));
 }
 int HalFile::read(void *buffer, size_t count) {
+  return readWithBudget(buffer, count, nullptr);
+}
+int HalFile::readCooperatively(void *buffer, size_t count, HalReadBudget& budget) {
+  budget.checkpoint();
+  const int result = readWithBudget(buffer, count, &budget);
+  budget.checkpoint();
+  return result;
+}
+int HalFile::readWithBudget(void *buffer, size_t count, HalReadBudget* budget) {
   HalStorage::StorageLock lock;
   if (!lock || !impl || !impl->handle || impl->directory || !mediaReady() || (!buffer && count)) return -1;
   if (count > kMaxOperationBytes) { impl->error = 1; return -1; }
@@ -278,12 +289,22 @@ int HalFile::read(void *buffer, size_t count) {
                                        std::min<size_t>(RISC_STORAGE_VOLUME_IO_MAX, count - total));
     if (extended->handle_error(volume->context, impl->handle, false)) { impl->error = 1; break; }
     if (!got) break;
-    total += got; delay(1);
+    total += got;
+    if (budget) budget->afterRead(got); else delay(1);
   }
   return !total && impl->error ? -1 : static_cast<int>(total);
 }
 int HalFile::read() { uint8_t byte; return read(&byte, 1) == 1 ? byte : -1; }
 size_t HalFile::write(const void *buffer, size_t count) {
+  return writeWithBudget(buffer, count, nullptr);
+}
+size_t HalFile::writeCooperatively(const void *buffer, size_t count, HalWriteBudget& budget) {
+  budget.checkpoint();
+  const size_t result = writeWithBudget(buffer, count, &budget);
+  budget.checkpoint();
+  return result;
+}
+size_t HalFile::writeWithBudget(const void *buffer, size_t count, HalWriteBudget* budget) {
   HalStorage::StorageLock lock;
   if (!lock || !impl || !impl->handle || !impl->writer || !mediaReady() || (!buffer && count)) return 0;
   generations.mutationAttempt();
@@ -296,7 +317,7 @@ size_t HalFile::write(const void *buffer, size_t count) {
     total += got;
     if (impl->syncWrites && !extended->file_sync(volume->context, impl->handle)) { impl->error = 1; break; }
     if (got != want || extended->handle_error(volume->context, impl->handle, false)) { impl->error = 1; break; }
-    delay(1);
+    if (budget) budget->afterWrite(got); else delay(1);
   }
   return total;
 }

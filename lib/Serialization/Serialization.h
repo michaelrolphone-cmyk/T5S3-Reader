@@ -3,6 +3,9 @@
 
 #include <iostream>
 
+class HalReadBudget;
+class HalWriteBudget;
+
 namespace serialization {
 template <typename T>
 static void writePod(std::ostream& os, const T& value) {
@@ -48,5 +51,31 @@ static void readString(FsFile& file, std::string& s) {
   readPod(file, len);
   s.resize(len);
   file.read(&s[0], len);
+}
+// Explicit opt-in only. Keep the ordinary serializers and their I/O contract
+// unchanged; the operation owns the budget and no bytes are prefetched.
+template <typename File, typename T>
+static void readPod(File& file, T& value, HalReadBudget& budget) {
+  file.readCooperatively(reinterpret_cast<uint8_t*>(&value), sizeof(T), budget);
+}
+
+template <typename File>
+static void readString(File& file, std::string& s, HalReadBudget& budget) {
+  uint32_t len;
+  readPod(file, len, budget);
+  s.resize(len);
+  file.readCooperatively(&s[0], len, budget);
+}
+// Explicit opt-in retains every write boundary and its historical return handling.
+template <typename File, typename T>
+static void writePod(File& file, const T& value, HalWriteBudget& budget) {
+  file.writeCooperatively(reinterpret_cast<const uint8_t*>(&value), sizeof(T), budget);
+}
+
+template <typename File>
+static void writeString(File& file, const std::string& s, HalWriteBudget& budget) {
+  const uint32_t len = s.size();
+  writePod(file, len, budget);
+  file.writeCooperatively(reinterpret_cast<const uint8_t*>(s.data()), len, budget);
 }
 }  // namespace serialization
