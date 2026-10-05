@@ -179,11 +179,15 @@ int main(int argc,char** argv) {
     inventory_sector_ms=0;
     const std::string battery="/Drivers/x4pro-battery";
     assert(roots.count(battery));
-    // Extra hidden files and unknown sidecars never become package members.
-    for(const char* name:{"unknown",".hidden","._unknown"}) {
+    // Ordinary unknown files remain forbidden. AppleDouble ._* files are inert
+    // installed-tree metadata and may be ignored without becoming members.
+    for(const char* name:{"unknown",".hidden"}) {
         const auto path=battery+"/"+name;write(path,sidecar);
         assert(!inspect(battery));assert(Storage.remove(path.c_str()));assert(inspect(battery));
     }
+    const auto unknownCompanion=battery+"/._unknown";
+    write(unknownCompanion,sidecar);assert(inspect(battery));
+    assert(Storage.remove(unknownCompanion.c_str()));assert(inspect(battery));
     // A copy-looking directory is not a regular sidecar and is never traversed.
     const auto fakeDirectory=battery+"/._driver.elf";
     assert(Storage.remove(fakeDirectory.c_str()));assert(Storage.mkdir(fakeDirectory.c_str()));
