@@ -18,17 +18,15 @@ class Print {
 struct FsFile {
   std::shared_ptr<std::vector<uint8_t>> data;
   size_t pos = 0;
-  bool error = false;
   explicit operator bool() const { return data != nullptr; }
-  bool close() { data.reset(); pos = 0; error = false; return true; }
+  bool close() { data.reset(); pos = 0; return true; }
   size_t size() const { return data ? data->size() : 0; }
-  bool getError() const { return error; }
   size_t position() const { return pos; }
   bool seek(size_t value) {
-    if (!data || value > data->size()) { error = true; return false; }
-    pos = value;
-    return true;
+    if (!data || value > data->size()) return false;
+    pos = value; return true;
   }
+  int getError() const { return 0; }
   bool available() const { return data && pos < data->size(); }
 };
 struct StorageFixture {
