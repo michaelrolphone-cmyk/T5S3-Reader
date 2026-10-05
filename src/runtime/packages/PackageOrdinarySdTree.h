@@ -36,13 +36,13 @@ class OrdinarySdTreeOps {
     if (!directory.isOpen()) return false;
     if (!directory.isDirectory()) { (void)directory.close(); return false; }
     bool good = true;
-    size_t count = 0;
     while (good && checkpoint()) {
       HalFile::DirectoryEntry entry;
       if (!directory.readDirectoryEntry(entry)) { good = directory.getError() == 0; break; }
       const size_t length = std::strlen(entry.name);
-      good = ++count <= kMaxPackageEntries * kPackageResourceDepth + 2 &&
-          length && length < sizeof(entry.name) && visitor(entry.name, entry.isDirectory);
+      // Enumeration is bounded by the cooperative ten-second deadline rather
+      // than the number of unrelated directory entries.
+      good = length && length < sizeof(entry.name) && visitor(entry.name, entry.isDirectory);
       if (good && sizes_ && !entry.isDirectory) {
         const std::string name = relative[0] ? std::string(relative) + "/" + entry.name : entry.name;
         for (size_t i = 0; i < plan_->entryCount; ++i) {
