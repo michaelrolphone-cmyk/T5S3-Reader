@@ -2098,6 +2098,54 @@ static void ht_puzzle_prompt(const ht_game *game) {
     } else ht_text_color(74,49,"A / CONFIRM OPERATE THE NEARBY CONTROL",1,85);
 }
 
+/* Chapter I: one marked tree, not three unrelated clue props. The older
+ * rounded wound faces the road; the new cloth stays caught on its hook after
+ * inspection. Neither bark texture nor paper adds collision geometry. */
+static void ht_marked_tree(int x,int ground,bool paper) {
+    int trunk=x-8;
+    ht_organic_snag(ht_scene,trunk,ground+5,245,16,813u,247);
+    /* Unequal roots meet the existing terrain rather than a flat pedestal. */
+    ht_limb(ht_scene,trunk,ground-6,x-30,ground+3,8,1,245);
+    ht_limb(ht_scene,trunk+3,ground-7,x+18,ground+5,6,1,241);
+    for(int n=0;n<4;++n) {
+        int bx=trunk-9+n*5;
+        ht_limb(ht_scene,bx,ground-160,bx+2,ground-118+n*5,0,0,221+n*4);
+        ht_limb(ht_scene,bx+2,ground-108+n*4,bx-1,ground-66+n*3,0,0,221+n*4);
+    }
+    /* Rounded callus around the old wedge. The pale inner wood is quieter
+     * than the new wool, and both remain physically adjacent. */
+    ht_limb(ht_scene,trunk+5,ground-48,trunk+10,ground-38,3,3,174);
+    ht_limb(ht_scene,trunk+10,ground-38,trunk+5,ground-30,3,3,174);
+    ht_triangle(ht_scene,trunk+5,ground-46,trunk+10,ground-38,trunk+5,ground-32,207);
+    /* Small incisions suggest the weathered date without inventing numerals
+     * the novella never specifies. The full attribution is in the notebook. */
+    for(int n=0;n<4;++n) {
+        ht_limb(ht_scene,trunk-5+n*3,ground-61,trunk-4+n*3,ground-57,0,0,160);
+        ht_limb(ht_scene,trunk-5+n*3,ground-57,trunk-3+n*3,ground-58,0,0,160);
+    }
+    for(int row=0;row<2;++row)for(int n=0;n<5;++n)
+        ht_limb(ht_scene,trunk-6+n*3,ground-54+row*3,trunk-5+n*3,ground-53+row*3,0,0,181);
+    ht_limb(ht_scene,trunk+4,ground-30,x+12,ground-35,2,1,244);
+    ht_limb(ht_scene,x+12,ground-35,x+13,ground-39,1,0,244);
+    /* Cloth folded into the new cut; a separate fine filament holds it. */
+    ht_limb(ht_scene,trunk+8,ground-31,x+10,ground-34,0,0,129);
+    ht_triangle(ht_scene,trunk+7,ground-32,x+9,ground-31,x+4,ground-14,99);
+    ht_triangle(ht_scene,trunk+7,ground-32,x+4,ground-14,trunk+6,ground-19,114);
+    ht_limb(ht_scene,x+2,ground-27,x+4,ground-16,0,0,179);
+    /* Two backward bites interrupt the hem's otherwise neat run. */
+    for(int n=0;n<5;++n)ht_limb(ht_scene,x+4,ground-28+n*2,x+5,ground-28+n*2,0,0,217);
+    ht_limb(ht_scene,x+5,ground-26,x+3,ground-27,0,0,217);
+    ht_limb(ht_scene,x+5,ground-20,x+3,ground-21,0,0,217);
+    /* Narrow paper in the fold. Its socket is a drawing opening roadward,
+     * never an invented physical lamp/socket attached to this tree. */
+    if(paper) {
+        ht_triangle(ht_scene,x+5,ground-27,x+13,ground-29,x+14,ground-22,64);
+        ht_triangle(ht_scene,x+5,ground-27,x+14,ground-22,x+6,ground-21,64);
+        ht_limb(ht_scene,x+8,ground-26,x+8,ground-23,0,0,212);
+        ht_limb(ht_scene,x+8,ground-26,x+11,ground-26,0,0,212);
+        ht_limb(ht_scene,x+8,ground-23,x+11,ground-23,0,0,212);
+    }
+}
 /* Tiny scraps/containers embedded in scenery. No flashing markers or distant
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
@@ -2105,14 +2153,12 @@ static void ht_draw_evidence(const ht_game *game) {
         if((game->level==1 && item==2) || (game->level==0 && item==1))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
-        if(x< -12-ht_view_margin() || x>=HT_W+12+ht_view_margin()) continue;
+        int extent=game->level==0 && item==0?34:12;
+        if(x< -extent-ht_view_margin() || x>=HT_W+extent+ht_view_margin()) continue;
         /* Finds are objects within the scene, never hovering clue diagrams. */
         int ink=ht_evidence_found(game,game->level*3u+(unsigned)item)?150:95;
         if(game->level==0 && item==0) {
-            ht_organic_snag(ht_scene,x-6,y,46,7,813u,255);
-            ht_limb(ht_scene,x-9,y-36,x+5,y-42,3,0,255);
-            ht_limb(ht_scene,x-10,y-24,x+1,y-20,1,0,ink);
-            ht_limb(ht_scene,x+1,y-20,x+4,y-13,1,0,ink);
+            ht_marked_tree(x,y,!ht_evidence_found(game,0));
         } else if(game->level==1 && item==0) {
             /* Brick-weighted schoolroom map on its child-sized desk. */
             ht_triangle(ht_scene,x-15,y-29,x+13,y-32,x+16,y-26,38);
