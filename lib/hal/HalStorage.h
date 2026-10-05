@@ -13,6 +13,7 @@
 #endif
 
 class HalFile;
+class HalReadBudget;
 
 class HalStorage {
  public:
@@ -91,6 +92,7 @@ class HalFile : public Print {
   class Impl;
   std::unique_ptr<Impl> impl;
   explicit HalFile(std::unique_ptr<Impl> impl);
+  int readWithBudget(void* buf, size_t count, HalReadBudget* budget);
 
  public:
   HalFile();
@@ -112,6 +114,9 @@ class HalFile : public Print {
   int available() const;
   size_t position() const;
   int read(void* buf, size_t count);
+  // Same I/O/error contract as read(); the caller owns the budget for this
+  // operation and checkpoints any CPU work between reads. No read-ahead/state.
+  int readCooperatively(void* buf, size_t count, HalReadBudget& budget);
   int read();  // read a single byte
   size_t write(const void* buf, size_t count);
   size_t write(uint8_t b) override;
