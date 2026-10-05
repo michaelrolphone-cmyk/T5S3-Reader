@@ -133,14 +133,13 @@ int main() {
     Storage.invalidateObservations();inventory_sector_ms=8;
     assert(!captureInstalledCapabilities()); // Actual finite deadline remains effective.
     inventory_sector_ms=0;
-    // Same-length bad ELF header, wrong payload size, unknown tree member and
-    // malformed metadata cannot enter the capability snapshot or its cache.
-    for(unsigned fault=0;fault<4;++fault) {
+    // Same-length bad ELF header, wrong payload size and malformed declared
+    // metadata cannot enter the capability snapshot or its cache.
+    for(unsigned fault=0;fault<3;++fault) {
         install(39);const auto path=packagePath(39);
         if(fault==0){auto bytes=elfBytes();bytes[0]=0;auto f=Storage.open((path+"/driver.elf").c_str(),O_WRONLY|O_TRUNC);assert(f);assert(f.write(bytes.data(),bytes.size())==bytes.size());assert(f.close());}
         if(fault==1)assert(Storage.writeFile((path+"/driver.elf").c_str(),"short"));
-        if(fault==2)assert(Storage.writeFile((path+"/unexpected").c_str(),"unowned"));
-        if(fault==3)assert(Storage.writeFile((path+"/provider-abi.v1").c_str(),"invalid"));
+        if(fault==2)assert(Storage.writeFile((path+"/provider-abi.v1").c_str(),"invalid"));
         // Diagnostic capture must preserve admission and perform precisely
         // the same SD reads as the existing silent inspection.
         OrdinaryPackagePlan inspected;
@@ -151,12 +150,23 @@ int main() {
         assert(!inspectInstalledOrdinarySdDirectory(path.c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity,&inspected,&diagnostic));
         assert(card_reads-inspectedReads==silentReads);
         assert(!std::strcmp(diagnostic.stage,fault==0?"elf-header":"initial-tree"));
-        const char* rejected=fault==2?"unexpected":fault==3?"provider-abi.v1":"driver.elf";
+        const char* rejected=fault==2?"provider-abi.v1":"driver.elf";
         assert(!std::strcmp(diagnostic.entry,rejected));
         auto* bad=captureInstalledCapabilities();assert(bad && !versionInInstalledSnapshot(bad,"rtc.clock") && versionInInstalledSnapshot(bad,"board.battery")==1);
         releaseInstalledCapabilities(bad);const auto rejectedReads=card_reads;
         bad=captureInstalledCapabilities();assert(bad && card_reads>rejectedReads);releaseInstalledCapabilities(bad);
-        if(fault==2)assert(Storage.remove((path+"/unexpected").c_str()));
+    }
+    // An undeclared file is not part of the provider package and cannot make
+    // an otherwise valid installed provider unavailable.
+    install(39);{
+        const auto path=packagePath(39);
+        assert(Storage.writeFile((path+"/unexpected").c_str(),"unowned"));
+        OrdinaryPackagePlan inspected;
+        assert(inspectInstalledOrdinarySdDirectory(path.c_str(),setupPolicy,[](const char*)->uint32_t{return UINT32_MAX;},setupIdentity,&inspected));
+        auto* extra=captureInstalledCapabilities();
+        assert(extra && versionInInstalledSnapshot(extra,"rtc.clock")==2);
+        releaseInstalledCapabilities(extra);
+        assert(Storage.remove((path+"/unexpected").c_str()));
     }
     install(39);auto* retry=captureInstalledCapabilities();assert(retry && versionInInstalledSnapshot(retry,"rtc.clock")==2);releaseInstalledCapabilities(retry);
     // Change a non-executable declared size after the initial inventory/header
