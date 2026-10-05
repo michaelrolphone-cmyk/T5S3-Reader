@@ -59,8 +59,9 @@ Hollow Trail **1.1.48 → 1.1.49**; minimum firmware stays 1.3.37. PR411's compl
 signal-room and relay increments are preserved. This new branch starts from
 master after that merge; the closed PR is not modified.
 
-Explicit broken-shutter entry, the sister-at-desk/departure memory, other early
-forest details, the western city vista and street glimpse, later chapter scenes
+The sister-at-desk/departure memory is now connected in the
+[same unreleased 1.1.49 continuation](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md).
+Explicit broken-shutter entry, other early forest details, the western city vista and street glimpse, later chapter scenes
 and the dedicated final door remain on the ongoing map. No merge, release,
 installation, device flash, FPS or ghosting qualification is performed here.
 

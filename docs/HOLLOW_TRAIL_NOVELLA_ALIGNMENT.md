@@ -75,8 +75,11 @@ The full westward transition and window-entry/handprint beats remain unfinished.
 After PR411 was merged, [the mill desk becomes player-operated](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md).
 The register follows that body and becomes readable in the existing window beam;
 the fresh desk-leg scrape records actual grounded movement. The original route,
-chapter mechanism and published city work remain intact. Explicit shutter entry
-and the sister/departure memory are still unfinished.
+chapter mechanism and published city work remain intact. The same unreleased
+increment adds [the earned register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md):
+her unequal shoulders and wrist/hair gesture, the departure doorway and second
+loaf, then the trembling page, covered/uncovered six names and keeper's last
+line. Explicit shutter entry remains unfinished.
 
 ## Scene-by-scene remaining map
 
@@ -92,12 +95,12 @@ traversal wholesale with autoplay.
 | 3 Departure/orchard | Implemented thread/packing/night beats; continuous route retained | White chimney's final bank occlusion, alder ditch/bronze leaves, animate chair tuck |
 | 4 Marked forest | Partial: rooted terrain, monumental trunks, cloth evidence | Join older bark cut/date/socket to the cloth; local inspection framing |
 | 5 Fallen-tree hollow | Existing resisted push and gravity fall retained | Saw/root detail and bounded settling debris; tune effort only with route evidence |
-| 6 Mill hollow | Exterior/arrival plus [player-moved desk and light-dependent register, 1.1.49](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md) | Explicit broken-shutter entry and the sister-at-desk/departure-memory beat |
+| 6 Mill hollow | Exterior/arrival, [player-moved desk](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md) and [earned sister/departure/register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md) | Explicit broken-shutter entry; refine close silhouettes against owner feedback |
 | 7 Ravine/clearing/gate | Existing branch/rope/bell/gate; new layered skyline and earned city tableau | Extend clearing terrain/large vista and refine gate spatial continuity |
 | 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
 | 10 Rain tank/crossings | [Tank refuge and earned opposite-window tableau, 1.1.45](HOLLOW_TRAIL_RAIN_TANK_1_1_45.md), existing physical roofs retained | Brief submerged street glimpse; connect arrival to empty signal-room inspection |
-| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in the same 1.1.48 continuation; add westward warehouse/siding/pump-country composition and explicit window-entry/handprint beats |
+| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in 1.1.48; [earned westward warehouse/siding/pump-country view](HOLLOW_TRAIL_WESTERN_VIEW_1_1_49.md) in the cumulative 1.1.49 continuation. Explicit window-entry/handprint and winter-bedside-watch memory remain |
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
 | 14 Stove shed | Narrative fragment only | Cold ordered interior, wrapped pipe, dish rings responding to knocks |
@@ -137,7 +140,7 @@ traversal wholesale with autoplay.
 1. Continue Chapter I's explicit mill entry/memory and clearing terrain without
    replacing the implemented desk, tree or rope gameplay; use the timeline where stillness aids story
 2. Continue the connected schoolroom → rain tank → signal-room sequence with
-   the submerged-street glimpse and relay-restoration/westward-view response;
+   the submerged-street glimpse, explicit window entry/handprint and the winter bedside-watch memory;
    preserve existing traversal and the player-operated relay
 3. Continue chapter-by-chapter. The last-door ending is an explicit missing
    product outcome, not something the existing ten-chapter loop already proves

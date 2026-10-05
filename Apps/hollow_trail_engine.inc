@@ -1485,13 +1485,25 @@ static int ht_sway_wave(unsigned phase) {
     int triangle=t<256?t:t<768?512-t:t-1024;
     return triangle*(512-ht_abs(triangle))/256;
 }
+/* A floor-bound room has a stable vertical. Ease the outdoor camera movement
+ * away at the mill walls without touching physical motion or stored phases. */
+static int ht_camera_motion_gain(const ht_game *g) {
+    int x=g->x/256;
+    if(g->level!=0 || x<=1080 || x>=1268 ||
+       ht_abs(g->y/256-ht_land_height(0,3,x))>4)return 256;
+    return 256-ht_clamp(ht_min(x-1080,1268-x)*256/40,0,256);
+}
+static int ht_camera_breathe(const ht_game *g) {
+    int amount=(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+    return 4096-amount*ht_camera_motion_gain(g)/256;
+}
 /* Raster only the visible interior. At <=344/4096 off-diagonal rotation and inward
  * scaling, the nine-pixel border keeps the rounded source sample in bounds.
  * The vignette replaces everything outside this range immediately afterward. */
 static void ht_camera_coefficients(const ht_game *g,int *turn,int *scale) {
     int gain=43+(int)g->camera_mood*213/256;
-    *turn=ht_sway_wave(g->rotation_phase>>8)*43/32*gain/256;
-    int breathe=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+    *turn=ht_sway_wave(g->rotation_phase>>8)*43/32*gain/256*ht_camera_motion_gain(g)/256;
+    int breathe=ht_camera_breathe(g);
     /* Widen toward the uncropped view during a true drop, then ease back
      * into the unchanged breathing phase. Retain the corner-safe crop. */
     breathe+=(4096-breathe)*g->drop_zoom/256;
@@ -1509,7 +1521,7 @@ static void ht_frame_camera(ht_game *g,unsigned mode) {
     if(mode!=HT_CAMERA_OFF && (g->sway_phase || g->drop_zoom)) {
         ht_camera_coefficients(g,&turn,&scale);
         if(mode==HT_CAMERA_NO_ROTATION) {
-            turn=0;scale=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+            turn=0;scale=ht_camera_breathe(g);
             scale+=(4096-scale)*g->drop_zoom/256;
         } else if(mode==HT_CAMERA_NO_ZOOM)scale=4096;
     }
@@ -1580,7 +1592,7 @@ static __attribute__((optimize("O3"))) void ht_rotation_into(const uint8_t *sour
 static void ht_camera_into(const uint8_t *source,const ht_game *g,unsigned mode) {
     int turn,scale;ht_camera_coefficients(g,&turn,&scale);
     if(mode==HT_CAMERA_NO_ROTATION) {
-        scale=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+        scale=ht_camera_breathe(g);
         scale+=(4096-scale)*g->drop_zoom/256;
         ht_zoom_into(source,scale);
     } else if(mode==HT_CAMERA_NO_ZOOM) ht_rotation_into(source,turn);

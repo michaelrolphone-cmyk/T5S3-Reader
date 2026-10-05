@@ -267,7 +267,7 @@ static void relay_controls(void) {
 
 
 static void mill_desk_controls(void) {
-    const unsigned a[2]={1,2},x[2]={8,4};
+    const unsigned a[2]={1,2},x[2]={8,4},start[2]={512,128};
     app=&fake_app;pad=&xapi;hid_pad=&hapi;
     for(unsigned source=0;source<2;++source) {
         memset(reports,0,sizeof(reports));reports[source][0].connected=1;
@@ -286,11 +286,34 @@ static void mill_desk_controls(void) {
         unsigned count=0;while(!ht_mill_register_lit(&ht) && count++<180)ht_input(32);
         assert(count<180 && ht.traversal.mode==HT_CRATE);
         reports[source][0].hat=8;press(source,a[source]);
-        assert(reading && journal_page==1 && ht.traversal.mode==HT_FREE && !ht.traversal.crate_vx);
-        ht_game frozen=ht;for(unsigned i=0;i<10;++i){ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(!reading && ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_REGISTER);
+        assert(ht.traversal.mode==HT_FREE && !ht.traversal.crate_vx && !held && !previous);
+        ht_game frozen=ht;
+        /* Every input during the memory leaves the world/desk/evidence alone.
+         * Held entry A never skips it or advances the following journal. */
+        reports[source][0].hat=2;reports[source][0].buttons=a[source];
+        while(ht_cutscene.active) {ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(reading && journal_page==1 && !ht_journal_index && ht_input_rearm);
+        ht_input(32);assert(reading && !ht_journal_index && !memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
         press(source,x[source]);press(source,x[source]);
         assert(!reading && !quitting && ht.traversal.mode==HT_FREE);
-        press(source,a[source]);assert(reading && journal_page==1 && !ht.traversal.mode);
+        press(source,a[source]);assert(ht_cutscene.active && !reading && !ht.traversal.mode);
+        frozen=ht;press(source,x[source]);
+        assert(reading && journal_page==1 && !ht_cutscene.active && !quitting && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        /* Archive navigation reads the already earned page without replay. */
+        reports[source][0].buttons=0;ht_input(1);press(source,x[source]);
+        assert(ht_journal_index);press(source,a[source]);
+        assert(reading && journal_page==1 && !ht_cutscene.active);
+        press(source,x[source]);press(source,x[source]);press(source,a[source]);
+        assert(ht_cutscene.active);frozen=ht;press(source,start[source]);
+        assert(reading && !ht_journal_index && !ht_cutscene.active && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].buttons=0;ht_input(1);
+        press(source,x[source]);press(source,x[source]);press(source,a[source]);
+        assert(ht_cutscene.active);host_exit=true;ht_input(1);assert(quitting);
+        host_exit=false;ht_cutscene.active=false;
         reading=false;reports[source][0].buttons=0;ht_input(1);
     }
 }

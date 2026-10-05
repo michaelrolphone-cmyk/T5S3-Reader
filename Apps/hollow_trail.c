@@ -126,6 +126,7 @@ static void ht_advance(uint32_t now) {
             simulation_accumulator-=HT_STEP_MS;++scene_revision;
             if(finished) {
                 ht_cutscene_apply_handoff(&ht_cutscene);
+                if(ht_cutscene.id==HT_CUTSCENE_REGISTER) {ht_journal_open(1);reading=true;}
                 held=previous=0;jump_down=pause_down=false;ht_input_rearm=true;
                 simulation_accumulator=0;break;
             }
@@ -162,6 +163,11 @@ static void ht_advance(uint32_t now) {
         }
         if(ht_cutscene_signal_arrival(&before,&ht)) {
             ht_cutscene_begin(HT_CUTSCENE_SIGNAL);
+            held=previous=0;jump_down=pause_down=false;
+            simulation_accumulator=0;++scene_revision;break;
+        }
+        if(ht_cutscene_western_departure(&before,&ht)) {
+            ht_cutscene_begin(HT_CUTSCENE_WEST);
             held=previous=0;jump_down=pause_down=false;
             simulation_accumulator=0;++scene_revision;break;
         }
@@ -255,6 +261,12 @@ static void ht_input_update(uint32_t wait) {
     if(ht_input_rearm) buttons=0; /* A cutscene handoff also requires neutral. */
     if(ht_cutscene.active) {
         quitting|=(buttons&HT_EXIT)!=0;
+        if(ht_cutscene.id==HT_CUTSCENE_REGISTER && (buttons&(HT_BACK|HT_JOURNAL))) {
+            ht_cutscene.active=false;ht_cutscene.finished=true;
+            ht_cutscene.tick=HT_REGISTER_MEMORY_TICKS;
+            ht_journal_open(1);reading=true;ht_input_rearm=true;
+            simulation_started=false;simulation_accumulator=0;++scene_revision;
+        }
         previous=held=0;jump_down=pause_down=false;last_poll=now;return;
     }
     uint32_t down=buttons&~previous;
@@ -324,6 +336,10 @@ static void ht_input_update(uint32_t wait) {
     if(!reading && (down&HT_INTERACT) && !paused && !loading && ht.level==ht_geometry_level) {
         int page=ht_final_near(&ht)?-1:ht_inspect();
         if(ht_final_near(&ht)) { ht_journal_tower(); reading=true; }
+        else if(ht_cutscene_register_inspected(page,&ht)) {
+            ht_cutscene_begin(HT_CUTSCENE_REGISTER);
+            jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
+        }
         else if(page==3 && ht_schoolroom_near(&ht)) {
             ht_schoolroom_studying=true;ht_schoolroom_focus=0;
             jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
