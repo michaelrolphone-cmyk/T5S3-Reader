@@ -11,6 +11,9 @@
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <algorithm>
+#include <esp_task_wdt.h>
+#include <freertos/task.h>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -288,7 +291,33 @@ void XtcReaderActivity::renderPage() {
     }
 
     if (!renderer.captureGrayscaleBaseBuffer()) {
-      LOG_ERR("XTR", "Failed to capture BW page for grayscale rendering");
+      // A MONO1-only surface (or failed grayscale allocation) still needs
+      // all four source tones. The initial black base is only a gray-pass
+      // intermediate; presenting it would collapse both grays into black.
+      // Reuse the renderer's established monochrome dither and orientation.
+      renderer.clearScreen();
+      const int width = std::min<int>(pageWidth, renderer.getScreenWidth());
+      const int height = std::min<int>(pageHeight, renderer.getScreenHeight());
+      uint32_t checkpoint = static_cast<uint32_t>(millis());
+      for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+          switch (getPixelValue(x, y)) {
+            case 1: renderer.fillRectDither(x, y, 1, 1, Color::DarkGray); break;
+            case 2: renderer.fillRectDither(x, y, 1, 1, Color::LightGray); break;
+            case 3: renderer.drawPixel(x, y, true); break;
+            default: break;  // White was set by clearScreen().
+          }
+        }
+        // Work is bounded by the visible raster, with row and elapsed-time
+        // checkpoints. No extra image/plane allocation or I/O is needed.
+        const uint32_t now = static_cast<uint32_t>(millis());
+        if ((y & 15) == 15 || static_cast<uint32_t>(now - checkpoint) >= 20u) {
+          esp_task_wdt_reset();
+          vTaskDelay(1);
+          checkpoint = static_cast<uint32_t>(millis());
+        }
+      }
+      LOG_DBG("XTR", "Grayscale unavailable; presenting monochrome dither");
       free(pageBuffer);
       ReaderUtils::displayWithRefreshCycle(renderer, pagesUntilFullRefresh);
       return;

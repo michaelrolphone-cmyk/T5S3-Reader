@@ -11,6 +11,7 @@ python3 "$repo_dir/test/util/url_resolution_test.py" --sanitize
 python3 "$repo_dir/test/recent_books/migration_test.py" --sanitize
 SANITIZE=1 bash "$repo_dir/test/run_language_migration_test.sh"
 XTC_SANITIZE=1 bash "$repo_dir/test/run_xtc_metadata_test.sh"
+python3 "$repo_dir/test/xtc_render/render_test.py"
 python3 "$repo_dir/test/activities/confirmation_touch_test.py"
 python3 "$repo_dir/test/epub_toc/path_test.py"
 PREFIX_SANITIZE=1 python3 "$repo_dir/test/epub_prefix_metrics_regression.py"
