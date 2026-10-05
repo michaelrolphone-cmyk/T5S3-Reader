@@ -235,7 +235,8 @@ int main(int argc,char** argv) {
         assert(Storage.remove((battery+"/"+name).c_str()));
     assert(Storage.remove((extraDirectory+"/payload.bin").c_str()));assert(Storage.rmdir(extraDirectory.c_str()));
     assert(Storage.remove((copyDirectory+"/payload.bin").c_str()));assert(Storage.rmdir(copyDirectory.c_str()));
-    assert(Storage.rmdir(finderDirectory.c_str()));
+    write(copyDirectory,sidecar);
+    assert(Storage.rmdir(finderDirectory.c_str()));write(finderDirectory,"Finder metadata");
     // Explicit integrity verification remains byte-sensitive. Clear only the
     // fixture-created sidecars so the strict transaction verifier can run too.
     for(const auto& file:files) {
