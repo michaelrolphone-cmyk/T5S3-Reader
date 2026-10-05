@@ -153,8 +153,8 @@ void TxtReaderActivity::initializeReader() {
   LOG_DBG("TRS", "Viewport: %dx%d, lines per page: %d, markdown=%d", viewportWidth, viewportHeight, linesPerPage,
           markdownMode ? 1 : 0);
   if (markdownMode || !loadPageIndexCache()) {
-    buildPageIndex();
-    if (!markdownMode) {
+    const bool complete = buildPageIndex();
+    if (!markdownMode && complete) {
       savePageIndexCache();
     }
   }
@@ -163,7 +163,7 @@ void TxtReaderActivity::initializeReader() {
   initialized = true;
 }
 
-void TxtReaderActivity::buildPageIndex() {
+bool TxtReaderActivity::buildPageIndex() {
   pageOffsets.clear();
   pageFenceOpen.clear();
   pageOffsets.push_back(0);
@@ -173,11 +173,13 @@ void TxtReaderActivity::buildPageIndex() {
   const size_t fileSize = txt->getFileSize();
   LOG_DBG("TRS", "Building page index for %zu bytes...", fileSize);
   GUI.drawPopup(renderer, tr(STR_INDEXING));
+  Txt::ReadWindow window(*txt);
+  uint32_t lastYield = millis();
   while (offset < fileSize) {
     std::vector<TxtDisplayLine> tempLines;
     size_t nextOffset = offset;
     bool fenceAfter = fenceOpen;
-    if (!loadPageAtOffset(offset, fenceOpen, tempLines, nextOffset, fenceAfter)) {
+    if (!loadPageAtOffset(offset, fenceOpen, tempLines, nextOffset, fenceAfter, &window)) {
       break;
     }
     if (nextOffset <= offset) {
@@ -189,12 +191,20 @@ void TxtReaderActivity::buildPageIndex() {
       pageOffsets.push_back(offset);
       pageFenceOpen.push_back(fenceOpen ? 1 : 0);
     }
-    if ((pageOffsets.size() & 0x07) == 0) {
+    if ((pageOffsets.size() & 0x07) == 0 || static_cast<uint32_t>(millis() - lastYield) >= 20) {
       vTaskDelay(1);
+      lastYield = millis();
     }
   }
+  const bool closed = window.close();
   totalPages = pageOffsets.size();
-  LOG_DBG("TRS", "Built page index: %d pages", totalPages);
+  const bool complete = offset >= fileSize && closed;
+  if (complete) {
+    LOG_DBG("TRS", "Built page index: %d pages", totalPages);
+  } else {
+    LOG_ERR("TRS", "Incomplete page index at %zu/%zu bytes; cache not saved", offset, fileSize);
+  }
+  return complete;
 }
 
 void TxtReaderActivity::render(RenderLock&&) {
