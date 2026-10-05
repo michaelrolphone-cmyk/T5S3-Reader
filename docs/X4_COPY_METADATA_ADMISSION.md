@@ -90,3 +90,18 @@ verification, integrity verification and purge/delete ownership remain
 fail-closed. The copied-SD regression now covers an undeclared AppleDouble
 sidecar in addition to declared companions and the existing directory/unknown
 file refusal cases.
+
+
+## Installed-tree semantics correction (firmware 1.3.126)
+
+Runtime provider discovery is now declaration-driven rather than exact-tree
+driven. During installed read-only inspection, undeclared files and directories
+inside a provider directory are ignored. They are never opened, hashed,
+executed, used for identity/capability authorization, or recursively traversed.
+Every manifest-declared member and declared directory must still exist with the
+expected type and size, and executable headers remain checked.
+
+Strict source/stage/install verification remains exact-tree and continues to
+reject undeclared entries. Purge/delete ownership rules are unchanged.
+Installed enumeration is bounded by the existing cooperative 10-second
+deadline rather than by a count of unrelated directory entries.
