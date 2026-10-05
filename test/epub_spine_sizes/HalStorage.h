@@ -52,7 +52,7 @@ class FsFile : public Print {
    if(n){std::memcpy(data->bytes.data()+pos,src,n);}
    pos+=n;return n;
  }
- void close(){if(data){--data->handles;if(archive){++counts.closes;--liveArchives;}if(temp)--liveTemps;}data.reset();pos=0;}
+ bool close(){if(data){--data->handles;if(archive){++counts.closes;--liveArchives;}if(temp)--liveTemps;}data.reset();pos=0;return true;}
 };
 struct StorageFixture {
  std::map<std::string,std::shared_ptr<MemFile>> files;
