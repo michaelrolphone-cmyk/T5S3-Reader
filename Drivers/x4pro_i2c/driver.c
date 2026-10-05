@@ -1,6 +1,8 @@
 /* X4 Pro I2C bus. Owns GPIO 39/38; consumers use only i2c.bus v1.
- * A canonical OS/CPU ABI1 zero-wait mutex covers claims, whole transactions
- * and lifecycle. The pinned RTOS owns RAM-aware synchronization; ELF BSS
+ * A canonical OS/CPU ABI1 mutex covers claims, whole transactions and
+ * lifecycle. Transactions serialize within their caller-supplied total
+ * timeout; lifecycle operations remain fail-fast. The pinned RTOS owns
+ * RAM-aware synchronization; ELF BSS
  * may be in PSRAM and must not use bare compare-and-set instructions.
  * No raw firmware I2C import, custom spinlock or recursive admission. */
 #include "RiscI2cBusV1.h"
@@ -32,8 +34,7 @@ static bool valid_task(void) { return !xPortInIsrContext() && xTaskGetCurrentTas
 static bool enter(void) {
     if (!valid_task() || !operation_mutex || __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
         __atomic_load_n(&admission_closed, __ATOMIC_ACQUIRE)) return false;
-    /* A normal, nonrecursive FreeRTOS mutex. Zero ticks means no waiting,
-     * retry/spin or scheduler callback on contention (including same task). */
+    /* Lifecycle/claim paths are deliberately fail-fast. */
     if (xQueueSemaphoreTake(operation_mutex, 0) != 1) return false;
     if (__atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
         __atomic_load_n(&admission_closed, __ATOMIC_ACQUIRE)) {
@@ -43,15 +44,54 @@ static bool enter(void) {
             __atomic_store_n(&mutex_poisoned, true, __ATOMIC_RELEASE);
         return false;
     }
-    operation_owner = xTaskGetCurrentTaskHandle();
+    __atomic_store_n(&operation_owner, xTaskGetCurrentTaskHandle(), __ATOMIC_RELEASE);
     return true;
 }
+/* Transactions are allowed to wait for another legitimate bus user, but only
+ * inside the same absolute timeout that also covers the physical transfer.
+ * This prevents GT911 polling from turning a coincident CW2017 sample into a
+ * synthetic I2C failure. Recursive entry remains an immediate refusal. */
+static bool enter_transaction(uint32_t timeout_ms, uint64_t *began, uint64_t *deadline) {
+    if (!began || !deadline || !timeout_ms || !valid_task() || !operation_mutex || !clock_api ||
+        __atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&admission_closed, __ATOMIC_ACQUIRE)) return false;
+    const x4_cpu_task current = xTaskGetCurrentTaskHandle();
+    if (__atomic_load_n(&operation_owner, __ATOMIC_ACQUIRE) == current) return false;
+
+    uint64_t previous = clock_api->monotonic_ms(clock_api->context);
+    if (previous == UINT64_MAX || previous > UINT64_MAX - timeout_ms) return false;
+    const uint64_t limit = previous + timeout_ms;
+    *began = previous;
+    *deadline = limit;
+
+    for (;;) {
+        if (__atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
+            __atomic_load_n(&admission_closed, __ATOMIC_ACQUIRE)) return false;
+        if (xQueueSemaphoreTake(operation_mutex, 0) == 1) {
+            if (__atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
+                __atomic_load_n(&admission_closed, __ATOMIC_ACQUIRE)) {
+                if (xQueueGenericSend(operation_mutex, 0, 0, 0) != 1)
+                    __atomic_store_n(&mutex_poisoned, true, __ATOMIC_RELEASE);
+                return false;
+            }
+            __atomic_store_n(&operation_owner, current, __ATOMIC_RELEASE);
+            return true;
+        }
+        const uint64_t now = clock_api->monotonic_ms(clock_api->context);
+        if (now == UINT64_MAX || now < previous || now >= limit) return false;
+        previous = now;
+        /* A real scheduler yield, never a spin loop. The transfer's original
+         * deadline is retained, so waiting cannot create a fresh budget. */
+        clock_api->sleep_ms(clock_api->context, 1);
+    }
+}
 static bool leave(void) {
-    if (!valid_task() || operation_owner != xTaskGetCurrentTaskHandle()) {
+    if (!valid_task() ||
+        __atomic_load_n(&operation_owner, __ATOMIC_ACQUIRE) != xTaskGetCurrentTaskHandle()) {
         __atomic_store_n(&mutex_poisoned, true, __ATOMIC_RELEASE);
         return false;
     }
-    operation_owner = 0;
+    __atomic_store_n(&operation_owner, (x4_cpu_task)0, __ATOMIC_RELEASE);
     if (xQueueGenericSend(operation_mutex, 0, 0, 0) != 1) {
         /* Give failure is an unsafe ownership transition, not free capacity.
          * Keep the mutex, ELF, claims and dependencies. Only reboot recovers. */
@@ -86,7 +126,8 @@ static bool byte_checkpoint(void) {
     if (!checkpoint()) return false;
     if (++bytes_since_yield >= COOPERATE_BYTES || last_ms - yielded_ms >= COOPERATE_MS) {
         /* SCL is low between bytes, including before repeated START. Hold the
-         * admission gate while really yielding; other callers fail fast. */
+         * admission gate while yielding; contenders remain inside their own
+         * bounded admission budgets. */
         clock_api->sleep_ms(clock_api->context, 1);
         if (!checkpoint()) return false;
         bytes_since_yield = 0;
@@ -172,15 +213,14 @@ static bool transact(void *context, uint64_t token, const uint8_t *write_bytes, 
     (void)context;
     if ((write_length && !write_bytes) || (read_length && !read_bytes) ||
         write_length > MAX_TRANSFER_BYTES || read_length > MAX_TRANSFER_BYTES - write_length ||
-        !timeout_ms || timeout_ms > MAX_TIMEOUT_MS || !enter()) return false;
+        !timeout_ms || timeout_ms > MAX_TIMEOUT_MS) return false;
+    uint64_t admission_began = 0, admission_deadline = 0;
+    if (!enter_transaction(timeout_ms, &admission_began, &admission_deadline)) return false;
     bool okay = false;
     const int slot = find_claim(token);
     if (!started || unsafe_bus || slot < 0) goto done;
-    began_ms = last_ms = yielded_ms = clock_api->monotonic_ms(clock_api->context);
-    if (began_ms == UINT64_MAX || began_ms > UINT64_MAX - timeout_ms) {
-        fail("i2c clock invalid"); goto done;
-    }
-    deadline_ms = began_ms + timeout_ms;
+    began_ms = last_ms = yielded_ms = admission_began;
+    deadline_ms = admission_deadline;
     bytes_since_yield = 0;
     if (!checkpoint()) goto done; // No line change before admitted budget.
     scl(true); sda(true); bit_delay();
