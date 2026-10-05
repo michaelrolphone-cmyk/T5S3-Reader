@@ -20,7 +20,7 @@ static atomic_uint_fast64_t now_ms;
 static atomic_uint clock_step;
 static unsigned sleeps, io_count, starts, stops, data_index, data_count;
 static bool levels[49], data_script[4096], stuck_scl;
-static bool block_first, blocked, resume_first, resume_on_sleep, reenter, in_reentry;
+static bool block_first, blocked, resume_first, resume_on_sleep, owner_finished, reenter, in_reentry;
 static _Thread_local unsigned caller;
 static uint64_t battery_claim, touch_claim;
 static bool first_result;
@@ -119,6 +119,7 @@ static void sleep_ms(void *context, uint32_t ms) {
             resume_first = true;
             pthread_cond_broadcast(&condition);
         }
+        while (!owner_finished) pthread_cond_wait(&condition, &mutex);
         pthread_mutex_unlock(&mutex);
     }
     reentrant_calls();
@@ -132,7 +133,7 @@ static void reset_model(void) {
     io_count = starts = stops = sleeps = data_index = data_count = 0;
     levels[X4PRO_PIN_I2C_SDA] = levels[X4PRO_PIN_I2C_SCL] = true;
     atomic_store(&now_ms, 100); atomic_store(&clock_step, 0);
-    resume_on_sleep = false;
+    resume_on_sleep = owner_finished = false;
     reenter = in_reentry = stuck_scl = false;
 }
 static void append_read(unsigned write_len, const uint8_t *read, unsigned read_len) {
@@ -153,7 +154,12 @@ static void *battery_thread(void *unused) {
     (void)unused; caller = 1;
     uint8_t reg = 4, value = 0;
     first_result = bus->transact(0, battery_claim, &reg, 1, &value, 1, 20);
-    assert(value == 53); return 0;
+    assert(value == 53);
+    pthread_mutex_lock(&mutex);
+    owner_finished = true;
+    pthread_cond_broadcast(&condition);
+    pthread_mutex_unlock(&mutex);
+    return 0;
 }
 static void *quiesce_thread(void *unused) {
     (void)unused; caller = 1; quiesce_result = driver->quiesce(); return 0;
@@ -197,7 +203,7 @@ int main(int argc, char **argv) {
      * device read failure. Claim/release/lifecycle paths remain fail-fast. */
     prepare_read(1, &expected, 1);
     append_read(2, &expected, 1);
-    pthread_t thread; block_first = true; blocked = resume_first = false;
+    pthread_t thread; block_first = true; blocked = resume_first = owner_finished = false;
     assert(!pthread_create(&thread, 0, battery_thread, 0));
     pthread_mutex_lock(&mutex);
     while (!blocked) pthread_cond_wait(&condition, &mutex);
@@ -217,7 +223,7 @@ int main(int argc, char **argv) {
     /* A contender whose owner does not drain before the total budget expires
      * still fails without touching bus pins or lifecycle state. */
     prepare_read(1, &expected, 1);
-    block_first = true; blocked = resume_first = false;
+    block_first = true; blocked = resume_first = owner_finished = false;
     assert(!pthread_create(&thread, 0, battery_thread, 0));
     pthread_mutex_lock(&mutex);
     while (!blocked) pthread_cond_wait(&condition, &mutex);
