@@ -7,6 +7,8 @@ void nativeNavigationTick();
 void nativeNavigationConfigure(bool enabled);
 const risc_input_navigation_frame_v1& nativeNavigationFrame();
 unsigned long nativeNavigationHeldMs();
+// Optional trait of the current live provider, never inferred from board type.
+bool nativeNavigationHasPhysicalPagePair();
 bool nativeNavigationClaim(uint32_t token, const char* capability, uint32_t version);
 void nativeNavigationRelease(uint32_t token);
 void nativeNavigationBoundary();

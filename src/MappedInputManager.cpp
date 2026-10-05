@@ -123,6 +123,25 @@ bool MappedInputManager::isPressed(const Button button) const {
   return mapButton(button, &HalGPIO::isPressed) || (nativeNavigationFrame().buttons & navigationBit(button));
 }
 
+bool MappedInputManager::wasPageTurnRequested(bool forward, bool onPress) const {
+  const Button page = forward ? Button::PageForward : Button::PageBack;
+  const Button front = forward ? Button::Right : Button::Left;
+  const auto gpioEvent = onPress ? &HalGPIO::wasPressed : &HalGPIO::wasReleased;
+  if (mapButton(page, gpioEvent) || mapButton(front, gpioEvent) ||
+      (hasInjectedButtonTap && (injectedButtonTap == page || injectedButtonTap == front))) return true;
+
+  uint32_t mask = navigationBit(page);
+  if (nativeNavigationHasPhysicalPagePair()) {
+    // Match the existing physical-button policy: layout and 180-degree UI
+    // flip compose via XOR. Only the declared physical pair is transformed.
+    const bool swap = (SETTINGS.sideButtonLayout == CrossPointSettings::NEXT_PREV) != (SETTINGS.flipUi != 0);
+    mask &= ~(RISC_NAV_LEFT | RISC_NAV_RIGHT);
+    mask |= (forward != swap) ? RISC_NAV_RIGHT : RISC_NAV_LEFT;
+  }
+  const auto& frame = nativeNavigationFrame();
+  return ((onPress ? frame.pressed : frame.released) & mask) != 0;
+}
+
 void MappedInputManager::update() const {
   navigationHomeConsumed = false;
 #if !defined(BOARD_XTEINK_X4_PRO)

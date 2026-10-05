@@ -55,6 +55,10 @@ void nativeNavigationTick() {
     frame = next;
 }
 const risc_input_navigation_frame_v1& nativeNavigationFrame() { return frame; }
+bool nativeNavigationHasPhysicalPagePair() {
+    return enabled && usable && !quarantined &&
+        risc_input_navigation_has_physical_page_pair(api);
+}
 unsigned long nativeNavigationHeldMs() {
     return frame.buttons ? static_cast<uint32_t>(millis() - heldSince) : 0;
 }

@@ -11,10 +11,11 @@ static bool available, shutdownOkay = true, sharedGrant = false, releaseOkay = t
 static bool revoked = false, partialAcquire = false, unsafeNavigation = false;
 static unsigned acquisitions, releases, shutdowns, drains, polls, resets, generation;
 static size_t foregroundCount;
-static bool fakePoll(void*, risc_input_navigation_frame_v1* out) {
+static bool fakePoll(void* context, risc_input_navigation_frame_v1* out) {
     assert(!revoked);
     ++polls;
-    *out = {RISC_NAV_CONFIRM, RISC_NAV_CONFIRM, 0};
+    const uint32_t bits = context ? RISC_NAV_LEFT : RISC_NAV_CONFIRM;
+    *out = {bits, bits, 0};
     return true;
 }
 static bool fakeForeground(void*, const risc_input_foreground_v1*, size_t count) {
@@ -24,6 +25,12 @@ static bool fakeForeground(void*, const risc_input_foreground_v1*, size_t count)
 static bool fakeReset(void*) { assert(!revoked); ++resets; return true; }
 static const risc_input_navigation_api_v1 navigation{
     1, sizeof(navigation), nullptr, fakePoll, fakeForeground, fakeReset};
+static int physicalMarker;
+static const risc_input_navigation_traits_v1 physicalNavigation{
+    {1, sizeof(physicalNavigation), &physicalMarker, fakePoll, fakeForeground, fakeReset},
+    RISC_INPUT_NAVIGATION_TRAITS_TAG, RISC_INPUT_NAVIGATION_TRAITS_VERSION,
+    RISC_INPUT_NAVIGATION_PHYSICAL_PAGE_PAIR};
+static const risc_input_navigation_api_v1* selectedNavigation = &navigation;
 namespace RuntimeInstalledProviders {
 bool acquireCapability(const char* capability, uint32_t version, Lease* out) {
     assert(!std::strcmp(capability, "input.navigation") && version == 1);
@@ -31,7 +38,7 @@ bool acquireCapability(const char* capability, uint32_t version, Lease* out) {
     ++acquisitions;
     if (!available || unsafeNavigation) return false;
     revoked = partialAcquire;
-    *out = {{1, ++generation}, partialAcquire ? nullptr : &navigation};
+    *out = {{1, ++generation}, partialAcquire ? nullptr : selectedNavigation};
     return !partialAcquire;
 }
 bool release(Lease* out) {
@@ -124,6 +131,23 @@ int main() {
     partialAcquire = false; releaseOkay = true;
     nativeNavigationResume(); nativeNavigationTick();
     assert(api && acquisitions == beforePartialRetry + 1);
+    assert(nativeNavigationSuspend());
+    // Replacing the selected input provider replaces its interpretation too.
+    // The frame is one provider snapshot, never OR-aggregated across providers.
+    assert(!nativeNavigationHasPhysicalPagePair());
+    selectedNavigation = &physicalNavigation.base;
+    nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();
+    assert(nativeNavigationHasPhysicalPagePair());
+    assert(nativeNavigationFrame().buttons == RISC_NAV_LEFT);
+    releaseOkay = false;
+    assert(!nativeNavigationSuspend());
+    assert(!nativeNavigationHasPhysicalPagePair() && !nativeNavigationFrame().buttons);
+    releaseOkay = true;
+    assert(nativeNavigationSuspend());
+    selectedNavigation = &navigation;
+    nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();
+    assert(!nativeNavigationHasPhysicalPagePair());
+    assert(nativeNavigationFrame().buttons == RISC_NAV_CONFIRM);
     assert(nativeNavigationSuspend());
     // A verified boot provider can feed the same UI frame consumer before SD
     // inventory exists. Its module remains owned by the boot controller.
