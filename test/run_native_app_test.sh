@@ -117,6 +117,10 @@ python3 "$repo_dir/test/native_apps/hollow_trail_register_prose_test.py"
 python3 "$repo_dir/test/native_apps/hollow_trail_marked_tree_prose_test.py"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_vanished_house_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_sawn_roots_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \

@@ -27,6 +27,7 @@ static void ht_draw_traversal(const ht_game *g) {
     if(g->level==0)ht_forest_backdrop(g);
     ht_forest_city_horizon(g);
     if(g->level==1)ht_city_backdrop(g);
+    ht_city_vanished_house(g);
     ht_authored_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
