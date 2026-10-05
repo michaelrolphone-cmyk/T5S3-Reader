@@ -136,6 +136,11 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
   "$repo_dir/test/native_apps/hollow_trail_distribution_test.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/hollow_trail_distribution_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_waiting_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_waiting_prose_test.py"
 python3 "$repo_dir/test/native_apps/hollow_trail_register_prose_test.py"
 python3 "$repo_dir/test/native_apps/hollow_trail_capture_source_test.py"
 python3 "$repo_dir/test/native_apps/hollow_trail_watch_memory_prose_test.py"

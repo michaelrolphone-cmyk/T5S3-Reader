@@ -127,6 +127,8 @@ typedef struct {
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
+    uint16_t waiting_view_tick; /* Draw snapshot only. */
+    bool waiting_view_active;
     ht_traversal traversal;
     ht_puzzle_state puzzle;
     uint8_t verdict,last_verdict,endings; /* 0 undecided; 1 break; 2 complete; archive bitmask. */
@@ -335,6 +337,8 @@ static int ht_signal_window_floor(void) {return ht_level_land(1)[7].top;}
 static int ht_signal_window_sill(void) {return ht_signal_window_floor()-16;}
 static int ht_signal_window_top(void) {return ht_signal_window_floor()-70;}
 
+#define HT_WAITING_X 1745
+static int ht_waiting_floor(void) {return ht_land_height(4,4,HT_WAITING_X);}
 #define HT_DISTRIBUTION_X 2402
 static int ht_distribution_floor(void) {return ht_land_height(2,7,HT_DISTRIBUTION_X);}
 #define HT_STATION_TICKET_X 1180
@@ -2172,7 +2176,7 @@ static void ht_marked_tree(int x,int ground,bool paper) {
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
-        if((game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && item==0) || (game->level==2 && item==2))continue; /* Drawn on their actual scene furniture. */
+        if((game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && item==0) || (game->level==2 && item==2) || (game->level==4 && item==1))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         int extent=game->level==0 && item==0?34:12;
@@ -2247,3 +2251,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_station_study.inc"
 
 #include "hollow_trail_distribution_study.inc"
+
+#include "hollow_trail_waiting_study.inc"
