@@ -8,6 +8,7 @@
 #include "components/StartupScreen.h"
 #include "native/NativeSerialPortBridge.h"
 #include "native/NativeTouchInput.h"
+#include "native/NativeReaderEntry.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -145,7 +146,37 @@ void ActivityManager::loop() {
     mappedInput.clearInjectedButtonTap();
   }
 
+  // A deferred launch still owns currentActivity. Do not destroy it, replay
+  // input, or apply its pending transitions until the entry ELF is unmapped.
+  if (NativeReaderEntry::pending()) return;
+  finishLoop();
+}
+
+bool ActivityManager::deferNativeAppLoop(Activity* activity) {
+  if (activity != currentActivity.get() || pendingAction != PendingAction::None ||
+      !NativeReaderEntry::deferActivity(activity)) return false;
+  deferredActivity = activity;
+  deferredGeneration = activityGeneration;
+  return true;
+}
+
+bool ActivityManager::resumeNativeAppLoop(Activity* activity) {
+  const bool valid = !NativeReaderEntry::mapped() && activity &&
+      activity == currentActivity.get() && activity == deferredActivity &&
+      activityGeneration == deferredGeneration && pendingAction == PendingAction::None;
+  deferredActivity = nullptr;
+  deferredGeneration = 0;
+  if (!valid) return false;
+  currentActivity->loop();
+  finishLoop();
+  return true;
+}
+
+void ActivityManager::finishLoop() {
   while (pendingAction != PendingAction::None) {
+    ++activityGeneration;
+    deferredActivity = nullptr;
+    deferredGeneration = 0;
     if (pendingAction == PendingAction::Pop) {
       RenderLock lock;
 

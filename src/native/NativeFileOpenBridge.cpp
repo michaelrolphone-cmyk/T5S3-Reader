@@ -80,6 +80,7 @@ class NativeFileOpenActivity final : public Activity {
       return;
     }
 
+    if (activityManager.deferNativeAppLoop(this)) return;
     if (!ranTarget) {
       ranTarget = true;
       activeSourcePath = sourcePath;

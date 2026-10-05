@@ -45,7 +45,7 @@
 
 extern bool setupDisplayAndFonts();
 extern void setupReaderState();
-extern bool resumeSavedReaderActivity();
+extern void prepareReaderApplication(bool deskClockUserWake);
 extern GfxRenderer renderer;
 extern MappedInputManager mappedInputManager;
 extern ActivityManager activityManager;
@@ -58,6 +58,7 @@ uint8_t surface[48000];
 std::unique_ptr<ProviderDisplaySurface> provider_surface;
 bool ready = false;
 bool showing_home = false;
+bool startup_prepared = false;
 
 bool acquire(const char* capability, RuntimeInstalledProviders::Lease& lease) {
     if (RuntimeInstalledProviders::acquireCapability(capability,1,&lease)) return true;
@@ -232,13 +233,19 @@ void x4DiagnosticSetup(bool deskClockUserWake) {
     X4BootDiagnostics::mark(Stage::Battery);
     nativeBatteryTick();
     X4BootDiagnostics::mark(Stage::HomePrepare);
-    if (!resumeSavedReaderActivity()) activityManager.goHome();
-    // Home queues its first render before the owner loop starts.
-    X4BootDiagnostics::mark(Stage::HomePresent);
-    activityManager.requestUpdate(true);
+    // The installed default entry (or once-only fallback) chooses the same
+    // Home/book destination on its first pump. Do not create a duplicate UI.
+    prepareReaderApplication(deskClockUserWake);
+    startup_prepared = true;
+    LOG_INF("X4", "Reader startup prepared=1");
+
+}
+
+bool x4ReaderStartupReady() { return startup_prepared; }
+void x4ReaderActivityScheduled() {
+    X4BootDiagnostics::mark(X4BootDiagnostics::Stage::HomePresent);
     showing_home = true;
     LOG_INF("X4", "home activity scheduled=1");
-
 }
 
 bool x4DiagnosticLoop() {

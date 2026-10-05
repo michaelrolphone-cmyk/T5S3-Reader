@@ -55,8 +55,12 @@ class X4BootIsolation(unittest.TestCase):
                 ("StorageMount", 'acquire("storage.volume"'), ("Display", "bindDisplay()"),
                 ("Settings", "SETTINGS.loadFromFile()"), ("Rtc", "halClock.begin()"),
                 ("Fonts", "setupDisplayAndFonts()"), ("ReaderState", "setupReaderState()"),
-                ("HomePrepare", "resumeSavedReaderActivity()"), ("HomePresent", "activityManager.requestUpdate(true)")):
+                ("HomePrepare", "prepareReaderApplication(deskClockUserWake)")):
             self.assertLess(setup.index("mark(Stage::" + stage + ")"), setup.index(operation))
+        scheduled = boot.split("void x4ReaderActivityScheduled()", 1)[1].split("bool x4DiagnosticLoop()", 1)[0]
+        self.assertLess(scheduled.index("mark(X4BootDiagnostics::Stage::HomePresent)"), scheduled.index("showing_home = true"))
+        entry = main.split("static void startReaderApplication()", 1)[1].split("void setup()", 1)[0]
+        self.assertLess(entry.index("x4ReaderActivityScheduled()"), entry.index("activityManager.requestUpdate(true)"))
         loop = boot.split("bool x4DiagnosticLoop()", 1)[1]
         self.assertIn("X4BootDiagnostics::poll(static_cast<bool>(logSerial))", loop)
         for forbidden in ("loadPlatformSdPackages()", "Storage.begin()", "x4DiagnosticSetup("):
@@ -70,7 +74,7 @@ class X4BootIsolation(unittest.TestCase):
         self.assertNotIn('"Starting Reader"', boot)
         self.assertNotIn("StartupScreen::boot(renderer)", boot)
         self.assertLess(boot.index("boot splash present=%d"), boot.index("provider_surface->clearPresentStatus()"))
-        self.assertLess(boot.index("provider_surface->clearPresentStatus()"), boot.index("activityManager.goHome()"))
+        self.assertLess(boot.index("provider_surface->clearPresentStatus()"), boot.index("prepareReaderApplication(deskClockUserWake)"))
         self.assertIn("menu_height < required_menu_height", boot)
 
         classic = (ROOT / "src/components/themes/BaseTheme.h").read_text()

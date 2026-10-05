@@ -17,6 +17,7 @@ void KOReaderSettingsActivity::onEnter() {
 
 void KOReaderSettingsActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/koreader_sync.elf", renderer, mappedInput);
     if (result == ESP_OK) {

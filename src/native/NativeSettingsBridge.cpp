@@ -254,6 +254,7 @@ class NativeSettingsActionActivity final : public Activity {
       return;
     }
     if (!childCompleted) return;
+    if (activityManager.deferNativeAppLoop(this)) return;
     childCompleted = false;
     if (resumePath.empty()) {
       finish();

@@ -13,7 +13,7 @@ class BatteryBootHook(unittest.TestCase):
         prime = setup.index("nativeBatteryTick();")
         for dependency in ("Storage.bindVolume(volume)", "nativeNavigationTick();", "nativeTouchTick();"):
             self.assertLess(setup.index(dependency), prime)
-        self.assertLess(prime, setup.index("activityManager.goHome();"))
+        self.assertLess(prime, setup.index("prepareReaderApplication(deskClockUserWake);"))
         # An absent optional provider must never become a Home readiness gate.
         line = next(line for line in setup.splitlines() if "nativeBatteryTick();" in line)
         self.assertEqual(line.strip(), "nativeBatteryTick();")

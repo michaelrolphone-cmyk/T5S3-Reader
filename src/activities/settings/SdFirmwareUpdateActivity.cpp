@@ -297,6 +297,7 @@ void SdFirmwareUpdateActivity::loop() {
       return;
     }
     if (browserPending) {
+      if (activityManager.deferNativeAppLoop(this)) return;
       browserPending = false;
       runFileBrowser();
       return;

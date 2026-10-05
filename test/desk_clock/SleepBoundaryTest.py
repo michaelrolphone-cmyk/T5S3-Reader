@@ -63,6 +63,7 @@ struct MappedInputManager {
  void injectButtonTap(Button){} void clearInjectedButtonTap(){}
 };
 namespace StartupScreen{bool isLoading(){return false;}}
+namespace NativeReaderEntry{bool pending(){return false;}}
 struct{bool doubleClickHomeMenu=false;}SETTINGS;
 unsigned long millis(){return 0;}
 constexpr unsigned long kDoubleClickWindowMs=400;
@@ -99,9 +100,11 @@ struct ActivityManager {
  void openGlobalMenu(){}void requestUpdate(){requestedUpdate=true;}
  void exitActivity(const RenderLock&){if(currentActivity){currentActivity->onExit();currentActivity.reset();}}
  void goHome(){pendingAction=PendingAction::None;currentActivity=std::make_unique<Activity>();}
- void loop();
+ uint64_t activityGeneration=0,deferredGeneration=0;
+ Activity* deferredActivity=nullptr;
+ void loop();void finishLoop();
 };
-'''+function('src/activities/ActivityManager.cpp','void ActivityManager::loop()')+r'''
+'''+function('src/activities/ActivityManager.cpp','void ActivityManager::loop()')+function('src/activities/ActivityManager.cpp','void ActivityManager::finishLoop()')+r'''
 int main(){
  ActivityManager manager;unsigned loops=0,exits=0,enters=0;
  manager.currentActivity=std::make_unique<Activity>();manager.currentActivity->name="Settings";
