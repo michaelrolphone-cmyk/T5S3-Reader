@@ -65,21 +65,20 @@ bool FontCacheManager::hasRecordedText() const { return !recordedTextByFont_.emp
 
 void FontCacheManager::prewarmRecordedText() {
   for (auto& [fontId, entry] : recordedTextByFont_) {
-    if (entry.text.empty()) {
+    if (sdCardFonts_.count(fontId) != 0) {
+      // Keep SD-font aggregation and its multi-style preparation unchanged.
+      uint8_t styleMask = 0;
+      for (uint8_t i = 0; i < 4; i++) {
+        if (entry.styleCounts[i] > 0) styleMask |= 1 << i;
+      }
+      prewarmCache(fontId, entry.textByStyle[0].c_str(), styleMask ? styleMask : 1);
       continue;
     }
-
-    uint8_t styleMask = 0;
     for (uint8_t i = 0; i < 4; i++) {
-      if (entry.styleCounts[i] > 0) {
-        styleMask |= (1 << i);
+      if (!entry.textByStyle[i].empty()) {
+        prewarmCache(fontId, entry.textByStyle[i].c_str(), 1 << i);
       }
     }
-    if (styleMask == 0) {
-      styleMask = 1;
-    }
-
-    prewarmCache(fontId, entry.text.c_str(), styleMask);
   }
 
   resetRecordedText();
@@ -92,20 +91,41 @@ void FontCacheManager::recordText(const char* text, int fontId, EpdFontFamily::S
     return;
   }
 
-  auto& entry = recordedTextByFont_[fontId];
-  if (entry.text.empty()) {
-    entry.text.reserve(2048);  // Avoid repeated reallocations when collecting a full page of text.
-  }
-  entry.text += text;
-
   const uint8_t baseStyle = static_cast<uint8_t>(style) & 0x03;
-  const unsigned char* p = reinterpret_cast<const unsigned char*>(text);
-  uint32_t cpCount = 0;
-  while (*p) {
-    if ((*p & 0xC0) != 0x80) cpCount++;
-    p++;
+  uint8_t textStyle = baseStyle;
+  const bool isSdFont = sdCardFonts_.count(fontId) != 0;
+  if (isSdFont) {
+    textStyle = 0;
+  } else {
+    const auto font = fontMap_.find(fontId);
+    if (font != fontMap_.end()) {
+      const auto* data = font->second.getData(static_cast<EpdFontFamily::Style>(baseStyle));
+      // Missing variants and explicit aliases share one decompressor slot.
+      // Append in draw order so every glyph for that actual font is retained.
+      for (uint8_t i = 0; i < baseStyle; i++) {
+        if (font->second.getData(static_cast<EpdFontFamily::Style>(i)) == data) {
+          textStyle = i;
+          break;
+        }
+      }
+    }
   }
-  entry.styleCounts[baseStyle] += cpCount;
+
+  auto& entry = recordedTextByFont_[fontId];
+  auto& recorded = entry.textByStyle[textStyle];
+  if (recorded.empty() && textStyle == 0) {
+    recorded.reserve(2048);  // Retain the regular-body reserve; short styled spans grow only as needed.
+  }
+  recorded += text;
+  if (isSdFont) {
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(text);
+    uint32_t cpCount = 0;
+    while (*p) {
+      if ((*p & 0xC0) != 0x80) cpCount++;
+      p++;
+    }
+    entry.styleCounts[baseStyle] += cpCount;
+  }
 }
 
 // --- PrewarmScope implementation ---
