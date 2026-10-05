@@ -34,3 +34,7 @@ python3 scripts/preview_hollow_trail_shutter.py --output /tmp/shutter-after --co
 
 These are inspected host renderer captures. They do not establish device FPS,
 ghosting, display quality or hardware qualification.
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

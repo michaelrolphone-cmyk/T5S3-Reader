@@ -94,7 +94,9 @@
       "start_x": 95,
       "movement": "Production Right steps from spawn to x120 (approach) or x140 (read); read invokes actual ht_inspect without moving the actor.",
       "baseline_public_equivalent": "8464abdf6fa513c274ae3b65ef67c90603851474"
-    }
+    },
+    "source_commit": "8464abdf6fa513c274ae3b65ef67c90603851474",
+    "source_snapshot_sha256": "19ef51ce66262c1cbef23d3efdcf19491f37516aa9364fc515895070559c1e2e"
   },
   "after": {
     "version": "1.1.49",
@@ -191,7 +193,9 @@
       "start_x": 95,
       "movement": "Production Right steps from spawn to x120 (approach) or x140 (read); read invokes actual ht_inspect without moving the actor.",
       "baseline_public_equivalent": "8464abdf6fa513c274ae3b65ef67c90603851474"
-    }
+    },
+    "source_commit": "1e469466ae069dee59896b4f14ce58ce6acec8b6",
+    "source_snapshot_sha256": "d6afc49ba53f7f23c177f57364270016cec4885d626e4cbcb9066219ddc916d6"
   },
   "comparisons": [
     {
@@ -209,5 +213,26 @@
       }
     }
   ],
-  "canvas_check": "Original raster regions verified byte-for-byte."
+  "canvas_check": "Original raster regions verified byte-for-byte.",
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "after/approach-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "34fa7b0a5a4521f2e2a16a2f68d2f480af1451fd7e18b10e622499048c23630c",
+          "7e7f47df22d9397d685c21f7bda9fdb9ea453c07b1cdf53a9c5573a8a708a5b8"
+        ]
+      },
+      {
+        "file": "after/read-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "0d83ba65e380f9b206f64d53e142f4f872cd506da9ac2c49f29a296a9ee50f31",
+          "f42585afe4b25d4339b8ac8f68f89fda2f5b8c77b5369b442362e7170a1e5c92"
+        ]
+      }
+    ]
+  }
 }

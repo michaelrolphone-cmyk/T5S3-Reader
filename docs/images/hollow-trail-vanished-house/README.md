@@ -33,3 +33,7 @@ python3 scripts/preview_hollow_trail_vanished_house.py --output /tmp/house-after
 Same cumulative unreleased Hollow Trail 1.1.48 → 1.1.49 update. Other missing
 Chapter II beats, including the submerged street glimpse, window entry and
 bedside-watch memory, remain open.
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

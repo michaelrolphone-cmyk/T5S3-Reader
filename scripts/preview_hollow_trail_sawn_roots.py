@@ -2,8 +2,10 @@
 """Render the production partly sawn forest roots states and lossless before/after comparisons."""
 import argparse,hashlib,json,pathlib,subprocess,tempfile
 from PIL import Image,ImageDraw
+from hollow_trail_capture_source import source_identity,source_caption
 p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('--source-root',type=pathlib.Path,default=pathlib.Path(__file__).resolve().parents[1])
+p.add_argument('--source-ref')
 p.add_argument('--output',type=pathlib.Path,required=True)
 p.add_argument('--compare-before',type=pathlib.Path)
 a=p.parse_args();r=a.source_root.resolve();out=a.output;out.mkdir(parents=True,exist_ok=True)
@@ -58,12 +60,13 @@ with tempfile.TemporaryDirectory(prefix='marked-tree-preview-') as t:
   captures.append({'view':name,'raster':[960,540],'hashes':hashes,'actor':json.loads(stem.with_suffix('.json').read_text())})
  files=sorted((r/'Apps').glob('hollow_trail*'))
  meta={'version':json.loads((r/'Apps/hollow_trail.json').read_text())['version'],'source_files':{str(f.relative_to(r)):hashlib.sha256(f.read_bytes()).hexdigest() for f in files if f.is_file()},'captures':captures,'fixture':{'camera':[140,20],'ticks':8,'start_x':340,'movement':'40 Right steps from x340 approach, A contact, Right until actual forest_push24 or falling transition, then neutral physics until phase12/32; state assertions prevent mislabeled captures.','baseline_public_equivalent':'1e469466ae069dee59896b4f14ce58ce6acec8b6'}}
+ meta.update(source_identity(r,meta['source_files'],a.source_ref))
  (out/'capture-metadata.json').write_text(json.dumps(meta,indent=2)+'\n')
 if a.compare_before:
  before=a.compare_before;before_meta=json.loads((before/'capture-metadata.json').read_text());pairs=[]
  for name in ['standing','loaded','falling','landed']:
   canvas=Image.new('RGB',(1920,1134),'#e9e6df');d=ImageDraw.Draw(canvas)
-  d.text((12,8),'BEFORE '+before_meta['version']+' | '+name,fill='#252525');d.text((972,8),'AFTER '+meta['version']+' | '+name,fill='#252525');counts={}
+  d.text((12,8),'BEFORE '+source_caption(before_meta)+' | '+name,fill='#252525');d.text((972,8),'AFTER '+source_caption(meta)+' | '+name,fill='#252525');counts={}
   for row,suffix in enumerate(['','-mono']):
    images=[Image.open(folder/(name+suffix+'.png')).convert('RGB') for folder in (before,out)]
    for col,image in enumerate(images):

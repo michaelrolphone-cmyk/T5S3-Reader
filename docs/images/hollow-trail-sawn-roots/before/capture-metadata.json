@@ -129,5 +129,7 @@
     "start_x": 340,
     "movement": "40 Right steps from x340 approach, A contact, 24 or48 loaded Right ticks, then neutral falling/landed progression.",
     "baseline_public_equivalent": "1e469466ae069dee59896b4f14ce58ce6acec8b6"
-  }
+  },
+  "source_commit": "1e469466ae069dee59896b4f14ce58ce6acec8b6",
+  "source_snapshot_sha256": "d6afc49ba53f7f23c177f57364270016cec4885d626e4cbcb9066219ddc916d6"
 }

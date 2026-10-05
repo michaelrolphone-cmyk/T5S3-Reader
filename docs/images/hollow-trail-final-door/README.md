@@ -33,3 +33,7 @@ git archive eeafe0ffc7a5baf2c56e77d053d171f43a2b026e Apps lib/NativeApps/include
 python scripts/preview_hollow_trail_final_door.py --source-root /tmp/hollow-door-before-7a20 --output /tmp/door-before
 python scripts/preview_hollow_trail_final_door.py --output /tmp/door-after --compare-before /tmp/door-before
 ```
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

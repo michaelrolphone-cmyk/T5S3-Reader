@@ -93,5 +93,7 @@
     "start_x": 95,
     "movement": "Production Right steps from spawn to x120 (approach) or x140 (read); read invokes actual ht_inspect without moving the actor.",
     "baseline_public_equivalent": "8464abdf6fa513c274ae3b65ef67c90603851474"
-  }
+  },
+  "source_commit": "8464abdf6fa513c274ae3b65ef67c90603851474",
+  "source_snapshot_sha256": "19ef51ce66262c1cbef23d3efdcf19491f37516aa9364fc515895070559c1e2e"
 }

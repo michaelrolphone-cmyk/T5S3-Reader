@@ -26,3 +26,7 @@ python3 scripts/preview_hollow_trail_marked_tree.py --output /tmp/tree-after --c
 
 No device FPS, panel ghosting or hardware qualification is claimed. The view
 preserves full-size pixels; individual gray/mono PNGs can be regenerated.
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

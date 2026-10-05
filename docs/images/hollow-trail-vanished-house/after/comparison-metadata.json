@@ -121,7 +121,9 @@
     "fixture": {
       "movement": "Input-only city route from spawn, stopping at x540/725/860 with the reached camera/actor/weather untouched",
       "baseline_public_equivalent": "bb6365380cba07bf055893c1289a2047797ed09a"
-    }
+    },
+    "source_commit": "bb6365380cba07bf055893c1289a2047797ed09a",
+    "source_snapshot_sha256": "4e9a230b58541f9c88480cb661f430f553534a3d2ed69029b0721f7a788860b1"
   },
   "after": {
     "version": "1.1.49",
@@ -245,7 +247,9 @@
     "fixture": {
       "movement": "Input-only city route from spawn, stopping at x540/725/860 with the reached camera/actor/weather untouched",
       "baseline_public_equivalent": "bb6365380cba07bf055893c1289a2047797ed09a"
-    }
+    },
+    "source_commit": "a585fc986ed7613d91d00b54ee321ce39d2e30e2",
+    "source_snapshot_sha256": "f38fd11e993fabc1ad686a2c4fbb1a7838c7b0b3d12691235fa81ca2d279bb20"
   },
   "comparisons": [
     {
@@ -270,5 +274,34 @@
       }
     }
   ],
-  "canvas_check": "Original raster regions verified byte-for-byte."
+  "canvas_check": "Original raster regions verified byte-for-byte.",
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "after/passing-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "9ae1d8253d3e9f6a61534aaae71a31753e6862299f066bdaefe610dc235ca56b",
+          "9b9e4667d4f52040f6b3e5e8b06ab69b71ab4108beeb54b9af8661c294a8a788"
+        ]
+      },
+      {
+        "file": "after/schoolroom-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "4c4d774482e57a058f1e66d274f407d4cad56692432212738fce5f75ef7bccf4",
+          "0b10bf4259c8e8a688263f08b28db7c4fc0df45339271e0f49dba54eeded664a"
+        ]
+      },
+      {
+        "file": "after/upper-roof-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "fdad2d62a19b0a45d4767c61ff22f599f088a8bdc0af4f04d3a658b33358b6f0",
+          "34150d35f96ab9fae1b2bbc30a2205bb0c8345d99025ebae2900e7a02bd3584b"
+        ]
+      }
+    ]
+  }
 }

@@ -30,3 +30,7 @@ Use a before checkout pinned to the source commit above, a host C compiler and
 Pillow. The same script is used on both checkouts and invokes the ordinary game
 renderer and mono packer. After light inspection, the original journal is still
 available through the ordinary controls.
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

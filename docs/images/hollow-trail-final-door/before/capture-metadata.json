@@ -59,5 +59,7 @@
   ],
   "fixture": "Identical reached tower exit, black choice, read testimony and all evidence. Then production device A/Right inputs, fixed-step holds and submitted compact notebook pages.",
   "baseline": "The prior source returns to the forest after that tower exit. No Chapter XI scene existed.",
-  "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap."
+  "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap.",
+  "source_commit": "eeafe0ffc7a5baf2c56e77d053d171f43a2b026e",
+  "source_snapshot_sha256": "fe884611c53205d5675daad167553c9c4f53226462e1627253653d0234594438"
 }

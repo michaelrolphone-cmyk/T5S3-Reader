@@ -88,7 +88,9 @@
       "shadow_actor_x": 1111,
       "drawn_before_actor_x": 1197,
       "drawn_after": "actual A grip + Right until desk reaches1180, then inspect; no body teleport"
-    }
+    },
+    "source_commit": "b18a5abf0565b14ea67169338ce4636425e5b386",
+    "source_snapshot_sha256": "22d1aa088373dbd4487ef7f4b00569896007ba63b49aaa488170f8f7a574bc65"
   },
   "after": {
     "version": "1.1.49",
@@ -179,7 +181,9 @@
       "shadow_actor_x": 1111,
       "drawn_before_actor_x": 1197,
       "drawn_after": "actual A grip + Right until desk reaches1180, then inspect; no body teleport"
-    }
+    },
+    "source_commit": "213113ffaf91db1a55f8c7cebac3b64f7126dae7",
+    "source_snapshot_sha256": "ea8fbea5da9ddccb331b81856d84fc4c029834e2b150817808b56179978050aa"
   },
   "comparisons": [
     {
@@ -204,5 +208,34 @@
       }
     }
   ],
-  "canvas_check": "Original raster regions verified byte-for-byte."
+  "canvas_check": "Original raster regions verified byte-for-byte.",
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "arrival-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "25a9d9f55864d7874ed616ce717c04512d595c65f419115157e28d6b732f9d9f",
+          "91a8e014d96aee41a419f526acec944e18d2c73a6a2f2eb22e0a7d09d4514504"
+        ]
+      },
+      {
+        "file": "drawn-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "e20be9dba5e67dc913c110380a04184793aaef46dbdc886b1ae949f7d150ee3c",
+          "7b7aa68d4c9a96e1f3023216f9aeecea1af9c8b123ac9308701cdfee4610e149"
+        ]
+      },
+      {
+        "file": "shadow-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "a70d7f0460179b53548fc87a06652495383aafc6c4645c34aa097292d126a450",
+          "b4e73cf3494a4f3d35c673f1f4c4e093ec20694bd238ff23a3f8cfbf0cd9656e"
+        ]
+      }
+    ]
+  }
 }

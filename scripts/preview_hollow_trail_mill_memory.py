@@ -12,6 +12,7 @@ import pathlib
 import subprocess
 import tempfile
 from PIL import Image, ImageDraw
+from hollow_trail_capture_source import source_identity, source_caption
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--source-root', type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1])
@@ -109,6 +110,7 @@ meta = {'source_commit':commit, 'version':json.loads((r/'Apps/hollow_trail.json'
                         for f in sorted((r/'Apps').glob('hollow_trail*')) if f.is_file()},
         'fixture':'Actual device Confirm grips desk, Right draws it to X1180, neutral, Confirm inspects. Same input for both snapshots. Journal is actual compact fallback without host typography provider.',
         'raster':[960, 540], 'captures':captures}
+meta.update(source_identity(r, meta['source_files'], a.source_ref))
 (out/'capture-metadata.json').write_text(json.dumps(meta, indent=2)+'\n')
 if a.compare_before:
     before = a.compare_before
@@ -117,8 +119,8 @@ if a.compare_before:
     for name, tick in shots:
         canvas = Image.new('RGB', (1920, 1134), '#e9e6df')
         draw = ImageDraw.Draw(canvas)
-        draw.text((12, 8), 'BEFORE '+before_meta['source_commit'][:12]+' | '+name, fill='#252525')
-        draw.text((972, 8), 'AFTER | '+name, fill='#252525')
+        draw.text((12, 8), 'BEFORE '+source_caption(before_meta)+' | '+name, fill='#252525')
+        draw.text((972, 8), 'AFTER '+source_caption(meta)+' | '+name, fill='#252525')
         counts = {}
         for row, suffix in enumerate(['', '-mono']):
             images = [Image.open(folder/(name+suffix+'.png')).convert('RGB') for folder in (before, out)]

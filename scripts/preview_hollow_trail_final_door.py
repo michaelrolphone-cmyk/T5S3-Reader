@@ -7,9 +7,11 @@ import pathlib
 import subprocess
 import tempfile
 from PIL import Image, ImageDraw
+from hollow_trail_capture_source import source_identity, source_caption
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--source-root', type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1])
+parser.add_argument('--source-ref')
 parser.add_argument('--output', type=pathlib.Path, required=True)
 parser.add_argument('--compare-before', type=pathlib.Path)
 args = parser.parse_args()
@@ -99,6 +101,7 @@ metadata = {'version': json.loads((root/'Apps/hollow_trail.json').read_text())['
             'fixture': 'Identical reached tower exit, black choice, read testimony and all evidence. Then production device A/Right inputs, fixed-step holds and submitted compact notebook pages.',
             'baseline': 'The prior source returns to the forest after that tower exit. No Chapter XI scene existed.',
             'notebook': 'Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap.'}
+metadata.update(source_identity(root, metadata['source_files'], args.source_ref))
 (out/'capture-metadata.json').write_text(json.dumps(metadata, indent=2)+'\n')
 if (out/'waiting.png').exists():
     for suffix in ['', '-mono']:
@@ -118,8 +121,8 @@ if args.compare_before:
         left = Image.open(before/('exit'+suffix+'.png')).convert('RGB')
         right = Image.open(out/('waiting'+suffix+'.png')).convert('RGB')
         canvas = Image.new('RGB', (1920, 578), '#e9e6df');draw = ImageDraw.Draw(canvas)
-        draw.text((12,10), 'BEFORE: TOWER EXIT LOOPS TO FOREST', fill='#252525')
-        draw.text((972,10), 'AFTER: CHAPTER XI ENDS IN UNANSWERED WAITING', fill='#252525')
+        draw.text((12,10), 'BEFORE '+source_caption(json.loads((before/'capture-metadata.json').read_text()))+' | TOWER EXIT', fill='#252525')
+        draw.text((972,10), 'AFTER '+source_caption(metadata)+' | UNANSWERED DOOR', fill='#252525')
         canvas.paste(left, (0,30));canvas.paste(right, (960,30))
         assert canvas.crop((0,30,960,570)).tobytes() == left.tobytes()
         assert canvas.crop((960,30,1920,570)).tobytes() == right.tobytes()

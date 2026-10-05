@@ -60,7 +60,9 @@
     ],
     "fixture": "Identical reached tower exit, black choice, read testimony and all evidence. Then production device A/Right inputs, fixed-step holds and submitted compact notebook pages.",
     "baseline": "The prior source returns to the forest after that tower exit. No Chapter XI scene existed.",
-    "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap."
+    "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap.",
+    "source_commit": "eeafe0ffc7a5baf2c56e77d053d171f43a2b026e",
+    "source_snapshot_sha256": "fe884611c53205d5675daad167553c9c4f53226462e1627253653d0234594438"
   },
   "after": {
     "version": "1.1.49",
@@ -235,7 +237,9 @@
     ],
     "fixture": "Identical reached tower exit, black choice, read testimony and all evidence. Then production device A/Right inputs, fixed-step holds and submitted compact notebook pages.",
     "baseline": "The prior source returns to the forest after that tower exit. No Chapter XI scene existed.",
-    "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap."
+    "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap.",
+    "source_commit": "8464abdf6fa513c274ae3b65ef67c90603851474",
+    "source_snapshot_sha256": "19ef51ce66262c1cbef23d3efdcf19491f37516aa9364fc515895070559c1e2e"
   },
   "comparisons": [
     {
@@ -250,5 +254,24 @@
       "right": "after waiting",
       "lossless_crop_check": true
     }
-  ]
+  ],
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "after/ending-before-after-mono.png",
+        "unchanged_below_row": 30,
+        "raster_sha256": [
+          "a76b98dbfcee03442eec0f73411d4bffc81260da2a42c6063db07510441a89b4"
+        ]
+      },
+      {
+        "file": "after/ending-before-after.png",
+        "unchanged_below_row": 30,
+        "raster_sha256": [
+          "5a965225684e72fcb42a1caa6c48939e654cef6a03b34d4f4497ade035ab6efa"
+        ]
+      }
+    ]
+  }
 }

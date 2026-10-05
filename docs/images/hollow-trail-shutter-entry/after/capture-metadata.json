@@ -129,5 +129,7 @@
     "after": "40 actual Right ticks, A, then 16/48/96 Right ticks; approach is before movement",
     "before": "ordinary Right walk to1088/1099/1111 in unmodified baseline",
     "baseline_public_equivalent": "f42a82d71e4df400ed83a346cbd7bba08c812ef4"
-  }
+  },
+  "source_commit": "eeafe0ffc7a5baf2c56e77d053d171f43a2b026e",
+  "source_snapshot_sha256": "fe884611c53205d5675daad167553c9c4f53226462e1627253653d0234594438"
 }

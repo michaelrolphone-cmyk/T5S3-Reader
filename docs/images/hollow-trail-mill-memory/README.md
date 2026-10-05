@@ -49,3 +49,7 @@ python3 scripts/preview_hollow_trail_mill_memory.py --source-root /path/to/after
 
 These are host-rendered frames, not display photographs or a physical device
 qualification. No generated image pixels are used.
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

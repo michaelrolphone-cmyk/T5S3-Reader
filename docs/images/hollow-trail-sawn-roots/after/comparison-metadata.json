@@ -130,7 +130,9 @@
       "start_x": 340,
       "movement": "40 Right steps from x340 approach, A contact, 24 or48 loaded Right ticks, then neutral falling/landed progression.",
       "baseline_public_equivalent": "1e469466ae069dee59896b4f14ce58ce6acec8b6"
-    }
+    },
+    "source_commit": "1e469466ae069dee59896b4f14ce58ce6acec8b6",
+    "source_snapshot_sha256": "d6afc49ba53f7f23c177f57364270016cec4885d626e4cbcb9066219ddc916d6"
   },
   "after": {
     "version": "1.1.49",
@@ -263,7 +265,9 @@
       "start_x": 340,
       "movement": "40 Right steps from x340 approach, A contact, Right until actual forest_push24 or falling transition, then neutral physics until phase12/32; state assertions prevent mislabeled captures.",
       "baseline_public_equivalent": "1e469466ae069dee59896b4f14ce58ce6acec8b6"
-    }
+    },
+    "source_commit": "bb6365380cba07bf055893c1289a2047797ed09a",
+    "source_snapshot_sha256": "4e9a230b58541f9c88480cb661f430f553534a3d2ed69029b0721f7a788860b1"
   },
   "comparisons": [
     {
@@ -295,5 +299,42 @@
       }
     }
   ],
-  "canvas_check": "Original raster regions verified byte-for-byte."
+  "canvas_check": "Original raster regions verified byte-for-byte.",
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "after/falling-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "657978e8ee0299a72ddb2ddc326a392548e3a39d885150443ec78282944a8e64",
+          "24e53cbf966ede8aaae555883a32ede7c08b0f05285308129f07b4ffe3ed6c3f"
+        ]
+      },
+      {
+        "file": "after/landed-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "8c15ec968693021ce67d4cbd65697ef3c566d6b57c68e138a2ef9b27555591a3",
+          "5a9ca7da91866c2005bf9b104f95cc2412d3cef88c4df3b099bd889120ef46a8"
+        ]
+      },
+      {
+        "file": "after/loaded-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "be77fda416733b0b2517e521ecceffa42ed303d3141f8c78d367d40c3a8038e6",
+          "220e97eb1f33077edd76871ff89ef9e2b18dba09f79c532ff9be9be47a439b08"
+        ]
+      },
+      {
+        "file": "after/standing-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "b1991059f4d26645f33859341464830985d49ef00e6f9e4deb706c44b90bec79",
+          "df23e8b3386ed4d2256a5f311c11734da1c1aa53381e4625312fcc23f97358f5"
+        ]
+      }
+    ]
+  }
 }

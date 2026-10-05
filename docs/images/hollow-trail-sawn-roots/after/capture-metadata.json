@@ -129,5 +129,7 @@
     "start_x": 340,
     "movement": "40 Right steps from x340 approach, A contact, Right until actual forest_push24 or falling transition, then neutral physics until phase12/32; state assertions prevent mislabeled captures.",
     "baseline_public_equivalent": "1e469466ae069dee59896b4f14ce58ce6acec8b6"
-  }
+  },
+  "source_commit": "bb6365380cba07bf055893c1289a2047797ed09a",
+  "source_snapshot_sha256": "4e9a230b58541f9c88480cb661f430f553534a3d2ed69029b0721f7a788860b1"
 }

@@ -115,7 +115,9 @@
         32768
       ]
     },
-    "baseline_view": "The ordinary reached roof raster before any westward shot existed; after uses the earned production timeline."
+    "baseline_view": "The ordinary reached roof raster before any westward shot existed; after uses the earned production timeline.",
+    "source_commit": "213113ffaf91db1a55f8c7cebac3b64f7126dae7",
+    "source_snapshot_sha256": "ea8fbea5da9ddccb331b81856d84fc4c029834e2b150817808b56179978050aa"
   },
   "after": {
     "version": "1.1.49",
@@ -235,7 +237,9 @@
         32768
       ]
     },
-    "baseline_view": "The ordinary reached roof raster before any westward shot existed; after uses the earned production timeline."
+    "baseline_view": "The ordinary reached roof raster before any westward shot existed; after uses the earned production timeline.",
+    "source_commit": "f42a82d71e4df400ed83a346cbd7bba08c812ef4",
+    "source_snapshot_sha256": "d174fd2244381f6bf03b6dc5abf6cb8c0e62a75a461fef5e4aee1b4524ad04ad"
   },
   "handoff_controls": "identical reached-roof grayscale at departure and packed mono at return",
   "comparisons": [
@@ -254,5 +258,26 @@
       }
     }
   ],
-  "canvas_check": "Each image region was compared byte-for-byte to its original raster."
+  "canvas_check": "Each image region was compared byte-for-byte to its original raster.",
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "country-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "e84dfc4bc3daf0676a45818082074064407f7e0480bd85074c38ca93cbde9684",
+          "68f707a2f520bdec2c9abe82773d1fa0de08159272a92c6e8f628219dd7ebbf6"
+        ]
+      },
+      {
+        "file": "yards-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "1ca1c68ce423199a84b4ea1cbf74709701832307ccc59f2ac2ff0e02b62e3451",
+          "6bc8acedd232d5bfeefbd334a3f572074bc33149650dba55f0a2440c5b7ffe0e"
+        ]
+      }
+    ]
+  }
 }

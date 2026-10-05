@@ -158,7 +158,8 @@
           "mono": "f89bc14006e0c7582ff1a7d50dead890cc67c3abeba5c00da5e34ee15cde8b88"
         }
       }
-    ]
+    ],
+    "source_snapshot_sha256": "ea8fbea5da9ddccb331b81856d84fc4c029834e2b150817808b56179978050aa"
   },
   "after": {
     "source_commit": "f42a82d71e4df400ed83a346cbd7bba08c812ef4",
@@ -321,7 +322,8 @@
           "mono": "97ef5f23631202088176706b2e7ecb9e0753f9428965b3f91da7e469fcb6b1fe"
         }
       }
-    ]
+    ],
+    "source_snapshot_sha256": "d174fd2244381f6bf03b6dc5abf6cb8c0e62a75a461fef5e4aee1b4524ad04ad"
   },
   "pairs": [
     {
@@ -408,5 +410,106 @@
         "mono": 38619
       }
     }
-  ]
+  ],
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "after/covered-names-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "05a9ccb77e649c6f96b7c1fac0adf4b88523918e4b235f484151394369b839dc",
+          "1dba9c247e94756b5e4a645b6f61ce7c42e96e0fed7f66768b186b2c01719301"
+        ]
+      },
+      {
+        "file": "after/desk-writing-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "0c9a74ffe1784c11bc4b76f2d8330a68fed116417dc0c1a76110c4a3811c4e09",
+          "a2839967ccb8562d1d72d1f6b79b6761567da0e6177eb2cd3f51da17c5c27fc4"
+        ]
+      },
+      {
+        "file": "after/doorway-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "6c041c64c49d6fd4d8bd0495de924f5afe7a365d63d2cda0d97f5df644dc2e12",
+          "dbc616c84906e1bc6e154dfdb681e257536590e9fd3f553d5fd989a408c57b26"
+        ]
+      },
+      {
+        "file": "after/interior-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "d432bd9393718c776dbce0020413fe2590d20f8d9005d1f5243aa9eee6b05754",
+          "6133fbc4e5060b191d005d4089de0edabd40249a41f90951ad789c3dea329468"
+        ]
+      },
+      {
+        "file": "after/keeper-line-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "5ac022142f811e014ac3bc934cc452063d0abe0a568da903134628962ce478a1",
+          "55dec206798579a67e86f10a8094c0a55cebe9ce151dc0a099bb49310f8c469d"
+        ]
+      },
+      {
+        "file": "after/packed-loaf-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "bf1edeba5a6d5d7a51b32a90551ff28f45804ba9622f2ffb53747a90b8daf166",
+          "80ef1ec53d332da880c0e008df8f75eada18b022f7bcd400e306381736f9370d"
+        ]
+      },
+      {
+        "file": "after/read-register-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "d1e7a831d486fcc28a04407b9a6a1b0e7ea4d720c59952841ec0f17ec2dbf067",
+          "a44d578383e2cb8ae2f2f3f6a736a78731cd3f7b5be4ba317b9abf0c2a588679"
+        ]
+      },
+      {
+        "file": "after/register-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "75b3b58b26b994025f037a8e50d29b8f4f94ebbc74276490acd412616186c12b",
+          "19a2981a5cce1bfdbf6d5267e6c92884fd85bb6f3f765e7503185ffc7d78d76f"
+        ]
+      },
+      {
+        "file": "after/second-loaf-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "3d020595e12d2d9c4cdf63da658cda84db32919bd92767fab8fd46d22430c490",
+          "4402838287f2f7e91b19203ea939c49a4bc5bcf8b84fe78b6c3d60f5b38ab446"
+        ]
+      },
+      {
+        "file": "after/trembling-page-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "46522612975c1be8d10ade9ba9a28f9e7d2294de84f3e4489b3ec59966ce2b32",
+          "8c9718e836893b6d3fadbaffb9a1fc90223d8c06e7cd48bdfbdaacf1e08120d7"
+        ]
+      },
+      {
+        "file": "after/uncovered-names-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "840ffaa3b8976b6a2ee31d5e04fa0fedc5e1d682245205d6504c6a5da1e36fce",
+          "2b5f2c6e9e8f7b3db17900459a2b22c48c0dd4420c403807cf78866477d82687"
+        ]
+      },
+      {
+        "file": "after/wrist-hair-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "18e0a1bbebc0f37d0b425fc4f9602a7db63a2ba096ec4f26ab971ce20fed37b5",
+          "76139925cf3d82d16310a0ac7e35af77f6e687640996f438dde22f0e05fb0ec4"
+        ]
+      }
+    ]
+  }
 }

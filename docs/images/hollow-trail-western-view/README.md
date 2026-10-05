@@ -22,3 +22,7 @@ python scripts/preview_hollow_trail_western.py --source-root /path/to/f42a82d7 -
 The looked-at country has a curved pumpjack horsehead, crank/counterweight and
 polish rod, with the stopped mechanisms kept small against distant bluffs. The
 near warehouse and cornice edges retain their higher contrast in both rasters.
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

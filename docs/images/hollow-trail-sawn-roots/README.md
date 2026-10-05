@@ -30,3 +30,7 @@ The script verifies comparison regions byte-for-byte and retains source/raster
 hashes. Individual original PNGs are reproducible. These are game rasters, not
 hardware photos; no panel, performance or hardware-qualification claim is made.
 This remains the cumulative unreleased Hollow Trail 1.1.48 → 1.1.49 update.
+
+Comparison captions identify both the app version and the verified source commit.
+The shared 1.1.49 version is one unreleased update containing multiple source
+checkpoints, not a claim that both pictures show identical code.

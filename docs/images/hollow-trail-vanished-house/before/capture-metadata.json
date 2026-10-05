@@ -120,5 +120,7 @@
   "fixture": {
     "movement": "Input-only city route from spawn, stopping at x540/725/860 with the reached camera/actor/weather untouched",
     "baseline_public_equivalent": "bb6365380cba07bf055893c1289a2047797ed09a"
-  }
+  },
+  "source_commit": "bb6365380cba07bf055893c1289a2047797ed09a",
+  "source_snapshot_sha256": "4e9a230b58541f9c88480cb661f430f553534a3d2ed69029b0721f7a788860b1"
 }

@@ -130,7 +130,9 @@
       "after": "40 actual Right ticks, A, then 16/48/96 Right ticks; approach is before movement",
       "before": "ordinary Right walk to1088/1099/1111 in unmodified baseline",
       "baseline_public_equivalent": "f42a82d71e4df400ed83a346cbd7bba08c812ef4"
-    }
+    },
+    "source_commit": "f42a82d71e4df400ed83a346cbd7bba08c812ef4",
+    "source_snapshot_sha256": "d174fd2244381f6bf03b6dc5abf6cb8c0e62a75a461fef5e4aee1b4524ad04ad"
   },
   "after": {
     "version": "1.1.49",
@@ -263,7 +265,9 @@
       "after": "40 actual Right ticks, A, then 16/48/96 Right ticks; approach is before movement",
       "before": "ordinary Right walk to1088/1099/1111 in unmodified baseline",
       "baseline_public_equivalent": "f42a82d71e4df400ed83a346cbd7bba08c812ef4"
-    }
+    },
+    "source_commit": "eeafe0ffc7a5baf2c56e77d053d171f43a2b026e",
+    "source_snapshot_sha256": "fe884611c53205d5675daad167553c9c4f53226462e1627253653d0234594438"
   },
   "comparisons": [
     {
@@ -295,5 +299,42 @@
       }
     }
   ],
-  "canvas_check": "Original raster regions verified byte-for-byte."
+  "canvas_check": "Original raster regions verified byte-for-byte.",
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "after/approach-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "536793e59cde8e2f9d08402f2cd5aeec307402ea55a7b4817ec3f940b8ca957c",
+          "4a280053c93528a52a89d3ebc1b9371defe69d3d47a00b3fac44c66e58119a8b"
+        ]
+      },
+      {
+        "file": "after/contact-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "b619fc994089123db05f30bb92e70d37097b182f89ac65a2ee24861afe34d86b",
+          "600e7e9c317927d3a06bc950124453918b584f6cf350c09369662e6cebb6349c"
+        ]
+      },
+      {
+        "file": "after/inside-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "ae7902e58969feaa235917cd4ddd23bd8a0b7ed9a40c180633ea7ea799fbef4e",
+          "dc39376b0eef95df61d9addf0ca4569ab006c33591a711eb4f32e942a288f030"
+        ]
+      },
+      {
+        "file": "after/sill-before-after.png",
+        "unchanged_below_row": 26,
+        "raster_sha256": [
+          "0fef4ea0bac78416cf8a38e009993b1df078f62275f4fb0cd62a7e4455ac9e2a",
+          "e13944951fd8619872d93a2c73000d44d53ad53bcb36684037acb62fe634b34d"
+        ]
+      }
+    ]
+  }
 }
