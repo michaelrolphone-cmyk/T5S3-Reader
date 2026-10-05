@@ -17,3 +17,5 @@ echo 'Font Awesome tests passed with shipped cpfont files'
 
 python3 "$repo_dir/test/font_metrics/advance_cache_test.py"
 SD_FONT_SANITIZE=1 python3 "$repo_dir/test/font_metrics/advance_cache_test.py"
+python3 "$repo_dir/test/font_metrics/codepoint_dedup_test.py"
+CODEPOINT_SANITIZE=1 python3 "$repo_dir/test/font_metrics/codepoint_dedup_test.py"
