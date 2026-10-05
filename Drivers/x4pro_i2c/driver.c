@@ -63,6 +63,7 @@ static bool enter_transaction(uint32_t timeout_ms, uint64_t *began, uint64_t *de
     const uint64_t limit = previous + timeout_ms;
     *began = previous;
     *deadline = limit;
+    uint32_t waits = 0;
 
     for (;;) {
         if (__atomic_load_n(&mutex_poisoned, __ATOMIC_ACQUIRE) ||
@@ -80,8 +81,11 @@ static bool enter_transaction(uint32_t timeout_ms, uint64_t *began, uint64_t *de
         const uint64_t now = clock_api->monotonic_ms(clock_api->context);
         if (now == UINT64_MAX || now < previous || now >= limit) return false;
         previous = now;
+        if (++waits > timeout_ms) return false;
         /* A real scheduler yield, never a spin loop. The transfer's original
-         * deadline is retained, so waiting cannot create a fresh budget. */
+         * deadline is retained, so waiting cannot create a fresh budget. The
+         * count bound also prevents a broken nonadvancing clock/sleep pair from
+         * turning admission into an infinite retry loop. */
         clock_api->sleep_ms(clock_api->context, 1);
     }
 }
