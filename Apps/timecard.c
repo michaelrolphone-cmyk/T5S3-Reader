@@ -458,7 +458,7 @@ static bool parse_time(const char *text, int16_t *out) {
         *out = -1;
         return true;
     }
-    while (*p >= '0' && *p <= '9') {
+    while (*p >= '0' && *p <= '9' && digits < 2) {
         hour = hour * 10 + (*p - '0');
         ++p;
         ++digits;
@@ -474,11 +474,17 @@ static bool parse_time(const char *text, int16_t *out) {
         }
         if (!digits) return false;
     }
-    while (*p) {
-        if (*p == 'a' || *p == 'A') am = true;
-        if (*p == 'p' || *p == 'P') pm = true;
+    /* Consume one complete optional AM/PM suffix, never scan through junk. */
+    while (*p == ' ' || *p == '\t') ++p;
+    if (*p == 'a' || *p == 'A' || *p == 'p' || *p == 'P') {
+        am = *p == 'a' || *p == 'A';
+        pm = !am;
         ++p;
+        if (*p != 'm' && *p != 'M') return false;
+        ++p;
+        while (*p == ' ' || *p == '\t') ++p;
     }
+    if (*p) return false;
     if (minute > 59) return false;
     if (am || pm) {
         if (hour < 1 || hour > 12) return false;
