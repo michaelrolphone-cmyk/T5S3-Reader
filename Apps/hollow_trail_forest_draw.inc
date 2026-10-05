@@ -207,11 +207,24 @@ static void ht_foreground_contour(int x,int y,const ht_foreground_section *v,int
         if((n&7)==0)ht_checkpoint();
     }
 }
+/* The near sill and jamb occlude only their own real timber after the actor.
+ * Feet sit on its upper edge; the hand can wrap around the narrow side. */
+static void ht_forest_shutter_foreground(const ht_game *g) {
+    if(g->level)return;
+    int left=HT_MILL_SHUTTER_LEFT-g->camera/256,right=HT_MILL_SHUTTER_RIGHT-g->camera/256;
+    if(right< -ht_view_margin() || left>HT_W+ht_view_margin())return;
+    int top=HT_MILL_SHUTTER_TOP-g->camera_y/256,sill=HT_MILL_SHUTTER_SILL-g->camera_y/256;
+    ht_rect(ht_scene,left-1,sill+1,right-left+3,3,227);
+    ht_limb(ht_scene,right+1,top,right+1,sill,1,1,240);
+    ht_limb(ht_scene,left-1,sill,left+6,sill,0,0,123);
+}
+
 /* The same two close trunks belong to the observer's bank. Their 130-vertex
  * contours, bark furrows and knots use the living-tree anatomy; the existing
  * broken branch and root collar retain their separate asymmetric outlines. */
 static void ht_forest_foreground(const ht_game *g) {
     if(g->level!=0)return;
+    ht_forest_shutter_foreground(g);
     static const int anchors[2]={1100,2800};
     static const ht_foreground_section branch[]={
         {-22,-236,-20,-277},{-42,-263,-36,-287},
@@ -300,15 +313,22 @@ static void ht_forest_mill(const ht_game *g) {
     ht_disk(ht_scene,wx,wy,5,244);
     for(int i=0;i<7;++i)ht_limb(ht_scene,wx-25+i*8,base-7,wx-22+i*8,base-5,2,1,151);
     for(int i=0;i<4;++i)ht_limb(ht_scene,wx-23+i*12,base-1,wx-22+i*12,base+7,0,0,39);
-    /* Broken shutter / missing wall make a quiet legible interior. */
+    /* The downhill broken shutter is the physical entry. The separate
+     * broken window to its right continues to cast the desk's light grid. */
+    int sl=HT_MILL_SHUTTER_LEFT-cx,sr=HT_MILL_SHUTTER_RIGHT-cx;
+    int sill=HT_MILL_SHUTTER_SILL-cy,lintel=HT_MILL_SHUTTER_TOP-cy;
+    ht_rect(ht_scene,sl-2,lintel-3,sr-sl+5,base-lintel+3,224);
+    ht_rect(ht_scene,sl,lintel,sr-sl,sill-lintel,87);
+    ht_limb(ht_scene,sl-1,lintel-2,sr+1,lintel-2,2,2,242);
+    ht_triangle(ht_scene,sl-2,lintel+3,sl-14,lintel+10,sl-13,sill+1,203);
+    ht_triangle(ht_scene,sl-2,lintel+3,sl-13,sill+1,sl-3,sill-5,203);
+    for(int i=0;i<3;++i)ht_limb(ht_scene,sl-11,lintel+12+i*8,sl-3,lintel+7+i*8,0,0,157);
+    ht_triangle(ht_scene,sl-13,sill+1,sl-8,sill-4,sl-9,sill+3,169);
     ht_rect(ht_scene,x+47,base-72,66,64,225);
     ht_triangle(ht_scene,x+52,base-72,x+91,base-72,x+111,base-8,103);
     ht_triangle(ht_scene,x+52,base-72,x+111,base-8,x+66,base-8,103);
     ht_limb(ht_scene,x+66,base-72,x+80,base-8,1,1,161);
     ht_limb(ht_scene,x+53,base-51,x+97,base-51,1,1,158);
-    ht_triangle(ht_scene,x+42,base-65,x+29,base-56,x+29,base-17,202);
-    ht_triangle(ht_scene,x+42,base-65,x+29,base-17,x+42,base-29,202);
-    for(int i=0;i<3;++i)ht_limb(ht_scene,x+32,base-50+i*10,x+42,base-56+i*10,0,0,164);
     /* Novella I: the door under the eaves is barred from within; the broken
      * shutter remains the open entry beside it. The cutaway shows the timber
      * across the inner face, seated in two brackets, behind the stone jambs. */

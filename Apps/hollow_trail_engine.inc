@@ -82,7 +82,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -100,6 +100,8 @@ typedef struct {
     uint8_t tree,branch_drop;
     int8_t tree_side;
     int16_t mill_scrape_left,mill_scrape_right; /* Grounded desk-leg trace, retained on checkpoint retry. */
+    int mill_entry_left,mill_entry_right; /* Q8 grounded endpoints, never new terrain. */
+    uint8_t mill_entry_phase;
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -533,6 +535,7 @@ static void ht_spawn(bool restart) {
     memcpy(ht.story_seen,seen,sizeof(seen));
     if(!ht.story_seen[level]) ht.story_seen[level]=1;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
+    if(level==0 && cp==3)ht.x=(HT_MILL_SHUTTER_RIGHT+5)*256;
     ht.y=ht_land_height(level,cp,ht.x/256)*256; ht.airborne_origin=ht.y; ht.grounded=true; ht.facing=1;
     ht.pace=(uint16_t)ht_pace_target(&ht);ht.intimacy=(uint16_t)ht_intimacy_target(&ht);
     ht.camera=ht_clamp(ht.x/256-200,-120,HT_GOAL-260)*256;
@@ -1638,7 +1641,7 @@ static void ht_weather(const ht_game *g) {
         x=((x%HT_W)+HT_W)%HT_W;
         int y=(int)((seed/HT_W+(g->ticks/3)%HT_H)%HT_H)+flutter/5;
         if(y>=ht_weather_floor(g,x)-3) continue;
-        if(g->level==0 && x+g->camera/256>=1110 && x+g->camera/256<1212 &&
+        if(g->level==0 && x+g->camera/256>=HT_MILL_SHUTTER_LEFT && x+g->camera/256<1212 &&
            y+g->camera_y/256>=133)continue; /* Leaf drift stays outside the mill interior. */
         int lean=wind<0?-1:1;
         if(c->leaves) ht_limb(ht_scene,x,y,x+lean*3,y+(flutter<8?1:-1),1,0,190);

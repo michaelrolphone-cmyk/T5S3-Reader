@@ -61,7 +61,7 @@ master after that merge; the closed PR is not modified.
 
 The sister-at-desk/departure memory is now connected in the
 [same unreleased 1.1.49 continuation](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md).
-Explicit broken-shutter entry, other early forest details, the western city vista and street glimpse, later chapter scenes
+[Physical broken-shutter entry](HOLLOW_TRAIL_SHUTTER_ENTRY_1_1_49.md) is now connected. Other early forest details, the street glimpse, later chapter scenes
 and the dedicated final door remain on the ongoing map. No merge, release,
 installation, device flash, FPS or ghosting qualification is performed here.
 

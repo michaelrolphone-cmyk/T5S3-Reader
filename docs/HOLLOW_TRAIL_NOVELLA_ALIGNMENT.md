@@ -79,7 +79,7 @@ chapter mechanism and published city work remain intact. The same unreleased
 increment adds [the earned register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md):
 her unequal shoulders and wrist/hair gesture, the departure doorway and second
 loaf, then the trembling page, covered/uncovered six names and keeper's last
-line. Explicit shutter entry remains unfinished.
+line. [Player-controlled broken-shutter entry](HOLLOW_TRAIL_SHUTTER_ENTRY_1_1_49.md) now connects the grounded approach to that same desk.
 
 ## Scene-by-scene remaining map
 
@@ -95,7 +95,7 @@ traversal wholesale with autoplay.
 | 3 Departure/orchard | Implemented thread/packing/night beats; continuous route retained | White chimney's final bank occlusion, alder ditch/bronze leaves, animate chair tuck |
 | 4 Marked forest | Partial: rooted terrain, monumental trunks, cloth evidence | Join older bark cut/date/socket to the cloth; local inspection framing |
 | 5 Fallen-tree hollow | Existing resisted push and gravity fall retained | Saw/root detail and bounded settling debris; tune effort only with route evidence |
-| 6 Mill hollow | Exterior/arrival, [player-moved desk](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md) and [earned sister/departure/register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md) | Explicit broken-shutter entry; refine close silhouettes against owner feedback |
+| 6 Mill hollow | Exterior/arrival, [physical shutter entry](HOLLOW_TRAIL_SHUTTER_ENTRY_1_1_49.md), [player-moved desk](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md) and [earned sister/departure/register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md) | Refine close silhouettes against owner feedback |
 | 7 Ravine/clearing/gate | Existing branch/rope/bell/gate; new layered skyline and earned city tableau | Extend clearing terrain/large vista and refine gate spatial continuity |
 | 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |

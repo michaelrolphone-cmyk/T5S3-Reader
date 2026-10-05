@@ -291,7 +291,10 @@ static void ht_draw_traversal(const ht_game *g) {
 }
 static void ht_traversal_prompt(const ht_game *g) {
     if(g->level==0) {
-        if(ht_traversal_near(g)==HT_CRATE && !ht_mill_register_lit(g)) {
+        if(ht_traversal_near(g)==HT_SHUTTER) {
+            ht_rect(ht_scene,66,33,348,19,255);
+            ht_text_color(74,38,g->traversal.mode==HT_SHUTTER?"L/R THROUGH SHUTTER - REVERSE TO GO BACK":"FACE SHUTTER - A TAKE HOLD - L/R CROSS",1,85);
+        } else if(ht_traversal_near(g)==HT_CRATE && !ht_mill_register_lit(g)) {
             ht_rect(ht_scene,66,33,348,19,255);
             ht_text_color(74,38,g->traversal.mode==HT_CRATE?"L/R DRAW THE DESK TOWARD THE WINDOW LIGHT":"A GRIP DESK - DRAW IT TOWARD THE LIGHT",1,85);
         }

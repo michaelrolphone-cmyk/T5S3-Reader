@@ -1,0 +1,299 @@
+{
+  "before": {
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "6c61a79dad9df7dfb184a69684be88c269714e9d7f7e462c2264a86e57c331aa",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "012765a3960b8c086f365d1ffd71adb64b1fd96adc5402baf46e4a120ba4dca6",
+      "Apps/hollow_trail_city_draw.inc": "c29eef309b67c2cda2dfdfb61a94f3997aa26325ea315f4c51734274756f5747",
+      "Apps/hollow_trail_cutscene.inc": "feb3a7ad011d5c98b907bacf0e47b2c3171f79b7d1f3829d05a8f2765e16386e",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "08295518be791aeb13ac4c44a897eb8a7d07296f011430c30952324c6d07583a",
+      "Apps/hollow_trail_evidence.inc": "a18ea2f5dfcf1799f3f77e44c8a5f0fd66ff262d59568881e9239ba2853b4fcc",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "df7754d91c4ccaada52dd2a52b0836848912a93ea1440eb89816e1579b1ebcad",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "ff680e3e183b1260fec9c7c565c562dc0a76b672855e1bb50360ca9abc6d79f3",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "e15276aa9015f2c74720294489b9bf221cf7e465d24cc7178dc4306c22db8b01",
+      "Apps/hollow_trail_maps.inc": "b82177601c2ec29429d6afc47e3da32bd4662c69a72a3b2b6293e5f135963f36",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "116cb993f9f5bc0665ef65319288251f1ebb92f568588b6f7beda693c1bb0655",
+      "Apps/hollow_trail_traversal.inc": "f6f0f69abf78daef58e78b9441eb3303123f354ef983464ad9e91abca06bc6d8",
+      "Apps/hollow_trail_traversal_draw.inc": "8562affa5392871ddfe97c195d637ff55c9a1a68c023d7a4571897803b86d72d",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "captures": [
+      {
+        "view": "approach",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "744750e64c724c1141bc94a1910f1adae7f01b859aeb444e68dc6c15e57e0b21",
+          "mono": "9eb3b3d8036ac1b05394c29ce4f2ea528777f321135fa8d7f9853b37ff476800"
+        },
+        "actor": {
+          "x_q8": 274944,
+          "feet_q8": 48896,
+          "ground": 191,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "contact",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "96e3913a3f5c84835b76996403439ee478f8bd50920030fba49fc293a63bb538",
+          "mono": "d10c17971c9dc417f53838cb9ce38106f92497e5213a058b89d4cbe6e3f1bdb6"
+        },
+        "actor": {
+          "x_q8": 278590,
+          "feet_q8": 49152,
+          "ground": 192,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "sill",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "d2964ff6f85389c36ced24686405b90c075505868263b23c93a94f45e1c5f194",
+          "mono": "83a26626a5cf4bd5e9e9b870562251beeb7f1c987f3fc5ccf1f27c42a19814d6"
+        },
+        "actor": {
+          "x_q8": 281369,
+          "feet_q8": 49408,
+          "ground": 193,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "inside",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "ffa47738c6a5d65c18745c277e7a14c1fe3344c13d9278cb1b6f3edb97f99d4d",
+          "mono": "c92e1b55fadef3a200703832de6f689db71430e803edf2d81443c4fe1ac2c06f"
+        },
+        "actor": {
+          "x_q8": 284416,
+          "feet_q8": 49664,
+          "ground": 194,
+          "mode": 0,
+          "grounded": true
+        }
+      }
+    ],
+    "fixture": {
+      "camera": [
+        938,
+        12
+      ],
+      "intimacy": 384,
+      "ticks": 8,
+      "start_x": 1074,
+      "after": "40 actual Right ticks, A, then 16/48/96 Right ticks; approach is before movement",
+      "before": "ordinary Right walk to1088/1099/1111 in unmodified baseline",
+      "baseline_public_equivalent": "f42a82d71e4df400ed83a346cbd7bba08c812ef4"
+    }
+  },
+  "after": {
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "6c61a79dad9df7dfb184a69684be88c269714e9d7f7e462c2264a86e57c331aa",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "cfd9ee1f64c62804a8eedb2558ddfa18e580e844f37b4e966d9c5004819140e7",
+      "Apps/hollow_trail_city_draw.inc": "c29eef309b67c2cda2dfdfb61a94f3997aa26325ea315f4c51734274756f5747",
+      "Apps/hollow_trail_cutscene.inc": "feb3a7ad011d5c98b907bacf0e47b2c3171f79b7d1f3829d05a8f2765e16386e",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "ea60c6d458749da7400b77d5a1d857585d523447b9f36a54ba54aff0faa36c67",
+      "Apps/hollow_trail_evidence.inc": "a18ea2f5dfcf1799f3f77e44c8a5f0fd66ff262d59568881e9239ba2853b4fcc",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "23fc3ef282c8f23c994b542a4492c991d72a3f0510c19dd966d2acd3905c9779",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "ff680e3e183b1260fec9c7c565c562dc0a76b672855e1bb50360ca9abc6d79f3",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "e15276aa9015f2c74720294489b9bf221cf7e465d24cc7178dc4306c22db8b01",
+      "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+      "Apps/hollow_trail_traversal.inc": "dd162a9bc65dc615a5200bccf785c8dff7a00dc85b4bf43ccaf35bd5124cbe61",
+      "Apps/hollow_trail_traversal_draw.inc": "c5e597995dcd8949eb71845b4b07328ce346871b212a9363cd94de18fd8e6b47",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "captures": [
+      {
+        "view": "approach",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "b5adbb441dc289e98ba5537b879f700ee99cdcdd080ef9c4d560edf128dd08c3",
+          "mono": "e8517fc13ad1abd89f2176a60a84cbf50fb5d6a600347460da3c27bbb79bf8de"
+        },
+        "actor": {
+          "x_q8": 274944,
+          "feet_q8": 48896,
+          "ground": 191,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "contact",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "3da1fd28e4877b6d995ae3b6fe030cf462b44620f462a8bfca4485fa43dcd66a",
+          "mono": "250030d7ea96433c8ca2dd8213ce8819791d2b62bd5b8ebb9b087f8f29434528"
+        },
+        "actor": {
+          "x_q8": 278528,
+          "feet_q8": 49152,
+          "ground": 192,
+          "mode": 10,
+          "grounded": true
+        }
+      },
+      {
+        "view": "sill",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "822eb8539fe86e43080b5e562a55d84a9349ebc5a03670d73572ced24590573b",
+          "mono": "8b1caec3912f9b6dbe6cfbac2def6c26394d47277699fd52c782fce277def981"
+        },
+        "actor": {
+          "x_q8": 281344,
+          "feet_q8": 46848,
+          "ground": 193,
+          "mode": 10,
+          "grounded": false
+        }
+      },
+      {
+        "view": "inside",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "4ceacd49d99f651690a620bc20ba07d8aba0492db9f82b695803a53ea25c2529",
+          "mono": "530e755b099e5958fdf9e6afce8a6d5bb511527e5f1ee5fd4cb8d362e211fd9c"
+        },
+        "actor": {
+          "x_q8": 284416,
+          "feet_q8": 49664,
+          "ground": 194,
+          "mode": 0,
+          "grounded": true
+        }
+      }
+    ],
+    "fixture": {
+      "camera": [
+        938,
+        12
+      ],
+      "intimacy": 384,
+      "ticks": 8,
+      "start_x": 1074,
+      "after": "40 actual Right ticks, A, then 16/48/96 Right ticks; approach is before movement",
+      "before": "ordinary Right walk to1088/1099/1111 in unmodified baseline",
+      "baseline_public_equivalent": "f42a82d71e4df400ed83a346cbd7bba08c812ef4"
+    }
+  },
+  "comparisons": [
+    {
+      "view": "approach",
+      "changed_pixels": {
+        "gray": 18870,
+        "mono": 4680
+      }
+    },
+    {
+      "view": "contact",
+      "changed_pixels": {
+        "gray": 45696,
+        "mono": 13707
+      }
+    },
+    {
+      "view": "sill",
+      "changed_pixels": {
+        "gray": 231146,
+        "mono": 44596
+      }
+    },
+    {
+      "view": "inside",
+      "changed_pixels": {
+        "gray": 18334,
+        "mono": 4720
+      }
+    }
+  ],
+  "canvas_check": "Original raster regions verified byte-for-byte."
+}

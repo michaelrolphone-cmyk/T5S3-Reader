@@ -17,6 +17,11 @@ static int ht_crate_height(unsigned level) {return level==0?HT_MILL_DESK_HEIGHT:
 #define HT_MILL_DESK_START 1128
 #define HT_MILL_DESK_LIGHT_LEFT 1174
 #define HT_MILL_DESK_LIGHT_RIGHT 1190
+#define HT_MILL_SHUTTER_LEFT 1093
+#define HT_MILL_SHUTTER_RIGHT 1106
+#define HT_MILL_SHUTTER_SILL 183
+#define HT_MILL_SHUTTER_TOP 147
+#define HT_MILL_SHUTTER_STEPS 96
 #define HT_ROPE_NODES 7
 #define HT_BOAT_HALF 30
 #define HT_BRIDGE_STEP 7

@@ -11,6 +11,12 @@ static void walk_route_tick(void) {
     int x=ht.x/256,y=ht.y/256,dir=0,vertical=0;
     bool jump=false,mass_work=false;
     const ht_mechanics *m=ht_mech(&ht);ht_traversal *t=&ht.traversal;
+    if(ht.level==0 && (t->mode==HT_SHUTTER || (x>=1084 && x<1111))) {
+        if(!t->mode && ht_mill_shutter_near(&ht)>0){assert(ht_traversal_interact());walk_mechanics|=64;}
+        ht_step_controls(1,0,false,false);
+        if(!t->mode && ht.grounded && ht.x>=1111*256 && walk_phase==2){walk_phase=3;walk_task=0;}
+        return;
+    }
     /* The mill register has to be physically brought into the window beam.
      * This witness uses the same A grip and horizontal input as a player. */
     if(ht.level==0 && walk_phase==3 && !ht_evidence_found(&ht,1) && !ht_mill_register_lit(&ht)) {

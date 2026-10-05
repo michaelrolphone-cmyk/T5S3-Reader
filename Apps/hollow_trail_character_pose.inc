@@ -90,6 +90,26 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
             p.hand[0]=ht_joint_at(x+f*7,feet-21-rise/2+fall);
             p.hand[1]=ht_joint_at(x-f*6,feet-18-rise/2+fall);
         }
+    } else if(t->mode==HT_SHUTTER) {
+        int q=t->mill_entry_phase,cx=g->camera/256,cy=g->camera_y/256;
+        int contact=ht_min(ht_clamp(q*256/16,0,256),ht_clamp((96-q)*256/8,0,256));
+        /* Knees lift onto the drawn sill. The hands change jambs only while
+         * crossing, then release onto the original interior floor. */
+        p.hip.y+=3*contact/256;p.shoulder.y+=3*contact/256;
+        for(int i=0;i<2;++i) {
+            int hx=ht_shutter_lerp(HT_MILL_SHUTTER_LEFT+1,HT_MILL_SHUTTER_RIGHT,q,32+i*8,52+i*8)-cx;
+            int hy=HT_MILL_SHUTTER_SILL-11+i*2-cy;
+            p.hand[i].x+=(hx-p.hand[i].x)*contact/256;
+            p.hand[i].y+=(hy-p.hand[i].y)*contact/256;
+            int begin=t->mill_entry_left/256+(i?2:-2),end=t->mill_entry_right/256+(i?2:-2);
+            int sill=HT_MILL_SHUTTER_LEFT+3+i*5;
+            int wx=q<48?ht_shutter_lerp(begin,sill,q,i?26:32,i?38:40):
+                ht_shutter_lerp(sill,end,q,i?72:64,i?82:74);
+            int start=ht_land_height(0,3,begin),finish=ht_land_height(0,3,end);
+            int wy=q<48?ht_shutter_lerp(start,HT_MILL_SHUTTER_SILL,q,i?16:24,i?26:32):
+                ht_shutter_lerp(HT_MILL_SHUTTER_SILL,finish,q,i?82:74,i?88:82);
+            p.foot[i]=ht_joint_at(wx-cx,wy-cy);p.knee[i]=-1;p.elbow[i]=1;
+        }
     } else if(t->mode==HT_PUSH || t->forest_push_release) {
         int load=t->forest_push,release=t->forest_push_release;
         int pulse=load?(int)(g->ticks%20):0;if(pulse>10)pulse=20-pulse;
