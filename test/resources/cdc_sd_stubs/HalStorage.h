@@ -1,5 +1,6 @@
 #pragma once
 #include <fcntl.h>
+#include "../../../lib/hal/StorageGeneration.h"
 
 #include <cstring>
 #include <filesystem>
@@ -9,6 +10,10 @@
 namespace CdcSdTest {
 inline std::string root, failClose, failWrite, failDirectoryRead;
 inline int cut = 0, renames = 0;
+inline uint64_t epoch=1,mount=1;
+inline bool mutateDuringRead=false;
+inline bool cacheable=false;
+inline size_t directoryOpens=0,entryReads=0;
 inline std::string full(const char* path) { return root + path; }
 }  // namespace CdcSdTest
 class HalFile {
@@ -23,6 +28,7 @@ class HalFile {
   HalFile(const char* path, int flags) : path_(path) {
     auto full = CdcSdTest::full(path);
     if (std::filesystem::is_directory(full)) {
+      ++CdcSdTest::directoryOpens;
       directory_ = true;
       open_ = true;
       for (auto const& child : std::filesystem::directory_iterator(full))
@@ -38,6 +44,8 @@ class HalFile {
   HalFile(HalFile&&) = default;
   HalFile& operator=(HalFile&&) = default;
   HalFile openNextFile() {
+    ++CdcSdTest::entryReads;
+    if(CdcSdTest::mutateDuringRead)++CdcSdTest::epoch;
     if (path_ == CdcSdTest::failDirectoryRead || next_ == children_.size()) return {};
     return HalFile(children_[next_++].c_str(), O_RDONLY);
   }
@@ -69,7 +77,8 @@ class HalFile {
 };
 struct CdcStorage {
   bool ready() const { return true; }
-  void invalidateObservations() {}  // Epoch behavior is tested with production HalStorage.
+  StorageGenerationStamp generation() const { return {CdcSdTest::mount,CdcSdTest::epoch,CdcSdTest::cacheable}; }
+  void invalidateObservations() { ++CdcSdTest::epoch; }
   bool exists(const char* path) const { return std::filesystem::exists(CdcSdTest::full(path)); }
   HalFile open(const char* path, int flags) const { return HalFile(path, flags); }
   bool rename(const char* from, const char* to) const {

@@ -52,3 +52,38 @@ No existing app/driver/provider package payload is changed.
   paths. Re-run results are recorded in the PR.
 - Hosted firmware/native-app/aggregate checks must be read from the exact PR head.
   No hardware test, install, flash, merge or release is claimed.
+
+## Current-master continuation (2026-10-05)
+
+The existing entry branch is refreshed with current `master`
+`21ce3b5b720e106815c8f3a7778bc7003294e0e2`, retaining the original
+`3f56936cf19261611493b0de6288fba8cf06a5f8` entry implementation and all
+subsequent upstream fixes. The only textual conflict with master was the
+firmware version. Firmware advances to `1.3.130`, above the independent
+X4 TXT-index branch's `1.3.129`; the unchanged default application stays
+`1.0.0` and its API minimum remains `1.3.90`.
+
+This restores a mergeable current-master launch candidate; it does not claim
+that the separate X4 branch already contains the entry. The inspected X4
+working head is `36891e71ab651152c618d60d1d248abb4a7f44ff` (PR350).
+Integration there must preserve both versions of `main.cpp`,
+`ActivityManager.cpp`, `NativeAppHost.cpp` and the boot animation regression:
+X4's shared boot/provider lifecycle and touch fences must survive alongside
+the Reader handoff, exact activity generation, retained session and
+navigation-resume guarantees. These are real source integration conflicts,
+not missing device qualification or a request to redesign the GUI.
+
+No change is made to X4 battery/time/minute progression, the independent
+TXT-index optimization in PR416, board drivers, the minimal RiscRTE runtime,
+Watch release pins or provisioning. The existing ELF calls the firmware's
+Reader loop; extracting the complete UI into a freestanding ELF remains
+outside this bounded integration refresh.
+
+Current-tree local checks: real entry/coordinator/activity/boot/retained-session
+and navigation suite; full Springboard/package aggregate; boot animation and
+desk-clock wake contracts; changed-package version guard and whitespace pass.
+The activity regression uses ASan/UBSan with `detect_leaks=0` because
+LeakSanitizer cannot run under this executor's ptrace; leak coverage is not
+claimed. Full NativeApp aggregate and exact-head hosted firmware checks are
+reported separately in the PR. PlatformIO is not installed in this executor;
+no local target link or physical test is claimed.

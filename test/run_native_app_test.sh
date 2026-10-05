@@ -18,8 +18,10 @@ if [[ $# -gt 0 ]]; then
   timeout --kill-after=5s 60s "$binary" "$1"
   exit 0
 fi
+BOOKMARK_TEST_SANITIZERS=1 bash "$repo_dir/test/run_bookmark_summary_test.sh"
 python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
 WRAP_TEST_SANITIZE=1 python3 "$repo_dir/test/text_wrap_regression.py"
+python3 "$repo_dir/test/koreader_document_id/document_id_test.py" --sanitize
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
@@ -88,6 +90,14 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_schoolroom_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_signal_room_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_relay_test.c" -o "$binary"
 "$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" \
@@ -235,6 +245,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-fram
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/src/native" -I"$repo_dir/src" \
   "$repo_dir/test/native_apps/native_sd_firmware_bridge_test.cpp" -o "$binary"
 "$binary"
+python3 "$repo_dir/test/firmware_flasher/segment_limit_test.py" --sanitize
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"

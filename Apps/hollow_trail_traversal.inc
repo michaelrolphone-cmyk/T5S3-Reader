@@ -605,7 +605,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     }
     if((!ht.puzzle.solved || ht.puzzle.opening<48 || ht_final_locked(&ht)) && ht.x>HT_PUZZLE_GATE*256) {ht.x=HT_PUZZLE_GATE*256;ht.vx=0;}
     ht.story_x=ht_max(ht.story_x,ht.x/256);
-    unsigned beat=ht_story_beat(ht.story_x)+1;
+    unsigned beat=ht_story_beat_at(&ht)+1;
     if(ht.story_seen[ht.level]<beat) ht.story_seen[ht.level]=(uint8_t)beat;
     if(ht.y>500*256) {
         ++ht.deaths;ht_spawn(false);return;

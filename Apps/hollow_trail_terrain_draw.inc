@@ -108,9 +108,14 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
             if(at<l+12 || at+23>=r || bottom<top+60) continue;
             int x=at-cx,y=top+23-cy;
             if(kind==HT_ROOF || kind==HT_TOWER) {
-                ht_rect(ht_scene,x,y,19,33,200);
-                ht_rect(ht_scene,x+3,y+3,13,25,232);
-                ht_rect(ht_scene,x+8,y+3,2,25,255);
+                /* Novella II: the actual relay's heater return lights the
+                 * lower windows. Only this building changes, only on a real
+                 * solved circuit; the other roofs keep their original ink. */
+                bool restored=g->level==1 && i==9 && g->puzzle.solved;
+                ht_rect(ht_scene,x,y,19,33,restored?149:200);
+                ht_rect(ht_scene,x+3,y+3,13,25,restored?24:232);
+                ht_rect(ht_scene,x+8,y+3,2,25,restored?203:255);
+                if(restored)ht_rect(ht_scene,x+1,y+31,17,2,84);
             } else {
                 ht_limb(ht_scene,x,y,x+35,y+1,0,0,210);
                 ht_limb(ht_scene,x+16,y+1,x+16,y+13,0,0,210);
