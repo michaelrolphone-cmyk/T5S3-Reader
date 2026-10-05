@@ -179,22 +179,23 @@ int main(int argc,char** argv) {
     inventory_sector_ms=0;
     const std::string battery="/Drivers/x4pro-battery";
     assert(roots.count(battery));
-    // Ordinary unknown files remain forbidden. AppleDouble ._* files are inert
-    // installed-tree metadata and may be ignored without becoming members.
-    for(const char* name:{"unknown",".hidden"}) {
+    // Installed runtime admission is declared-member based. Unrelated files and
+    // directories are ignored and never traversed or used as package members.
+    for(const char* name:{"unknown",".hidden","notes.txt","._unknown"}) {
         const auto path=battery+"/"+name;write(path,sidecar);
-        assert(!inspect(battery));assert(Storage.remove(path.c_str()));assert(inspect(battery));
+        assert(inspect(battery));
     }
-    const auto unknownCompanion=battery+"/._unknown";
-    write(unknownCompanion,sidecar);assert(inspect(battery));
-    assert(Storage.remove(unknownCompanion.c_str()));assert(inspect(battery));
-    // A copy-looking directory is not a regular sidecar and is never traversed.
-    const auto fakeDirectory=battery+"/._driver.elf";
-    assert(Storage.remove(fakeDirectory.c_str()));assert(Storage.mkdir(fakeDirectory.c_str()));
-    assert(!inspect(battery));assert(Storage.rmdir(fakeDirectory.c_str()));write(fakeDirectory,sidecar);
+    const auto extraDirectory=battery+"/unused";
+    assert(Storage.mkdir(extraDirectory.c_str()));
+    write(extraDirectory+"/payload.bin","not a package member");
+    assert(inspect(battery));
+    const auto copyDirectory=battery+"/._driver.elf";
+    assert(Storage.remove(copyDirectory.c_str()));assert(Storage.mkdir(copyDirectory.c_str()));
+    write(copyDirectory+"/payload.bin","ignored directory contents");
+    assert(inspect(battery));
     const auto finderDirectory=battery+"/.DS_Store";
     assert(Storage.remove(finderDirectory.c_str()));assert(Storage.mkdir(finderDirectory.c_str()));
-    assert(!inspect(battery));assert(Storage.rmdir(finderDirectory.c_str()));write(finderDirectory,"Finder metadata");
+    assert(inspect(battery));
     // A companion cannot stand in for a missing declaration, including imports.
     for(const char* name:{"driver.elf","privileged-imports.v1","provider-abi.v1","manifest.json",".package.json"}) {
         const auto path=battery+"/"+name;
@@ -229,6 +230,12 @@ int main(int argc,char** argv) {
     assert(!captureInstalledCapabilities());
     for(unsigned i=0;i<extraMetadata;++i)assert(Storage.remove(("/Drivers/._unowned-"+std::to_string(i)).c_str()));
     capabilities();
+    // Remove unrelated installed-only entries before strict transaction checks.
+    for(const char* name:{"unknown",".hidden","notes.txt","._unknown"})
+        assert(Storage.remove((battery+"/"+name).c_str()));
+    assert(Storage.remove((extraDirectory+"/payload.bin").c_str()));assert(Storage.rmdir(extraDirectory.c_str()));
+    assert(Storage.remove((copyDirectory+"/payload.bin").c_str()));assert(Storage.rmdir(copyDirectory.c_str()));
+    assert(Storage.rmdir(finderDirectory.c_str()));
     // Explicit integrity verification remains byte-sensitive. Clear only the
     // fixture-created sidecars so the strict transaction verifier can run too.
     for(const auto& file:files) {
@@ -237,10 +244,15 @@ int main(int argc,char** argv) {
     }
     for(const auto& root:roots)assert(Storage.remove((root+"/.DS_Store").c_str()));
     Identity identity{};assert(verifyOrdinarySdDirectory(battery.c_str(),policy,available,identity));
+    write(battery+"/unrelated.txt","ignored at runtime");
+    assert(inspect(battery));
+    assert(!verifyOrdinarySdDirectory(battery.c_str(),policy,available,identity));
+    assert(Storage.remove((battery+"/unrelated.txt").c_str()));
+    assert(verifyOrdinarySdDirectory(battery.c_str(),policy,available,identity));
     const FixtureFile* imports=nullptr;for(const auto& file:files)if(file.path==battery+"/privileged-imports.v1")imports=&file;
     assert(imports && !imports->bytes.empty());auto changed=imports->bytes;changed[0]^=1;write(imports->path,changed);
     assert(!verifyOrdinarySdDirectory(battery.c_str(),policy,available,identity));write(imports->path,imports->bytes);
     assert(verifyOrdinarySdDirectory(battery.c_str(),policy,available,identity));
     assert(driver->quiesce());driver->stop();std::free(card_image);
-    std::printf("Copy metadata: %zu providers at %u ms/sector, %u sectors/%llu modeled ms; battery=1 rtc=2, warm zero volume/sector I/O, strict declared members/hashes, unknown refusal and finite bounds PASS\n",roots.size(),sectorMs,sectors,(unsigned long long)elapsed);
+    std::printf("Copy metadata: %zu providers at %u ms/sector, %u sectors/%llu modeled ms; battery=1 rtc=2, warm zero volume/sector I/O, declared-member runtime admission, strict transaction tree/hashes and finite deadline PASS\n",roots.size(),sectorMs,sectors,(unsigned long long)elapsed);
 }
