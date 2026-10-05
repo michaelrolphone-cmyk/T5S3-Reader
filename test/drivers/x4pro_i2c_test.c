@@ -210,13 +210,15 @@ int main(int argc, char **argv) {
     pthread_mutex_unlock(&mutex);
     const unsigned count = io_count;
     uint8_t touch_reg[2] = {0x81, 0x4e};
+    // Lifecycle and claim mutations remain fail-fast while another task owns
+    // the bus; unlike normal transactions they never queue behind it.
+    assert(!bus->release_device(0, battery_claim) && !bus->release_device(0, touch_claim));
+    assert(!bus->claim_device(0, 0x51, &token) && !token);
+    assert(!driver->quiesce()); driver->stop(); assert(io_count == count);
     resume_on_sleep = true;
     assert(bus->transact(0, touch_claim, touch_reg, 2, &value, 1, 20));
     resume_on_sleep = false;
     assert(value == expected && sleeps >= 1);
-    assert(!bus->release_device(0, battery_claim) && !bus->release_device(0, touch_claim));
-    assert(!bus->claim_device(0, 0x51, &token) && !token);
-    assert(!driver->quiesce()); driver->stop();
     pthread_join(thread, 0); assert(first_result); block_first = false;
     assert(io_count > count && starts == 4 && stops == 2 && data_index == data_count);
 
