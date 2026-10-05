@@ -1,0 +1,13 @@
+{
+  "commit": "b91bc323fb736eb6a13ea1a9403470cf699c6128",
+  "source_sha256": {
+    "lib/Epub/Epub/css/CssParser.cpp": "d90520a0b8e5abaae051868f7b28f0d9580fb78f77a1798a386d46588bbf36cc",
+    "lib/Epub/Epub/css/CssParser.h": "adb64ce5721cfb2d8df498fb4eee26620b9f26183fd87e00868d08bc218f622b",
+    "lib/Epub/Epub/css/CssStyle.h": "e28e99b221077bc906f1d048989174a5c46ab58198d3d5c4ddb08352c49f029f",
+    "lib/Epub/Epub/ContentCachePaths.h": "4d59d15c4ac67438ed17b7f448219c49b5ffc8213f35b52bca9a99c30e29016e",
+    "lib/hal/HalStorageVolume.cpp": "3470c077f5c921c2d269823a9c502527f453397f2bbb69191f709c800233ab22",
+    "lib/hal/HalStorage.h": "d560250877d2fbd016b30a2cf8920642fda09617c631e4aa8724bf784d4769a5",
+    "lib/hal/HalReadBudget.h": "e5767e306de8e97d53293130d10e0088512051745bf81cebcffa4daeaa91eb9c",
+    "lib/hal/StorageGeneration.h": "b0f61f618d814ac07c699fb83040d3909a7554b79b0a6d16d21e52e95c30efd5"
+  }
+}

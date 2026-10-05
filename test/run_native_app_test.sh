@@ -25,6 +25,9 @@ python3 "$repo_dir/test/koreader_document_id/document_id_test.py" --sanitize
 python3 "$repo_dir/test/epub_anchor_reads/run_test.py" --sanitize --board x4
 python3 "$repo_dir/test/epub_anchor_reads/run_test.py" --sanitize --board t5
 python3 "$repo_dir/test/epub_anchor_reads/run_test.py" --sanitize --negative-control
+python3 "$repo_dir/test/epub_css_cache_io/run_test.py" --sanitize --board x4
+python3 "$repo_dir/test/epub_css_cache_io/run_test.py" --sanitize --board t5
+python3 "$repo_dir/test/epub_css_cache_io/run_test.py" --sanitize --negative-control
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
