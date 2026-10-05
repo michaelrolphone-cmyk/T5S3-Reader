@@ -70,7 +70,8 @@ existing relay remains player-operated. Source, screenshot and regression
 checks are recorded with the increment; the relay now lights the existing lower windows and earns a reaction shot.
 The westward transition is connected in the cumulative 1.1.49 work. The physical
 window entry/handprint is also implemented in a separate local checkpoint;
-its publication remains paused alongside the bedside memory.
+it and the bedside memory are delivered through PR414. See
+[publication and provenance](HOLLOW_TRAIL_PUBLICATION_1_1_49.md).
 
 ## Mill-register continuation, 1.1.49
 
@@ -102,13 +103,13 @@ traversal wholesale with autoplay.
 | 8 Service terrace | Ladder puddle, rubbed bolt/arrows, cage/nest/tank, held arrival, and [vanished-house wall with two exposed rooms](images/hollow-trail-vanished-house/README.md) along the schoolroom-to-upper-roof route | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
 | 10 Rain tank/crossings | [Tank refuge and earned opposite-window tableau, 1.1.45](HOLLOW_TRAIL_RAIN_TANK_1_1_45.md), existing physical roofs retained | Brief submerged street glimpse; connect arrival to empty signal-room inspection |
-| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in 1.1.48; [earned westward warehouse/siding/pump-country view](HOLLOW_TRAIL_WESTERN_VIEW_1_1_49.md) in the cumulative 1.1.49 continuation. [Earned winter bedside-watch memory](HOLLOW_TRAIL_WATCH_MEMORY_1_1_49.md) now follows actual log completion. [Physical window entry/handprint](HOLLOW_TRAIL_WINDOW_ENTRY_1_1_49.md) is locally complete and tested, but unpublished |
+| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in 1.1.48; [earned westward warehouse/siding/pump-country view](HOLLOW_TRAIL_WESTERN_VIEW_1_1_49.md) in the cumulative 1.1.49 continuation. [Earned winter bedside-watch memory](HOLLOW_TRAIL_WATCH_MEMORY_1_1_49.md) now follows actual log completion. [Physical window entry/handprint](HOLLOW_TRAIL_WINDOW_ENTRY_1_1_49.md) is implemented and tested, with source/evidence delivered through PR414 |
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
-| 14 Stove shed | [Local physical shed/pipe interaction](HOLLOW_TRAIL_STOVE_SHED_1_1_49.md), pending publication: cold stove, wrapped pipe, dish rings/shudder, deliberate reply and unanswered wait | Broader ration/distribution story remains separate; do not count this local scene as remotely delivered |
+| 14 Stove shed | [Physical shed/pipe interaction](HOLLOW_TRAIL_STOVE_SHED_1_1_49.md): cold stove, wrapped pipe, dish rings/shudder, deliberate reply and unanswered wait | Broader ration/distribution story remains separate |
 | 15 Distribution | Existing vessel puzzle/evidence | Physical paired lists/eighth line and progressive steady lamp line |
 | 16 Carriage/rail dawn | Existing train/yard art | Wheel-less sleeping carriage and coherent dawn reveal |
-| 17 HOME ticket | [Local station inspection](HOLLOW_TRAIL_STATION_TICKET_1_1_49.md), pending publication: relocated HOME ticket, reversible crease, cancellation book, warning and same-world blocked cutting | Relative warning → cancellation → collapse order is preserved; no calendar dates invented |
+| 17 HOME ticket | [Station inspection](HOLLOW_TRAIL_STATION_TICKET_1_1_49.md): relocated HOME ticket, reversible crease, cancellation book, warning and same-world blocked cutting | Relative warning → cancellation → collapse order is preserved; no calendar dates invented |
 | 18 Trestle/cabin | Existing crossing/route puzzle | Under-track bracing route, wool contact and five-legged dog at lever |
 | 19 Shunting/marsh | Existing three-wagon puzzle | Distinct heavy bodies and continuous ballast-to-reed terrain transition |
 | 20 Ferry | Existing approved boat/grotto retained | Far-bank canvas/person ambiguity and pulling boat to shore; preserve hull quality |
@@ -140,7 +141,7 @@ traversal wholesale with autoplay.
 ## Next coherent increments
 
 1. Preserve completed forest/mill/city increments; bedside and physical window
-   work are locally committed/tested but publication remains paused.
+   work are committed/tested and delivered through PR414.
 2. Continue substantive missing physical scenes in Chapters III–X, beginning
    with the cold-stove shed. The smaller Chapter II submerged-street glimpse
    remains a later gap, not the next implementation.

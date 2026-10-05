@@ -50,8 +50,8 @@ opened a journal; comparisons retain that genuine baseline against the new
 physical inspection. Original grayscale/mono outputs and verified source
 identities are retained. These are software captures, not hardware photographs.
 
-This is a separate local checkpoint after the stove shed. Publication remains
-paused. The cumulative unreleased app version is still **1.1.48 → 1.1.49**,
+This checkpoint follows the stove shed and is delivered through PR414.
+The cumulative unreleased app version is still **1.1.48 → 1.1.49**,
 with minimum firmware **1.3.37** unchanged.
 
 ## Verified local checkpoint
@@ -79,5 +79,6 @@ Source: `f601f8befd144e0a0ed81da76b66e00bf37f019f`.
 ELF: 321856 bytes; SHA-256
 `71ef558aa235203cb01298ed13e83f478b103390114bfca824f4c0ff0dcfa4f3`.
 
-This checkpoint is unpublished, so it has no hosted CI result. No merge,
+Published combined source and hosted checks are recorded in
+[the publication record](HOLLOW_TRAIL_PUBLICATION_1_1_49.md). No merge,
 release or device operation was performed.

@@ -45,8 +45,8 @@ captures. These are software renders, not device screenshots.
 
 This is part of the same unreleased Hollow Trail **1.1.48 → 1.1.49** update;
 minimum firmware remains **1.3.37**. Whole-book work is still incomplete.
-This separate local checkpoint follows the bedside memory. Publication remains
-pending the previously requested approval; no new remote route was attempted.
+This separate local checkpoint follows the bedside memory. Publication and capture provenance are recorded in
+[the publication record](HOLLOW_TRAIL_PUBLICATION_1_1_49.md).
 
 ## Local verification checkpoint
 
@@ -65,5 +65,5 @@ Final local source: `2fd319ce582dff860b22a44cb71cc4a0a431d387`.
 ELF: 308740 bytes, SHA-256
 `55a4daa8ea0a75a78633875ded3abf5982c6882227912cedd97c3172dd14d239`.
 
-No hosted CI has run for this unpublished checkpoint. The earlier public PR
-head remains separate; local testing does not imply remote publication.
+These measurements describe the original local checkpoint. Published combined
+source and hosted checks are recorded in [the publication record](HOLLOW_TRAIL_PUBLICATION_1_1_49.md).

@@ -50,11 +50,11 @@ Full native-app aggregate, real HID/XInput completion/cancel/Start/exit guards,
 exact prose with retained central-return clue, both raster modes, limb-reach
 bounds and target ELF/package/identity checks pass. Existing 30 renderer golden
 pairs remain exact. Local leak detection is disabled for this runner's ptrace
-restriction; no hosted CI result exists for this unpublished increment.
+restriction. Published source/CI status is recorded in
+[the publication record](HOLLOW_TRAIL_PUBLICATION_1_1_49.md).
 
 ELF: 305204 bytes; SHA-256
 `0833048e84c0d87b5a9c3261ae8cdd121059de06511ba556952a005815df4d07`.
 
-Source and screenshots are locally committed. Publication stopped after the
-remote Git-tree write and its identical retry were denied. No alternate remote
-route was attempted; PR414 remains at the earlier caption checkpoint.
+The original local source and screenshots are preserved. They are delivered
+with PR414; see [publication and provenance](HOLLOW_TRAIL_PUBLICATION_1_1_49.md).

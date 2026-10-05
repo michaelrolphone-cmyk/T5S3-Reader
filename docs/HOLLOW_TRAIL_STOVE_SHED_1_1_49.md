@@ -43,7 +43,7 @@ baseline room. Original grayscale and packed monochrome rasters are retained.
 [Production comparisons](images/hollow-trail-stove-shed/README.md).
 
 This is a separate local increment following the bedside/window checkpoints.
-Remote publication remains paused. App version remains the same cumulative,
+The source and evidence are delivered through PR414. App version remains the same cumulative,
 unreleased **1.1.48 → 1.1.49** update; minimum firmware **1.3.37** is unchanged.
 Whole-book parity is still incomplete.
 
@@ -68,5 +68,6 @@ Source checkpoint: `8ad776eecb9de7c9ad45fd8f027561709ba6a22a`.
 ELF: 316096 bytes, SHA-256
 `c0a70479f8cc5c6e002ab133e45c385fbbc4622ee1e31d28a0fcf53035b9e47c`.
 
-No hosted CI result exists for this unpublished increment. Nothing was merged,
+Published combined source and hosted checks are recorded in
+[the publication record](HOLLOW_TRAIL_PUBLICATION_1_1_49.md). Nothing was merged,
 released or sent to a device.
