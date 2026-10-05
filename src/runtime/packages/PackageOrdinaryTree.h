@@ -4,8 +4,9 @@
 #include <cstring>
 
 namespace RuntimePackages {
-// Only read-only inspection of an installed tree tolerates inert host-copy
-// metadata. Source/stage verification and deletion keep exact ownership.
+// Read-only inspection of an installed tree validates declared members only.
+// Unrelated entries are neither trusted nor traversed. Source/stage verification
+// and deletion keep exact ownership.
 enum class OrdinaryCopyMetadata { Strict, InspectInstalled };
 // Store directory prefixes as references into the immutable plan, not a
 // recursive filesystem walk or a 14 KiB path array. At most 16*7 parents.
@@ -51,10 +52,7 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
   if (!ordinaryTreeLayout(plan, tree)) return false;
   bool files[kMaxPackageEntries]{}, directories[kMaxPackageEntries * (kPackageResourceDepth - 1)]{};
   bool manifest = false, receipt = false;
-  constexpr size_t kDirectorySlots = kMaxPackageEntries * (kPackageResourceDepth - 1);
-  constexpr size_t kCopyMetadataLimit = kMaxPackageEntries + kDirectorySlots + 2;
-  const bool allowCopies = full && copyMetadata == OrdinaryCopyMetadata::InspectInstalled;
-  size_t copyMetadataItems = 0;
+  const bool inspectInstalled = full && copyMetadata == OrdinaryCopyMetadata::InspectInstalled;
   size_t items = 0;
   for (size_t scan = 0; scan <= tree.count; ++scan) {
     char parent[128]{};
@@ -63,33 +61,17 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
     bool finderMetadata = false;
     if (!ops.visit(parent, [&](const char* basename, bool isDirectory) {
       if (!basename || std::strchr(basename, '/') || std::strchr(basename, '\\')) return false;
-      // These bytes never supply a package member, identity or authorization.
-      // Do not open/hash them, follow a copy-like directory, or accept arbitrary
-      // dot files. One Finder record per already-declared directory is bounded.
-      if (allowCopies && !isDirectory && !std::strcmp(basename, ".DS_Store")) {
-        if (finderMetadata) return false;
-        finderMetadata = true;
-        return true;
-      }
-      const bool companion = allowCopies && !isDirectory && basename[0] == '.' &&
-          basename[1] == '_' && basename[2] != 0;
-      const char* leaf = basename + (companion ? 2 : 0);
+      // Installed runtime admission is plan-driven: only declared paths and
+      // manager metadata matter. Extra entries are ignored without opening,
+      // hashing, executing or traversing them. Strict source/stage verification
+      // below still requires an exact tree.
       char path[128]{};
-      const size_t p = std::strlen(parent), n = strnlen(leaf, sizeof(path));
-      if (!n || p + (p ? 1 : 0) + n >= sizeof(path)) return false;
+      const size_t p = std::strlen(parent), n = strnlen(basename, sizeof(path));
+      if (!n || p + (p ? 1 : 0) + n >= sizeof(path)) return inspectInstalled;
       if (p) { std::memcpy(path, parent, p); path[p] = '/'; }
-      std::memcpy(path + p + (p ? 1 : 0), leaf, n + 1);
-      if (companion) {
-        // AppleDouble files are inert host-copy metadata. Installed inspection
-        // never opens, hashes, executes or authorizes them, so requiring the
-        // stripped name to match the parsed package plan is unnecessary and
-        // made real Finder-copied cards fail closed on hardware. Bound and skip
-        // regular ._* entries only. Strict source/stage verification and purge
-        // still reject them, and real declared members below remain mandatory.
-        if (++copyMetadataItems > kCopyMetadataLimit) return false;
-        return true;
-      }
-      if (++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u)) return false;
+      std::memcpy(path + p + (p ? 1 : 0), basename, n + 1);
+      if (!inspectInstalled &&
+          ++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u)) return false;
       if (!std::strcmp(path, kOrdinaryManifestName)) {
         if (isDirectory || manifest) return false;
         manifest = true;
@@ -100,7 +82,7 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
         receipt = true;
         return true;
       }
-      if (!safePackageResourcePath(path)) return false;
+      if (!safePackageResourcePath(path)) return inspectInstalled;
       if (isDirectory) {
         for (size_t d = 0; d < tree.count; ++d) {
           const auto& directory = tree.directories[d];
@@ -118,7 +100,7 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
           return true;
         }
       }
-      return false;
+      return inspectInstalled;
     })) return false;
   }
   if (!full) return true;
