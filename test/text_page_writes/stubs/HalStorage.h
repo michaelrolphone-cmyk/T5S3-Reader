@@ -33,7 +33,8 @@ class HalFile {
  size_t write(const void*,size_t);
  size_t writeWithBudget(const void*,size_t,HalWriteBudget*);
  size_t writeCooperatively(const void*,size_t,HalWriteBudget&);
- int read(void* p,size_t n){auto& f=*impl;assert(f.pos<=f.data.size());n=std::min(n,f.data.size()-f.pos);if(n)memcpy(p,f.data.data()+f.pos,n);f.pos+=n;return n;}
+ // Match the real out-of-line storage boundary; do not optimize fixture EOF into decoder code.
+ int read(void* p,size_t n);
  bool seek(size_t p){impl->pos=p;return true;}
  size_t position()const{return impl->pos;}
  explicit operator bool()const{return impl&&impl->handle;}

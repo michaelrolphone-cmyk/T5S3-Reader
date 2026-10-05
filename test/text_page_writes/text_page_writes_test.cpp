@@ -8,6 +8,7 @@
 #include <Logging.h>
 #include <freertos/task.h>
 #include "Page.h"
+int HalFile::read(void* p,size_t n){auto& f=*impl;assert(f.pos<=f.data.size());n=std::min(n,f.data.size()-f.pos);if(n)memcpy(p,f.data.data()+f.pos,n);f.pos+=n;return n;}
 static size_t providerWrite(void* ctx,unsigned,const void* bytes,size_t n){
  auto& f=*static_cast<FileImpl*>(ctx);++counts.writes;clockMs+=providerMillis;assert(n<=4096);
  const size_t got=counts.writes==zeroCall?0:counts.writes==shortCall?n/2:n;
@@ -69,7 +70,7 @@ static void healthy(unsigned lines,unsigned words,bool focus,unsigned pages=1,bo
 static void failures(){
  // Every scalar remains a write; inject deterministic provider faults by call number.
  // Do not deserialize damaged legacy bytes: existing unchecked writes are unchanged.
- for(unsigned kind=0;kind<4;++kind)for(size_t call:{1u,2u,4u,9u,17u,32u,64u,173u,240u,249u}){
+ for(unsigned kind=0;kind<4;++kind)for(size_t call:{1u,2u,4u,9u,17u,32u,64u,173u,233u,235u}){
   reset();Section section;section.file.impl->pos=32;section.file.impl->data.resize(32);bind(section.file);
   if(kind==0) { shortCall=call; }if(kind==1) { zeroCall=call; }if(kind==2) { errorCall=call; }if(kind==3){section.file.impl->syncWrites=true;syncFault=call;}
   auto page=pageFor(3,10,true,true,true);const auto result=section.onPageComplete(std::make_unique<Page>(std::move(page)));assert(section.file.impl->handle);
