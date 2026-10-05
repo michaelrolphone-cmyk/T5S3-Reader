@@ -52,9 +52,9 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
   bool files[kMaxPackageEntries]{}, directories[kMaxPackageEntries * (kPackageResourceDepth - 1)]{};
   bool manifest = false, receipt = false;
   constexpr size_t kDirectorySlots = kMaxPackageEntries * (kPackageResourceDepth - 1);
-  constexpr size_t kCompanionSlots = kMaxPackageEntries + kDirectorySlots + 2;
-  bool companions[kCompanionSlots]{};
+  constexpr size_t kCopyMetadataLimit = kMaxPackageEntries + kDirectorySlots + 2;
   const bool allowCopies = full && copyMetadata == OrdinaryCopyMetadata::InspectInstalled;
+  size_t copyMetadataItems = 0;
   size_t items = 0;
   for (size_t scan = 0; scan <= tree.count; ++scan) {
     char parent[128]{};
@@ -71,7 +71,8 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
         finderMetadata = true;
         return true;
       }
-      const bool companion = allowCopies && !isDirectory && basename[0] == '.' && basename[1] == '_';
+      const bool companion = allowCopies && !isDirectory && basename[0] == '.' &&
+          basename[1] == '_' && basename[2] != 0;
       const char* leaf = basename + (companion ? 2 : 0);
       char path[128]{};
       const size_t p = std::strlen(parent), n = strnlen(leaf, sizeof(path));
@@ -79,23 +80,13 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
       if (p) { std::memcpy(path, parent, p); path[p] = '/'; }
       std::memcpy(path + p + (p ? 1 : 0), leaf, n + 1);
       if (companion) {
-        // Accept at most one inert ._ companion of each exact declared leaf,
-        // directory prefix or manager metadata name. The real-member bitmaps
-        // below remain mandatory, so a companion cannot replace missing data.
-        size_t slot = kCompanionSlots;
-        for (size_t f = 0; f < plan.entryCount; ++f)
-          if (!std::strcmp(plan.entries[f].name, path)) slot = f;
-        for (size_t d = 0; d < tree.count; ++d) {
-          const auto& directory = tree.directories[d];
-          if (directory.length == std::strlen(path) &&
-              !std::memcmp(plan.entries[directory.entry].name, path, directory.length))
-            slot = kMaxPackageEntries + d;
-        }
-        if (!std::strcmp(path, kOrdinaryManifestName)) slot = kMaxPackageEntries + kDirectorySlots;
-        if (managedMetadata && !std::strcmp(path, kPackageReceiptName))
-          slot = kMaxPackageEntries + kDirectorySlots + 1;
-        if (slot == kCompanionSlots || companions[slot]) return false;
-        companions[slot] = true;
+        // AppleDouble files are inert host-copy metadata. Installed inspection
+        // never opens, hashes, executes or authorizes them, so requiring the
+        // stripped name to match the parsed package plan is unnecessary and
+        // made real Finder-copied cards fail closed on hardware. Bound and skip
+        // regular ._* entries only. Strict source/stage verification and purge
+        // still reject them, and real declared members below remain mandatory.
+        if (++copyMetadataItems > kCopyMetadataLimit) return false;
         return true;
       }
       if (++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u)) return false;
