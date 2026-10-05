@@ -107,7 +107,7 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
         int lean=pulling?-side:side,step=ht_abs(v)>24?(g->stride/256)%16:8;
         step=step<8?step-4:12-step;
         int hand=object/256-g->camera/256-side*(t->mode==HT_ROLL?HT_BALL_RADIUS-2:HT_CRATE_HALF);
-        int hy=t->mode==HT_ROLL?t->ball_y/256-g->camera_y/256-4:t->crate_y/256-g->camera_y/256-HT_CRATE_HEIGHT+8;
+        int hy=t->mode==HT_ROLL?t->ball_y/256-g->camera_y/256-4:t->crate_y/256-g->camera_y/256-ht_crate_height(g->level)+(g->level==0?1:8);
         p.facing=side;p.hip=ht_joint_at(x-lean*2,feet-12);
         p.shoulder=ht_joint_at(x+lean*(pulling?5:4),feet-20);
         for(int i=0;i<2;++i) {

@@ -157,6 +157,8 @@ static void landscape_contact_and_pull(void) {
     }
     uint8_t pushed[HT_PIXELS];
     ht.camera=ht.camera_y=0;ht.x=200*256;ht.y=220*256;
+    for(unsigned chapter=0;chapter<2;++chapter) {
+    ht.level=chapter;
     for(int mode=HT_ROLL;mode<=HT_CRATE;++mode) for(int side=-1;side<=1;side+=2) {
         ht.traversal.mode=mode;ht.traversal.ball_x=ht.traversal.crate_x=(200+side*21)*256;
         ht.traversal.ball_y=204*256;ht.traversal.crate_y=220*256;
@@ -169,10 +171,11 @@ static void landscape_contact_and_pull(void) {
         int hand=221; /* Object-facing hand remains on the same load contact. */
         if(side<0) hand=179;
         hand-=side*(mode==HT_ROLL?HT_BALL_RADIUS-2:HT_CRATE_HALF);
-        int hy=mode==HT_ROLL?200:202;
+        int hy=mode==HT_ROLL?200:chapter==0?207:202; /* 14-high mill desk vs the unchanged 26-high crate. */
         assert(ht_scene[hy*HT_W+hand] && pushed[hy*HT_W+hand]);
     }
-    ht_spawn(true);
+    }
+    ht.level=0;ht_spawn(true);
 }
 static void eroded_cliffs_and_grotto(void) {
     ht.level=0;ht_spawn(true);ht.camera=1250*256;ht.camera_y=200*256;
@@ -487,6 +490,7 @@ int main(void) {
                 ht.weather_age=388;assert(!ht_lightning(&ht));
             }
             ht.x=(c->end+1)*256;assert(!ht_exposure(&ht) && !ht_wind(&ht));
+            if(level==0) {ht.traversal.crate_x=1180*256;ht.traversal.crate_y=ht_land_height(0,3,1180)*256;}
             ht.x=ht_evidence_x(level,c->until)*256;
             ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,c->until),ht.x/256)*256;
             assert(ht_inspect()>=0 && !ht_weather_target(&ht) && !ht_lightning(&ht));
@@ -575,6 +579,7 @@ int main(void) {
         for(int item=0;item<3;++item) {
             unsigned page=level*3u+(unsigned)item;
             assert(!ht_evidence_found(&ht,page));
+            if(level==0 && item==1) {ht.traversal.crate_x=1180*256;ht.traversal.crate_y=ht_land_height(0,3,1180)*256;}
             ht.x=ht_evidence_x(level,item)*256;
             ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,item),ht.x/256)*256;
             ht.grounded=false; assert(ht_inspect()==-1);

@@ -265,6 +265,36 @@ static void relay_controls(void) {
     assert(quitting && ht.puzzle.solved && ht_cutscene.active);
 }
 
+
+static void mill_desk_controls(void) {
+    const unsigned a[2]={1,2},x[2]={8,4};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=0;ht_select_level(0);ht_spawn(true);
+        ht.traversal.forest_log_phase=ht.traversal.bridge_open=32;
+        ht.x=(HT_MILL_DESK_START-17)*256;ht.y=ht_land_height(0,3,ht.x/256)*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=1;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;simulation_accumulator=0;
+        ht_input(1);press(source,a[source]);
+        assert(ht.traversal.mode==HT_CRATE && !reading && !ht_evidence_found(&ht,1));
+        reports[source][0].buttons=0;reports[source][0].hat=2;
+        unsigned count=0;while(!ht_mill_register_lit(&ht) && count++<180)ht_input(32);
+        assert(count<180 && ht.traversal.mode==HT_CRATE);
+        reports[source][0].hat=8;press(source,a[source]);
+        assert(reading && journal_page==1 && ht.traversal.mode==HT_FREE && !ht.traversal.crate_vx);
+        ht_game frozen=ht;for(unsigned i=0;i<10;++i){ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        press(source,x[source]);press(source,x[source]);
+        assert(!reading && !quitting && ht.traversal.mode==HT_FREE);
+        press(source,a[source]);assert(reading && journal_page==1 && !ht.traversal.mode);
+        reading=false;reports[source][0].buttons=0;ht_input(1);
+    }
+}
+
 int main(void) {
     app=&fake_app; pad=&xapi; hid_pad=&hapi;
     /* Receiver face-label correction reported on hardware for 1.0.15. */
@@ -446,5 +476,6 @@ int main(void) {
     rain_controls();
     signal_arrival_controls();
     relay_controls();
+    mill_desk_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

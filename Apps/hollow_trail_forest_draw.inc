@@ -322,8 +322,7 @@ static void ht_forest_mill(const ht_game *g) {
     ht_limb(ht_scene,x+125,base-58,x+159,base-49,2,2,244);
     ht_limb(ht_scene,x+125,base-58,x+124,base-2,2,2,226);
     ht_limb(ht_scene,x+160,base-49,x+158,base-2,2,2,226);
-    /* Desk scrape and sparse fern/ivy contact, never a new collision object. */
-    ht_limb(ht_scene,x+69,base-7,x+89,base-9,1,0,43);
+    /* Sparse fern/ivy contact remains grounded in the uphill wall. */
     for(int i=0;i<5;++i) {
         int xx=x+138+i*7,yy=base-i*10;
         ht_limb(ht_scene,xx,yy,xx-8,yy-12,1,0,136);

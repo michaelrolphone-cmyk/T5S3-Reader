@@ -99,6 +99,7 @@ typedef struct {
     int ledge_side;
     uint8_t tree,branch_drop;
     int8_t tree_side;
+    int16_t mill_scrape_left,mill_scrape_right; /* Grounded desk-leg trace, retained on checkpoint retry. */
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -323,6 +324,14 @@ static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
     return level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
 }
+static int ht_evidence_world_x(const ht_game *game,int item) {
+    return game->level==0 && item==1?game->traversal.crate_x/256:ht_evidence_x(game->level,item);
+}
+static bool ht_mill_register_lit(const ht_game *game) {
+    int x=game->traversal.crate_x/256;
+    return game->level==0 && x>=HT_MILL_DESK_LIGHT_LEFT && x<=HT_MILL_DESK_LIGHT_RIGHT &&
+        ht_abs(game->traversal.crate_y/256-ht_land_height(0,3,x))<=2;
+}
 static bool ht_evidence_found(const ht_game *game,unsigned page) {
     return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
 }
@@ -330,7 +339,8 @@ static int ht_platform_top(const ht_game *g,int i);
 static int ht_evidence_near(const ht_game *game) {
     if(!game->grounded) return -1;
     for(int item=0;item<3;++item) {
-        if(ht_abs(game->x/256-ht_evidence_x(game->level,item))<=22 &&
+        if(game->level==0 && item==1 && !ht_mill_register_lit(game))continue;
+        if(ht_abs(game->x/256-ht_evidence_world_x(game,item))<=22 &&
            ht_abs(game->y/256-ht_surface_at(game,ht_evidence_platform(game->level,item),game->x/256))<=3) return item;
     }
     return -1;
@@ -354,6 +364,9 @@ static int ht_inspect(void) {
     int page=(int)ht.level*3+item;
     ht.evidence|=1u<<(unsigned)page;
     ht.scene_evidence|=(uint8_t)(1u<<(unsigned)item);
+    if(ht.level==0 && item==1 && ht.traversal.mode==HT_CRATE) {
+        ht.traversal.mode=HT_FREE;ht.traversal.crate_vx=0;ht.vx=0;
+    } /* Reading releases the desk; returning cannot continue a held push. */
     return page;
 }
 #define HT_PUZZLE_FIRST 2900
@@ -500,6 +513,7 @@ static bool ht_observe(void) {
     ht.observation=(uint8_t)(ht.level*2+scene+1);ht.observation_ticks=220;return true;
 }
 static void ht_spawn(bool restart) {
+    int16_t scrape_left=ht.traversal.mill_scrape_left,scrape_right=ht.traversal.mill_scrape_right;
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
     uint8_t scene_evidence=restart?0:ht.scene_evidence;
     uint16_t weather_amount=restart?0:ht.weather_amount;
@@ -528,6 +542,10 @@ static void ht_spawn(bool restart) {
     ht.traversal.forest_log_phase=level==0 && bridge_open==32?32:0;
     ht.traversal.ball_x=m->ball_x*256;ht.traversal.ball_y=(m->ball_floor-HT_BALL_RADIUS)*256;
     ht.traversal.crate_x=m->crate_x*256;ht.traversal.crate_y=m->crate_floor*256;
+    if(level==0) {
+        ht.traversal.mill_scrape_left=(int16_t)(!restart && scrape_left?scrape_left:HT_MILL_DESK_START+9);
+        ht.traversal.mill_scrape_right=(int16_t)(!restart && scrape_right?scrape_right:HT_MILL_DESK_START+9);
+    }
     ht.traversal.boat_x=m->boat_left*256;
     ht.traversal.rope_grip=m->rope_length*256;
     for(int i=0;i<HT_ROPE_NODES;++i) {
@@ -1608,6 +1626,8 @@ static void ht_weather(const ht_game *g) {
         x=((x%HT_W)+HT_W)%HT_W;
         int y=(int)((seed/HT_W+(g->ticks/3)%HT_H)%HT_H)+flutter/5;
         if(y>=ht_weather_floor(g,x)-3) continue;
+        if(g->level==0 && x+g->camera/256>=1110 && x+g->camera/256<1212 &&
+           y+g->camera_y/256>=133)continue; /* Leaf drift stays outside the mill interior. */
         int lean=wind<0?-1:1;
         if(c->leaves) ht_limb(ht_scene,x,y,x+lean*3,y+(flutter<8?1:-1),1,0,190);
         else ht_rect(ht_scene,x,y,1+(int)(i%3),1,i%2?70:155);
@@ -2059,7 +2079,7 @@ static void ht_puzzle_prompt(const ht_game *game) {
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
-        if(game->level==1 && item==2)continue; /* The log lies beside the signal-room chair. */
+        if((game->level==1 && item==2) || (game->level==0 && item==1))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         if(x< -12-ht_view_margin() || x>=HT_W+12+ht_view_margin()) continue;
@@ -2077,13 +2097,6 @@ static void ht_draw_evidence(const ht_game *game) {
             ht_limb(ht_scene,x-9,y-27,x+8,y-29,0,0,160);
             for(int side=-1;side<=1;side+=2)for(int row=0;row<2;++row)
                 ht_rect(ht_scene,x+side*13-2,y-30+row*4,4,2,189);
-        } else if(game->level==0 && item==1) {
-            /* Register remains on the mill desk, spatially joined to its beam. */
-            ht_limb(ht_scene,x-15,y-21,x+15,y-25,2,2,210);
-            ht_limb(ht_scene,x-13,y-20,x-12,y,2,1,235);
-            ht_limb(ht_scene,x+12,y-23,x+11,y,2,1,235);
-            ht_triangle(ht_scene,x-9,y-24,x+8,y-27,x+10,y-23,46);
-            ht_limb(ht_scene,x-5,y-24,x+5,y-25,0,0,ink);
         } else if((game->level==0 && item==2) || (game->level==8 && item==0)) {
             if(game->level==0)ht_organic_snag(ht_scene,x-10,y,33,3,871u,255);
             else ht_limb(ht_scene,x-10,y,x-12,y-35,3,2,255);

@@ -208,7 +208,18 @@ static void ht_props_step(int direction) {
     }
     if(m->crate_x) {
         t->crate_vx=ht_clamp(ht_drag(t->crate_vx,24)+(t->mode==HT_CRATE?direction*ht_emphasis_amount(36):0),-192,192);
-        ht_body_step(&t->crate_x,&t->crate_y,&t->crate_vx,&t->crate_vy,HT_CRATE_HALF,HT_CRATE_HEIGHT,false);
+        ht_body_step(&t->crate_x,&t->crate_y,&t->crate_vx,&t->crate_vy,HT_CRATE_HALF,ht_crate_height(ht.level),false);
+        if(ht.level==0) {
+            /* The existing left timber and uphill stone walls bound this
+             * room's desk; they do not create new footing or move the player. */
+            int bounded=ht_clamp(t->crate_x,1110*256,1200*256);
+            if(bounded!=t->crate_x) {t->crate_x=bounded;t->crate_vx=0;}
+            int at=t->crate_x/256;
+            if(ht_abs(t->crate_y/256-ht_land_height(0,3,at))<=2) {
+                t->mill_scrape_left=(int16_t)ht_min(t->mill_scrape_left,at+9);
+                t->mill_scrape_right=(int16_t)ht_max(t->mill_scrape_right,at+9);
+            }
+        }
         if(t->crate_y>500*256) {t->crate_x=m->crate_x*256;t->crate_y=m->crate_floor*256;t->crate_vx=t->crate_vy=0;}
     }
     if(m->boat_right) {
@@ -566,7 +577,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             }
         }
         if(m->crate_x && t->mode!=HT_CRATE) {
-            int top=t->crate_y/256-HT_CRATE_HEIGHT;
+            int top=t->crate_y/256-ht_crate_height(ht.level);
             ht_collide(t->crate_x/256-HT_CRATE_HALF,t->crate_x/256+HT_CRATE_HALF,top,t->crate_y/256,old_x,old_y);
             if(ht.grounded && ht.y==top*256 && ht_abs(ht.x-t->crate_x)<(HT_CRATE_HALF+5)*256) t->support=2;
         }

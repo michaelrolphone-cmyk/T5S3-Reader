@@ -70,6 +70,14 @@ existing relay remains player-operated. Source, screenshot and regression
 checks are recorded with the increment; the relay now lights the existing lower windows and earns a reaction shot.
 The full westward transition and window-entry/handprint beats remain unfinished.
 
+## Mill-register continuation, 1.1.49
+
+After PR411 was merged, [the mill desk becomes player-operated](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md).
+The register follows that body and becomes readable in the existing window beam;
+the fresh desk-leg scrape records actual grounded movement. The original route,
+chapter mechanism and published city work remain intact. Explicit shutter entry
+and the sister/departure memory are still unfinished.
+
 ## Scene-by-scene remaining map
 
 “Partial” means there is relevant source/gameplay/art, not full novella parity.
@@ -84,7 +92,7 @@ traversal wholesale with autoplay.
 | 3 Departure/orchard | Implemented thread/packing/night beats; continuous route retained | White chimney's final bank occlusion, alder ditch/bronze leaves, animate chair tuck |
 | 4 Marked forest | Partial: rooted terrain, monumental trunks, cloth evidence | Join older bark cut/date/socket to the cloth; local inspection framing |
 | 5 Fallen-tree hollow | Existing resisted push and gravity fall retained | Saw/root detail and bounded settling debris; tune effort only with route evidence |
-| 6 Mill hollow | Implemented exterior/desk placement and arrival tableau | Broken-shutter entry and a player-moved desk exposing the register's ink |
+| 6 Mill hollow | Exterior/arrival plus [player-moved desk and light-dependent register, 1.1.49](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md) | Explicit broken-shutter entry and the sister-at-desk/departure-memory beat |
 | 7 Ravine/clearing/gate | Existing branch/rope/bell/gate; new layered skyline and earned city tableau | Extend clearing terrain/large vista and refine gate spatial continuity |
 | 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
@@ -126,8 +134,8 @@ traversal wholesale with autoplay.
 
 ## Next coherent increments
 
-1. Finish Chapter I's mill interaction and clearing terrain without
-   replacing tree/rope gameplay; use the new timeline where stillness aids story
+1. Continue Chapter I's explicit mill entry/memory and clearing terrain without
+   replacing the implemented desk, tree or rope gameplay; use the timeline where stillness aids story
 2. Continue the connected schoolroom → rain tank → signal-room sequence with
    the submerged-street glimpse and relay-restoration/westward-view response;
    preserve existing traversal and the player-operated relay

@@ -11,6 +11,18 @@ static void walk_route_tick(void) {
     int x=ht.x/256,y=ht.y/256,dir=0,vertical=0;
     bool jump=false,mass_work=false;
     const ht_mechanics *m=ht_mech(&ht);ht_traversal *t=&ht.traversal;
+    /* The mill register has to be physically brought into the window beam.
+     * This witness uses the same A grip and horizontal input as a player. */
+    if(ht.level==0 && walk_phase==3 && !ht_evidence_found(&ht,1) && !ht_mill_register_lit(&ht)) {
+        int desk=t->crate_x/256;
+        if(t->mode!=HT_CRATE) {
+            if(x<desk-19)dir=1;
+            else if(x>desk-15) {dir=-1;jump=ht.grounded;}
+            else if(ht.grounded) {assert(ht_traversal_interact());assert(t->mode==HT_CRATE);}
+        }
+        if(t->mode==HT_CRATE)dir=1;
+        ht_step_controls(dir,0,jump,true);return;
+    }
     int evidence=ht_evidence_near(&ht);if(evidence>=0) assert(ht_inspect()>=0);
     if(t->mode==HT_LEDGE) {ht_step_controls(0,-1,false,true);return;}
     if(t->mode==HT_CLIMB) {ht_step_controls(0,0,false,true);return;}

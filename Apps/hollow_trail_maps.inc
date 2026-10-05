@@ -12,6 +12,11 @@ typedef struct {
 #define HT_BALL_RADIUS 16
 #define HT_CRATE_HALF 12
 #define HT_CRATE_HEIGHT 26
+#define HT_MILL_DESK_HEIGHT 14
+static int ht_crate_height(unsigned level) {return level==0?HT_MILL_DESK_HEIGHT:HT_CRATE_HEIGHT;}
+#define HT_MILL_DESK_START 1128
+#define HT_MILL_DESK_LIGHT_LEFT 1174
+#define HT_MILL_DESK_LIGHT_RIGHT 1190
 #define HT_ROPE_NODES 7
 #define HT_BOAT_HALF 30
 #define HT_BRIDGE_STEP 7
@@ -29,7 +34,7 @@ static const ht_platform ht_terraces[HT_LEVELS][HT_PLATFORMS]={
 };
 static const ht_mechanics ht_mechanics_by_level[HT_LEVELS]={
     { .ladders={{0,0,0},{0,0,0},{0,0,0}},
-      .ball_x=210,.ball_floor=220,.crate_x=0,.crate_floor=0,
+      .ball_x=210,.ball_floor=220,.crate_x=HT_MILL_DESK_START,.crate_floor=197,
       .rope_anchor_x=1454,.rope_anchor_y=112,.rope_length=84,.boat_left=0,
       .boat_right=0,.boat_deck=0,.water_left=0,.water_right=0,
       .plate_x=0,.plate_y=0,.plate_kind=0,.bridge=1,
