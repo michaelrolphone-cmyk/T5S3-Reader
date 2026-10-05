@@ -1,6 +1,6 @@
 # X4 Pro I²C admission and lifetime
 
-`x4pro-i2c 0.1.3` keeps the existing `i2c.bus@1` provider prefix. GPIO38/39
+`x4pro-i2c 0.1.4` keeps the existing `i2c.bus@1` provider prefix. GPIO38/39
 and every START/byte/repeated-START/STOP remain in this external ELF. The repair
 is required because GT911 capture runs on a separate task from the optional
 battery consumer; placing battery reads on the UI owner did not serialize them.
@@ -8,9 +8,11 @@ battery consumer; placing battery reads on the UI owner did not serialize them.
 ## Canonical synchronization
 
 One nonrecursive FreeRTOS mutex is created before startup publishes an API.
-Every claim, complete transfer, release, diagnostic and quiescence attempt takes
-it with **zero wait**. Busy and recursive attempts fail without changing pins or
-the active operation. ISR/no-task calls are refused. The holder is checked on
+Claims, release, diagnostics and lifecycle operations remain **zero-wait**.
+Complete bus transactions instead wait cooperatively for another legitimate bus
+owner, bounded by the caller's existing total timeout. Recursive attempts still
+fail immediately without changing pins or the active operation. ISR/no-task
+calls are refused. The holder is checked on
 give. A failed give poisons this generation: retain its mutex, code, claims and
 dependencies until reboot, never pretend cleanup or deletion succeeded.
 Successful quiescence requires no claims, no active operation and confirmed idle
@@ -39,12 +41,14 @@ are copied, and no claim is made that every SDK queue allocation is internal RAM
 - At most 256 total write+read payload bytes; requested timeout 1–1000 ms.
   Null/oversized/invalid requests have no pin effects. Read-only and address-only
   operations are valid, and combined register reads keep their repeated START.
-- One absolute monotonic budget covers admission and transfer. Admission is
-  fail-fast, not a hidden queue. Check each bit/phase and after STOP; reject
-  invalid, backward or overflowing clocks. Never grant a fresh nested timeout.
+- One absolute monotonic budget covers admission and transfer. A transaction
+  contender sleeps in 1 ms scheduler-backed increments while another task owns
+  the bus and retries only until that same deadline. Same-task reentry is refused
+  immediately. Check each bit/phase and after STOP; reject invalid, backward or
+  overflowing clocks. Never grant a fresh nested timeout.
 - Yield through the existing `platform.clock.sleep_ms(1)` after eight bytes or
-  two elapsed milliseconds, with SCL low. The mutex remains held, and contenders
-  fail fast. The clock implementation does not call this bus, so yielding does
+  two elapsed milliseconds, with SCL low. The mutex remains held; contenders
+  stay inside their own bounded admission budgets. The clock implementation does
   not introduce a recursive callback deadlock. Each bit's fixed delay is finite.
 - Every started operation attempts one fixed STOP/line release, including NACK
   on the read address and transfer timeout. Cleanup has four line changes,
@@ -94,3 +98,21 @@ quiescence-accepted are distinct: acceptance is published only after the final
 mutex give succeeds. A delayed-give pthread regression proves another lifecycle
 caller cannot accept quiescence or delete the still-owned mutex in that window.
 The delivered battery-only 0.1.2 set remains recorded above as historical custody.
+
+
+## 0.1.4 contention repair
+
+Physical X4 testing showed intermittent CW2017 `VERSION` read failures while
+GT911 capture was polling normally. The failure was not a gauge-format problem:
+the shared I²C provider used a zero-wait mutex for transfers, so a battery poll
+that coincided with a touch transaction was rejected before touching the bus.
+The battery driver then correctly reported that rejected transport as
+`cw2017 version read`.
+
+0.1.4 fixes the transport root cause. Normal transactions cooperatively wait for
+the current bus owner within their original 1–1000 ms total deadline. They do
+not spin and do not receive a fresh transfer timeout after admission. Claim,
+release and lifecycle operations remain fail-fast. The deterministic pthread
+regression now proves both cases: a contender succeeds when the active transfer
+drains inside its budget, and fails with zero pin activity when the owner remains
+busy through the deadline.
