@@ -96,11 +96,9 @@ static void ht_story_landmarks(const ht_game *g) {
             ht_limb(ht_scene,x+38,y-9,x+51,y-9,2,2,200);
             ht_signal(x+58,y,g);
             break;
-        case 3: /* Bench, cancelled ticket and a railway signal. */
+        case 3: /* Existing trackside bench and signal; HOME belongs in the station. */
             ht_rect(ht_scene,x-33,y-19,55,4,200);ht_rect(ht_scene,x-30,y-35,50,12,155);
             ht_rect(ht_scene,x-27,y-16,3,16,210);ht_rect(ht_scene,x+15,y-16,3,16,210);
-            ht_rect(ht_scene,x-9,y-34,11,14,25);ht_rect(ht_scene,x-7,y-31,7,1,170);
-            ht_limb(ht_scene,x-8,y-23,x,y-30,0,0,230);
             ht_signal(x+40,y,g);
             ht_limb(ht_scene,x+39,y-40,x+61,y-46,2,1,185);
             break;
@@ -181,7 +179,7 @@ static const char *const ht_observations[20][2]={
     {"THREE FLASHES. A PAUSE. THREE AGAIN.","THE WINDOW BEHIND THE LAMP IS EMPTY."},
     {"SEVEN CUTS IN THE CAN. ONE LINE DIVIDES THEM.","THE METAL IS WORN WHERE THE LINE WAS TOUCHED."},
     {"THE PRESSURE NEEDLE RESTS AT ZERO.","THE SERVICE LAMP STILL RECEIVES POWER."},
-    {"THE TICKET HAS BEEN CANCELLED BY HAND.","THE BENCH HAS ROOM FOR SOMEONE TO WAIT."},
+    {"THE BENCH FACES THE SILENT TRACKS.","THERE IS ROOM FOR SOMEONE TO WAIT."},
     {"THE SIGNAL MOVES. THE TRACKS ARE SILENT.","A WORKING SIGNAL DOES NOT PROVE A TRAIN CAME."},
     {"FIVE MARKS ARE CUT INTO THIS BANKS BOARD.","THE BELL ROPE HAS BEEN LEFT WITHIN REACH."},
     {"THE SECOND BOARD HAS ONE FEWER MARK.","THE OLD STROKE IS STILL VISIBLE BENEATH IT."},

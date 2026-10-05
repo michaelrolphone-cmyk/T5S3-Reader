@@ -82,7 +82,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER, HT_WINDOW };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -102,6 +102,9 @@ typedef struct {
     int16_t mill_scrape_left,mill_scrape_right; /* Grounded desk-leg trace, retained on checkpoint retry. */
     int mill_entry_left,mill_entry_right; /* Q8 grounded endpoints, never new terrain. */
     uint8_t mill_entry_phase;
+    int window_entry_left,window_entry_right;
+    uint8_t window_phase,window_open,window_touch;
+    bool window_print;
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -324,10 +327,22 @@ static void ht_bind_native(uint8_t *memory) {
 #define HT_SIGNAL_ROOM_LEFT 2065
 #define HT_SIGNAL_ROOM_RIGHT 2280
 #define HT_SIGNAL_ROOM_HEIGHT 84
-static int ht_evidence_platform(unsigned level,int item) { return level==0?(item==0?0:item==1?3:7):1+item*3; }
+/* The rendered entry bay, sill and collision share the same upper roof. */
+#define HT_SIGNAL_WINDOW_LEFT (ht_mechanics_by_level[1].ladders[2].x+17)
+#define HT_SIGNAL_WINDOW_RIGHT (ht_mechanics_by_level[1].ladders[2].x+59)
+#define HT_SIGNAL_WINDOW_STEPS 144
+static int ht_signal_window_floor(void) {return ht_level_land(1)[7].top;}
+static int ht_signal_window_sill(void) {return ht_signal_window_floor()-16;}
+static int ht_signal_window_top(void) {return ht_signal_window_floor()-70;}
+
+#define HT_STATION_TICKET_X 1180
+static int ht_station_floor(void) {return ht_land_height(3,2,HT_STATION_TICKET_X);}
+#define HT_STOVE_X 1820
+static int ht_stove_floor(void) {return ht_land_height(2,5,HT_STOVE_X);}
+static int ht_evidence_platform(unsigned level,int item) { return level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
+    return level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
 }
 static int ht_evidence_world_x(const ht_game *game,int item) {
     return game->level==0 && item==1?game->traversal.crate_x/256:ht_evidence_x(game->level,item);
@@ -521,6 +536,8 @@ static void ht_spawn(bool restart) {
     if(!restart && ht.door_stage)return; /* No death/respawn can erase the held ending. */
     int16_t scrape_left=ht.traversal.mill_scrape_left,scrape_right=ht.traversal.mill_scrape_right;
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
+    uint8_t window_open=restart?0:ht.traversal.window_open;
+    bool window_print=!restart && ht.traversal.window_print;
     uint8_t scene_evidence=restart?0:ht.scene_evidence;
     uint16_t weather_amount=restart?0:ht.weather_amount;
     uint16_t weather_age=restart?0:ht.weather_age;
@@ -546,6 +563,7 @@ static void ht_spawn(bool restart) {
     ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
     const ht_mechanics *m=&ht_mechanics_by_level[level];
     ht.traversal.bridge_open=bridge_open;
+    if(level==1){ht.traversal.window_open=window_open;ht.traversal.window_print=window_print;}
     ht.traversal.forest_log_phase=level==0 && bridge_open==32?32:0;
     ht.traversal.ball_x=m->ball_x*256;ht.traversal.ball_y=(m->ball_floor-HT_BALL_RADIUS)*256;
     ht.traversal.crate_x=m->crate_x*256;ht.traversal.crate_y=m->crate_floor*256;
@@ -1660,6 +1678,7 @@ static void ht_city_observer_foreground(const ht_game *game);
 static void ht_authored_foreground(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
+static void ht_signal_window_draw(const ht_game *game,bool front);
 /* At full opacity the grotto supplies every background pixel itself. */
 static bool ht_grotto_opaque(const ht_game *g) {
     return g->level==4 && g->camera/256<=700;
@@ -1718,6 +1737,7 @@ static void ht_render_scene_from(const ht_game *source,bool character) {
     if(character)ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
     ht_forest_foreground(&game);
+    ht_signal_window_draw(&game,true);
     ht_city_observer_foreground(&game);
     ht_authored_foreground(&game);
     uint32_t post_start=ht_render_now();
@@ -2150,7 +2170,7 @@ static void ht_marked_tree(int x,int ground,bool paper) {
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
-        if((game->level==1 && item==2) || (game->level==0 && item==1))continue; /* Drawn on their actual scene furniture. */
+        if((game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && item==0))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         int extent=game->level==0 && item==0?34:12;
@@ -2219,3 +2239,7 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 
 #include "hollow_trail_atmosphere_draw.inc"
 #include "hollow_trail_traversal_draw.inc"
+
+#include "hollow_trail_stove_study.inc"
+
+#include "hollow_trail_station_study.inc"

@@ -43,3 +43,18 @@ window entry/handprint and submerged-street glimpse. This change leaves the
 player-operated relay and already connected westward view intact. It is the
 same cumulative unreleased Hollow Trail **1.1.48 → 1.1.49** update; minimum
 firmware remains **1.3.37**. No merge, release or device qualification.
+
+## Local verification checkpoint
+
+Full native-app aggregate, real HID/XInput completion/cancel/Start/exit guards,
+exact prose with retained central-return clue, both raster modes, limb-reach
+bounds and target ELF/package/identity checks pass. Existing 30 renderer golden
+pairs remain exact. Local leak detection is disabled for this runner's ptrace
+restriction; no hosted CI result exists for this unpublished increment.
+
+ELF: 305204 bytes; SHA-256
+`0833048e84c0d87b5a9c3261ae8cdd121059de06511ba556952a005815df4d07`.
+
+Source and screenshots are locally committed. Publication stopped after the
+remote Git-tree write and its identical retry were denied. No alternate remote
+route was attempted; PR414 remains at the earlier caption checkpoint.

@@ -148,10 +148,15 @@ static bool ht_cutscene_rain_arrival(const ht_game *before,const ht_game *after)
         ht_abs(after->y/256-ht_rain_tank_floor())<=3 && after->traversal.mode==HT_FREE;
 }
 static bool ht_cutscene_signal_arrival(const ht_game *before,const ht_game *after) {
+    /* The first deliberate opening step presses the glass while still on
+     * the exterior landing, before any sash or body crosses the aperture. */
     return !(ht_cutscene_seen&8u) && before->level==1 && after->level==1 &&
-        before->x<2090*256 && after->x>=2090*256 && after->x-before->x<=8*256 &&
-        after->grounded && ht_abs(after->y/256-ht_level_land(1)[7].top)<=3 &&
-        after->traversal.mode==HT_FREE;
+        before->traversal.mode==HT_WINDOW && after->traversal.mode==HT_WINDOW &&
+        !before->traversal.window_phase && after->traversal.window_phase==1 &&
+        !before->traversal.window_open && !after->traversal.window_open &&
+        after->traversal.window_print && after->grounded &&
+        after->y==ht_signal_window_floor()*256 && before->x==after->x &&
+        after->x==(HT_SIGNAL_WINDOW_LEFT-5)*256;
 }
 static bool ht_cutscene_relay_restored(const ht_game *before,const ht_game *after) {
     return !(ht_cutscene_seen&16u) && before->level==1 && after->level==1 &&
@@ -671,6 +676,9 @@ static ht_game ht_cutscene_arrival_view(const ht_cutscene_state *s) {
         view.vista=(uint16_t)(view.vista+(256-view.vista)*shift/42);
     } else if(s->id==HT_CUTSCENE_SIGNAL) {
         view.ticks+=s->tick;
+        /* The palm leaves the glass one fingertip at a time. Only the draw
+         * snapshot changes; the player's attachment stays ready to resume. */
+        view.traversal.window_touch=(uint8_t)(s->tick<144?255:ht_clamp((224-(int)s->tick)*255/80,0,255));
         /* Ease from the actual framing, including an already-wide arrival. */
         view.intimacy=(uint16_t)(view.intimacy*(76-shift)/76);
         view.vista=(uint16_t)(view.vista*(76-shift)/76);
@@ -689,6 +697,7 @@ static void ht_cutscene_draw_arrival(const ht_cutscene_state *s) {
     if(s->id==HT_CUTSCENE_RELAY)ht_draw_puzzle(&view);
     ht_character(view.x/256-view.camera/256,(view.y-view.camera_y)/256,&view);
     ht_forest_foreground(&view);ht_city_observer_foreground(&view);
+    ht_signal_window_draw(&view,true);
     ht_world_scale=256;ht_native_foreground_half_y=false;
 }
 static void ht_cutscene_draw_intro_arrival(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {

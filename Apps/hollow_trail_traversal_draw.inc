@@ -1,10 +1,12 @@
 #include "hollow_trail_material_detail.inc"
+#include "hollow_trail_station_draw.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
 #include "hollow_trail_forest_draw.inc"
 #include "hollow_trail_city_draw.inc"
 #include "hollow_trail_chapter_draw.inc"
+#include "hollow_trail_stove_draw.inc"
 /* Continuous dark rope with alternating diagonal fibre ridges. The pattern
  * belongs to arc length, so it turns with the rope rather than screen time. */
 static void ht_twisted_rope(int x,int y,int ex,int ey,int *along) {
@@ -99,6 +101,8 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_city_service_arrival(g);
     ht_city_rain_tank(g);
     ht_city_signal_room(g);
+    ht_stove_room(g,0,0);
+    ht_station_room(g);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);
@@ -303,6 +307,7 @@ static void ht_traversal_prompt(const ht_game *g) {
     }
     const char *text=NULL;
     switch(ht_traversal_near(g)) {
+    case HT_WINDOW: text=g->traversal.mode==HT_WINDOW?"L/R OPEN AND CROSS - REVERSE TO GO BACK":"A TAKE WINDOW - L/R OPEN AND CLIMB";break;
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
     case HT_CLIMB: text="CLIMBING";break;
     case HT_ROLL: text=g->traversal.mode?"LEFT / RIGHT ROLL - A RELEASE":"A GRIP STONE - ROLL ONTO THE WEIGHT PLATE";break;

@@ -195,12 +195,13 @@ static void signal_arrival_controls(void) {
         reports[source][0].device=source+1;reports[source][0].hat=8;
         healthy=true;host_exit=false;mapped=0;
         memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
-        ht.x=(2090-1)*256;ht.y=ht_level_land(1)[7].top*256;ht.grounded=true;
+        ht.x=(HT_SIGNAL_WINDOW_LEFT-5)*256;ht.y=ht_level_land(1)[7].top*256;ht.grounded=true;
         ht_cutscene.active=false;ht_cutscene_seen=0;
         reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
         ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
         ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
-        ht_input(1);reports[source][0].hat=2;
+        ht_input(1);press(source,a[source]);assert(ht.traversal.mode==HT_WINDOW);
+        reports[source][0].hat=2;
         for(unsigned i=0;i<12 && !ht_cutscene.active;++i)ht_input(32);
         assert(ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_SIGNAL);
         ht_game frozen=ht;
