@@ -58,7 +58,6 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
     char parent[128]{};
     if (scan) ordinaryTreeDirectory(plan, tree.directories[scan - 1], parent);
     if (scan && !ops.exists(parent)) { if (full) return false; else continue; }
-    bool finderMetadata = false;
     if (!ops.visit(parent, [&](const char* basename, bool isDirectory) {
       if (!basename || std::strchr(basename, '/') || std::strchr(basename, '\\')) return false;
       // Installed runtime admission is plan-driven: only declared paths and
