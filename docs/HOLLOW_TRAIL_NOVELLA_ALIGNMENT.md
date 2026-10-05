@@ -94,7 +94,7 @@ traversal wholesale with autoplay.
 | 2 Grass memory | Implemented visual increment | Wrist/knuckle interaction and more natural close facial silhouettes |
 | 3 Departure/orchard | Implemented thread/packing/night beats; continuous route retained | White chimney's final bank occlusion, alder ditch/bronze leaves, animate chair tuck |
 | 4 Marked forest | [Connected marked tree](images/hollow-trail-marked-tree/README.md): hooked wool, two backward stitches, rounded old wound, date/inscription and paper socket drawing; exact book inspection prose | Physical hand/cloth handling and look-back remain; camera/traversal retained |
-| 5 Fallen-tree hollow | Existing resisted push and gravity fall retained | Saw/root detail and bounded settling debris; tune effort only with route evidence |
+| 5 Fallen-tree hollow | Existing resisted push/gravity retained; [partly sawn roots and split attachment](images/hollow-trail-sawn-roots/README.md) follow the same grounded trunk | Bounded settling debris and finer soil/wood materials remain; preserve force/contact/timing |
 | 6 Mill hollow | Exterior/arrival, [physical shutter entry](HOLLOW_TRAIL_SHUTTER_ENTRY_1_1_49.md), [player-moved desk](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md) and [earned sister/departure/register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md) | Refine close silhouettes against owner feedback |
 | 7 Ravine/clearing/gate | Existing branch/rope/bell/gate; new layered skyline and earned city tableau | Extend clearing terrain/large vista and refine gate spatial continuity |
 | 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |

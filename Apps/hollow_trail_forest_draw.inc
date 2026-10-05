@@ -151,6 +151,37 @@ static void ht_forest_backdrop(const ht_game *g) {
 /* One dead snag at the washed-out bank. Its root hinge stays in the soil;
  * the crown accelerates through a circular fall and comes to rest on the far
  * bank. It has no switch, cables, moving ground or invisible early foothold. */
+/* Novella I: exposed roots were sawn only partway through. This dressing
+ * shares the existing stump and log transform; no contact surface changes. */
+static void ht_forest_sawn_roots(const ht_game *g,int x,int y,int dx,int dy) {
+    /* Existing bank-side root fan, still buried at its outer ends. */
+    ht_limb(ht_scene,x-9,y+1,x-27,y+8,4,2,231);
+    ht_limb(ht_scene,x-27,y+8,x-34,y+13,2,0,238);
+    ht_limb(ht_scene,x-10,y+4,x-22,y+12,3,0,225);
+    ht_limb(ht_scene,x-9,y+1,x-25,y+6,0,0,146);
+    /* A narrow kerf stops before the intact dark underside. Three parallel
+     * tooth tracks are cut into the pale exposed root, not laid over soil. */
+    ht_limb(ht_scene,x-20,y+3,x-16,y+6,2,1,139);
+    for(int n=0;n<3;++n)ht_limb(ht_scene,x-21+n*2,y+2,x-19+n*2,y+5,0,0,208);
+    ht_limb(ht_scene,x-20,y+7,x-15,y+7,1,1,248);
+    /* Two connected splinters and the piece of root travel with the same
+     * local axis used by every collision/render node of the heavy trunk. */
+    int ax=x+dx*10/312-dy*7/312,ay=y+dy*10/312+dx*7/312;
+    int bx=x+dx*23/312-dy*4/312,by=y+dy*23/312+dx*4/312;
+    ht_limb(ht_scene,ax,ay,bx,by,3,1,158);
+    ht_limb(ht_scene,ax,ay,x+dx*28/312-dy*6/312,y+dy*28/312+dx*6/312,0,0,215);
+    ht_limb(ht_scene,ax+dy*2/312,ay-dx*2/312,bx+dy*3/312,by-dx*3/312,0,0,207);
+    /* The retained underground connection is revealed only after the
+     * existing fall begins. Before that, the fixed root meets moving wood. */
+    if(g->traversal.forest_log_falling || g->traversal.forest_log_phase) {
+        ht_limb(ht_scene,x-15,y+4,x-12,y-3,1,0,164);
+        ht_limb(ht_scene,x-18,y+5,x-18,y-1,1,0,177);
+        ht_limb(ht_scene,ax,ay,ax-dy*7/312-dx*6/312,ay+dx*7/312-dy*6/312,2,0,225);
+    } else {
+        ht_limb(ht_scene,x-15,y+4,ax,ay,2,2,235);
+        ht_limb(ht_scene,x-15,y+2,ax,ay-1,0,0,178);
+    }
+}
 static void ht_forest_log_draw(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     int phase=g->traversal.forest_log_phase;
@@ -188,6 +219,7 @@ static void ht_forest_log_draw(const ht_game *g) {
     }
     ht_triangle(ht_scene,x-19,y+8,x-8,y-16,x+12,y+7,255);
     ht_limb(ht_scene,x-17,y+7,x-34,y+13,3,0,240);
+    ht_forest_sawn_roots(g,x,y,dx,dy);
     if(phase==32) {
         /* Ground contacts bury both ends. Narrow lit bark stays above them. */
         ht_limb(ht_scene,x-6,y+9,x+16,y+7,2,0,235);

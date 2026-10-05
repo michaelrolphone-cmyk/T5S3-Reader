@@ -141,7 +141,7 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
 }
 
 static const unsigned golden[][2]={
-{2394524559,2154507086}, /* Reviewed connected marked tree; other 29 views unchanged. */
+{3305791424,2424592664}, /* Reviewed marked tree and grounded sawn roots; other 29 views unchanged. */
 {694281688,980295134}, /* Reviewed physical shutter/sill and interior floor; other 29 pairs unchanged. */
 {2685907447,1969813067},
 {816840540,30581379},
