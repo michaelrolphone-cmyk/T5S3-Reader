@@ -20,7 +20,7 @@ static atomic_uint_fast64_t now_ms;
 static atomic_uint clock_step;
 static unsigned sleeps, io_count, starts, stops, data_index, data_count;
 static bool levels[49], data_script[4096], stuck_scl;
-static bool block_first, blocked, resume_first, reenter, in_reentry;
+static bool block_first, blocked, resume_first, resume_on_sleep, reenter, in_reentry;
 static _Thread_local unsigned caller;
 static uint64_t battery_claim, touch_claim;
 static bool first_result;
@@ -113,6 +113,14 @@ static uint64_t monotonic(void *context) {
 static void sleep_ms(void *context, uint32_t ms) {
     (void)context;
     assert(ms == 1); ++sleeps; atomic_fetch_add(&now_ms, ms);
+    if (resume_on_sleep) {
+        pthread_mutex_lock(&mutex);
+        if (blocked && !resume_first) {
+            resume_first = true;
+            pthread_cond_broadcast(&condition);
+        }
+        pthread_mutex_unlock(&mutex);
+    }
     reentrant_calls();
 }
 static const risc_platform_clock_api_v1 clock_api = {
@@ -124,14 +132,18 @@ static void reset_model(void) {
     io_count = starts = stops = sleeps = data_index = data_count = 0;
     levels[X4PRO_PIN_I2C_SDA] = levels[X4PRO_PIN_I2C_SCL] = true;
     atomic_store(&now_ms, 100); atomic_store(&clock_step, 0);
+    resume_on_sleep = false;
     reenter = in_reentry = stuck_scl = false;
 }
-static void prepare_read(unsigned write_len, const uint8_t *read, unsigned read_len) {
-    reset_model(); push(true); // initial idle line
+static void append_read(unsigned write_len, const uint8_t *read, unsigned read_len) {
+    push(true); // initial idle line
     for (unsigned i = 0; i < 1u + write_len + (read_len ? 1u : 0u); ++i) push(false); // ACKs
     for (unsigned i = 0; i < read_len; ++i)
         for (int bit = 7; bit >= 0; --bit) push((read[i] >> bit) & 1u);
     push(true); // STOP release readback
+}
+static void prepare_read(unsigned write_len, const uint8_t *read, unsigned read_len) {
+    reset_model(); append_read(write_len, read, read_len);
 }
 static void start_bus(void) {
     const risc_provider_dependency_v1 dep = {"platform.clock", 1, &clock_api};
@@ -180,9 +192,11 @@ int main(int argc, char **argv) {
     assert(bus->transact(0, battery_claim, &reg, 1, &value, 1, 20)); reenter = false;
     assert(starts == 2 && stops == 1);
 
-    /* First caller is suspended inside its first pin operation. A contender
-     * cannot change one pin, claim, token, lifecycle or diagnostic until exit. */
+    /* First caller is suspended inside its first pin operation. A transaction
+     * contender waits within its original deadline instead of fabricating a
+     * device read failure. Claim/release/lifecycle paths remain fail-fast. */
     prepare_read(1, &expected, 1);
+    append_read(2, &expected, 1);
     pthread_t thread; block_first = true; blocked = resume_first = false;
     assert(!pthread_create(&thread, 0, battery_thread, 0));
     pthread_mutex_lock(&mutex);
@@ -190,15 +204,29 @@ int main(int argc, char **argv) {
     pthread_mutex_unlock(&mutex);
     const unsigned count = io_count;
     uint8_t touch_reg[2] = {0x81, 0x4e};
-    assert(!bus->transact(0, touch_claim, touch_reg, 2, &value, 1, 20));
+    resume_on_sleep = true;
+    assert(bus->transact(0, touch_claim, touch_reg, 2, &value, 1, 20));
+    resume_on_sleep = false;
+    assert(value == expected && sleeps >= 1);
     assert(!bus->release_device(0, battery_claim) && !bus->release_device(0, touch_claim));
     assert(!bus->claim_device(0, 0x51, &token) && !token);
-    assert(!driver->quiesce()); driver->stop(); assert(io_count == count);
+    assert(!driver->quiesce()); driver->stop();
+    pthread_join(thread, 0); assert(first_result); block_first = false;
+    assert(io_count > count && starts == 4 && stops == 2 && data_index == data_count);
+
+    /* A contender whose owner does not drain before the total budget expires
+     * still fails without touching bus pins or lifecycle state. */
+    prepare_read(1, &expected, 1);
+    block_first = true; blocked = resume_first = false;
+    assert(!pthread_create(&thread, 0, battery_thread, 0));
+    pthread_mutex_lock(&mutex);
+    while (!blocked) pthread_cond_wait(&condition, &mutex);
+    pthread_mutex_unlock(&mutex);
+    const unsigned timeout_count = io_count;
+    assert(!bus->transact(0, touch_claim, touch_reg, 2, &value, 1, 3));
+    assert(io_count == timeout_count && sleeps >= 3);
     pthread_mutex_lock(&mutex); resume_first = true; pthread_cond_broadcast(&condition); pthread_mutex_unlock(&mutex);
     pthread_join(thread, 0); assert(first_result); block_first = false;
-    prepare_read(2, &expected, 1);
-    assert(bus->transact(0, touch_claim, touch_reg, 2, &value, 1, 20));
-    assert(value == expected && starts == 2 && stops == 1);
 
     reset_model();
     assert(!bus->transact(0, battery_claim, 0, 1, data, 1, 20));
@@ -285,5 +313,5 @@ int main(int argc, char **argv) {
     assert(!bus->claim_device(0, 0x51, &token) && !token);
     assert(!driver->quiesce()); driver->stop();
     assert(!driver->start(&initial, 1) && deletes == protected_deletes && cpu_mutex.alive);
-    puts("X4 I2C: serialized battery/touch contention, repeated START, deadlines, reentry and retained cleanup PASS");
+    puts("X4 I2C: bounded-wait battery/touch serialization, repeated START, deadlines, reentry and retained cleanup PASS");
 }
