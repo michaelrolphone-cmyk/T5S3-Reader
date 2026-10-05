@@ -87,8 +87,8 @@ int main() {
   assert(purgeOrdinaryTree(empty,tombstone,false));
   tombstone.nodes={{"",true},{"owner.txt",false}};
   assert(!purgeOrdinaryTree(empty,tombstone,false) && tombstone.nodes.count("owner.txt"));
-  // Finder metadata can accompany copied installed files without supplying
-  // any real member or deletion authority. Namespace/type matching is exact.
+  // Installed inspection is declaration-driven: unrelated entries can coexist
+  // without supplying any real member or deletion authority.
   auto copied=fixture();
   for (const char* name : {"._.package.json", "._app.elf", "._assets", "assets/._fonts",
                           "assets/._images", "assets/fonts/._body.bin", "assets/images/._logo.bin",
@@ -108,18 +108,19 @@ int main() {
   }
   for (const char* name : {"._unknown", "._App.elf", "._app.elf.exe", "owner.txt",
                           "assets/._owner.txt", ".hidden", "assets/.ds_store"}) {
-    auto o=copied;o.nodes[name]=false;assert(!inspect(o));
+    auto o=copied;o.nodes[name]=false;assert(inspect(o));
   }
   for (const char* name : {"._app.elf", "._assets", ".DS_Store", "assets/fonts/._body.bin"}) {
-    auto o=copied;o.nodes[name]=true;assert(!inspect(o));
+    auto o=copied;o.nodes[name]=true;assert(inspect(o));
   }
-  for (const char* repeated : {"._.package.json", "._assets", "._body.bin", ".DS_Store", "app.elf"}) {
-    auto o=copied;o.repeatBasename=repeated;assert(!inspect(o));
+  for (const char* repeated : {"._.package.json", "._assets", "._body.bin", ".DS_Store"}) {
+    auto o=copied;o.repeatBasename=repeated;assert(inspect(o));
   }
+  { auto o=copied;o.repeatBasename="app.elf";assert(!inspect(o)); }
   copied.nodes[kPackageReceiptName]=false;
   copied.nodes[std::string("._")+kPackageReceiptName]=false;
   assert(inspect(copied));
-  assert(!ordinaryTreeInventory(p,copied,true,false,OrdinaryCopyMetadata::InspectInstalled));
-  std::puts("Installed copy metadata: exact inert companions, genuine members, aliases/types/duplicates and strict purge PASS");
+  assert(ordinaryTreeInventory(p,copied,true,false,OrdinaryCopyMetadata::InspectInstalled));
+  std::puts("Installed tree: declared members required, unrelated files/directories ignored, declared duplicates rejected and strict purge PASS");
   std::puts("Declared resource tree: bounded inventory, unknown preservation, read faults, manifest-last cleanup and restart PASS");
 }
