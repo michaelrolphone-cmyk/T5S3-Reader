@@ -1,8 +1,11 @@
 #include "TextBlock.h"
 
+#include <Arduino.h>
 #include <GfxRenderer.h>
+#include <HalReadBudget.h>
 #include <Logging.h>
 #include <Serialization.h>
+#include <freertos/task.h>
 
 #include <cstring>
 
@@ -94,6 +97,16 @@ bool TextBlock::serialize(FsFile& file) const {
 }
 
 std::unique_ptr<TextBlock> TextBlock::deserialize(FsFile& file) {
+  // Reuse the image-cache HAL budget, scoped to this one block. Page framing
+  // retains ordinary reads/yields between blocks; no file state or read-ahead.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalReadBudget readBudget([]() -> uint32_t { return millis(); }, []() { vTaskDelay(1); });
+  const auto readPod = [&](auto& value) { serialization::readPod(file, value, readBudget); };
+  const auto readString = [&](std::string& value) { serialization::readString(file, value, readBudget); };
+#else
+  const auto readPod = [&](auto& value) { serialization::readPod(file, value); };
+  const auto readString = [&](std::string& value) { serialization::readString(file, value); };
+#endif
   uint16_t wc;
   std::vector<std::string> words;
   std::vector<int16_t> wordXpos;
@@ -102,7 +115,7 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(FsFile& file) {
   std::vector<uint16_t> wordFocusSuffixX;
   BlockStyle blockStyle;
 
-  serialization::readPod(file, wc);
+  readPod(wc);
   if (wc > 10000) {
     LOG_ERR("TXB", "Deserialization failed: word count %u exceeds maximum", wc);
     return nullptr;
@@ -111,31 +124,31 @@ std::unique_ptr<TextBlock> TextBlock::deserialize(FsFile& file) {
   words.resize(wc);
   wordXpos.resize(wc);
   wordStyles.resize(wc);
-  for (auto& w : words) serialization::readString(file, w);
-  for (auto& x : wordXpos) serialization::readPod(file, x);
-  for (auto& s : wordStyles) serialization::readPod(file, s);
+  for (auto& w : words) readString(w);
+  for (auto& x : wordXpos) readPod(x);
+  for (auto& s : wordStyles) readPod(s);
 
   uint8_t hasFocus = 0;
-  serialization::readPod(file, hasFocus);
+  readPod(hasFocus);
   if (hasFocus) {
     wordFocusBoundary.resize(wc);
     wordFocusSuffixX.resize(wc);
-    for (auto& b : wordFocusBoundary) serialization::readPod(file, b);
-    for (auto& sx : wordFocusSuffixX) serialization::readPod(file, sx);
+    for (auto& b : wordFocusBoundary) readPod(b);
+    for (auto& sx : wordFocusSuffixX) readPod(sx);
   }
 
-  serialization::readPod(file, blockStyle.alignment);
-  serialization::readPod(file, blockStyle.textAlignDefined);
-  serialization::readPod(file, blockStyle.marginTop);
-  serialization::readPod(file, blockStyle.marginBottom);
-  serialization::readPod(file, blockStyle.marginLeft);
-  serialization::readPod(file, blockStyle.marginRight);
-  serialization::readPod(file, blockStyle.paddingTop);
-  serialization::readPod(file, blockStyle.paddingBottom);
-  serialization::readPod(file, blockStyle.paddingLeft);
-  serialization::readPod(file, blockStyle.paddingRight);
-  serialization::readPod(file, blockStyle.textIndent);
-  serialization::readPod(file, blockStyle.textIndentDefined);
+  readPod(blockStyle.alignment);
+  readPod(blockStyle.textAlignDefined);
+  readPod(blockStyle.marginTop);
+  readPod(blockStyle.marginBottom);
+  readPod(blockStyle.marginLeft);
+  readPod(blockStyle.marginRight);
+  readPod(blockStyle.paddingTop);
+  readPod(blockStyle.paddingBottom);
+  readPod(blockStyle.paddingLeft);
+  readPod(blockStyle.paddingRight);
+  readPod(blockStyle.textIndent);
+  readPod(blockStyle.textIndentDefined);
 
   return std::unique_ptr<TextBlock>(new TextBlock(std::move(words), std::move(wordXpos), std::move(wordStyles),
                                                   std::move(wordFocusBoundary), std::move(wordFocusSuffixX),
