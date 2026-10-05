@@ -1,6 +1,7 @@
 #if !defined(BOARD_XTEINK_X4_PRO) && !defined(BOARD_T5S3_PRO)
 #define HAL_STORAGE_IMPL
 #include "HalStorage.h"
+#include "HalWriteBudget.h"
 
 #include <Board.h>
 #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
@@ -681,6 +682,12 @@ size_t HalFile::write(const void* buf, size_t count) {
   assert(impl != nullptr);
   storageGeneration.mutationAttempt();
   return impl->file.write(buf, count);
+}
+size_t HalFile::writeCooperatively(const void* buf, size_t count, HalWriteBudget& budget) {
+  budget.checkpoint();
+  const size_t result = write(buf, count);
+  budget.afterWrite(result);
+  return result;
 }
 size_t HalFile::write(uint8_t b) {
   if (storageBackendUnavailable()) return 0;

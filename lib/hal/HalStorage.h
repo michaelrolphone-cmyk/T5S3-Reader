@@ -13,6 +13,7 @@
 #endif
 
 class HalFile;
+class HalWriteBudget;
 
 class HalStorage {
  public:
@@ -91,6 +92,7 @@ class HalFile : public Print {
   class Impl;
   std::unique_ptr<Impl> impl;
   explicit HalFile(std::unique_ptr<Impl> impl);
+  size_t writeWithBudget(const void* buf, size_t count, HalWriteBudget* budget);
 
  public:
   HalFile();
@@ -114,6 +116,8 @@ class HalFile : public Print {
   int read(void* buf, size_t count);
   int read();  // read a single byte
   size_t write(const void* buf, size_t count);
+  // Same writes, mutation/error/lock semantics; explicit operation-local scheduling only.
+  size_t writeCooperatively(const void* buf, size_t count, HalWriteBudget& budget);
   size_t write(uint8_t b) override;
   bool rename(const char* newPath);
   bool isDirectory() const;

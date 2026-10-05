@@ -1,8 +1,11 @@
 #include "TextBlock.h"
 
+#include <Arduino.h>
 #include <GfxRenderer.h>
+#include <HalWriteBudget.h>
 #include <Logging.h>
 #include <Serialization.h>
+#include <freertos/task.h>
 
 #include <cstring>
 
@@ -67,28 +70,38 @@ bool TextBlock::serialize(FsFile& file) const {
     return false;
   }
 
-  serialization::writePod(file, static_cast<uint16_t>(words.size()));
-  for (const auto& w : words) serialization::writeString(file, w);
-  for (auto x : wordXpos) serialization::writePod(file, x);
-  for (auto s : wordStyles) serialization::writePod(file, s);
-  serialization::writePod(file, static_cast<uint8_t>(hasFocus ? 1 : 0));
+  // Scope cooperation to one text block. Page framing keeps ordinary yields;
+  // no buffering, format change, or persistent state on the file.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalWriteBudget writeBudget([]() -> uint32_t { return millis(); }, []() { vTaskDelay(1); });
+  const auto writePod = [&](const auto& value) { serialization::writePod(file, value, writeBudget); };
+  const auto writeString = [&](const std::string& value) { serialization::writeString(file, value, writeBudget); };
+#else
+  const auto writePod = [&](const auto& value) { serialization::writePod(file, value); };
+  const auto writeString = [&](const std::string& value) { serialization::writeString(file, value); };
+#endif
+  writePod(static_cast<uint16_t>(words.size()));
+  for (const auto& w : words) writeString(w);
+  for (auto x : wordXpos) writePod(x);
+  for (auto s : wordStyles) writePod(s);
+  writePod(static_cast<uint8_t>(hasFocus ? 1 : 0));
   if (hasFocus) {
-    for (auto b : wordFocusBoundary) serialization::writePod(file, b);
-    for (auto sx : wordFocusSuffixX) serialization::writePod(file, sx);
+    for (auto b : wordFocusBoundary) writePod(b);
+    for (auto sx : wordFocusSuffixX) writePod(sx);
   }
 
-  serialization::writePod(file, blockStyle.alignment);
-  serialization::writePod(file, blockStyle.textAlignDefined);
-  serialization::writePod(file, blockStyle.marginTop);
-  serialization::writePod(file, blockStyle.marginBottom);
-  serialization::writePod(file, blockStyle.marginLeft);
-  serialization::writePod(file, blockStyle.marginRight);
-  serialization::writePod(file, blockStyle.paddingTop);
-  serialization::writePod(file, blockStyle.paddingBottom);
-  serialization::writePod(file, blockStyle.paddingLeft);
-  serialization::writePod(file, blockStyle.paddingRight);
-  serialization::writePod(file, blockStyle.textIndent);
-  serialization::writePod(file, blockStyle.textIndentDefined);
+  writePod(blockStyle.alignment);
+  writePod(blockStyle.textAlignDefined);
+  writePod(blockStyle.marginTop);
+  writePod(blockStyle.marginBottom);
+  writePod(blockStyle.marginLeft);
+  writePod(blockStyle.marginRight);
+  writePod(blockStyle.paddingTop);
+  writePod(blockStyle.paddingBottom);
+  writePod(blockStyle.paddingLeft);
+  writePod(blockStyle.paddingRight);
+  writePod(blockStyle.textIndent);
+  writePod(blockStyle.textIndentDefined);
 
   return true;
 }
