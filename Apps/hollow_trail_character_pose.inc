@@ -300,8 +300,19 @@ static void ht_person_draw(const ht_person_pose *p) {
         ht_limb(ht_scene,sx-f,sy,sx+f,sy+1,0,0,200);
     }
 }
+static void ht_person_scarf(const ht_person_pose *p,unsigned scarf) {
+    if(scarf==1) {
+        ht_joint h=p->hand[1];
+        ht_limb(ht_scene,h.x,h.y,h.x-2,h.y+7,1,1,151);
+        ht_limb(ht_scene,h.x-2,h.y+7,h.x+2,h.y+10,1,0,139);
+    } else if(scarf==2) {
+        /* The same frayed strip now lies inside the existing coat collar. */
+        ht_limb(ht_scene,p->shoulder.x-1,p->shoulder.y-2,p->shoulder.x+2,p->shoulder.y-1,1,0,145);
+    }
+}
 static void ht_character_walk(int x,int feet,const ht_game *g) {
     ht_person_pose p=ht_person_pose_at(x,feet,g);ht_person_draw(&p);
+    ht_person_scarf(&p,g->scarf);
     if(g->traversal.mode==HT_WINDOW && g->traversal.window_touch) {
         for(int i=0;i<4;++i) {
             int length=3+i%3,release=255-g->traversal.window_touch-i*42;

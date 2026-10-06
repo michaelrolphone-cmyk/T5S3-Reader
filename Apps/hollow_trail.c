@@ -185,6 +185,15 @@ static void ht_advance(uint32_t now) {
         }
         ht_motion_emphasis=false;jump_down=pause_down=false;return;
     }
+    if(ht_scarf.active){
+        uint32_t elapsed=now-simulation_clock;simulation_clock=now;
+        if(ht_scarf.paused || ht_pad_fault || ht_input_rearm){simulation_accumulator=0;return;}
+        simulation_accumulator+=elapsed>128u?128u:elapsed;
+        for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps){
+            simulation_accumulator-=HT_STEP_MS;if(ht_scarf_step(&ht_scarf))++scene_revision;
+        }
+        ht_motion_emphasis=false;jump_down=pause_down=false;return;
+    }
     if(ht_gauge.active){
         uint32_t elapsed=now-simulation_clock;simulation_clock=now;
         if(ht_gauge.paused || ht_pad_fault || ht_input_rearm){simulation_accumulator=0;return;}
@@ -636,6 +645,18 @@ static void ht_input_update(uint32_t wait) {
         if(!ht_floorboard.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
         previous=buttons;held=0;last_poll=now;return;
     }
+    if(ht_scarf.active && !reading){
+        if(down&HT_PAUSE)ht_scarf.paused=!ht_scarf.paused;
+        if(down&(HT_BACK|HT_EXIT)){ht_scarf.active=false;ht_input_rearm=true;}
+        else if((down&HT_JOURNAL) || ((down&HT_ACCEPT) && ht_scarf.stage==10 && !ht_scarf.paused)){
+            ht_journal_open(24);
+            reading=true;ht_input_rearm=true;
+        }else if(down&HT_ACCEPT)(void)ht_scarf_action(&ht_scarf);
+        if(down)++scene_revision;
+        jump_down=pause_down=false;
+        if(!ht_scarf.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
+        previous=buttons;held=0;last_poll=now;return;
+    }
     if(ht_gauge.active && !reading){
         if(down&HT_PAUSE)ht_gauge.paused=!ht_gauge.paused;
         if(down&(HT_BACK|HT_EXIT)){ht_gauge.active=false;ht_input_rearm=true;}
@@ -996,6 +1017,10 @@ static void ht_input_update(uint32_t wait) {
             ht_cage_begin();ht_input_rearm=true;
             jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
         }
+        else if(page==24 && ht_scarf_near(&ht)){
+            ht_scarf_begin();ht_input_rearm=true;
+            jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
+        }
         else if(page==21 && ht_gauge_near(&ht)){
             ht_gauge_begin();ht_input_rearm=true;
             jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
@@ -1172,6 +1197,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     ht_counts=(ht_counts_state){0};
     ht_grip=(ht_grip_state){0};
     ht_gauge=(ht_gauge_state){0};
+    ht_scarf=(ht_scarf_state){0};
     ht_valve=(ht_valve_state){0};
     ht_tower=(ht_tower_state){0};
     ht_shelter=(ht_shelter_state){0};
@@ -1277,14 +1303,14 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
 
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_hoist.active && !ht_first_house.active && !ht_isolator.active && !ht_drawing.active && !ht_counts.active && !ht_grip.active && !ht_gauge.active && !ht_tower.active && !ht_shelter.active && !ht_valve.active && !ht_floorboard.active && !ht_recorder.active && !ht_cage.active && !ht_night.active && !ht_care.active && !ht_privacy.active && !ht_food.active && !ht_bed.active && !ht_cabin.active && !ht_carriage.active && !ht_partition.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_ferry.active && !ht_pouch.active) {
+        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_hoist.active && !ht_first_house.active && !ht_isolator.active && !ht_drawing.active && !ht_counts.active && !ht_grip.active && !ht_scarf.active && !ht_gauge.active && !ht_tower.active && !ht_shelter.active && !ht_valve.active && !ht_floorboard.active && !ht_recorder.active && !ht_cage.active && !ht_night.active && !ht_care.active && !ht_privacy.active && !ht_food.active && !ht_bed.active && !ht_cabin.active && !ht_carriage.active && !ht_partition.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_ferry.active && !ht_pouch.active) {
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
             memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
         }
-        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_hoist.active || ht_first_house.active || ht_isolator.active || ht_drawing.active || ht_counts.active || ht_grip.active || ht_gauge.active || ht_tower.active || ht_shelter.active || ht_valve.active || ht_floorboard.active || ht_recorder.active || ht_cage.active || ht_night.active || ht_care.active || ht_privacy.active || ht_food.active || ht_bed.active || ht_cabin.active || ht_carriage.active || ht_partition.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_ferry.active || ht_pouch.active;
+        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_hoist.active || ht_first_house.active || ht_isolator.active || ht_drawing.active || ht_counts.active || ht_grip.active || ht_scarf.active || ht_gauge.active || ht_tower.active || ht_shelter.active || ht_valve.active || ht_floorboard.active || ht_recorder.active || ht_cage.active || ht_night.active || ht_care.active || ht_privacy.active || ht_food.active || ht_bed.active || ht_cabin.active || ht_carriage.active || ht_partition.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_ferry.active || ht_pouch.active;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -1308,6 +1334,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const ht_counts_state rendering_counts=ht_counts;
             const ht_grip_state rendering_grip=ht_grip;
             const ht_gauge_state rendering_gauge=ht_gauge;
+            const ht_scarf_state rendering_scarf=ht_scarf;
             const ht_tower_state rendering_tower=ht_tower;
             const ht_shelter_state rendering_shelter=ht_shelter;
             const ht_valve_state rendering_valve=ht_valve;
@@ -1328,7 +1355,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const unsigned rendering_signal_focus=ht_signal_room_focus,rendering_signal_ticks=ht_signal_room_ticks;
             prepared_reader=rendering_reading;
             prepared_door=rendering_game.door_stage!=HT_DOOR_NONE;
-            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_hoist.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_drawing.active && !rendering_counts.active && !rendering_grip.active && !rendering_gauge.active && !rendering_tower.active && !rendering_shelter.active && !rendering_valve.active && !rendering_floorboard.active && !rendering_recorder.active && !rendering_cage.active && !rendering_night.active && !rendering_care.active && !rendering_privacy.active && !rendering_food.active && !rendering_bed.active && !rendering_cabin.active && !rendering_carriage.active && !rendering_partition.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_ferry.active && !rendering_pouch.active;
+            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_hoist.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_drawing.active && !rendering_counts.active && !rendering_grip.active && !rendering_scarf.active && !rendering_gauge.active && !rendering_tower.active && !rendering_shelter.active && !rendering_valve.active && !rendering_floorboard.active && !rendering_recorder.active && !rendering_cage.active && !rendering_night.active && !rendering_care.active && !rendering_privacy.active && !rendering_food.active && !rendering_bed.active && !rendering_cabin.active && !rendering_carriage.active && !rendering_partition.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_ferry.active && !rendering_pouch.active;
             if(rendering_reading) ht_journal_render();
             else if(rendering_hoist.active){
                 ht_hoist_render(&rendering_hoist);
@@ -1366,13 +1393,17 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_floorboard_study_render(&rendering_game,&rendering_floorboard);
                 ht_narration_key=2166136261u;ht_narration_hash(ht_floorboard_label(&rendering_floorboard));
             }
+            else if(rendering_scarf.active){
+                ht_scarf_study_render(&rendering_game,&rendering_scarf);
+                ht_narration_key=2166136261u;ht_narration_hash(ht_scarf_label(&rendering_scarf));
+            }
             else if(rendering_gauge.active){
                 ht_gauge_study_render(&rendering_game,&rendering_gauge);
                 ht_narration_key=2166136261u;ht_narration_hash(ht_gauge_label(&rendering_gauge));
             }
             else if(rendering_tower.active){
                 ht_tower_study_render(&rendering_game,&rendering_tower);
-                ht_narration_key=2166136261u;ht_narration_hash(ht_tower_label(&rendering_tower));
+                ht_narration_key=2166136261u;ht_narration_hash(ht_tower_label(&rendering_game,&rendering_tower));
             }
             else if(rendering_shelter.active){
                 ht_shelter_study_render(&rendering_game,&rendering_shelter);

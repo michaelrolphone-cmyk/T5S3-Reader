@@ -30,7 +30,7 @@ static void cancel(void){if(source<2)press(source?4:8);else {mapped=0;input(0,8)
 static void ticks(unsigned n){for(unsigned i=0;i<n;++i)ht_advance(now+=HT_STEP_MS);}
 static void present(void){ht_journal_render();assert(ht_journal_page_ready);ht_read_submitted_revision=scene_revision;}
 static void reset(void){
- memset(&ht,0,sizeof(ht));ht.level=9;ht_select_level(9);ht_spawn(true);
+ memset(&ht,0,sizeof(ht));ht.level=9;ht_select_level(9);ht_spawn(true);ht.scarf=card?0:2;
  ht_tower=(ht_tower_state){0};ht_counts=(ht_counts_state){0};ht_cutscene.active=false;ht_cutscene.finished=true;ht_cutscene_seen=63;
  reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;held=previous=mapped=0;
  ht_pad_owned=ht_input_rearm=ht_pad_fault=false;ht_pad_source=-1;simulation_started=false;
@@ -62,7 +62,7 @@ int main(void){
     pad_failure=true;input(0,8);stopped=ht_tower;ticks(30);assert(!memcmp(&ht_tower,&stopped,sizeof(stopped)));pad_failure=false;input(source?2:1,2);ticks(30);assert(ht_input_rearm && !memcmp(&ht_tower,&stopped,sizeof(stopped)));input(0,8);
    }
    for(unsigned n=0;n<220 && ht_tower.stage==stage+1;++n)ticks(1);
-   assert(ht_tower.stage==stage+2 && !ht_tower.tick && !memcmp(&ht,&frozen,sizeof(ht)));ticks(100);assert(ht_tower.stage==stage+2);
+   assert(ht.scarf==(card?0:stage<6?2:stage<8?1:3));frozen.scarf=ht.scarf;assert(ht_tower.stage==stage+2 && !ht_tower.tick && !memcmp(&ht,&frozen,sizeof(ht)));ticks(100);assert(ht_tower.stage==stage+2);
   }
   action();assert(card?reading:!reading);
   if(card){assert(journal_page==28);present();cancel();input(0,8);assert(reading && ht_journal_index);cancel();input(0,8);assert(!reading);}
@@ -95,5 +95,5 @@ int main(void){
   const unsigned hook_pairs[][2]={{2,4},{2,6},{6,8},{8,10}},card_pairs[][2]={{0,2},{2,4},{4,6}};
   for(unsigned n=0;n<(card?3u:4u);++n){const unsigned *pair=card?card_pairs[n]:hook_pairs[n];ht_tower_state s={true,false,card,(uint8_t)pair[0],0};ht_tower_study_render(&ht,&s);memcpy(copy,ht_scene,native?HT_NATIVE_PIXELS:HT_PIXELS);ht_pack_mono(mono,120);s.stage=pair[1];ht_tower_study_render(&ht,&s);ht_pack_mono(bits,120);assert(memcmp(copy,ht_scene,native?HT_NATIVE_W*452:HT_W*226) && memcmp(bits,mono,HT_NATIVE_W*452/8));}
  }
- free(mono);free(bits);free(copy);free(memory);puts("Tower: grounded hooks/bench/chip and scarf contacts, final-stair card contacts, deliberate holds, HID/XInput/mapped pause/cancel/retry, journal/fault/read guards, frozen live state and gray/mono rendering PASS");return 0;
+ free(mono);free(bits);free(copy);free(memory);puts("Tower: grounded hooks/bench/chip and scarf contacts, final-stair card contacts, deliberate holds, HID/XInput/mapped pause/cancel/retry, journal/fault/read guards, only authored scarf transfers change live state, gray/mono rendering PASS");return 0;
 }

@@ -8,10 +8,21 @@ static void ht_tower_begin(bool card){ht_tower=(ht_tower_state){true,false,card,
 static unsigned ht_tower_limit(const ht_tower_state *s){return (s->stage&1)?(s->stage==1?64:96):0;}
 static bool ht_tower_step(ht_tower_state *s){
  if(!s->active || s->paused || !ht_tower_limit(s))return false;
- if(++s->tick==ht_tower_limit(s)){++s->stage;s->tick=0;}return true;
+ if(!s->card && s->stage>=7 && !ht.scarf)return false;
+ if(++s->tick==ht_tower_limit(s)){
+  ++s->stage;s->tick=0;
+  if(!s->card && ht.scarf){if(s->stage==8)ht.scarf=1;else if(s->stage==10)ht.scarf=3;}
+ }return true;
 }
-static bool ht_tower_action(ht_tower_state *s){if(!s->active || s->paused || (s->stage&1) || s->stage>=(s->card?6:10))return false;++s->stage;s->tick=0;return true;}
-static const char *ht_tower_label(const ht_tower_state *s){
+static bool ht_tower_action(ht_tower_state *s){
+ if(!s->active || s->paused || (s->stage&1) || s->stage>=(s->card?6:10))return false;
+ if(!s->card && s->stage>=6 && !ht.scarf)return false;
+ /* On return, a transferred ridge scarf cannot reappear around the neck. */
+ if(!s->card && s->stage==6 && (ht.scarf==1 || ht.scarf==3))s->stage=ht.scarf==1?8:10;
+ else ++s->stage;
+ s->tick=0;return true;
+}
+static const char *ht_tower_label(const ht_game *game,const ht_tower_state *s){
  if(s->paused)return "PAUSED - PRESS PAUSE TO RESUME";
  if(s->card){
   if(!s->stage)return "THE RADIO CARD LAY BESIDE THE LAST STAIR.";
@@ -22,6 +33,7 @@ static const char *ht_tower_label(const ht_tower_state *s){
   if(s->stage==5)return "HE HAD SIGNED FOR THE LOCKS.";
   return "THE PEN HAD PIERCED THE PAPER. I TOOK THE RECORD.";
  }
+ if(!game->scarf && s->stage>=6)return "MY FEET HURT LESS. MY RIBS HURT MORE.";
  if(!s->stage)return "I STOPPED SO SUDDENLY THAT THE BAG SWUNG.";
  if(s->stage==1 || s->stage==2)return "SEVEN HOOKS. AN EIGHTH FIXED LATER.";
  if(s->stage==3)return "I SAT ON THE BENCH BEFORE GOING FARTHER.";
@@ -29,7 +41,7 @@ static const char *ht_tower_label(const ht_tower_state *s){
  if(s->stage==5)return "I TOUCHED A WHITE CHIP. IT FELL TO POWDER.";
  if(s->stage==6)return "MY FEET HURT LESS. MY RIBS HURT MORE.";
  if(s->stage==7)return "THE SCARF HAD DRIED ROUGH AGAINST MY NECK.";
- if(s->stage==8)return "I HAD BEEN WEARING THE REMAINDER.";
+ if(s->stage==8)return "I SMOOTHED IT ON MY KNEE.";
  if(s->stage==9)return "I FOLDED IT AND PUT IT INSIDE MY COAT.";
  return "AT HOME SHE WOULD HAVE MENDED IT.";
 }
@@ -139,15 +151,16 @@ static void ht_tower_study_render(const ht_game *game,const ht_tower_state *s){
  v.intimacy=256;v.vista=v.drop_zoom=0;v.rotation_phase=v.sway_phase=0;
  ht_frame_camera(&v,ht_camera_mode==HT_CAMERA_NATIVE?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode);ht_render_scene_from(&v,false);ht_world_scale=ht_scene_scale(&v);
  bool overview=s->card?s->stage<2:s->stage==0 || s->stage==3 || s->stage==4 || (s->stage==1 && s->tick<32) || (s->stage==5 && s->tick<32);
- if(overview){ht_person_pose p=ht_tower_pose(&v,s);ht_person_draw(&p);
+ if(overview){ht_person_pose p=ht_tower_pose(&v,s);ht_person_draw(&p);ht_person_scarf(&p,game->scarf);
   /* Carried bag settles after the abrupt stop, then rests against the bench. */
   if(!s->card){int swing=s->stage?0:3;ht_limb(ht_scene,p.shoulder.x-1,p.shoulder.y,p.hip.x-5-swing,p.hip.y+1,0,0,169);ht_rect(ht_scene,p.hip.x-9-swing,p.hip.y-1,7,8,182);}
  }
  ht_world_scale=256;
- if(!overview){if(s->card)ht_tower_radio_insert(s);else if(s->stage<=6)ht_tower_hook_insert(s);else ht_tower_scarf_insert(s);}
- ht_rect(ht_scene,5,226,470,35,255);const char *label=ht_tower_label(s);ht_text_color((HT_W-(int)strlen(label)*6)/2,230,label,1,65);
+ if(!overview){if(s->card)ht_tower_radio_insert(s);else if(s->stage<=6 || !game->scarf)ht_tower_hook_insert(s);else ht_tower_scarf_insert(s);}
+ ht_rect(ht_scene,5,226,470,35,255);const char *label=ht_tower_label(game,s);ht_text_color((HT_W-(int)strlen(label)*6)/2,230,label,1,65);
  const char *keys;
  if(s->card)keys=!s->stage?"A REACH CARD  START NOTE  X RETURN":s->stage==2?"A LIFT CARD  START NOTE  X RETURN":s->stage==4?"A TAKE RECORD  START NOTE  X RETURN":s->stage==6?"A READ NOTE  START NOTE  X RETURN":"PAUSE HOLD  START NOTE  X RETURN";
+ else if(!game->scarf && s->stage>=6)keys="START JOURNAL  X RETURN";
  else keys=!s->stage?"A LOOK AT HOOKS  START JOURNAL  X RETURN":s->stage==2?"A SIT DOWN  START JOURNAL  X RETURN":s->stage==4?"A TOUCH CHIP  START JOURNAL  X RETURN":s->stage==6?"A REMOVE SCARF  START JOURNAL  X RETURN":s->stage==8?"A FOLD SCARF  START JOURNAL  X RETURN":s->stage==10?"START JOURNAL  X RETURN":"PAUSE HOLD  START JOURNAL  X RETURN";
  ht_text_color((HT_W-(int)strlen(keys)*6)/2,244,keys,1,103);ht_vignette();
 }

@@ -62,6 +62,15 @@ static void reach_left_lamp(void) {
         if(!hooks && ht_tower_near(&ht)) {
             uint32_t evidence=ht.evidence;action();
             assert(ht_tower.active && !ht_tower.card && !reading && ht.evidence==evidence);
+            assert(!ht.scarf);
+            /* Declining the ridge scarf leaves this bench available, but its
+             * hooks/sit/chip pause cannot take the remote cloth. */
+            for(unsigned stage=0;stage<6;stage+=2){
+                action();input(0,8);for(unsigned n=0;n<130 && ht_tower.stage==stage+1;++n)ticks(1);
+                assert(ht_tower.stage==stage+2 && !ht.scarf);
+            }
+            ht_game held_world=ht;action();input(0,8);ticks(120);
+            assert(ht_tower.stage==6 && !ht_tower.tick && !memcmp(&ht,&held_world,sizeof(ht)));
             leave_inspection();hooks=true;
         }
         int item=ht_evidence_near(&ht);
