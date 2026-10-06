@@ -137,6 +137,9 @@ typedef struct {
     uint16_t drawing_view_tick;
     uint8_t counts_view_stage;
     uint16_t counts_view_tick;
+    bool care_tended,care_view_active; /* Optional physical scene; never an evidence/route gate. */
+    uint8_t care_view_stage;
+    uint16_t care_view_tick,care_view_ambient;
     bool food_view_active;
     uint8_t food_view_stage;
     uint16_t food_view_tick,food_view_ambient;
@@ -2297,3 +2300,4 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_garden_night.inc"
 
 #include "hollow_trail_food_study.inc"
+#include "hollow_trail_care_study.inc"

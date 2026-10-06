@@ -40,6 +40,7 @@ The source, sidecar, package manifest and catalog retain 1.1.50; minimum firmwar
 stays 1.3.37. No hardware appearance/FPS or release qualification is claimed.
 
 [First-house food/drink](HOLLOW_TRAIL_FOOD_1_1_50.md) is now connected. The sister's
-face/crease memory, evening tending, improvised-privacy
-gesture and broader hillside continuity remain separate book gaps. This rest
+face/crease memory, improvised-privacy gesture and broader hillside continuity
+remain separate book gaps. [Evening tending](HOLLOW_TRAIL_CARE_1_1_50.md) is
+connected in this cumulative update. This rest
 does not claim to complete the whole garden chapter or the book.

@@ -13,19 +13,21 @@ static void ht_counts_room(const ht_game *g){
  int x=ht_counts_x()-g->camera/256,f=ht_counts_floor()-g->camera_y/256;
  if(x+48< -ht_view_margin() || x-160>HT_W+ht_view_margin())return;
  /* Last clear pane; the neighbouring lower glass is still misted. */
- ht_rect(ht_scene,x-119,f-85,81,83,181);ht_rect(ht_scene,x-116,f-82,75,78,101);
- ht_rect(ht_scene,x-116,f-82,28,78,57);ht_rect(ht_scene,x-89,f-84,3,82,205);
+ /* The pane is behind the row. Its bottom follows the surveyed slope,
+  * rather than painting pale glass over the earth beneath the player's feet. */
+ for(int n=0;n<81;++n){int ground=ht_care_floor(ht_counts_x()-119+n)-g->camera_y/256;
+  int ink=n<3 || n>=78?181:n<31?57:101;
+  ht_rect(ht_scene,x-119+n,f-85,1,ground-(f-85),ink);
+  ht_rect(ht_scene,x-119+n,ground-2,1,2,181);
+ }
+ ht_rect(ht_scene,x-119,f-85,81,3,181);
+ ht_rect(ht_scene,x-89,f-84,3,ht_care_floor(ht_counts_x()-89)-g->camera_y/256-(f-84),205);
  ht_limb(ht_scene,x-114,f-78,x-94,f-64,1,0,79);
- for(int n=0;n<16;++n){int xx=x-82+(n*17)%39,yy=f-77+(n*29)%68;ht_rect(ht_scene,xx,yy,1,3,48);}
+ for(int n=0;n<16;++n){int xx=x-82+(n*17)%39,yy=f-77+(n*29)%68;if(yy+3<ht_care_floor(xx+g->camera/256)-g->camera_y/256)ht_rect(ht_scene,xx,yy,1,3,48);}
  ht_limb(ht_scene,x-144,f-94,x-125,f-110,1,1,182);ht_limb(ht_scene,x-125,f-110,x-88,f-119,1,1,184);
  ht_limb(ht_scene,x-88,f-119,x-42,f-111,1,1,184);ht_limb(ht_scene,x-42,f-111,x+37,f-70,1,1,184);
- ht_limb(ht_scene,x-144,f-94,x-144,f,1,1,185);
- /* Narrow slates stand at the end of living rows, below the count wire. */
- for(int row=0;row<2;++row){int xx=x-57+row*38;
-  ht_rect(ht_scene,xx-22,f-3,31,3,199);
-  for(int n=0;n<4;++n){int px=xx-19+n*7;ht_limb(ht_scene,px,f-4,px+1,f-13-n%2*3,1,1,210);ht_limb(ht_scene,px+1,f-10,px-3,f-14,2,0,164);ht_limb(ht_scene,px+1,f-10,px+5,f-13,2,0,157);}
-  ht_rect(ht_scene,xx+11,f-14,7,13,217);ht_text_color(xx+12,f-12,"7",1,62);
- }
+ ht_limb(ht_scene,x-144,f-94,x-144,ht_care_floor(ht_counts_x()-144)-g->camera_y/256,1,1,185);
+ ht_care_rows(g);
  ht_limb(ht_scene,x-26,f-32,x+22,f-32,0,0,228);ht_limb(ht_scene,x-26,f-34,x-26,f-4,1,1,192);ht_limb(ht_scene,x+22,f-34,x+22,f-4,1,1,192);
  if(ht_counts_on_wire(g->counts_view_stage,g->counts_view_tick)){ht_counts_small_sheet(x-16,f-27);ht_counts_small_sheet(x+1,f-27);}
  ht_rect(ht_scene,x-12,f-33,3,7,231);ht_rect(ht_scene,x+5,f-33,3,7,231);

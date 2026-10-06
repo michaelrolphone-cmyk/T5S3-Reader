@@ -164,6 +164,16 @@ static void ht_advance(uint32_t now) {
         if(!ht_night.active){ht_input_rearm=true;simulation_started=false;simulation_accumulator=0;}
         ht_motion_emphasis=false;jump_down=pause_down=false;return;
     }
+    if(ht_care.active){
+        uint32_t elapsed=now-simulation_clock;simulation_clock=now;
+        if(ht_care.paused || ht_pad_fault || ht_input_rearm){simulation_accumulator=0;return;}
+        simulation_accumulator+=elapsed>128u?128u:elapsed;
+        for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps){
+            simulation_accumulator-=HT_STEP_MS;if(ht_care_step(&ht_care))++scene_revision;
+        }
+        if(!ht_care.active){ht.care_tended=true;ht_input_rearm=true;simulation_started=false;simulation_accumulator=0;}
+        ht_motion_emphasis=false;jump_down=pause_down=false;return;
+    }
     if(ht_food.active){
         uint32_t elapsed=now-simulation_clock;simulation_clock=now;
         if(ht_food.paused || ht_pad_fault || ht_input_rearm){simulation_accumulator=0;return;}
@@ -496,6 +506,16 @@ static void ht_input_update(uint32_t wait) {
         if(!ht_night.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
         previous=buttons;held=0;last_poll=now;return;
     }
+    if(ht_care.active && !reading){
+        if(down&HT_PAUSE)ht_care.paused=!ht_care.paused;
+        if(down&(HT_BACK|HT_EXIT)){ht_care.active=false;ht_input_rearm=true;}
+        else if(down&HT_JOURNAL){ht_journal_index=true;ht_journal_selection=0;reading=true;ht_input_rearm=true;}
+        else if(down&HT_ACCEPT)(void)ht_care_action(&ht_care);
+        if(down)++scene_revision;
+        jump_down=pause_down=false;
+        if(!ht_care.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
+        previous=buttons;held=0;last_poll=now;return;
+    }
     if(ht_food.active && !reading){
         if(down&HT_PAUSE)ht_food.paused=!ht_food.paused;
         if(down&(HT_BACK|HT_EXIT)){ht_food.active=false;ht_input_rearm=true;}
@@ -771,6 +791,7 @@ static void ht_input_update(uint32_t wait) {
             simulation_started=false;simulation_accumulator=0;
         }
         else if(ht_night_near(&ht)){ht_night_begin();ht_input_rearm=true;jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;}
+        else if(ht_care_near(&ht)){ht_care_begin();ht_input_rearm=true;jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;}
         else if(ht_food_near(&ht)){ht_food_begin();ht_input_rearm=true;jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;}
         else if(ht_bed_near(&ht)){ht_bed_begin();ht_input_rearm=true;jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;}
         else if(ht_carriage_near(&ht)){ht_carriage_begin();ht_input_rearm=true;jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;}
@@ -887,6 +908,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     ht_carriage=(ht_carriage_state){0};
     ht_night=(ht_night_state){0};
     ht_food=(ht_food_state){0};
+    ht_care=(ht_care_state){0};
     ht_bed=(ht_bed_state){0};
     ht_drawing=(ht_drawing_state){0};
     ht_counts=(ht_counts_state){0};
@@ -988,14 +1010,14 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
 
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_hoist.active && !ht_first_house.active && !ht_isolator.active && !ht_drawing.active && !ht_counts.active && !ht_night.active && !ht_food.active && !ht_bed.active && !ht_cabin.active && !ht_carriage.active && !ht_partition.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
+        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_hoist.active && !ht_first_house.active && !ht_isolator.active && !ht_drawing.active && !ht_counts.active && !ht_night.active && !ht_care.active && !ht_food.active && !ht_bed.active && !ht_cabin.active && !ht_carriage.active && !ht_partition.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
             memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
         }
-        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_hoist.active || ht_first_house.active || ht_isolator.active || ht_drawing.active || ht_counts.active || ht_night.active || ht_food.active || ht_bed.active || ht_cabin.active || ht_carriage.active || ht_partition.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
+        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_hoist.active || ht_first_house.active || ht_isolator.active || ht_drawing.active || ht_counts.active || ht_night.active || ht_care.active || ht_food.active || ht_bed.active || ht_cabin.active || ht_carriage.active || ht_partition.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -1012,6 +1034,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const ht_isolator_state rendering_isolator=ht_isolator;
             const ht_night_state rendering_night=ht_night;
             const ht_food_state rendering_food=ht_food;
+            const ht_care_state rendering_care=ht_care;
             const ht_bed_state rendering_bed=ht_bed;
             const ht_drawing_state rendering_drawing=ht_drawing;
             const ht_counts_state rendering_counts=ht_counts;
@@ -1028,7 +1051,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const unsigned rendering_signal_focus=ht_signal_room_focus,rendering_signal_ticks=ht_signal_room_ticks;
             prepared_reader=rendering_reading;
             prepared_door=rendering_game.door_stage!=HT_DOOR_NONE;
-            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_hoist.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_drawing.active && !rendering_counts.active && !rendering_night.active && !rendering_food.active && !rendering_bed.active && !rendering_cabin.active && !rendering_carriage.active && !rendering_partition.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
+            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_hoist.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_drawing.active && !rendering_counts.active && !rendering_night.active && !rendering_care.active && !rendering_food.active && !rendering_bed.active && !rendering_cabin.active && !rendering_carriage.active && !rendering_partition.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
             if(rendering_reading) ht_journal_render();
             else if(rendering_hoist.active){
                 ht_hoist_render(&rendering_hoist);
@@ -1061,6 +1084,10 @@ __attribute__((visibility("default"))) void app_main(void) {
             else if(rendering_night.active){
                 ht_night_study_render(&rendering_game,&rendering_night);
                 ht_narration_key=2166136261u;ht_narration_hash(ht_night_label(&rendering_night));
+            }
+            else if(rendering_care.active){
+                ht_care_study_render(&rendering_game,&rendering_care);
+                ht_narration_key=2166136261u;ht_narration_hash(ht_care_label(&rendering_care));
             }
             else if(rendering_food.active){
                 ht_food_study_render(&rendering_game,&rendering_food);
@@ -1134,7 +1161,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_narration(&rendering_game);
                 if(!rendering_game.door_stage) {
                     ht_observation_prompt(&rendering_game);
-                    ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game); ht_first_house_prompt(&rendering_game); ht_carriage_prompt(&rendering_game); ht_bed_prompt(&rendering_game); ht_food_prompt(&rendering_game); ht_night_prompt(&rendering_game);
+                    ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game); ht_first_house_prompt(&rendering_game); ht_carriage_prompt(&rendering_game); ht_bed_prompt(&rendering_game); ht_food_prompt(&rendering_game); ht_care_prompt(&rendering_game); ht_night_prompt(&rendering_game);
                 }
             }
             if(rendering_paused) {

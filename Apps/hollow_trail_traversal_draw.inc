@@ -9,6 +9,7 @@
 #include "hollow_trail_signal_cabin_draw.inc"
 #include "hollow_trail_living_bed_draw.inc"
 #include "hollow_trail_food_draw.inc"
+#include "hollow_trail_care_draw.inc"
 #include "hollow_trail_counts_draw.inc"
 #include "hollow_trail_drawing_draw.inc"
 #include "hollow_trail_geography_draw.inc"

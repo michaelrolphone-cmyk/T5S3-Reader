@@ -42,6 +42,7 @@ cabin/sleeping-house evidence is also excluded and has not been retried.
 The whole-book assignment continues. Physical duplicate garden-count alignment and
 the child-drawing/older-card comparison, chosen far-pallet rest and
 [food/drink](HOLLOW_TRAIL_FOOD_1_1_50.md) are connected in this cumulative update.
-Evening tending, privacy/memory beats and broader route scenery remain gaps.
+[Evening tending](HOLLOW_TRAIL_CARE_1_1_50.md) is also connected.
+Privacy/memory beats and broader route scenery remain gaps.
 No merge, release or device validation is
 claimed by this source checkpoint.

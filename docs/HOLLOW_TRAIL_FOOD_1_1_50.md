@@ -62,5 +62,5 @@ An initial repeat ZIP export correctly refused a nonempty output directory;
 that previous output was preserved separately before the final successful build.
 
 The integrated full native aggregate is tracked with the PR. No device run,
-panel/FPS measurement, merge or release is claimed by this increment. Evening tending, the towel/comb privacy gesture,
+panel/FPS measurement, merge or release is claimed by this increment. The [evening tending](HOLLOW_TRAIL_CARE_1_1_50.md) is now connected. The towel/comb privacy gesture,
 sister-face/crease memory and broader hillside continuity remain book gaps.
