@@ -133,6 +133,8 @@ typedef struct {
     bool isolator_view_active;
     uint8_t isolator_view_stage;
     uint16_t isolator_view_tick;
+    bool partition_view_active;
+    uint16_t partition_view_tick;
     bool warming_view_active;
     uint16_t warming_view_tick;
     bool sleep_view_active;
@@ -2098,6 +2100,7 @@ static void ht_narration(const ht_game *game) {
 #include "hollow_trail_cabinet_room_draw.inc"
 #include "hollow_trail_isolator_draw.inc"
 #include "hollow_trail_warming_draw.inc"
+#include "hollow_trail_partition_draw.inc"
 #include "hollow_trail_mechanism_draw.inc"
 static void ht_draw_puzzle(const ht_game *game) {
     int top=ht_level_land(game->level)[9].top-game->camera_y/256;
@@ -2110,6 +2113,7 @@ static void ht_draw_puzzle(const ht_game *game) {
         return;
     }
     ht_draw_chapter_gate(game,top);
+    ht_partition_response(game,top);
 }
 static void ht_puzzle_prompt(const ht_game *game) {
     if(ht_puzzle_near(game)<0) return;
@@ -2265,6 +2269,7 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 
 #include "hollow_trail_sleep_study.inc"
 
+#include "hollow_trail_partition_study.inc"
 #include "hollow_trail_warming_study.inc"
 
 #include "hollow_trail_isolator_study.inc"
