@@ -4,6 +4,11 @@ This is the implemented narrative and decision design, updated through Hollow
 Trail 1.1.5. The cabinet narrative originated in PR #276. It supersedes the earlier
 straightforward rescue/reunion synopsis. **Full spoilers below.**
 
+## Current adaptation guidance
+
+Owner direction, 2026-10-06: "where appropriate use cut scenes to tell the story".
+Apply this to the ongoing whole-book adaptation.
+
 ## Narrative contract
 
 The sister describes an evacuation. The keeper describes a controlled transfer

@@ -5,6 +5,9 @@
 static void ht_scene_geography(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256,margin=ht_view_margin();
     if(g->level==3) {
+        ht_carriage_shell(g,g->carriage_view_active,g->carriage_view_boots);
+        ht_signal_cabin_room(g);
+        ht_station_cutting(g);
         int bed=630-cx;
         ht_rect(ht_scene,bed,219-cy,530,350,170);
         ht_triangle(ht_scene,bed-60,520-cy,bed,219-cy,bed,520-cy,170);

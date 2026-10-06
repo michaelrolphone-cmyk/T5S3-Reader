@@ -195,12 +195,13 @@ static void signal_arrival_controls(void) {
         reports[source][0].device=source+1;reports[source][0].hat=8;
         healthy=true;host_exit=false;mapped=0;
         memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
-        ht.x=(2090-1)*256;ht.y=ht_level_land(1)[7].top*256;ht.grounded=true;
+        ht.x=(HT_SIGNAL_WINDOW_LEFT-5)*256;ht.y=ht_level_land(1)[7].top*256;ht.grounded=true;
         ht_cutscene.active=false;ht_cutscene_seen=0;
         reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
         ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
         ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
-        ht_input(1);reports[source][0].hat=2;
+        ht_input(1);press(source,a[source]);assert(ht.traversal.mode==HT_WINDOW);
+        reports[source][0].hat=2;
         for(unsigned i=0;i<12 && !ht_cutscene.active;++i)ht_input(32);
         assert(ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_SIGNAL);
         ht_game frozen=ht;
@@ -263,6 +264,74 @@ static void relay_controls(void) {
     reading=paused=quitting=loading=debug_jump=false;held=previous=0;
     ht_input(1);mapped=T5_APP_BUTTON_CONFIRM|T5_APP_BUTTON_BACK;ht_input(1);
     assert(quitting && ht.puzzle.solved && ht_cutscene.active);
+}
+
+
+static void mill_desk_controls(void) {
+    const unsigned a[2]={1,2},x[2]={8,4},start[2]={512,128};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=0;ht_select_level(0);ht_spawn(true);
+        ht.traversal.forest_log_phase=ht.traversal.bridge_open=32;
+        ht.x=1074*256;ht.y=ht_land_height(0,3,ht.x/256)*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=1;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;simulation_accumulator=0;
+        ht_input(1);reports[source][0].hat=2;
+        for(unsigned i=0;i<40;++i)ht_input(32);
+        assert(ht.x==1088*256 && ht.grounded && !ht.checkpoint);
+        reports[source][0].hat=8;press(source,a[source]);
+        assert(ht.traversal.mode==HT_SHUTTER && !reading && !ht_cutscene.active);
+        reports[source][0].buttons=0;reports[source][0].hat=2;
+        for(unsigned i=0;i<50 && ht.traversal.mill_entry_phase<48;++i)ht_input(32);
+        assert(ht.traversal.mill_entry_phase>=48 && ht.traversal.mill_entry_phase<=49);
+        unsigned held_phase=ht.traversal.mill_entry_phase;
+        reports[source][0].hat=8;ht_input(1);int held_x=ht.x,held_y=ht.y;
+        for(unsigned i=0;i<20;++i)ht_input(32);
+        assert(ht.x==held_x && ht.y==held_y && ht.traversal.mill_entry_phase==held_phase);
+        reports[source][0].hat=2;
+        for(unsigned i=0;i<50 && ht.traversal.mode==HT_SHUTTER;++i)ht_input(32);
+        assert(ht.x==1111*256 && ht.grounded && ht.traversal.mode==HT_FREE && ht.checkpoint==3);
+        reports[source][0].hat=8;press(source,a[source]);
+        assert(ht.traversal.mode==HT_CRATE && !reading && !ht_evidence_found(&ht,1));
+        reports[source][0].buttons=0;reports[source][0].hat=2;
+        unsigned count=0;while(!ht_mill_register_lit(&ht) && count++<180)ht_input(32);
+        assert(count<180 && ht.traversal.mode==HT_CRATE);
+        reports[source][0].hat=8;press(source,a[source]);
+        assert(!reading && ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_REGISTER);
+        assert(ht.traversal.mode==HT_FREE && !ht.traversal.crate_vx && !held && !previous);
+        ht_game frozen=ht;
+        /* Every input during the memory leaves the world/desk/evidence alone.
+         * Held entry A never skips it or advances the following journal. */
+        reports[source][0].hat=2;reports[source][0].buttons=a[source];
+        while(ht_cutscene.active) {ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(reading && journal_page==1 && !ht_journal_index && ht_input_rearm);
+        ht_input(32);assert(reading && !ht_journal_index && !memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
+        press(source,x[source]);press(source,x[source]);
+        assert(!reading && !quitting && ht.traversal.mode==HT_FREE);
+        press(source,a[source]);assert(ht_cutscene.active && !reading && !ht.traversal.mode);
+        frozen=ht;press(source,x[source]);
+        assert(reading && journal_page==1 && !ht_cutscene.active && !quitting && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        /* Archive navigation reads the already earned page without replay. */
+        reports[source][0].buttons=0;ht_input(1);press(source,x[source]);
+        assert(ht_journal_index);press(source,a[source]);
+        assert(reading && journal_page==1 && !ht_cutscene.active);
+        press(source,x[source]);press(source,x[source]);press(source,a[source]);
+        assert(ht_cutscene.active);frozen=ht;press(source,start[source]);
+        assert(reading && !ht_journal_index && !ht_cutscene.active && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].buttons=0;ht_input(1);
+        press(source,x[source]);press(source,x[source]);press(source,a[source]);
+        assert(ht_cutscene.active);host_exit=true;ht_input(1);assert(quitting);
+        host_exit=false;ht_cutscene.active=false;
+        reading=false;reports[source][0].buttons=0;ht_input(1);
+    }
 }
 
 int main(void) {
@@ -446,5 +515,6 @@ int main(void) {
     rain_controls();
     signal_arrival_controls();
     relay_controls();
+    mill_desk_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }
