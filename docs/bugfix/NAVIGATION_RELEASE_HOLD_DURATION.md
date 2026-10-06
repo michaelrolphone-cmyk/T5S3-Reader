@@ -14,6 +14,12 @@ Exact-head target CI is recorded on the PR. Hardware is unavailable and unrun,
 not a prerequisite for software integration. No app/driver payload change,
 PR350/master write, release or device action is included.
 
+A software-only composition check with PR422 reproduced a missing extracted
+wasPageTurnRequested method in this fixture. The fixture now includes that
+real method when present and supplies its existing flipUi setting. Both the
+isolated long-release repair and the composed direction/long-release source
+pass normal and ASan/UBSan regressions. No production or package bytes change.
+
 ## Reproduced defect
 
 The shared reader waits for release when chapter skip or orientation change is enabled. NativeNavigationInput reset its hold origin when the button mask became zero, and its duration query returned zero whenever no button remained down. MappedInputManager also selected the untouched GPIO duration on X4 release. A one-second physical page press therefore behaved as a short press in EPUB/XTC.

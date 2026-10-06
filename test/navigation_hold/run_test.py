@@ -67,7 +67,7 @@ struct CrossPointSettings {
 };
 struct:CrossPointSettings {
  uint8_t sideButtonLayout=0,frontButtonBack=0,frontButtonConfirm=1,frontButtonLeft=2,frontButtonRight=3;
- uint8_t longPressButtonBehavior=CHAPTER_SKIP,orientation=0;
+ uint8_t longPressButtonBehavior=CHAPTER_SKIP,orientation=0,flipUi=0;
  bool tiltPageTurn=false;
 }SETTINGS;
 struct {bool next=false,prev=false;bool wasTiltedForward(){return next;}bool wasTiltedBack(){return prev;}}halTiltSensor;
@@ -79,6 +79,8 @@ signatures = ['uint32_t navigationBit(', 'bool MappedInputManager::mapButton(',
               'bool MappedInputManager::wasPressed(', 'bool MappedInputManager::wasReleased(',
               'bool MappedInputManager::isPressed(', 'unsigned long MappedInputManager::getHeldTime(',
               'void MappedInputManager::injectButtonTap(', 'void MappedInputManager::clearInjectedButtonTap(']
+if 'bool MappedInputManager::wasPageTurnRequested(' in mapped:
+    signatures += ['bool MappedInputManager::wasPageTurnRequested(']
 production = '\n'.join(method(mapped, s) for s in signatures)
 production += '\nnamespace ReaderUtils {\nstruct PageTurnResult{bool prev,next,fromTilt;};\n'
 production += method(reader, 'inline PageTurnResult detectPageTurn(')
