@@ -1710,6 +1710,7 @@ static void ht_weather(const ht_game *g) {
     ht_checkpoint();
 }
 static void ht_draw_traversal(const ht_game *game);
+static void ht_marsh_foreground(const ht_game *game);
 static void ht_forest_foreground(const ht_game *game);
 static void ht_city_observer_foreground(const ht_game *game);
 static void ht_authored_foreground(const ht_game *game);
@@ -1777,6 +1778,7 @@ static void ht_render_scene_from(const ht_game *source,bool character) {
     ht_signal_window_draw(&game,true);
     ht_city_observer_foreground(&game);
     ht_authored_foreground(&game);
+    ht_marsh_foreground(&game);
     uint32_t post_start=ht_render_now();
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;

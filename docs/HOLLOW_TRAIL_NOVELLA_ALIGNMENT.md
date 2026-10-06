@@ -113,10 +113,10 @@ traversal wholesale with autoplay.
 | 18 Trestle/cabin | Corrected-map tilt, erased-question pressure and five-legged paper dog retained; [actual lower-bracing route and wool contact](HOLLOW_TRAIL_TRESTLE_1_1_50.md) now connect reversible descent, a deliberate next-footing check, palm prints and the existing rope handoff | Refine against concrete owner feedback; preserve the real gap, cabin evidence and shunting |
 | 19 Shunting/marsh | Existing three-wagon puzzle | Distinct heavy bodies and continuous ballast-to-reed terrain transition |
 | 20 Ferry | Existing approved boat/grotto retained | Far-bank canvas/person ambiguity and pulling boat to shore; preserve hull quality |
-| 21 Marsh path | Partial wet terrain/depth | Raised bank with transparent/mirrored water and quarry sightline |
+| 21 Marsh path | [Connected raised-bank scenery](HOLLOW_TRAIL_MARSH_PATH_1_1_50.md): roots/silt on the actual route, cloud-driven clear/mirrored shallows, willow/post depth and a progressive pale quarry seam | Physical foot/mud detail and the separate upper-landing vista remain |
 | 22 Waiting awning | Published: physical chair/stick groove, scuffs, deliberate bell pull and quiet unanswered hold; original lock guidance retained | Broader marsh approach and far-bank ambiguity remain separate |
 | 23 Locks | Existing water-level puzzle | Ground cradle/ladder/watermarks and vertical camera relation |
-| 24 Quarry reveal | Partial chapter transition | Backward marsh vista, progressive pale escarpment approach |
+| 24 Quarry reveal | [Progressive pale quarry sightline](HOLLOW_TRAIL_MARSH_PATH_1_1_50.md) now resolves along the existing Chapter V bank | Backward marsh vista and physical upper-landing approach remain; original lock route retained |
 | 25 Quarry floor | Published: six-stone pouch, physical face rotation and careful return, marked stone last; existing terrace/crane retained | Monumental cut scale, chisel/spoil and broader quarry-floor staging remain |
 | 26 Quarry ascent | Local 1.1.50 [cloth boundary, three small bootprints and backward country](HOLLOW_TRAIL_QUARRY_ASCENT_1_1_50.md) on the real upper ledges; player-paced hand contact, silver marsh, distant tank roofs and railway; original ladders retained | Separate failed house-search/notebook reflection remains |
 | 27 Hoist | Published: real balance transition earns cage descent, shared feet/brake-cord contacts, passing fern and preserved destination spawn; local 1.1.50 [scarf grip and casing inspection](HOLLOW_TRAIL_HOIST_GRIP_1_1_50.md) adds held wool, stitch tuck, four-hole clean patch and unsuccessful plate search at the original notice; [empty-cage lower/stop/raise/repeat trial](HOLLOW_TRAIL_EMPTY_CAGE_1_1_50.md) is published at the actual solved upper mechanism (`11c86f5d0cf54652526de998f8fda1d9d46dfb9f`) | Local 1.1.50 [parked-cage torn-note/floorboard examination](HOLLOW_TRAIL_FLOORBOARD_1_1_50.md) now preserves pre-balance page-17 access, deliberate kneel/look/rise, pale projecting stone and shoulder contact; broader whole-book work remains |
@@ -149,7 +149,7 @@ Fresh source `641be8cc4` interaction/contact sanitizer checks, real captures and
 S3 ELF/package checks pass; aggregate validation is recorded with the new PR.
 
 Continue substantive partial/missing sets above rather than waiting for review
-or repeatedly polishing the opening. Remaining marsh terrain, shunting bodies and the early pump/cut continuity
+or repeatedly polishing the opening. Remaining upper-marsh/backward vista, shunting bodies and the early pump/cut continuity
 are meaningful next gaps. Garden counts and the actual lower trestle route are
 connected. The completed
 cold-stove, ticket, pouch, sleeping-house, hoist, return, isolator, first-house

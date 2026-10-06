@@ -17,6 +17,7 @@
 #include "hollow_trail_quarry_ascent_draw.inc"
 #include "hollow_trail_trestle_draw.inc"
 #include "hollow_trail_geography_draw.inc"
+#include "hollow_trail_marsh_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
 #include "hollow_trail_forest_draw.inc"
@@ -80,6 +81,7 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     ht_dam_spray(g);
     ht_boat_grotto(g);
+    ht_marsh_backdrop(g);
     /* Background/grotto retain the original full 960x540 native path.
      * From here forward, native A/B uses 960x270 detail: full horizontal
      * resolution with one computed row duplicated to each physical row pair. */
@@ -114,6 +116,7 @@ static void ht_draw_traversal(const ht_game *g) {
             }
         }
     }
+    ht_marsh_bank(g);
     if(g->level==0)ht_forest_log_draw(g);
     ht_city_roof_detail(g);
     ht_city_service_arrival(g);

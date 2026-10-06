@@ -155,7 +155,7 @@ static const unsigned golden[][2]={
 {223795782u,2437891813u}, /* Reviewed lower trestle/ditch; corrected-map cabin and other 29 pairs retained. */
 {2033607303,4272025260},
 {737287855,150225469},
-{2871873071,1039595674}, /* Reviewed waiting awning on the actual marsh bank. */
+{4025276642u,2003882676u}, /* Reviewed raised bank/cloud shallows and quarry; other 29 pairs exact. */
 {1684780377,2737385310},
 {1477351146,501319504},
 {3095071177,861699871},
