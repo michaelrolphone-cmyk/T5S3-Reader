@@ -1504,6 +1504,63 @@ int GfxRenderer::getTextHeight(const int fontId) const {
   return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
 }
 
+bool GfxRenderer::getTextFittingPrefix(const int fontId, const char* text, const size_t length,
+                                      const int maxWidth, size_t& prefixBytes,
+                                      const EpdFontFamily::Style style) const {
+  // This is an optional bounded fast path, never a keyboard input-length cap.
+  // Unsupported input and slow work retain the original shrinking-prefix loop.
+  constexpr size_t kMaxBytes = 4096;
+  constexpr uint32_t kBudgetMs = 1000;
+  if (!text || !length || length > kMaxBytes || isSdCardFont(fontId)) return false;
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return false;
+  const EpdFontData* data = fontIt->second.getData(style);
+  if (!data || data->glyphMissHandler) return false;
+  const EpdFont font(data);
+
+  // Keep the final two glyphs pending. Extending a greedy ligature can change
+  // its advance AND its kerning from the previous glyph. Earlier pairs remain
+  // final. Use the same differential rounding as getTextAdvanceX/drawText.
+  int finishedPx = 0;
+  uint32_t beforeCp = 0, lastCp = 0;
+  int32_t beforeAdvance = 0, lastAdvance = 0;
+  size_t longest = 0, checkpointBytes = 0;
+  const uint32_t started = millis();
+  uint32_t checkpointAt = started;
+  for (size_t i = 0; i < length; ++i) {
+    const uint32_t cp = static_cast<unsigned char>(text[i]);
+    // Preserve legacy byte-truncation, malformed UTF-8 and embedded-NUL behavior
+    // by leaving those strings entirely to the existing decoder/measurement.
+    if (cp < 0x20 || cp > 0x7e) return false;
+    const uint32_t ligature = lastCp ? font.getLigature(lastCp, cp) : 0;
+    if (ligature) {
+      lastCp = ligature;
+    } else {
+      if (beforeCp) finishedPx += fp4::toPixel(beforeAdvance + font.getKerning(beforeCp, lastCp));
+      beforeCp = lastCp;
+      beforeAdvance = lastAdvance;
+      lastCp = cp;
+    }
+    const EpdGlyph* glyph = font.getGlyph(lastCp);
+    lastAdvance = glyph ? glyph->advanceX : 0;
+    const int width = finishedPx +
+        (beforeCp ? fp4::toPixel(beforeAdvance + font.getKerning(beforeCp, lastCp)) : 0) +
+        fp4::toPixel(lastAdvance);
+    // A later prefix can be narrower. Never binary-search or stop at overflow.
+    if (width <= maxWidth) longest = i + 1;
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= kBudgetMs) return false;
+    if (i + 1 - checkpointBytes >= 256 || static_cast<uint32_t>(now - checkpointAt) >= 8) {
+      vTaskDelay(1);
+      checkpointAt = millis();
+      checkpointBytes = i + 1;
+    }
+  }
+  if (!longest || static_cast<uint32_t>(millis() - started) >= kBudgetMs) return false;
+  prefixBytes = longest;
+  return true;
+}
+
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
                                       const EpdFontFamily::Style style) const {
   // Cannot draw a NULL / empty string
