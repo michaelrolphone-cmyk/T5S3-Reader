@@ -2340,3 +2340,4 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 
 #include "hollow_trail_gauge_study.inc"
 #include "hollow_trail_tower_study.inc"
+#include "hollow_trail_shelter_study.inc"

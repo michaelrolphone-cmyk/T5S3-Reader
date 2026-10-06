@@ -165,7 +165,7 @@ static const unsigned golden[][2]={
 {1305748946u,1440843516u}, /* Turbine approach rail and puddle on support zero; other 29 pairs retained. */
 {3747272453,2052152225},
 {3385086579u,435798566u}, /* Far valve furniture on unchanged support four; other 29 pairs retained. */
-{413184930,1205470550},
+{3202950730u,1887044532u}, /* Opening support shelter; other 29 fixtures retained. */
 {1805041436,3386618820},
 {3469364471,1119496009},
 {4124658611,3847112319},
