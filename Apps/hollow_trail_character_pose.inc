@@ -29,6 +29,7 @@ static int ht_person_rung(int world,int top,int offset,int side) {
 static int ht_person_ground(const ht_game *g,int x,int feet) {
     if(!g->grounded || g->traversal.support)return feet;
     int world=x+g->camera/256;
+    if(g->door_stage)return ht_door_ground(world)-g->camera_y/256;
     for(int i=0;i<HT_PLATFORMS;++i)for(int part=0;part<3;++part) {
         int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top))break;
         if(world<l || world>=r)continue;
@@ -90,6 +91,54 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
             p.hand[0]=ht_joint_at(x+f*7,feet-21-rise/2+fall);
             p.hand[1]=ht_joint_at(x-f*6,feet-18-rise/2+fall);
         }
+    } else if(t->mode==HT_WINDOW) {
+        int phase=t->window_phase,q=phase-32,cx=g->camera/256,cy=g->camera_y/256;
+        int contact=ht_max(t->window_touch?t->window_touch+1:0,ht_min(ht_clamp(phase*256/16,0,256),ht_clamp((144-phase)*256/8,0,256)));
+        for(int i=0;i<2;++i) {
+            /* A hand grips a real jamb only while reachable. In the middle
+             * both hands relax while alternating feet stand on the sill;
+             * never slide an imaginary grip through the open aperture. */
+            int shoulder=p.shoulder.x+cx,left=HT_SIGNAL_WINDOW_LEFT+5,right=HT_SIGNAL_WINDOW_RIGHT-5;
+            int jamb=ht_abs(shoulder-left)<ht_abs(shoulder-right)?left:right;
+            int reach=ht_clamp((13-ht_abs(shoulder-jamb))*64,0,256)*contact/256;
+            int hx=jamb-cx,hy=g->y/256-22+i*3-cy;
+            p.hand[i].x+=(hx-p.hand[i].x)*reach/256;
+            p.hand[i].y+=(hy-p.hand[i].y)*reach/256;p.elbow[i]=1;
+            int start=t->window_entry_left/256+(i?2:-2),end=t->window_entry_right/256+(i?2:-2),wx,wy;
+            if(q<40) {
+                wx=ht_shutter_lerp(start,HT_SIGNAL_WINDOW_LEFT+12+i*2,q,i?22:28,i?36:40);
+                wy=ht_shutter_lerp(ht_signal_window_floor(),ht_signal_window_sill(),q,i?10:16,i?22:28);
+            } else if(q<=72) {
+                static const int8_t offset[8]={2,1,1,0,0,-1,0,1};
+                int gait=(q-40+i*4)&7;
+                wx=g->x/256+(i?2:-2)+offset[gait];
+                wy=ht_signal_window_sill()-(gait>=5?(gait==6?2:1):0);
+            } else {
+                wx=ht_shutter_lerp(HT_SIGNAL_WINDOW_RIGHT-12+i*2,end,q,i?80:88,i?96:104);
+                wy=ht_shutter_lerp(ht_signal_window_sill(),ht_signal_window_floor(),q,i?92:104,i?104:112);
+            }
+            p.foot[i]=ht_joint_at(wx-cx,wy-cy);p.knee[i]=-1;
+        }
+    } else if(t->mode==HT_SHUTTER) {
+        int q=t->mill_entry_phase,cx=g->camera/256,cy=g->camera_y/256;
+        int contact=ht_min(ht_clamp(q*256/16,0,256),ht_clamp((96-q)*256/8,0,256));
+        /* Knees lift onto the drawn sill. The hands change jambs only while
+         * crossing, then release onto the original interior floor. */
+        p.hip.y+=3*contact/256;p.shoulder.y+=3*contact/256;
+        for(int i=0;i<2;++i) {
+            int hx=ht_shutter_lerp(HT_MILL_SHUTTER_LEFT+1,HT_MILL_SHUTTER_RIGHT,q,32+i*8,52+i*8)-cx;
+            int hy=HT_MILL_SHUTTER_SILL-11+i*2-cy;
+            p.hand[i].x+=(hx-p.hand[i].x)*contact/256;
+            p.hand[i].y+=(hy-p.hand[i].y)*contact/256;
+            int begin=t->mill_entry_left/256+(i?2:-2),end=t->mill_entry_right/256+(i?2:-2);
+            int sill=HT_MILL_SHUTTER_LEFT+3+i*5;
+            int wx=q<48?ht_shutter_lerp(begin,sill,q,i?26:32,i?38:40):
+                ht_shutter_lerp(sill,end,q,i?72:64,i?82:74);
+            int start=ht_land_height(0,3,begin),finish=ht_land_height(0,3,end);
+            int wy=q<48?ht_shutter_lerp(start,HT_MILL_SHUTTER_SILL,q,i?16:24,i?26:32):
+                ht_shutter_lerp(HT_MILL_SHUTTER_SILL,finish,q,i?82:74,i?88:82);
+            p.foot[i]=ht_joint_at(wx-cx,wy-cy);p.knee[i]=-1;p.elbow[i]=1;
+        }
     } else if(t->mode==HT_PUSH || t->forest_push_release) {
         int load=t->forest_push,release=t->forest_push_release;
         int pulse=load?(int)(g->ticks%20):0;if(pulse>10)pulse=20-pulse;
@@ -107,7 +156,7 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
         int lean=pulling?-side:side,step=ht_abs(v)>24?(g->stride/256)%16:8;
         step=step<8?step-4:12-step;
         int hand=object/256-g->camera/256-side*(t->mode==HT_ROLL?HT_BALL_RADIUS-2:HT_CRATE_HALF);
-        int hy=t->mode==HT_ROLL?t->ball_y/256-g->camera_y/256-4:t->crate_y/256-g->camera_y/256-HT_CRATE_HEIGHT+8;
+        int hy=t->mode==HT_ROLL?t->ball_y/256-g->camera_y/256-4:t->crate_y/256-g->camera_y/256-ht_crate_height(g->level)+(g->level==0?1:8);
         p.facing=side;p.hip=ht_joint_at(x-lean*2,feet-12);
         p.shoulder=ht_joint_at(x+lean*(pulling?5:4),feet-20);
         for(int i=0;i<2;++i) {
@@ -207,6 +256,13 @@ static void ht_person_draw(const ht_person_pose *p) {
 }
 static void ht_character_walk(int x,int feet,const ht_game *g) {
     ht_person_pose p=ht_person_pose_at(x,feet,g);ht_person_draw(&p);
+    if(g->traversal.mode==HT_WINDOW && g->traversal.window_touch) {
+        for(int i=0;i<4;++i) {
+            int length=3+i%3,release=255-g->traversal.window_touch-i*42;
+            length-=ht_clamp(release/12,0,length);
+            if(length)ht_limb(ht_scene,p.hand[0].x+i,p.hand[0].y,p.hand[0].x+i,p.hand[0].y-length,0,0,235);
+        }
+    }
 }
 static bool ht_character_instrument(int x,int feet,const ht_game *g) {
     if(g->traversal.mode==HT_FREE)return false;

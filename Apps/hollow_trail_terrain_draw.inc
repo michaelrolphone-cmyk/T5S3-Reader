@@ -61,9 +61,20 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         }
         return;
     }
+    if(g->level==0 && i==3) {
+        /* The mill's worn floor coats the existing contour. This is material,
+         * not a second contact surface: the legs, feet and scrape use this
+         * same actual ground height. Grass stays outside the broken wall. */
+        for(int wx=ht_max(begin,HT_MILL_SHUTTER_LEFT);wx<ht_min(end,1212);++wx) {
+            int y=ht_surface_at(g,i,wx)-cy;
+            ht_rect(ht_scene,wx-cx,y,1,3,141);
+            if(wx%19==0)ht_rect(ht_scene,wx-cx,y,1,3,191);
+        }
+    }
     /* Unequal tufts and silt/ballast, never the same decorated shelf repeated. */
     for(int at=ht_floor_div(begin-8,5)*5;at<end;at+=5) {
         if(at<l+3 || at>=r-3) continue;
+        if(g->level==0 && i==3 && at>=HT_MILL_SHUTTER_LEFT && at<1212)continue;
         unsigned h=ht_hash((unsigned)at+g->level*137u);
         int top=part==2?flat:ht_surface_at(g,i,at),x=at-cx,y=top-cy;
         if(kind==HT_EARTH || kind==HT_MUD || kind==HT_GARDEN) {

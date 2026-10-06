@@ -75,16 +75,78 @@ static void ht_signal_rush_chair(int x,int floor,bool lit) {
     }
     ht_limb(ht_scene,x-5,floor-5,x+5,floor-5,1,1,195);
 }
+/* This entry bay crosses the playable roof from its outer landing into
+ * the cutaway room. Both casements open in depth; their projected leaves
+ * narrow to the shared jambs. The collision uses these exact frame edges. */
+static void ht_signal_window_draw(const ht_game *g,bool front) {
+    if(g->level!=1)return;
+    int cx=g->camera/256,cy=g->camera_y/256,left=HT_SIGNAL_WINDOW_LEFT-cx,right=HT_SIGNAL_WINDOW_RIGHT-cx;
+    if(right< -ht_view_margin() || left>HT_W+ht_view_margin())return;
+    int floor=ht_signal_window_floor()-cy,sill=ht_signal_window_sill()-cy,top=ht_signal_window_top()-cy;
+    bool lit=ht_rain_window_lit(g->ticks);
+    if(front) {
+        /* Near framing occludes the body while the feet use the same sill. */
+        ht_rect(ht_scene,left,sill,right-left,floor-sill,153);
+        ht_limb(ht_scene,left-2,sill,right+2,sill,1,1,lit?67:159);
+        ht_limb(ht_scene,left,sill+3,right,sill+3,0,0,190);
+        ht_rect(ht_scene,left,top,5,sill-top,217);
+        ht_rect(ht_scene,right-5,top,5,sill-top,222);
+        ht_rect(ht_scene,left,floor-84,right-left,14,193);
+        if(g->traversal.mode==HT_WINDOW) {
+            /* Contact toes sit on top of the near sill highlight, rather
+             * than being erased by its foreground paint. */
+            ht_person_pose p=ht_person_pose_at(g->x/256-cx,g->y/256-cy,g);
+            for(int i=0;i<2;++i)if(p.foot[i].y==sill && p.foot[i].x>=left && p.foot[i].x<=right) {
+                int f=p.facing;ht_joint foot=p.foot[i];
+                ht_triangle(ht_scene,foot.x-f,foot.y,foot.x,foot.y-2,foot.x+f*3,foot.y,255);
+            }
+        }
+        return;
+    }
+    ht_rect(ht_scene,left,top,right-left,sill-top,220);
+    ht_rect(ht_scene,left+5,top+3,right-left-10,sill-top-3,lit?49:161);
+    int half=(right-left-10)/2,width=half*(32-g->traversal.window_open)/32;
+    if(!width) {
+        /* Open casements retain their edge-on stiles and cross rails in
+         * depth. The aperture is clear, but the window never becomes a
+         * frameless doorway. These are the existing leaves, not new props. */
+        for(int side=0;side<2;++side) {
+            int hinge=side?right-5:left+5,edge=hinge+(side?-4:4);
+            ht_limb(ht_scene,hinge,top+3,edge,top+8,0,0,207);
+            ht_limb(ht_scene,edge,top+8,edge,sill-5,1,1,207);
+            ht_limb(ht_scene,edge,sill-5,hinge,sill-1,0,0,207);
+            ht_limb(ht_scene,hinge,floor-45,edge,floor-44,1,1,214);
+        }
+    }
+    if(width) {
+        ht_rect(ht_scene,left+5,top+3,width,sill-top-3,lit?36:178);
+        ht_rect(ht_scene,right-5-width,top+3,width,sill-top-3,lit?36:178);
+        ht_limb(ht_scene,left+5+width,top+3,left+5+width,sill-1,1,1,207);
+        ht_limb(ht_scene,right-5-width,top+3,right-5-width,sill-1,1,1,207);
+        ht_limb(ht_scene,left+5,floor-45,left+5+width,floor-45,1,1,214);
+        ht_limb(ht_scene,right-5-width,floor-45,right-5,floor-45,1,1,214);
+        if(width>=4)for(int streak=0;streak<3;++streak) {
+            int edge=streak?right-5-width:left+5;
+            int px=edge+(streak==2?11:4)*width/half;
+            ht_limb(ht_scene,px,floor-63,ht_max(edge,px-1),floor-52,0,0,lit?69:158);
+        }
+        if(g->traversal.window_print) {
+            int px=left+5,py=floor-22,ink=lit?107:174;
+            ht_rect(ht_scene,px,py,ht_max(1,3*width/half),2,ink);
+            for(int i=0;i<4;++i){int fx=px+i*width/half;ht_limb(ht_scene,fx,py,fx,py-3-(i%3),0,0,ink);}
+        }
+    }
+}
 static void ht_city_signal_room(const ht_game *g) {
     if(g->level!=1)return;
     int cx=g->camera/256,cy=g->camera_y/256;
     int left=HT_SIGNAL_ROOM_LEFT-cx,right=HT_SIGNAL_ROOM_RIGHT-cx;
     int floor=ht_level_land(1)[7].top-cy,top=floor-HT_SIGNAL_ROOM_HEIGHT;
     if(right< -ht_view_margin() || left>HT_W+ht_view_margin())return;
-    int wx=ht_rain_window_x()-cx,chair=2155-cx,log=HT_SIGNAL_LOG_X-cx;
+    int chair=2155-cx,log=HT_SIGNAL_LOG_X-cx;
     bool lit=ht_rain_window_lit(g->ticks);
-    /* Recessed back wall and open near wall expose the room without adding
-     * a false platform above the real walking plane. The right passage is open. */
+    /* Recessed wall and cutaway near side expose the room. Its left entry
+     * bay is the physical window; the right passage remains open. */
     ht_rect(ht_scene,left,top,right-left,HT_SIGNAL_ROOM_HEIGHT,153);
     ht_triangle(ht_scene,left,top,left+14,top+9,left+14,floor,187);
     ht_triangle(ht_scene,left,top,left+14,floor,left,floor,187);
@@ -103,14 +165,7 @@ static void ht_city_signal_room(const ht_game *g) {
         ht_limb(ht_scene,right-19,yy,right-2,yy,0,0,161);
         ht_limb(ht_scene,right-12+(row%2)*5,yy,right-12+(row%2)*5,yy-15,0,0,164);
     }
-    ht_rect(ht_scene,wx-19,floor-70,39,55,220);
-    ht_rect(ht_scene,wx-16,floor-67,33,49,lit?36:178);
-    /* From the court the bright rectangle still implies an occupied room.
-     * The little sill is a window frame above the route, not another foothold. */
-    ht_limb(ht_scene,wx,floor-67,wx,floor-18,1,1,207);
-    ht_limb(ht_scene,wx-16,floor-45,wx+16,floor-45,1,1,214);
-    ht_rect(ht_scene,wx-21,floor-16,44,3,lit?61:160);
-    for(int i=0;i<3;++i)ht_limb(ht_scene,wx-12+i*10,floor-63,wx-14+i*10,floor-52,0,0,lit?69:158);
+    ht_signal_window_draw(g,false);
     /* Bare floor and one changing pool of light. Narrow seams remain surface
      * marks; all chair legs and machine feet end on parcel 7's actual top. */
     ht_rect(ht_scene,left+14,floor-5,right-left-34,5,lit?94:142);
