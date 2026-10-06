@@ -108,47 +108,59 @@ traversal wholesale with autoplay.
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
 | 14 Stove shed | [Physical shed/pipe interaction](HOLLOW_TRAIL_STOVE_SHED_1_1_49.md): cold stove, wrapped pipe, dish rings/shudder, deliberate reply and unanswered wait | Broader ration/distribution story remains separate |
 | 15 Distribution | [Physical paired lists](HOLLOW_TRAIL_DISTRIBUTION_LISTS_1_1_49.md): tied can row, nested lists, empty/marked eighth line and reversible comparison; existing vessel puzzle retained | Gust/caught blank sheet, notebook gesture and feed-driven steady lamp line remain |
-| 16 Carriage/rail dawn | Existing train/yard art | Wheel-less sleeping carriage and coherent dawn reveal |
+| 16 Carriage/rail dawn | Published in PR414: wheel-less sleeping carriage, shared broken-window entry/exit, optional rest/waking and dawn locomotive reveal | Account-sheet/sister dream and sideways pane reflection remain; preserve the intact train and shunting puzzle |
 | 17 HOME ticket | [Station inspection](HOLLOW_TRAIL_STATION_TICKET_1_1_49.md): relocated HOME ticket, reversible crease, cancellation book, warning and same-world blocked cutting | Relative warning → cancellation → collapse order is preserved; no calendar dates invented |
-| 18 Trestle/cabin | Existing crossing/route puzzle; corrected-map tilt and five-legged paper-dog interaction implemented in local source `df9b3eead`, publication/checks tracked in PR414 | Under-track bracing route and wool contact remain; no new route implied by the cabin insert |
+| 18 Trestle/cabin | Published source `547a83eb`: corrected-map tilt, erased-question pressure, five-legged paper-dog cutscene and careful rewrapping | Under-track bracing route and wool contact remain; no new route implied by the cabin insert |
 | 19 Shunting/marsh | Existing three-wagon puzzle | Distinct heavy bodies and continuous ballast-to-reed terrain transition |
 | 20 Ferry | Existing approved boat/grotto retained | Far-bank canvas/person ambiguity and pulling boat to shore; preserve hull quality |
 | 21 Marsh path | Partial wet terrain/depth | Raised bank with transparent/mirrored water and quarry sightline |
-| 22 Waiting awning | Existing rope/log evidence | Chair/stick groove, scuffs and one unanswered bell response |
+| 22 Waiting awning | Published: physical chair/stick groove, scuffs, deliberate bell pull and quiet unanswered hold; original lock guidance retained | Broader marsh approach and far-bank ambiguity remain separate |
 | 23 Locks | Existing water-level puzzle | Ground cradle/ladder/watermarks and vertical camera relation |
 | 24 Quarry reveal | Partial chapter transition | Backward marsh vista, progressive pale escarpment approach |
-| 25 Quarry floor | Existing terrace/crane/stone detail | Monumental cut scale, chisel/spoil and human-sized stone-groove staging |
+| 25 Quarry floor | Published: six-stone pouch, physical face rotation and careful return, marked stone last; existing terrace/crane retained | Monumental cut scale, chisel/spoil and broader quarry-floor staging remain |
 | 26 Quarry ascent | Existing ladders/ledges | Cloth boundary/small bootprints and recognizable distant travelled country |
-| 27 Hoist | Existing balance puzzle | Scarf grip, cage boarding/descent and fern passing the face |
-| 28 Gallery | Not a distinct set | Narrow wet gallery giving way continuously to fern/glasshouse ribs |
-| 29 Living beds | Existing glasshouse/plant detail | Maintained rows, broken-pot shelter, watering channels and gentle contact response |
-| 30 Sleeping/lock | Narrative fragment only | Seven pallets, privacy curtain, internal lock/wedge, light removed by door |
+| 27 Hoist | Published: real balance transition earns cage descent, shared feet/brake-cord contacts, passing fern and preserved destination spawn | Earlier scarf-grip inspection and empty-cage test remain distinct beats |
+| 28 Gallery | Published hoist handoff includes gallery walkout toward the glasshouses | Extend narrow wet gallery and continuous fern/glasshouse-rib arrival scenery |
+| 29 Living beds | Post-merge 1.1.50 source `641be8cc4`: tended first bed, strings/channels, broken-pot shoot, can on bricks, kneeling leaf/dust/cleaning/rebound and warm-soil response; [actual comparisons](images/hollow-trail-living-bed/README.md) | Three-row hillside continuity, cupboard/food/drink and evening tray/stem care remain |
+| 30 Sleeping/lock | Published: seven raised pallets, sacking curtain, inside lock and wedge, narrowing door-light and restored leaf shine | Towel/comb privacy gesture and chosen pallet/night rest remain |
 | 31 Garden night/counts | Existing evidence | Still pallet shot and physically aligned duplicate marks/drawings |
-| 32 Mirror partition | Existing mirror/vent puzzle | Moisture-clearing beam path with plant response and cold exterior reveal |
+| 32 Mirror partition | Published: actual upper-vent solution earns leaf/condensation response and onward view; lower-latch solution retained | Physical child-drawing/older-card comparison remains separate |
 | 33 Dam reveal | Existing detailed dam/falls retained | One coherent monumental reveal, turbine gauge/shared-feed diagram |
 | 34 Service ledges | Existing climb route | Route-aligned buttress occlusion, sheltered wet rock and landing sightline |
 | 35 Reservoir | Existing boat/waterfall benchmark retained | Authored gust/bag/oar recovery only with reviewed boat/contact regressions |
 | 36 Storm galleries | Existing weather/rope/valve narrative | Physical paper comparison and one hard lightning shadow, no blanket strobe |
-| 37 Recorder/distributor | Existing power puzzle/evidence | Manual in dry cabinet, return warming cue and tiny mast exit vista |
+| 37 Recorder/distributor | Published: actual cold-start priming earns palm-to-return warming and westward condensation clearing; running solution unchanged | Dry-cabinet manual inspection and tiny mast exit vista remain |
 | 38 Shelter/ascent | Existing snow/rock/tree gradient | Shelter/ice basin and route-specific vegetation reduction |
 | 39 Scarf panorama | Existing scarf and mountain route | Interconnected backward country, then continuous sleet visibility contraction |
-| 40 False signal | Existing return-isolation/chime puzzle | Stop the actual flashes and hold the silver contact gap before traversal resumes |
-| 41 Settlement | Existing houses/mast | Connected alleys/retaining walls, mundane occupancy traces, ambiguous windows |
+| 40 False signal | Published: actual return isolation stops real lamps, reachable catch/knife/lid, silver gap and two dark held intervals; chime solution retained | Continuous worsening sleet and backward ridge panorama remain separate |
+| 41 Settlement | Published: first-house reflected-doorpost observation, bare-knuckle knock and unanswered wait; existing houses/mast retained | Connected alleys/retaining walls and broader mundane occupancy traces remain |
 | 42 Tower | Existing climbing/channel boat | Eight hooks/bench, older masonry and visibly steadier boat handling |
-| 43 Cabinet | Existing exclusive choice and testimony | Modest literal room, physical evidence floor, shutters/lamps/pantry-lamp sequence |
+| 43 Cabinet | Published: modest stone room, physical rubbing/table/mats, live pen and linked mutually exclusive releases; ending/read guards retained | Refine only against concrete owner feedback; preserve the exclusive choice and unanswered ending |
 | 44 Final door | [Playable Chapter XI, same unreleased 1.1.49](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md): yard pause, unwired street, physical shoes, notebook, unpatterned knock and held waiting frame | Refine human-scale materials/poses against owner feedback; preserve the unanswered end |
 
 ## Next coherent increments
 
-1. Preserve completed forest/mill/city increments; bedside and physical window
-   work are committed/tested and delivered through PR414.
-2. Continue substantive missing physical scenes in Chapters III–X, beginning
-   with the cold-stove shed. The smaller Chapter II submerged-street glimpse
-   remains a later gap, not the next implementation.
-3. Continue chapter-by-chapter. The [dedicated last-door ending](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md)
-   now follows the tower; the remaining partial/missing sets above still need their own increments
+PR414 merged the source through the signal cabin (`547a83eb`) as merge commit
+`c765a9931e2f1772d1dd3b5870362c18a08a9e57` on 2026-10-06. Its exact-head
+PlatformIO and CAM checks passed. The new `feat/hollow-trail-garden` continuation reconciles living-bed source
+`64779ecd4`, curved-rib correction `e428a1009`, and checkpoint `f9f4d0a89`
+onto that master without source conflicts. The package advances to 1.1.50.
+Fresh source `641be8cc4` interaction/contact sanitizer checks, real captures and
+S3 ELF/package checks pass; aggregate validation is recorded with the new PR.
 
-## Verification record
+Continue substantive partial/missing sets above rather than waiting for review
+or repeatedly polishing the opening. Physical duplicate garden counts and the
+remaining marsh/trestle continuity are meaningful next gaps. The completed
+cold-stove, ticket, pouch, sleeping-house, hoist, return, isolator, first-house
+and cabinet work should not be proposed again as missing.
+
+Required before/after evidence is preserved with exact source captions. PR414
+currently contains 44 newly delivered comparisons; further galleries, including
+the cabin, have completed local captures. The cabin evidence-tree write remains
+denied and must not be routed through another PR to evade that denial. Source
+work and screenshot delivery have separate explicit status in the PR body.
+
+## Historical verification record for the original novella increment
 
 Version: Hollow Trail 1.1.35 → 1.1.36, minimum firmware unchanged at 1.3.37.
 Published release-index was read before this bump and confirms 1.1.35.
