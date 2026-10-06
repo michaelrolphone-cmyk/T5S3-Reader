@@ -6,6 +6,7 @@ its warm-query regression. No historical checkout is needed in normal CI.
 """
 from pathlib import Path
 import argparse
+import re
 import subprocess
 import tempfile
 
@@ -18,13 +19,17 @@ source = (args.source or ROOT / "src/runtime/drivers/InstalledProviderGraph.cpp"
 helpers = source[source.index("bool pathFor("):source.index("bool parseExactImports(")]
 start = source.index("bool nextProvider(")
 function = source[start:source.index("\nbool acquire(", start)]
+limits = (ROOT / "src/runtime/drivers/ProviderGraphV2.h").read_text()
+module_limit = int(re.search(r"kMaxModules = (\d+)", limits).group(1))
+registration_depth = int(re.search(r"kMaxRegistrationDepth = (\d+)", source).group(1)) if "kMaxRegistrationDepth" in source else module_limit
 harness = (ROOT / "test/provider_enumeration/prefix.cpp").read_text() + helpers + function
 harness += (ROOT / "test/provider_enumeration/cases.cpp").read_text()
 with tempfile.TemporaryDirectory() as temporary:
     build = Path(temporary)
     (build / "test.cpp").write_text(harness)
     flags = ["-std=c++17", "-O1", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-overloaded-virtual",
-             "-DARDUINO_ARCH_ESP32", "-Itest/provider_enumeration/stubs", "-Itest/hal/storage_stubs",
+             "-DARDUINO_ARCH_ESP32", f"-DTEST_MAX_PROVIDERS={module_limit}",
+             f"-DTEST_REGISTRATION_DEPTH={registration_depth}", "-Itest/provider_enumeration/stubs", "-Itest/hal/storage_stubs",
              "-Ilib/hal", "-Isrc", "-Isdk/driver"]
     if args.sanitize:
         flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
@@ -39,6 +44,9 @@ with tempfile.TemporaryDirectory() as temporary:
     registration = source[start:source.index("\nbool registerNamedProvider(", start)]
     cases = (ROOT / "test/provider_enumeration/registration_cases.cpp").read_text()
     registration_harness = (ROOT / "test/provider_enumeration/prefix.cpp").read_text() + helpers
+    if "struct ProviderMatches {" in source:
+        match_start = source.index("struct ProviderMatches {")
+        registration_harness += source[match_start:source.index("\nbool providerFail(", match_start)]
     registration_harness += cases.replace("// REGISTRATION_FUNCTION", registration)
     (build / "registration.cpp").write_text(registration_harness)
     subprocess.run(["c++", *flags, "-Wno-unused-variable", "lib/hal/HalStorage.cpp", str(build / "registration.cpp"),

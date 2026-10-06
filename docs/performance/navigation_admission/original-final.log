@@ -1,0 +1,69 @@
+Verified 86 fixture files and 19 actual packages
+STAGE serial-first roots=2 profiles=16 read_calls=48 bytes=12865 upper_waits=340 directory_peak=2 directory_failures=0 live=0 sectors=724 modules=8 pins=8
+STAGE serial-ten-repeat roots=0 profiles=0 read_calls=0 bytes=0 upper_waits=0 directory_peak=0 directory_failures=0 live=0 sectors=0 modules=8 pins=8
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+STAGE navigation-first roots=10 profiles=197 read_calls=226 bytes=18576 upper_waits=743 directory_peak=8 directory_failures=1 live=0 sectors=1946 modules=8 pins=8
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+STAGE navigation-ten-repeat roots=100 profiles=1970 read_calls=2260 bytes=185760 upper_waits=7430 directory_peak=8 directory_failures=10 live=0 sectors=19460 modules=8 pins=8
+STAGE touch-after roots=3 profiles=58 read_calls=147 bytes=46945 upper_waits=295 directory_peak=2 directory_failures=0 live=0 sectors=576 modules=9 pins=9
+Production provider admission navigation (original control) PASS
+STAGE serial-first roots=2 profiles=16 read_calls=48 bytes=12865 upper_waits=340 directory_peak=2 directory_failures=0 live=0 sectors=724 modules=8 pins=8
+STAGE serial-ten-repeat roots=0 profiles=0 read_calls=0 bytes=0 upper_waits=0 directory_peak=0 directory_failures=0 live=0 sectors=0 modules=8 pins=8
+STAGE touch-first roots=3 profiles=58 read_calls=147 bytes=46945 upper_waits=295 directory_peak=2 directory_failures=0 live=0 sectors=576 modules=9 pins=9
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+STAGE navigation-first roots=10 profiles=197 read_calls=226 bytes=18576 upper_waits=743 directory_peak=8 directory_failures=1 live=0 sectors=1946 modules=9 pins=9
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+DIR_OPEN_FAILURE path=/Drivers/t5s3-usb-power-profile live=8
+REJECT cap=input.navigation reason=Provider dependency unavailable: board.power.bq25896.profile
+STAGE navigation-ten-repeat roots=100 profiles=1970 read_calls=2260 bytes=185760 upper_waits=7430 directory_peak=8 directory_failures=10 live=0 sectors=19460 modules=9 pins=9
+STAGE touch-after roots=1 profiles=19 read_calls=19 bytes=813 upper_waits=58 directory_peak=1 directory_failures=0 live=0 sectors=151 modules=9 pins=9
+Production provider admission touch-first (original control) PASS
+STAGE topological-eight roots=18 profiles=350 read_calls=2069 bytes=883700 upper_waits=3145 directory_peak=2 directory_failures=0 live=0 sectors=4974 modules=16 pins=16
+REJECT cap=usb.xinput.gamepad reason=Provider dependency unavailable: usb.xinput.gamepad
+REJECT cap=input.navigation reason=Provider dependency unavailable: input.navigation
+REJECT cap=input.touch.raw reason=Provider dependency unavailable: input.touch.raw
+STAGE topological-rest roots=3 profiles=57 read_calls=57 bytes=2439 upper_waits=174 directory_peak=1 directory_failures=0 live=0 sectors=453 modules=16 pins=16
+REJECT cap=input.text reason=Provider dependency unavailable: input.text
+STAGE full-graph-reuse-and-overflow roots=1 profiles=19 read_calls=19 bytes=813 upper_waits=58 directory_peak=1 directory_failures=0 live=0 sectors=151 modules=16 pins=16
+Exact production GraphV2 capacity and overflow PASS
+Production provider admission capacity (original control) PASS
+Candidate-only failure/retry checks skipped in original-control mode
+Production provider admission faults (original control) PASS

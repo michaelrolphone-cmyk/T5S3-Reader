@@ -24,8 +24,8 @@ struct OwnedNodeV2 final {
   char id[96]{};
   char path[512]{};
   char provides[96]{};
-  RequirementV2 requirements[16]{};
-  char requirementNames[16][96]{};
+  RequirementV2 requirements[GraphV2::kMaxDependencies]{};
+  char requirementNames[GraphV2::kMaxDependencies][96]{};
   ImportStorage* imported = nullptr;
   uint8_t* image = nullptr;
 
@@ -67,7 +67,7 @@ struct OwnedNodeV2 final {
         !copyString(provides, sizeof(provides), from.provides) ||
         (from.verifiedElfPath &&
          !copyString(path, sizeof(path), from.verifiedElfPath)) ||
-        from.requirementCount > 16 ||
+        from.requirementCount > GraphV2::kMaxDependencies ||
         (from.requirementCount && !from.requirements)) return false;
     spec = from;
     spec.id = id;

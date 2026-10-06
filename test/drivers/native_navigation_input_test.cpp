@@ -79,6 +79,13 @@ int main() {
     assert(foregroundCount == 0 && !nativeNavigationFrame().buttons);
     assert(acquisitions == 3 && releases == 0); // focus transfer keeps host lease
     nativeNavigationBoundary(); assert(resets >= 2);
+    // Once the installed chain admits and supplies a healthy API, foreground
+    // polling retains that lease instead of reentering synchronous discovery.
+    for (unsigned i = 0; i < 1000; ++i) {
+        fakeTime += 20;
+        nativeNavigationTick();
+    }
+    assert(acquisitions == 3 && releases == 0 && polls == 1001);
     assert(nativeNavigationSuspend() && releases == 1 && drains == 3 && !shutdowns);
     nativeNavigationTick(); assert(acquisitions == 3);
     nativeNavigationResume(); fakeTime += 20; nativeNavigationTick();

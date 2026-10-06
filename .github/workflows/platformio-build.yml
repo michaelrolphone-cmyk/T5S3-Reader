@@ -168,6 +168,10 @@ jobs:
         if: matrix.board_id == 'xteink-x4-pro'
         run: python3 test/storage_volume/app_inventory_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
 
+      - name: Verify complete T5 navigation package admission and bounded cursors
+        if: matrix.board_id == 't5s3-pro'
+        run: python3 test/installed_provider_registration/run_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitize
+
       - name: Preserve bounded SDK source-drift diagnostic on build failure
         if: failure()
         uses: actions/upload-artifact@v4

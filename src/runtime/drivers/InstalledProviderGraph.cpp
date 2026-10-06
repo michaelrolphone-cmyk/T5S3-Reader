@@ -38,6 +38,9 @@ using namespace RuntimePackages;
 constexpr PackageRuntimePolicy kPolicy{
     "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr size_t kMaxProviders = RuntimeProviders::GraphV2::kMaxModules;
+// Registration depth is an independent termination/memory bound. Adding room
+// for installed modules must not multiply the per-acquisition workspaces.
+constexpr size_t kMaxRegistrationDepth = 16;
 RuntimeProviders::GraphV2* graph = nullptr;
 char pinned[kMaxProviders][96]{};
 size_t pinCount = 0;
@@ -72,11 +75,52 @@ struct RegistrationFrame {
 };
 
 struct ProviderAncestry {
-    char ids[kMaxProviders][64]{};
+    char ids[kMaxRegistrationDepth][64]{};
     // One heap-owned workspace per acquisition, with a distinct slot for
     // each permitted depth. A child cannot overwrite its parent's paths,
     // requirements or import table. Nothing here outlives registration.
-    RegistrationFrame frames[kMaxProviders]{};
+    RegistrationFrame frames[kMaxRegistrationDepth]{};
+};
+
+// Discovery owns no directory cursor while descending into a dependency.
+// Only matching IDs are retained, in enumeration order; admission rereads the
+// actual package/profile/imports/ELF and keeps its existing source-stamp checks.
+// There is no cross-call cache, including during mutable raw-storage access.
+struct ProviderMatches {
+    struct Match {
+        char id[64]{};
+        const Root* root = nullptr;
+        Match* next = nullptr;
+    };
+    static constexpr size_t kLimit =
+        (sizeof(kRoots) / sizeof(kRoots[0])) * InstalledProviderRootScan::kOrdinaryLimit;
+    Match* first = nullptr;
+    Match* last = nullptr;
+    size_t count = 0;
+    ProviderMatches() = default;
+    ProviderMatches(const ProviderMatches&) = delete;
+    ProviderMatches& operator=(const ProviderMatches&) = delete;
+    ~ProviderMatches() {
+        // Iterative destruction: directory-controlled list length is never
+        // translated into a recursive destructor chain on loopTask's stack.
+        while (first) {
+            Match* next = first->next;
+            delete first;
+            first = next;
+        }
+    }
+    bool append(const Root& root, const char* id) {
+        if (count == kLimit) return false;
+        Match* item = new (std::nothrow) Match{};
+        if (!item) return false;
+        std::strcpy(item->id, id); // caller checked the same 64-byte ID bound
+        item->root = &root;
+        if (last) last->next = item;
+        else first = item;
+        last = item;
+        ++count;
+        return true;
+    }
 };
 
 bool providerFail(const char* stage, const char* identity) {
@@ -187,10 +231,12 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
                  const char* expectedCapability, uint32_t expectedApi,
                  const InstalledCapabilitySnapshot* verified,
                  ProviderAncestry& ancestry, size_t depth) {
-    if (!verified || pinCount >= kMaxProviders || !safeId(id) ||
-        !expectedCapability || !expectedApi || depth >= kMaxProviders) return false;
+    if (!verified || !safeId(id) || !expectedCapability || !expectedApi ||
+        depth >= kMaxRegistrationDepth) return false;
+    // A full graph may still reuse a previously validated provider. Capacity
+    // gates only a new registration, never an existing dependency.
     if (destination.hasProvider(id, expectedCapability, expectedApi)) return true;
-    if (destination.hasProviderId(id)) return false;
+    if (pinCount >= kMaxProviders || destination.hasProviderId(id)) return false;
     for (size_t i = 0; i < depth; ++i)
         if (std::strcmp(ancestry.ids[i], id) == 0) return false;
     std::snprintf(ancestry.ids[depth], sizeof(ancestry.ids[depth]), "%s", id);
@@ -330,7 +376,7 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
                         uint32_t* selectedApi, ProviderAncestry& ancestry,
                         size_t depth) {
     if (selectedApi) *selectedApi = 0;
-    if (!verified || !capability || !minimumApi || depth >= kMaxProviders)
+    if (!verified || !capability || !minimumApi || depth >= kMaxRegistrationDepth)
         return false;
     auto& frame = ancestry.frames[depth];
     const uint32_t available = versionInInstalledSnapshot(verified, capability);
@@ -339,7 +385,7 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
 
     loadError[0] = 0;
 
-    size_t accepted = 0;
+    ProviderMatches matches;
     for (const Root& root : kRoots) {
         HalFile directory = Storage.open(root.path, O_RDONLY);
         if (!directory.isOpen() || !directory.isDirectory()) {
@@ -347,7 +393,7 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
             continue;
         }
         InstalledProviderRootScan scan;
-        while (accepted <= 1) {
+        while (true) {
             ordinaryCooperativeYield(1, 1);
             HalFile::DirectoryEntry item;
             if (!directory.readDirectoryEntry(item)) {
@@ -375,19 +421,28 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
             uint8_t* profileBytes = readFile(name, 191, profileSize);
             if (!profileBytes) continue;
             auto& provided = frame.capability;
-            uint32_t api = 0, osCpuAbi = 0;
+            uint32_t api = 0;
             const bool matching =
                 profile(reinterpret_cast<const char*>(profileBytes), profileSize,
                         provided, api) &&
                 std::strcmp(provided, capability) == 0 && api == available;
             std::free(profileBytes);
             if (!matching) continue;
-            if (registerOne(destination, root.path, id, root.kind,
-                            capability, available, verified, ancestry, depth))
-                ++accepted;
+            if (!matches.append(root, id)) {
+                (void)directory.close();
+                return providerFail("Provider candidate allocation failed", capability);
+            }
         }
         if (!directory.close()) return providerFail("Provider directory close failed", root.path);
-        if (accepted > 1) break;
+    }
+    // Complete every checked root scan before entering the recursive loader.
+    // At most one root cursor plus the independent package-inspection cursor
+    // is live, regardless of dependency depth or the volume's handle count.
+    size_t accepted = 0;
+    for (const auto* match = matches.first; match && accepted <= 1; match = match->next) {
+        if (registerOne(destination, match->root->path, match->id, match->root->kind,
+                        capability, available, verified, ancestry, depth))
+            ++accepted;
     }
     // Preserve a concrete transitive failure already found while registering
     // this chain, rather than replacing it with the parent's generic name.

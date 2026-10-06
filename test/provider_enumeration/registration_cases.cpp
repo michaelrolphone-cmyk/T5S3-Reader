@@ -7,7 +7,7 @@ uint32_t versionInInstalledSnapshot(const InstalledCapabilitySnapshot*, const ch
   return std::strcmp(capability, "absent") ? 1 : 0;
 }
 }
-struct ProviderAncestry { RegistrationFrame frames[kMaxProviders]; };
+struct ProviderAncestry { RegistrationFrame frames[kMaxRegistrationDepth]; };
 char loadError[160]{};
 unsigned registrations = 0;
 bool failAfterRegistration = false;
@@ -33,6 +33,13 @@ void package(const char* id, const char* capability) {
       std::string("os-cpu-abi=1\nprovides=") + capability + "\napi=1\n"));
 }
 int main() {
+  {
+    ProviderMatches matches;
+    for (size_t i = 0; i < ProviderMatches::kLimit; ++i)
+      assert(matches.append(kRoots[i % 3], "bounded-candidate"));
+    assert(!matches.append(kRoots[0], "overflow"));
+    assert(matches.count == 3 * InstalledProviderRootScan::kOrdinaryLimit);
+  } // full-bound destruction is iterative and sanitizer checked
   assert(Storage.begin() && Storage.mkdir("/Drivers"));
   package("a-target", "test.target");
   package("b-other", "test.other");
@@ -42,10 +49,16 @@ int main() {
   uint32_t selected = 0;
   assert(registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
   assert(selected == 1 && registrations == 1 && !loadError[0]);
-  failAfterRegistration = true;
+  // Directory errors are discovered before any provider admission. A later
+  // recursive callback cannot retain or invalidate an already-closed cursor.
+  FakeSd::failDirectory = "/drivers";
   assert(!registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
   assert(!selected && std::strstr(loadError, "Provider directory read failed"));
-  assert(registrations == 2); // Accepted prefix is never mistaken for complete EOF.
+  assert(registrations == 1);
+  FakeSd::failDirectory.clear();
+  failAfterRegistration = true;
+  assert(registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
+  assert(selected == 1 && registrations == 2);
   failAfterRegistration = false;
   FakeSd::failDirectory.clear();
   assert(registerCapability(graph, &snapshot, "test.target", 1, &selected, ancestry, 0));
@@ -97,5 +110,5 @@ int main() {
   assert(!selected && std::strstr(loadError, "Provider directory close failed"));
   FakeSd::failClose.clear();
   assert(!Storage.generation().quiescent); // Discarded uncertain close is retained as uncertainty.
-  std::puts("Production registration: unique selection, ambiguity, read-after-prefix fault, checked close and current errors PASS");
+  std::puts("Production registration: unique selection, ambiguity, pre-admission directory fault, checked close and current errors PASS");
 }

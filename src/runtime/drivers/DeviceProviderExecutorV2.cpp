@@ -43,7 +43,7 @@ bool DeviceProviderExecutorV2::registerManagerValidated(
   if ((input.requiredOsCpuAbi != 1 && input.requiredOsCpuAbi != 2 && input.requiredOsCpuAbi != 3) || !input.driverId || !input.provides ||
       !input.providesApi || !input.importedSymbols ||
       input.importedSymbolCount > 128 ||
-      input.requirementCount > RuntimeProviders::GraphV2::kMaxModules ||
+      input.requirementCount > RuntimeProviders::GraphV2::kMaxDependencies ||
       (input.requirementCount && !input.requirements) ||
       !xtensaDynamicallyLinkedElf(input.elfBytes, input.elfLength)) return false;
   uint8_t calculated[32]{};
