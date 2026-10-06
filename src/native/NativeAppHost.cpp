@@ -449,6 +449,14 @@ void dirClose() {
   if (auto* s = current(); s && s->directory.isOpen()) s->directory.close();
 }
 
+bool dirCloseChecked() {
+  auto* s = current();
+  if (!s || !s->directory.isOpen()) return false;
+  const bool clean = s->directory.getError() == 0;
+  const bool closed = s->directory.close();
+  return clean && closed;
+}
+
 bool safeAssetName(const std::string& name) {
   return name.size() < T5_APP_ASSET_NAME_MAX &&
          NativeAppReleaseRules::appElfAssetName(name);
@@ -1368,7 +1376,8 @@ const t5_app_api_v1 api = {T5_APP_ABI_VERSION,
                            takeTouchSwipe,
                            pollNowait,
                            copyUiFrame,
-                           touchContact};
+                           touchContact,
+                           dirCloseChecked};
 }  // namespace
 
 bool installRequiredNativeApp(const char* artifact, std::string& displayName,

@@ -241,6 +241,12 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -fno-sanitize-recover=all -fno-omit-frame-pointer \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/file_browser_resume_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
+python3 "$repo_dir/test/native_apps/file_browser_resume_scan_test.py" --sanitize
 cc -std=c11 -Wall -Wextra -Werror \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"
