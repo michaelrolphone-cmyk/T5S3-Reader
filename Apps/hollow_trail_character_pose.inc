@@ -217,6 +217,12 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
             p.knee[i]=-f;
         }
     }
+    /* The cloth carries a passing hand, never body weight or collision. */
+    if(ht_quarry_cloth_contact(g)) {
+        int wx=g->x/256+f*5;
+        p.hand[0]=ht_joint_at(wx-g->camera/256,ht_quarry_cloth_y(wx)-g->camera_y/256);
+        p.elbow[0]=f;
+    }
     return p;
 }
 static void ht_person_arm(ht_joint root,ht_joint hand,int bend,int ink) {

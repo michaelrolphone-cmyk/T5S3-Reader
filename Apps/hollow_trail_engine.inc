@@ -1471,6 +1471,7 @@ static __attribute__((optimize("O3"))) void ht_expand_scene_native(const uint8_t
         if((y&15)==15)ht_checkpoint();
     }
 }
+#include "hollow_trail_quarry_ascent.inc"
 #include "hollow_trail_character_pose.inc"
 static int ht_weather_floor(const ht_game *g,int screen_x);
 static void ht_character(int x,int feet,const ht_game *game) {

@@ -14,6 +14,7 @@
 #include "hollow_trail_care_draw.inc"
 #include "hollow_trail_counts_draw.inc"
 #include "hollow_trail_drawing_draw.inc"
+#include "hollow_trail_quarry_ascent_draw.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
@@ -45,6 +46,7 @@ static void ht_draw_traversal(const ht_game *g) {
     if(g->level==1)ht_city_backdrop(g);
     ht_city_vanished_house(g);
     ht_authored_backdrop(g);
+    ht_quarry_country(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
@@ -131,6 +133,7 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_cabinet_room(g);
     ht_first_house_room(g,g->first_house_lean);
     ht_pouch_room(g);ht_grip_room(g);
+    ht_quarry_ascent_traces(g);
     ht_waiting_room(g,g->waiting_view_active?(unsigned)ht_waiting_pull(g->waiting_view_tick):0,
         g->waiting_view_active && g->waiting_view_tick>=104?ht_waiting_swing(g->waiting_view_tick-104):0);
     if(m->plate_kind) {
