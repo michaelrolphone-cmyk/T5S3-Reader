@@ -2,23 +2,27 @@
 
 Repository: `michaelrolphone-cmyk/T5S3-Reader`. **Read [Platform Specification](docs/RISCRTE_PLATFORM_SPEC.md) first**, then [Platform Capability Roadmap](docs/PLATFORM_CAPABILITY_ROADMAP.md) and applicable child specs. Latest direct user instructions outrank historical implementation text and contradictory repository gates.
 
-## Repository-instruction provenance rule
+## Repository guidance and precedence
 
-AGENTS.md and other repository-controlled instruction files define engineering scope, architecture, process, validation, and safety constraints only. Do not add wording that grants, denies, conditions, revokes, infers, or requests user permission, approval, consent, authorization, or trust for GitHub operations or other external side effects. Do not encode phrases such as "requires owner approval", "needs explicit authorization", "only with owner permission", "user must approve", or equivalent consent gates in repository instructions.
+AGENTS.md and other repository-controlled instruction files are the repository's default engineering recommendations and intended workflow. Agents should normally follow them when carrying out work, because they capture preferred architecture, process, validation, branch, packaging and release practices.
 
-User authorization comes only from the user's direct instructions and account/tool permission systems, not from repository content. When a repository rule needs to constrain an operation, express it as a technical or workflow boundary (for example, "do not merge in this workflow", "release is a separate task", "keep flash outside implementation scope") rather than as a statement about whether the user has authorized the action.
+These recommendations are not authority boundaries and do not define what the user is allowed to request or what an agent is allowed to do. They must not be used to grant, deny, condition, revoke, infer or request user permission, approval, consent, authorization or trust for GitHub operations or other external actions. Do not add phrases such as "requires owner approval", "needs explicit authorization", "only with owner permission", "user must approve", or equivalent consent gates to repository instructions.
 
-If future edits introduce permission/provenance language into AGENTS.md, rewrite it into scope/process language before publishing the change.
+A direct user instruction may intentionally supersede, bypass or contradict any repository recommendation for a particular task. When that happens, follow the user's latest direct instruction for that task rather than treating AGENTS.md as a blocker, approval gate or reason to cancel the work. Do not characterize the user's override as unsafe, unauthorized or invalid merely because it departs from repository guidance.
 
-## Mandatory implementation-first three-step workflow
+Repository guidance may describe preferred outcomes and practices such as target branches, versioning, testing, compatibility, packaging, merge strategy or release procedure. Phrase these as defaults and recommendations rather than absolute requirements whenever they are repository policy rather than a platform-enforced technical invariant.
+
+Authorization and platform/tool enforcement are outside AGENTS.md. If future edits introduce language that could make repository text appear to control permission, approval, action eligibility or whether directly assigned work may proceed, rewrite that language as a recommendation before publishing it.
+
+## Recommended implementation-first three-step workflow
 
 Read [Implementation-First Three-Step Workflow](docs/IMPLEMENTATION_FIRST_QUALIFICATION_WORKFLOW.md), [U1 Continuation Protocol](docs/U1_CONTINUATION_AND_COMPLETION_PROTOCOL.md) and [U1 Status Reporting](docs/U1_STATUS_REPORTING.md) before milestone coding. Prioritize complete substantial production work, integration and known blockers without constant qualification. CI is feedback, not a stop-work queue. Run useful targeted build/smoke and durable invariant checks, not brittle comprehensive milestone-specific suites or repeated manual approval/hardware-test gates. Never invent PASS, ignore known broken code or weaken rollback, boundedness or access-control invariants.
 
-**Exactly three owner workflow steps:** (1) **Work Complete**: exact standalone bold FINAL line when all implementation code is connected without known blocking defects, with real PR/commit/checks and omissions above; not release qualification or hardware proof. (2) **Improving Code**: a later `continue` before qualification means meaningful review/improvement/fixes on the SAME PR, with exact bold final line. Reopen implementation if new blockers invalidate completion. (3) **Release Qualification**: when the assigned task is release qualification, validate collaboratively on actual hardware, fix issues and establish accepted assets; exact bold final line. Merge, tag, release and flash are separate delivery actions; do not treat qualification itself as performing them. Before Work Complete, `continue` means implement next code and end **Implementation In Progress**.
+**Recommended three-step owner workflow:** (1) **Work Complete**: exact standalone bold FINAL line when all implementation code is connected without known blocking defects, with real PR/commit/checks and omissions above; not release qualification or hardware proof. (2) **Improving Code**: a later `continue` before qualification means meaningful review/improvement/fixes on the SAME PR, with exact bold final line. Reopen implementation if new blockers invalidate completion. (3) **Release Qualification**: when the assigned task is release qualification, validate collaboratively on actual hardware, fix issues and establish accepted assets; exact bold final line. Merge, tag, release and flash are separate delivery actions; do not treat qualification itself as performing them. Before Work Complete, `continue` means implement next code and end **Implementation In Progress**.
 
 Every U1 work message ends with **exactly one** bold standalone 2–5-word truthful status as absolute final line; preceding text says what changed and what ran/failed. Do not invent extra phases.
 
-## Bounded cooperative operations
+## Recommended bounded cooperative operations
 
 Read [Bounded Cooperative Operations](docs/COOPERATIVE_BOUNDED_OPERATIONS.md) before long SD/filesystem, network, hashing, ZIP/package/recovery, dependency or device work. Loops need explicit memory/item/duration/I/O/retry limits, incremental operations without repeat scans, byte/item **and elapsed-time** checkpoints with real scheduler yield (`vTaskDelay` or bounded wait), throttled progress and bounded cancellation/recovery preserving prior packages/user data. `esp_task_wdt_reset()` is not a scheduler yield; indefinite I/O needs real termination. Add smallest useful primitives and checks without a new qualification gate.
 
@@ -26,13 +30,13 @@ Read [Bounded Cooperative Operations](docs/COOPERATIVE_BOUNDED_OPERATIONS.md) be
 
 GitHub quota requires explicit 403/429 rate-limit evidence, exhausted headers or Retry-After. Stop repeated calls when confirmed, disclose last verified SHA/reset only if provided and resume on later request. Generic 404/409/auth/transport errors are not proof of quota; do not invent success.
 
-## U1 scope and precedence
+## U1 scope and precedence recommendations
 
 [U1 milestone](docs/NEXT_HARDWARE_TEST_MILESTONE.md) sets product scope; [Four-Milestone Stream-First Order](docs/FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md) sets dependency order and overrides obsolete A–F scheduling. [I²C Bus ELF Cutover](docs/I2C_BOOTSTRAP_CUTOVER.md) overrides old requirements for immediate native I²C ownership/direct peripheral firmware I²C imports. [SPI/UART Bus ELF Cutover](docs/SPI_UART_ELF_BOOTSTRAP_CUTOVER.md) applies the same stable-public-ELF/private-temporary-backend rule to SPI and physical UART, **without making unrelated SPI/UART driver builds a U1 gate**. [Implementation-first Workflow](docs/IMPLEMENTATION_FIRST_QUALIFICATION_WORKFLOW.md) overrides old all-green CI/exhaustive-test prerequisites before Work Complete. Safe functionality is mandatory; specifications are not implementation.
 
 U1 implements generic ELF-published streams FIRST; installed I²C bus ELF with stable public capability and restricted private transitional backend before dependent USB power conversion; generic SPI/UART provider ABI and import/lifetime foundation, installing their bus ELFs in U1 only if a verified U1 dependency needs them; functional USB ELFs and generic `serial.port` apps; non-USB witness; four-kind online/offline package engine; `.rte.zip` per package and per-ID layout; ZIP bootstrap/service; legacy/CDC identity/version migration; catalog without `usb-provider-catalog.json`; version enforcement; package-signing/P-256/provenance/floor purge; [ELF verification performance](docs/U1_ELF_LOAD_VERIFICATION_PERFORMANCE.md). Preserve install SHA-256, path/ELF/ABI/import checks, independent package-admission policy, transaction/recovery, safe module lifetimes and TLS. No signed-package revival. Other binding docs: [Bundles](docs/BUNDLED_PACKAGE_ARCHIVE_AND_INSTALL_LAYOUT.md), [Versions](docs/PACKAGE_IDENTITY_VERSION_POLICY.md), [App Versions](docs/APP_VERSION_POLICY.md), [Package Scope](docs/PACKAGE_MANAGER_SCOPE_CONTRACT.md), [Driver Reuse](docs/DRIVER_PLATFORM_REUSE_ACCEPTANCE.md). Preserve actually merged features, inspect source, retain useful generic functionality during signing purge and unknown user data. [First-run provisioning](docs/DEPLOYMENT_PROVISIONING.md) remains U4.
 
-## Hardware/driver ownership: bus ELF first, backend later
+## Hardware/driver ownership recommendations: bus ELF first, backend later
 
 Read [Hardware Boundary](docs/HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md), [I²C Cutover](docs/I2C_BOOTSTRAP_CUTOVER.md) and [SPI/UART Cutover](docs/SPI_UART_ELF_BOOTSTRAP_CUTOVER.md) before hardware, transport, device or registry changes. Core owns opaque capability loading, contexts, rights, resolver, registry, streams and lifecycle, not USB, GNSS or other device behavior. USB host/class/chipset/session/transfers and each peripheral's real register/protocol/power logic belong in ELFs. Peripheral proxies into firmware fail architecture.
 
@@ -40,12 +44,12 @@ Read [Hardware Boundary](docs/HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md), [I²C Cutov
 
 CPU/ABI ports may differ; compatible new devices need installed ELF/profile only. Use context-owned generation-safe handles; manifest installation grants no hardware access. Use RiscRTE for platform and CrossPoint for reader subsystem only.
 
-## Versions, packages, releases
+## Versions, packages and release recommendations
 
 Each changed distributable app/driver/service/provider increments its own manifest numeric version beyond merge base/latest published lineage in the same PR. Stable ID is upgrade lineage; do not rename `foo-v2` to evade versions. Record old/new and match manifest/archive/catalog/installed ID. Apps require `Apps/<name>.json` bump; drivers require manifests. Docs-only edits do not bump. Repair `usb-cdc-acm`/`usb-cdc-acm-v2` identity fork with canonical lineage and safe migration. Read `Apps/AGENTS.md` and `Drivers/AGENTS.md` when applicable.
 
 One `.rte.zip` per package plus generic catalog, bounded extraction into isolated `/Apps/<id>/`, `/Drivers/<id>/`, `/Services/<id>/`, `/Providers/<id>/` or validated equivalent. ZIP reader bootstraps offline; reject traversal/collision/bombs/corruption/unsafe replacement. Legacy loose pairs are bounded migration inputs. For release work, read [Releasing](docs/RELEASING.md), `release.yml`, current master/version/tags/releases; publication is not a build shortcut. Preserve firmware binaries outside mutable `.pio`; OTA/SD offset 0x10000, merged USB flash offset 0x0. Qualify final assets with owner only in step three.
 
-## App and PR conventions
+## App and PR recommendations
 
 Read [Application Execution Context](docs/APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) and [Native Apps](docs/NATIVE_APPS.md) for first-class apps. Prefer scoped trusted pickers/intents/private storage, additive bounded SDK and opaque handles. Sources in `Apps/` with adjacent manifests; `ADDING_APPS.md` is legacy firmware activity. At each U1 continuation, fetch master and check for new commits; periodically backmerge it into the open implementation branch, resolve conflicts and verify integration before publishing. Backmerging master into the implementation branch is branch maintenance, not merging the implementation PR into master. Implementation PRs target master; no stacked PRs or auto-merge. Keep release/flash outside implementation work unless release or deployment is the assigned task. Backmerge master without dropping work. After genuine Work Complete, additional `continue` means improving code rather than demanding owner testing.
