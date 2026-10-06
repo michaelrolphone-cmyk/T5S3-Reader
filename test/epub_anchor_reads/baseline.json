@@ -1,0 +1,8 @@
+{
+  "commit": "36891e71ab651152c618d60d1d248abb4a7f44ff",
+  "source_sha256": {
+    "lib/Epub/Epub/Section.cpp": "d3f73efd47a318c3b5771d019a7c4ec38f1b1d0d93939728668e8a0ee1180a9f",
+    "lib/hal/HalStorageVolume.cpp": "d28b659ac204cd698e28f4b4fdecad2a59710aae4189aff62213d33b6c7d1dfc",
+    "lib/Serialization/Serialization.h": "8a83ae01e6817eb6041c0aeeb3fd5892b932954f25f4f68b820bc0b42a3cf538"
+  }
+}

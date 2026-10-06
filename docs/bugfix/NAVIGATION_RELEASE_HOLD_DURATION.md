@@ -2,6 +2,18 @@
 
 Firmware 1.3.137, based on X4 integration commit 36891e71. No driver/package ABI or payload changes.
 
+## Current X4-base refresh (2026-10-06)
+
+The existing PR423 branch includes X4 source b91bc323 and retains original
+repair head bb122548 as its first parent. The only textual conflict is the
+firmware reservation: 1.3.137 / upstream 1.3.143 advances to 1.3.153. All original
+navigation/input code and tests remain unchanged; the native-app runner also
+retains the upstream EPUB anchor-read regressions. Normal and ASan/UBSan real
+navigation/EPUB/XTC long-release regressions pass on the combined tree.
+Exact-head target CI is recorded on the PR. Hardware is unavailable and unrun,
+not a prerequisite for software integration. No app/driver payload change,
+PR350/master write, release or device action is included.
+
 ## Reproduced defect
 
 The shared reader waits for release when chapter skip or orientation change is enabled. NativeNavigationInput reset its hold origin when the button mask became zero, and its duration query returned zero whenever no button remained down. MappedInputManager also selected the untouched GPIO duration on X4 release. A one-second physical page press therefore behaved as a short press in EPUB/XTC.

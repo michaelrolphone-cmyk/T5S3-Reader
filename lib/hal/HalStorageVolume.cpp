@@ -3,6 +3,7 @@
 #if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
 #define HAL_STORAGE_IMPL
 #include "HalStorage.h"
+#include "HalReadBudget.h"
 #include <Arduino.h>
 #include <Logging.h>
 #include <algorithm>
@@ -268,6 +269,15 @@ bool HalFile::seekCur(int64_t delta) {
   return seek64(delta < 0 ? offset - (static_cast<uint64_t>(-(delta + 1)) + 1) : offset + static_cast<uint64_t>(delta));
 }
 int HalFile::read(void *buffer, size_t count) {
+  return readWithBudget(buffer, count, nullptr);
+}
+int HalFile::readCooperatively(void *buffer, size_t count, HalReadBudget& budget) {
+  budget.checkpoint();
+  const int result = readWithBudget(buffer, count, &budget);
+  budget.checkpoint();
+  return result;
+}
+int HalFile::readWithBudget(void *buffer, size_t count, HalReadBudget* budget) {
   HalStorage::StorageLock lock;
   if (!lock || !impl || !impl->handle || impl->directory || !mediaReady() || (!buffer && count)) return -1;
   if (count > kMaxOperationBytes) { impl->error = 1; return -1; }
@@ -278,7 +288,8 @@ int HalFile::read(void *buffer, size_t count) {
                                        std::min<size_t>(RISC_STORAGE_VOLUME_IO_MAX, count - total));
     if (extended->handle_error(volume->context, impl->handle, false)) { impl->error = 1; break; }
     if (!got) break;
-    total += got; delay(1);
+    total += got;
+    if (budget) budget->afterRead(got); else delay(1);
   }
   return !total && impl->error ? -1 : static_cast<int>(total);
 }
