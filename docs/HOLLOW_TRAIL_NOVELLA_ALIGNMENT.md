@@ -134,7 +134,7 @@ traversal wholesale with autoplay.
 | 39 Scarf panorama | Existing scarf and mountain route | Interconnected backward country, then continuous sleet visibility contraction |
 | 40 False signal | Published: actual return isolation stops real lamps, reachable catch/knife/lid, silver gap and two dark held intervals; chime solution retained | Continuous worsening sleet and backward ridge panorama remain separate |
 | 41 Settlement | Published: first-house reflected-doorpost observation, bare-knuckle knock and unanswered wait; existing houses/mast retained | Connected alleys/retaining walls and broader mundane occupancy traces remain |
-| 42 Tower | Existing climbing/channel boat | Eight hooks/bench, older masonry and visibly steadier boat handling |
+| 42 Tower | Local 1.1.50 [grounded hooks/bench, powdering chip, scarf pause and post-channel radio card](HOLLOW_TRAIL_TOWER_1_1_50.md); existing climbing/channel boat retained | Broader older-tower light strips and visibly steadier boat handling remain |
 | 43 Cabinet | Published: modest stone room, physical rubbing/table/mats, live pen and linked mutually exclusive releases; ending/read guards retained | Refine only against concrete owner feedback; preserve the exclusive choice and unanswered ending |
 | 44 Final door | [Playable Chapter XI, same unreleased 1.1.49](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md): yard pause, unwired street, physical shoes, notebook, unpatterned knock and held waiting frame | Refine human-scale materials/poses against owner feedback; preserve the unanswered end |
 

@@ -376,10 +376,10 @@ static int ht_distribution_floor(void) {return ht_land_height(2,7,HT_DISTRIBUTIO
 static int ht_station_floor(void) {return ht_land_height(3,2,HT_STATION_TICKET_X);}
 #define HT_STOVE_X 1820
 static int ht_stove_floor(void) {return ht_land_height(2,5,HT_STOVE_X);}
-static int ht_evidence_platform(unsigned level,int item) { return level==5 && item==2?9:level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
+static int ht_evidence_platform(unsigned level,int item) { return level==9 && item==1?8:level==5 && item==2?9:level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==5 && item==2?HT_GOAL-26:level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
+    return level==9 && item==1?2755:level==5 && item==2?HT_GOAL-26:level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
 }
 static int ht_evidence_world_x(const ht_game *game,int item) {
     return game->level==0 && item==1?game->traversal.crate_x/256:ht_evidence_x(game->level,item);
@@ -2227,7 +2227,7 @@ static void ht_marked_tree(int x,int ground,bool paper) {
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
         if(game->level==7 && item==2){ht_recorder_cabinet(game,0);continue;}
-        if((game->level==7 && (item==0 || item==1)) || (game->level==6 && (item==1 || item==2)) || (game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5))continue; /* Drawn on their actual scene furniture. */
+        if((game->level==9 && item==1) || (game->level==7 && (item==0 || item==1)) || (game->level==6 && (item==1 || item==2)) || (game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         int extent=game->level==0 && item==0?34:12;
@@ -2339,3 +2339,4 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_valve_study.inc"
 
 #include "hollow_trail_gauge_study.inc"
+#include "hollow_trail_tower_study.inc"
