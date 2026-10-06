@@ -1,0 +1,5 @@
+touch capture transient/outage/GAP/recovery/swipe/rollover PASS
+partial failed poll still delivers captured tap PASS
+actual GT911 + consumer: 100 taps, retry faults, delayed delivery and app focus fences PASS
+Complete touch consumer acquisition, worker stop, retained cleanup and resume lifetime: PASS
+Complete touch consumer acquisition, worker stop, retained cleanup and resume lifetime: PASS

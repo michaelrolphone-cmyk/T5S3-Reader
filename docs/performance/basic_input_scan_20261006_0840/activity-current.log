@@ -1,0 +1,1 @@
+Actual ActivityManager: replace/push/pop, 25–30s preparation/result stalls, failed popup/render retry and single-surface dispatch PASS

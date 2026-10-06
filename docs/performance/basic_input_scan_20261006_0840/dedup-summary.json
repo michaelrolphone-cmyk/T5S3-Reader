@@ -1,0 +1,321 @@
+{
+  "branches": 393,
+  "prs": 436,
+  "heads": 587,
+  "missing": [],
+  "report_blobs": 257,
+  "report_missing": [],
+  "variants": {
+    "src/runtime/resources/AppAllocationLedger.h": {
+      "variants": 1,
+      "source_bearing_heads": 223,
+      "blobs": [
+        "75dbc1ec90c1613455cab9b9f7872e6565662893"
+      ]
+    },
+    "src/native/NativeAppMemory.cpp": {
+      "variants": 2,
+      "source_bearing_heads": 223,
+      "blobs": [
+        "ea6e4906ab887d820181f51f1cb1c48ca2cf7e45",
+        "bc396d44d7a5afe7b2a8e73deaed95b91c69db00"
+      ]
+    },
+    "lib/NativeApps/src/NativeAppLauncher.c": {
+      "variants": 37,
+      "source_bearing_heads": 584,
+      "blobs": [
+        "9f7113704e71f8ed7db655461a0844dfea62c012",
+        "fd13c13221100cf7cea7cfc4fdbc3cedd35c5902",
+        "8383fed380a47ad61bb6a67d05d700cb3cde07a9",
+        "590aedb523a2bd92e4be5a318c5a04241ff5778b",
+        "4b0dbb46ce8920b6cb36840198644dda74768f50",
+        "11490e124d8bfa8c89b527aa8c8e97ddda083662",
+        "b033b3df223958ab055499e2aeb78ad65a03e2ac",
+        "d6fa0ea8385909e33b7e46a8c980e1a9f682a464",
+        "a137254e00a47fe64db2b9ff1632cd937e06551e",
+        "fe2b10c0c213344c1993a082c385fb784bd60724",
+        "36cf05108c5eccae800d9a86a3f563baf33e3b95",
+        "74b1991a74b16d0e0253186a366cc3e647170213",
+        "04c83adf41ad36863cd984dd1a2d63e3dc01a1bc",
+        "9192c75285415bd69b35c32fa562fcc396f5026e",
+        "49cc8f89062b9d6126d6081f02713fd8f1a715a3",
+        "b9cf3fca851665ac1a1d87781f84a5491c2a10ed",
+        "fafd3431cd98f53e57eb0d33144ab54ac34bae5d",
+        "cd81a2d862a4ffe1cb0f0ceefe5f20903a8552c9",
+        "019c13631454da84441ac9d0bd301917317b5da8",
+        "89f045b233411b9faa7102df475a144ba6e96502",
+        "4b3bfbf1dcf1e1a8f3a4be4fd18634534a3172ac",
+        "dcf4b0059cc1f4e6655e225016eba36ef984ebc7",
+        "c202e1c918486d433dcef0bc3328a049d154da10",
+        "d2156b5497b6b9b111bf729c4b87e4cb4afcb36d",
+        "988cb22aa5339f33341c8792e620456785b68bd3",
+        "502673f0c5b1475e6fdb79d0b0437f3c3ce4e5c4",
+        "0c30cfc28db1c2775a2b7d3dea111a428c362ad0",
+        "1bf02b42dc69119d0bb953a89ad9264dc9c2fb75",
+        "037db7845374d14098c1293a3169584412764f63",
+        "fd8e5083b4afd474a8a1ce3454276ede998a0c35",
+        "603fe30839297a42deeb0348a7aa11a7cb2f4a88",
+        "cf39412d593c0a2e16384c582de2b0c6a770535a",
+        "39cde8ab8d04859d778a946187ccea06b9317e05",
+        "3d8cd0550bb93b01395e442cce98a1253f133d34",
+        "d5fcd9b3b9097c5134314c21187e82a9a7645f13",
+        "cd37c01d4da76bf7e6dcd6dfac16e1b158c203fe",
+        "ca04e701ebb84abe1b6a62e159fae25755e9b563"
+      ]
+    },
+    "Apps/default.c": {
+      "variants": 1,
+      "source_bearing_heads": 9,
+      "blobs": [
+        "b4668b4c14cc3e8c19bf448f050f84c8de7813ed"
+      ]
+    },
+    "src/native/NativeReaderEntry.cpp": {
+      "variants": 1,
+      "source_bearing_heads": 9,
+      "blobs": [
+        "cf169abff7fc2de46c74c4d529b1bcf0e0737e66"
+      ]
+    },
+    "src/main.cpp": {
+      "variants": 26,
+      "source_bearing_heads": 586,
+      "blobs": [
+        "06a0c539897a904a7fb33329444788827adc2778",
+        "6d4f2dd6983c5a5929286084e8aaaf17f4da47f9",
+        "78d945c36aa7ea074df45b003c4117be93dea5d8",
+        "ef92b8410a73b36f36e531fe732d9cab4463c835",
+        "271f8eeef88f72573098c94a93e9560ad3ab37c4",
+        "6c22ee51873b6b63837f43f23d2b5163fbbd8909",
+        "e5104a79ebdc801a39ee47c280aadabfcccbf2f1",
+        "bb03927a9874b7fc50cfd01b85da09b55006cfb7",
+        "db94c8621ab88cc336b82459ad9b0ec7f69642bb",
+        "927fe11bf189b261f6144bc148d40905c727f53d",
+        "3232b7c0c4402f82260e6440652b9ad8009c4303",
+        "e4630e27441765d7a7ee1f97b576f26a0eafabe8",
+        "e770a5949ea34caf020015150fee0addfaf5e91d",
+        "f80f57e56ea0d1b461e21cd0333763196d146c93",
+        "72cee04d39531ca7f8bccec7796dd084bf25961c",
+        "246094c824ebc44cc17d21c82d28deb8fb5ac1de",
+        "2fd1e128e0a03d30ae7cb0ecdb9e2c9f7ade859a",
+        "bf28e259bef6c0971a7d9135dba25390c53843b5",
+        "e8dbbb274010500fa2bc17a06062d87e5085912a",
+        "0774ece3fdf851261abb288c59efb8b10ff357e1",
+        "f94fa6cd105e3811e1c9325dc75d057d97936cc5",
+        "aca0d5a31406b9cf2beb27dd1c4ff22bba7d67a4",
+        "3e67547cb0d04b9e7226964dbbe9fe4d455c68c0",
+        "6d57ffe6b6acbbd075bb51f5895f6c5ab68d4247",
+        "ad1155d78f47436b771e1679c1e1a1af9f2e19aa",
+        "3ebefeb560e329d855349d842cff294c59bce57f"
+      ]
+    },
+    "src/MappedInputManager.cpp": {
+      "variants": 10,
+      "source_bearing_heads": 586,
+      "blobs": [
+        "79538dc01e057e9f45a7b5e5fa4d4c869202d1e2",
+        "253026c5c5e27ab5ef19a740d8721ce44b14c637",
+        "cca2d258a563559663ad02c2fe744901af2b81f2",
+        "576cb03dcc21651f80d2caf776d72ef12bdfd458",
+        "e40a247a073f1b9714ce05afe21f0ec0c7b37fa3",
+        "96676ea1efff4084a680b02ee6d1c2dbde9d5c44",
+        "b709269211da0d44f010c05f803ed7752366d656",
+        "e16f705ef12ce86e2e3377a33c78de6af3c7fabc",
+        "3f6de9641af0832fd0a2766ec4bafdf68690bc69",
+        "645d0b038124afa8fd1c3cad16271c6c220756b5"
+      ]
+    },
+    "src/native/NativeAppHost.cpp": {
+      "variants": 65,
+      "source_bearing_heads": 584,
+      "blobs": [
+        "33d8132710a8d2baa929ddb9a1bc9fe0205f4cbb",
+        "9f6e6903e26baa91a3480ee6952b5436e72c602b",
+        "5ff18f878d05e114892052b42b93edcba687b663",
+        "630756adf93410fe7dcada0a300fbef8d177e950",
+        "5cfb3ded25811ff9fd4c8ea8ab01f53cfee2e330",
+        "18d622a3fdbe412d2247b1a0f2a2fb27f52649bc",
+        "bac99da0bf477f5e9dd16958106de65678649318",
+        "00d8768161057d5b31da4e04a62cae25831a2788",
+        "3e5c373bf5a5b8dee43a946fec8391256b6f6d2d",
+        "3faf58664c14b6c310532b1999884fa54d6bd04b",
+        "6d271df9787c6dfc2aa17badb60de037cce7ff4a",
+        "2c74a1f22ecfe63e62b570166824b706e3b016bf",
+        "96ab91f4bf0b6dde6177411d920a5a19a5e352d7",
+        "cdb08d15b3c4c448913ddb9e06edef581e537831",
+        "3e66047804de88153b676974033fbc996fa8ed83",
+        "2b315e5fc0f72742149c158ce2fba4bd2481d9fe",
+        "eac053dd744ab2aa0316f49b9719dcb92b1e3807",
+        "f819c9802d37b4510e5d7c9199c657bca1938fa3",
+        "da6cc94fb69c7cda4a95b5b23be9d36495e21274",
+        "ff97ae5d880cfed7d7fb7fe28050fbef45878be7",
+        "47d9d3ef0b7a1f48d4fca8a9c1dde5e4834c412f",
+        "90d9f4c26f6a5604ca7768028767e505896995a2",
+        "d09a9263d91c8d08c1f1b908805cef1dba1d5990",
+        "aeefb7037f72a41270ad10ddbd898b3b28bac9cc",
+        "24dbd489c3cb87338727145b448f6fa93cb6450f",
+        "6d074e4b307020c8b2a03bd0ba6f6eef5f44c9e4",
+        "316566ac34820e84ca1fa2bac53720d1401b940c",
+        "b61f12666ad40d192fb008b345140e8856ee55dd",
+        "f0f9683999395358be704a33234cfcf866a76095",
+        "6b3eb5d31f98a5eaf753af93e0a7c56d14fea3f4",
+        "438fc25926188217c339ef5181236b9e2672351f",
+        "5458174fd9dd3a33fca9ff5552f851d561bdab5e",
+        "8afc387eeb474d82ac39ff9aab7688d4400b9420",
+        "7617c80de8f3b64123fd157cdef61025259db787",
+        "f5258346f723f746d951f430089237a512934589",
+        "95271cb948dced14d99dfb8cedd6e9703d32d606",
+        "ec4b35f3c0121467ccc576b41a568ace56f2c26b",
+        "4e8dcac3f0da8387701b45256c69a50a1a130263",
+        "073e7c502e0e0d2a0d61a9e21b007c0b60785587",
+        "7f95d19a8d9469662a4cc6879d5032882d0bdfc8",
+        "3c7caf10a304b010f7b04086e32d20a61cc92144",
+        "107125c660997809eb79a5db323a0cb65391140e",
+        "c46d6bf058f67736b5d614c766d7a9d55fc31491",
+        "e269ff3fdbc653c95a623e527b1c332ae4ef495e",
+        "11f77625ee8900d2306b7bbfb97543b7d5b3f785",
+        "4afc51006c73da9bfd20b779987a7bd462ad6cfb",
+        "556dbb9ee63e22a2d0dcde17631b0770edc12a65",
+        "6fc2cc2bd8bece4453f0a028bcb7546665ae466b",
+        "64daec921108137204098b5160645c2601a8e5cf",
+        "552c430abbb071508785ec2998103cae894c5031",
+        "c498ae51dc0ac36b4c57040984a685f6aca2f332",
+        "ad57dd44822394c20475f076ba4a4fb9658fcd25",
+        "47fdf8c3312f2bac4883d59f8424f407918d7769",
+        "47f3e5ffff7892d8adfc74eb8cea268d64d7b98d",
+        "66d26a1d7f8ededcc7b03021d9f69200aa03c678",
+        "6d497d11063766fff4c83f0acaa2d7319115aa42",
+        "536d6ec303442243e76bd45c916777682080022b",
+        "ea5aa74fbc1fed3778e510eda66c2ae8f8d5e476",
+        "96f89f2bc1e83d130a4f5ccb4eedcc6567eccd9e",
+        "a613e596b039063a27355c231df1495f2d63b95d",
+        "70038836b1981608c23d5adee961de7877d4ee2a",
+        "14d6947dbbff54623d6584c08e43c561f282890a",
+        "50fc1f11de81295d19cb78946229c0c4781e6c87",
+        "f53cb9bec123ae9533961acd07a5fca05d945231",
+        "2e8e394627a3866da8f6a55b37a0045047c05dcf"
+      ]
+    },
+    "src/native/NativeTouchInput.cpp": {
+      "variants": 10,
+      "source_bearing_heads": 367,
+      "blobs": [
+        "2ba6104d87c5e56f24f316893f78d94c3b1a0fd7",
+        "5c938798a8e332c191290e7803120170d8a62d6a",
+        "8e153469e924c853757f0dfcedb4b5ca150217f7",
+        "273b3798b05058caa67fca17ba7058448b4f2ce5",
+        "45aaf2d115b5beee85a783577fc03fcde6d9f4d0",
+        "f4a7d0c0fad77959fe6522e558482aec0d6e2877",
+        "f8769904bf8f0ad423582c84bfc71ae5d0b3f3a9",
+        "f9ebc689a7f77c4aeb0e295d13253c13b3a7ecf9",
+        "cb3bf2368d8344e845e9826eaa096dd6f03da0e0",
+        "740c61f953615d6d5954ee63bb567fbbb31191f3"
+      ]
+    },
+    "src/native/NativeUiBridge.cpp": {
+      "variants": 10,
+      "source_bearing_heads": 574,
+      "blobs": [
+        "fda25ea44660f19cdb0cf6eefa86f1f101efdce7",
+        "dd52dbf147acad4cef0f440a0401da7a893e9718",
+        "b677ac4a3d0523c7b8c4d25fbfc2c1bcbd83f7ac",
+        "74b5f3c0b60b4a767411f935debfee7b0ae7d12b",
+        "e5d431ace2b4a45dabce57aa197ad9fd3ed4db13",
+        "d6ad58bddf15ab649e13f4839de654e68e56232c",
+        "5225300c2cdd042f13998af0ad4aece2525fb4f8",
+        "a206933daeca556c329204eff901f4952995a24e",
+        "260ba057beedb9cf87d945c35a99cc096472c6e1",
+        "7ff096e5e01c63d5569c5edaa26d695bcc5b86bd"
+      ]
+    },
+    "src/activities/ActivityManager.cpp": {
+      "variants": 14,
+      "source_bearing_heads": 586,
+      "blobs": [
+        "2b87e7c7ea3d00ebe2bccf49c20892678476ad36",
+        "7789d344dec08a0591ac11b462927f8c792a2417",
+        "e93aeb0576d8a4c5d3695488ab3be72107ccf364",
+        "52c7b21fe8b81494a30b2336c9fe64ad478443b6",
+        "9cfa6bdfccd094111e6ebcb98823600f3aae4448",
+        "4452acd5df0919c320e775323cd38963e28bc157",
+        "6131e1d392aa935d1a71740fc3b14c9cf452e43b",
+        "01dbcaf8027925654ac152464c7cf146ae1588be",
+        "9da99de63843b4ac0f20150a990b80636defde10",
+        "c389a2faea5e0b9d3422d50260b8673db6348086",
+        "584cea0374c491036e26763ae6c0c0ece0c88530",
+        "eff66da493f3147d52cb1321554c5473221ed4e4",
+        "96ec16cf5eff8203762563c3de914ca83e92eea1",
+        "8b1dcdec7bd9fc0a9673bff5eb8f55e14e5fd60b"
+      ]
+    },
+    "src/native/NativeBatteryGauge.cpp": {
+      "variants": 1,
+      "source_bearing_heads": 36,
+      "blobs": [
+        "8ab53b4285fbd45074bf045bd58166c8b8293dd6"
+      ]
+    },
+    "lib/hal/HalPowerManager.cpp": {
+      "variants": 3,
+      "source_bearing_heads": 586,
+      "blobs": [
+        "a7136c16048d7a704eaf02452bf99fb36bff4082",
+        "888cfb5d5b2d6c90e125cec2c889f5277e455a78",
+        "a1bc76340aa3b1cde8c5d16a7f12dfa5cc5b3106"
+      ]
+    },
+    "lib/EpdFont/SdCardFontRegistry.cpp": {
+      "variants": 1,
+      "source_bearing_heads": 586,
+      "blobs": [
+        "2e0f145c8f8a61eb419addfe0c3719c108281666"
+      ]
+    },
+    "lib/elf_loader/src/esp_elf.c": {
+      "variants": 6,
+      "source_bearing_heads": 584,
+      "blobs": [
+        "ed34c7cc4bd71fd27be50ab9f7a02dc2ec7326bb",
+        "6a3e02b6cdf9c749d0f0a5fb738491881aa8e4dd",
+        "c80f89b550fcba8c346d7c9b6f724bda3cfa5693",
+        "c62289d4d005d76747e2d4f931eb00a86f205057",
+        "d8d74d1de4a94946e941887cd98bc8ea60e1c3bd",
+        "2f1a1212b41be6b3c4bc527333b352bcf9c4d7dd"
+      ]
+    },
+    "src/SdCardFontSystem.cpp": {
+      "variants": 1,
+      "source_bearing_heads": 586,
+      "blobs": [
+        "0f4cd1045fddefded5cf65f8a0d315ce98833c5e"
+      ]
+    },
+    "src/activities/home/HomeActivity.cpp": {
+      "variants": 17,
+      "source_bearing_heads": 586,
+      "blobs": [
+        "b7b02ab9d478c4f5a611ac9a875f724db78d60e4",
+        "6da8e8c92bc0b29f636019001361dbf2a8758a82",
+        "4eb85235a0458801765c4a1c2c84e2848b926d49",
+        "5b2e0c6a8180275bcac604b88325e74a324ed8b2",
+        "7693810a4c59800d78fc4b631e272812c19b3292",
+        "6b3ccdd5a648de2473fa0cb736639b0def09be86",
+        "f5c3b6010950bb0dfe96ec032253fd8ea54f05cb",
+        "58c92d3db00c571908d95bd077abf5799499fdab",
+        "545cae76154ef5cc9b28800851aa94bafae2c588",
+        "40723f02a538b4e0febb1e2bd9daf355aec6b0df",
+        "4388d78ba66aa2164efdad92bbbf3b8ad828a240",
+        "1f92d867ccbafc231f0d3ad5f7060b3c5a9b0f80",
+        "a72bc4360d9516528368d0ec2337a728e917dcfd",
+        "6022e05eecdf070df3e98e3384592c7003febebe",
+        "c67c8dc07b8cd3a93049c67a948c85e4eca91719",
+        "2093b9c56f39b3112b0e8f6bb8c12bb1b670b72c",
+        "16c95ec853bace582e7bc4ff5353ac974edcd6f9"
+      ]
+    }
+  },
+  "queued_comment_count": 192,
+  "queue_last_id": 6012329134,
+  "non_pr_issue_count": 0
+}

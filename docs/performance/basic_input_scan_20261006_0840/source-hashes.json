@@ -1,0 +1,23 @@
+{
+  "src/runtime/resources/AppAllocationLedger.h": "f6187a87b837b0a772cd7d320b194ac22594e5a0b92f343d5113487326a77d05",
+  "src/native/NativeAppMemory.cpp": "22cebe3f126f350a2fc9288e54dc7c8d8ad2d67844b6cf6cd0a636bca8bf3709",
+  "lib/NativeApps/src/NativeAppLauncher.c": "d84d3708e1d85daab94cfd26a967e636d3c885f57b56a470b2f6e7e823d7bc6f",
+  "Apps/default.c": "d51e196848de69d40ab003f4780e86ef20b9901ec4ada8a9c461b95be3cf80a2",
+  "src/native/NativeReaderEntry.cpp": "80b361225609493f1566aaf66a72a21183f203fab59cdd202f23976a66c05e04",
+  "src/main.cpp": "e467ec8fab8e9af5c5fe670316cbdde71d92c4182419774bafd234b0ed11e741",
+  "src/MappedInputManager.cpp": "bc1d33d026adc28627c22d0678d3ba761598de063325a7cee5e061b7a0c9c123",
+  "src/native/NativeAppHost.cpp": "ef0105fa7c1b4371f7e04e48a5c39ec5b3d0b381b1b34e658f607680ec31a3d1",
+  "src/native/NativeTouchInput.cpp": "c2704f5e566138d13056d0571fb0e3d11e22a79b82c45ac6f4cd39eb49f70739",
+  "src/native/NativeUiBridge.cpp": "cc474c9f7ec3ec86c78fe5038b2396277755f4f1cf1f7e9f49235ceb50f22e13",
+  "src/activities/ActivityManager.cpp": "5903655c0e71dbaecfccafcbb04dc115eea67ab4f05556b459e942bc07989fab",
+  "src/native/NativeBatteryGauge.cpp": "3c1ed2c7943cbf689a57c487f56cbb93e970c744db43a90da479735bb95016ed",
+  "lib/hal/HalPowerManager.cpp": "0cb25acdc76b8b4701a53897819c4ec756ad54443d70c8daccefe29e8d8b6156",
+  "lib/EpdFont/SdCardFontRegistry.cpp": "170d8251c80e457b07a18555ee7240a078c2599a50e22559904b13c0f9037274",
+  "lib/elf_loader/src/esp_elf.c": "8eaa5c6c31fb94f65951e5dc579a16beed9bc5c677f81eea8a165a6e22c6d1bd",
+  "src/SdCardFontSystem.cpp": "fb4c306b431858c4f599d936f443e001b88ec4be8fda9cb982c6ca15fe9488e9",
+  "src/activities/home/HomeActivity.cpp": "55b6d5089151e93e21efcfbd960f13f624af5fd382ee5fb1d2841b8d86815557",
+  "platformio.ini": "bec502035668f72d6da5bc6a6fb1b3f6f9beba747f81c7cf87cba8181defbe42",
+  "lib/Board_T5S3/boards/t5s3-pro.json": "c5b86be0443bfe6e76e18208928ef65ac1fd46d92e657ce8b220ca9e416f570f",
+  "Apps/default.json": "880e6a7fd2532f269d4de3dbdfe7aa93785e9c702be267d4d1c0d38316936b0c",
+  "Drivers/gt911_touch/driver.c": "0ccc0c1a609c08664ef64d2a25f7df0f2493c3461a13a5193017466377a1e1cc"
+}

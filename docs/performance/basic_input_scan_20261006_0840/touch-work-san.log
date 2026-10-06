@@ -1,0 +1,4 @@
+{"case":"start","polls":0,"next_calls":0,"snapshot_calls":1,"bus_calls":2,"status_reads":0,"point_reads":0,"ack_writes":1,"product_reads":1,"delivered_taps":0}
+{"case":"1000_idle_capture_turns","polls":1000,"next_calls":1000,"snapshot_calls":0,"bus_calls":1000,"status_reads":1000,"point_reads":0,"ack_writes":0,"product_reads":0,"delivered_taps":0}
+{"case":"100_healthy_taps","polls":200,"next_calls":400,"snapshot_calls":0,"bus_calls":500,"status_reads":200,"point_reads":100,"ack_writes":200,"product_reads":0,"delivered_taps":100}
+{"case":"100_taps_with_400_injected_bus_failures","polls":600,"next_calls":800,"snapshot_calls":0,"bus_calls":1250,"status_reads":600,"point_reads":400,"ack_writes":250,"product_reads":0,"delivered_taps":100}

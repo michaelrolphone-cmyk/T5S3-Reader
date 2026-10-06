@@ -1,0 +1,10 @@
+{"case":"one_paperspace_handoff_zero_live","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"20_paperspace_handoffs_zero_live","wait_requests":1280,"requested_ticks":1280,"remaining_live":0}
+{"case":"dlopen_failure_zero_live","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"missing_entry_zero_live","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"allocated_0_freed_0_live_0","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"allocated_1_freed_1_live_0","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"allocated_2_freed_2_live_0","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"allocated_3_freed_3_live_0","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"allocated_4096_freed_4095_live_1","wait_requests":64,"requested_ticks":64,"remaining_live":0}
+{"case":"allocated_4096_freed_0_live_4096","wait_requests":64,"requested_ticks":64,"remaining_live":0}
