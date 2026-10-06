@@ -13,6 +13,7 @@ bridge=(ROOT/'src/native/NativeVideoBridge.cpp').read_text()
 bridge=re.sub(r'^#include .*\n','',bridge,flags=re.M)
 bridge=bridge[bridge.index('extern "C" bool'):bridge.index('\n#else')]
 video=r'''
+#define READER_TEST_REAL_CONTEXT
 #include <T5VideoApi.h>
 #include <T5DisplayProviderV1.h>
 #include "runtime/resources/ExecutionContext.h"

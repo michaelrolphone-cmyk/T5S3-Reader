@@ -45,10 +45,12 @@ struct ActivityManager {
  enum class PendingAction{None,Pop,Push,Replace};PendingAction pendingAction=PendingAction::None;
  DisplayPresentMode pendingReplaceRefreshMode=DisplayPresentMode::Clean;
  TaskHandle_t renderTaskHandle=nullptr,waitingTaskHandle=nullptr;
+ uint64_t activityGeneration=0,deferredGeneration=0;
+ Activity* deferredActivity=nullptr;
  int waitingTaskMux=0;bool requestedUpdate=false,pendingHomeSingle=false;
  unsigned long lastHomeEventMs=0;static constexpr unsigned long kDoubleClickWindowMs=400;
  ActivityManager(GfxRenderer&r,MappedInputManager&i):renderer(r),mappedInput(i){}
- void renderTaskLoop();void loop();void exitActivity(const RenderLock&);
+ void renderTaskLoop();void loop();void finishLoop();void exitActivity(const RenderLock&);
  void replaceActivity(std::unique_ptr<Activity>&&);
  void replaceActivity(std::unique_ptr<Activity>&&,DisplayPresentMode);
  void pushActivity(std::unique_ptr<Activity>&&);void popActivity();
@@ -57,7 +59,7 @@ struct ActivityManager {
 };
 '''
 methods='\n'.join(f.method(manager,sig) for sig in (
- 'void ActivityManager::renderTaskLoop(', 'void ActivityManager::loop(',
+ 'void ActivityManager::renderTaskLoop(', 'void ActivityManager::loop(', 'void ActivityManager::finishLoop(',
  'void ActivityManager::exitActivity(',
  'void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {',
  'void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity,',

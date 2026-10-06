@@ -1,10 +1,14 @@
 #include <RuntimeFaultRetention.h>
 #include "NativeUiFrame.h"
+#include "NativeUiBridge.h"
 #include "NativeAppMemory.h"
 #include "NativeStreamBridge.h"
 #include "NativeNetworkBridge.h"
 #include "NativeAppHost.h"
 #include "PowerControl.h"
+#include "NativeReaderEntry.h"
+#include "runtime/resources/ExecutionContext.h"
+#include <optional>
 #include "ManagedAppAdmission.h"
 #include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
@@ -1501,10 +1505,23 @@ static bool validateLooseAdmissionSidecar(const std::string& json,const std::str
       manifest.compatible && filename==manifest.file_name;
 }
 
-esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
+// Keep the Session, admission, context, heap and RenderLock on this owner stack.
+// A retained child may still own a task/DMA callback. Returning or redrawing the
+// Reader cannot make it safe; only a manual reboot may release this quarantine.
+[[noreturn]] static void retainNativeAppSession() {
+  lastLaunchError = "Application resources retained. Manual reboot required.";
+  LOG_ERR("APP", "%s", lastLaunchError.c_str());
+  for (;;) {
+    esp_task_wdt_reset();
+    delay(250);  // Explicit retained state, never a busy retry or forced unload.
+  }
+}
+
+static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, MappedInputManager& input,
+                                  bool readerEntry) {
   // Every synchronous child/resume route crosses this guard, not just the
   // Springboard loop. Let pending sleep unwind without mapping another ELF.
-  if (idleSleepRequested()) return ESP_OK;
+  if (!readerEntry && idleSleepRequested()) return ESP_OK;
   const uint32_t launchBegan = millis();
   const auto launchStage = [&](const char* stage) {
     LOG_INF("APP", "Launch stage=%s elapsed_ms=%lu path=%s", stage,
@@ -1512,17 +1529,21 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   };
   launchStage("begin");
   lastLaunchError.clear();
-  if (risc_runtime_retention_required()) {
-    lastLaunchError = "Storage unavailable; resources retained. Manual reboot required.";
+  if (risc_runtime_retention_required() || native_app_loader_retained()) {
+    lastLaunchError = "Runtime resources retained. Manual reboot required.";
     return ESP_ERR_INVALID_STATE;
   }
   if (session) {
     lastLaunchError = "Another native application is already running.";
     return ESP_ERR_INVALID_STATE;
   }
-  queuedLaunch.clear();
-  homeRequested = false;
-  firmwareActionPending = false;
+  if (!readerEntry) {
+    // Reader readmission resumes the suspended Home/Springboard workflow.
+    // Its child's Home/queued-navigation result must survive until consumed.
+    queuedLaunch.clear();
+    homeRequested = false;
+    firmwareActionPending = false;
+  }
   // Legacy loose ELFs still work in Browse Files. Present sidecars are enforced.
   if (!path || std::strncmp(path, "/sd/", 4)) {
     lastLaunchError = "Invalid native application path.";
@@ -1538,8 +1559,9 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   if (displayName.size() > 4 && displayName.compare(displayName.size() - 4, 4, ".elf") == 0)
     displayName.resize(displayName.size() - 4);
   const std::string sidecar = elf.substr(0, elf.size() - 4) + ".json";
-  HalPowerManager::Lock powerLock;
-  RenderLock lock;
+  std::optional<HalPowerManager::Lock> powerLock;
+  std::optional<RenderLock> lock;
+  if (!readerEntry) { powerLock.emplace(); lock.emplace(); }
   // Only read the bounded (2 KiB) sidecar for presentation before showing
   // feedback. This is not launch authorization: normal checks below still
   // re-read the manifest after recovery may have replaced the installed pair.
@@ -1549,10 +1571,12 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     displayName = preview.display_name;
     icon = preview.icon;
   }
-  nativeTouchBeginSurfaceTransition(true);
-  StartupScreen::app(renderer, displayName.c_str(), icon);
-  launchStage("loading-screen");
-  // Keep the render lock through launch so an outstanding activity repaint
+  if (!readerEntry) {
+    nativeTouchBeginSurfaceTransition(true);
+    StartupScreen::app(renderer, displayName.c_str(), icon);
+    launchStage("loading-screen");
+  }
+  // Ordinary child apps keep the render lock through launch so an activity repaint
   // cannot overwrite this frame during package recovery or dependency loading.
   // Nested /Apps/<id>/<artifact> entries are independently verified against
   // their exact canonical package inventory. A failed verification never
@@ -1610,6 +1634,26 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
     lastLaunchError = "Managed application is being replaced or is unavailable.";
     return ESP_ERR_INVALID_STATE;
   }
+  if (readerEntry) {
+    // Admission uses a real invocation, but the existing GUI continues to own
+    // its renderer, input, provider polling and persistent activities. Do not
+    // create native stream/network/settings sessions or grant app capabilities.
+    RuntimeResources::ExecutionContext context;
+    RuntimeDevices::AppCapabilityRequirements requirements{};
+    t5_app_manifest_t manifest{};
+    const bool allowed = filename == "default.elf" &&
+        readAppManifest(sidecar.c_str(), manifest, nullptr, false, &requirements) &&
+        requirements.count == 0 && context.begin();
+    const bool admissionReady = allowed && (canonicalRoot.empty()
+        ? RuntimePackages::beginLooseAppAdmission(path, validateLooseAdmissionSidecar)
+        : RuntimePackages::beginManagedAppAdmission(canonicalIdentity, path));
+    const esp_err_t result = admissionReady ? launch_elf_reader_entry(path) : ESP_ERR_INVALID_STATE;
+    if (admissionReady) RuntimePackages::endManagedAppAdmission();
+    context.end();
+    if (!canonicalRoot.empty() && (result == ESP_OK || !admissionReady))
+      (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
+    return result;
+  }
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
@@ -1624,6 +1668,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   nativeNetworkBegin();
   nativeSettingsBegin(renderer, input);
   nativeSystemUiBegin();
+  nativeUiResetTextLayout();
   esp_task_wdt_reset();
   // Pin the exact installed generation before mapping and release only after
   // the ELF has returned and dlclose has succeeded. Failed unloads retain the
@@ -1636,6 +1681,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
       : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
   launchStage(admissionReady ? "admitted" : "admission-failed");
   const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
+  if (native_app_loader_retained()) retainNativeAppSession();
   if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
   nativeNetworkEnd();
@@ -1657,6 +1703,7 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   if (active.directory.isOpen()) active.directory.close();
   active.catalog.clear();
   session = nullptr;
+  nativeUiResetTextLayout();
   nativeTouchBeginSurfaceTransition(true);
   nativeNavigationBoundary();
   nativeNavigationRetry(); // An installer may have added the navigation provider.
@@ -1680,6 +1727,18 @@ esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManag
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
   return result;
+}
+
+esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
+  // Catch future unguarded routes before touching a session, frame, admission,
+  // or launch result. Deferred firmware loops run only after this is false.
+  if (NativeReaderEntry::mapped()) return ESP_ERR_INVALID_STATE;
+  return runNativeAppImpl(path, renderer, input, false);
+}
+
+esp_err_t runNativeReaderEntry(const char* path, GfxRenderer& renderer, MappedInputManager& input) {
+  if (!NativeReaderEntry::mapped()) return ESP_ERR_INVALID_STATE;
+  return runNativeAppImpl(path, renderer, input, true);
 }
 
 bool consumeNativeAppReturn() { const bool value = returned; returned = false; return value; }

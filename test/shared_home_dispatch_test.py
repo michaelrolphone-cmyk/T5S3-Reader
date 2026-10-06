@@ -93,13 +93,13 @@ int main() {
         boot = (ROOT / 'src/platform/X4DiagnosticBoot.cpp').read_text()
         for call in ('powerManager.begin()', 'setupDisplayAndFonts()', 'setupReaderState()',
                      'ButtonNavigator::setMappedInputManager(mappedInputManager)'):
-            self.assertLess(boot.index(call), boot.index('activityManager.goHome()'))
+            self.assertLess(boot.index(call), boot.index('prepareReaderApplication(deskClockUserWake)'))
         self.assertNotIn('insertFont(', boot)
         self.assertNotIn('openFirstText', boot)
         self.assertNotIn('activityManager.loop()', boot)
         self.assertNotIn('mappedInputManager.update()', boot)
         main = (ROOT / 'src/main.cpp').read_text()
-        loop = main[main.rindex('void loop()'):]
+        loop = main[main.index('static void readerApplicationLoop()'):]
         self.assertIn('if (!x4DiagnosticLoop()) return;', loop)
         for shared in ('RuntimeDefaultApp::read(artifact)', 'mappedInputManager.update()',
                        'nativeProviderOwnerTick()', 'activityManager.loop()',

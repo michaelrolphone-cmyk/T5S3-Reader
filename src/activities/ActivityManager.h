@@ -6,6 +6,7 @@
 #include <HalDisplay.h>
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -43,6 +44,10 @@ class ActivityManager {
   SemaphoreHandle_t renderingMutex = nullptr;
 
   bool requestedUpdate = false;
+  void finishLoop();
+  uint64_t activityGeneration = 0;
+  uint64_t deferredGeneration = 0;
+  Activity* deferredActivity = nullptr;
 
   static constexpr unsigned long kDoubleClickWindowMs = 400;
   unsigned long lastHomeEventMs = 0;
@@ -54,6 +59,10 @@ class ActivityManager {
 
   void begin();
   void loop();
+
+  // Resume the exact firmware loop after default.elf has unloaded.
+  bool deferNativeAppLoop(Activity* activity);
+  bool resumeNativeAppLoop(Activity* activity);
 
   void replaceActivity(std::unique_ptr<Activity>&& newActivity);
   void replaceActivity(std::unique_ptr<Activity>&& newActivity, DisplayPresentMode replaceRefreshMode);

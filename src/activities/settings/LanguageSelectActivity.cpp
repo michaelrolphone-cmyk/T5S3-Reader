@@ -17,6 +17,7 @@ void LanguageSelectActivity::onEnter() {
 
 void LanguageSelectActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/language_settings.elf", renderer, mappedInput);
     if (result == ESP_OK) {

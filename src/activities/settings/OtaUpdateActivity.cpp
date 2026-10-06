@@ -42,6 +42,7 @@ void OtaUpdateActivity::onExit() {
 
 void OtaUpdateActivity::loop() {
   if (state == LAUNCH_PENDING && !launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     // The package manager installs into /Apps/<package-id>/<artifact>. The
     // old hard-coded loose-file path failed even with a valid OTA package.

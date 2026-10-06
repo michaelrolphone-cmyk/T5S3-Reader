@@ -55,8 +55,10 @@ static bool reset(void *context) {
     waiting_for_neutral = sample() != 0;
     return true;
 }
-static const risc_input_navigation_api_v1 api = {
-    RISC_INPUT_NAVIGATION_API_V1, sizeof(api), 0, poll, foreground, reset
+static const risc_input_navigation_traits_v1 api = {
+    {RISC_INPUT_NAVIGATION_API_V1, sizeof(api), 0, poll, foreground, reset},
+    RISC_INPUT_NAVIGATION_TRAITS_TAG, RISC_INPUT_NAVIGATION_TRAITS_VERSION,
+    RISC_INPUT_NAVIGATION_PHYSICAL_PAGE_PAIR
 };
 static bool start(const risc_provider_dependency_v1 *dependencies, size_t count) {
     (void)dependencies; (void)count;
@@ -70,7 +72,7 @@ static void stop(void) { started = false; }
 static bool quiesce(void) { stop(); return true; }
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(driver), "x4pro-buttons",
-    "input.navigation", 1, &api, start, stop, quiesce
+    "input.navigation", 1, &api.base, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {

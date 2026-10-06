@@ -88,23 +88,33 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
     return base;
   };
 
-  auto findWrapBreak = [&](const std::string& text, uint8_t headingLevel) -> size_t {
-    std::vector<size_t> utf8Boundaries;
-    utf8Boundaries.reserve(std::min<size_t>(text.size(), 512));
-    for (size_t p = 0; p < text.size();) {
-      p = nextUtf8Boundary(text, p);
-      utf8Boundaries.push_back(p);
+  auto findWrapBreak = [&](const std::string& text, uint8_t headingLevel, size_t consumed,
+                           std::vector<size_t>& utf8Boundaries) -> size_t {
+    // The remaining text is only shortened from the front. Build its boundary
+    // table once per parsed source line, lazily after the first overflow. It is
+    // bounded by the existing 8 KiB input chunk plus Markdown decoration and
+    // released at the line end. No text or font state survives this page call.
+    if (utf8Boundaries.empty()) {
+      utf8Boundaries.reserve(std::min<size_t>(text.size(), 512));
+      for (size_t p = 0; p < text.size();) {
+        p = nextUtf8Boundary(text, p);
+        utf8Boundaries.push_back(consumed + p);
+      }
     }
 
-    if (utf8Boundaries.empty()) {
+    // upper_bound also preserves the old grouping of malformed continuation
+    // bytes when a word-space was removed from the front of the suffix.
+    const auto first = std::upper_bound(utf8Boundaries.begin(), utf8Boundaries.end(), consumed);
+    const size_t boundaryCount = static_cast<size_t>(utf8Boundaries.end() - first);
+    if (boundaryCount == 0) {
       return 0;
     }
 
     size_t low = 0;
-    size_t high = utf8Boundaries.size();
+    size_t high = boundaryCount;
     while (low < high) {
       const size_t mid = (low + high + 1) / 2;
-      const size_t bytes = utf8Boundaries[mid - 1];
+      const size_t bytes = first[mid - 1] - consumed;
       if (textWidth(text.substr(0, bytes), headingLevel) <= viewportWidth) {
         low = mid;
       } else {
@@ -112,7 +122,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
       }
     }
 
-    const size_t maxFit = (low == 0) ? utf8Boundaries.front() : utf8Boundaries[low - 1];
+    const size_t maxFit = first[low == 0 ? 0 : low - 1] - consumed;
     if (maxFit < text.length()) {
       const size_t spacePos = text.rfind(' ', maxFit > 0 ? maxFit - 1 : 0);
       if (spacePos != std::string::npos && spacePos > 0) {
@@ -174,6 +184,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
     }
 
     size_t lineBytePos = 0;
+    std::vector<size_t> utf8Boundaries;
 
     if (line.empty()) {
       const int h = heightOf(headingLevel);
@@ -201,7 +212,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
         break;
       }
 
-      const size_t breakPos = findWrapBreak(line, headingLevel);
+      const size_t breakPos = findWrapBreak(line, headingLevel, lineBytePos, utf8Boundaries);
       if (breakPos == 0) break;
 
       outLines.push_back({line.substr(0, breakPos), headingLevel});

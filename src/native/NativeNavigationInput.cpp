@@ -15,8 +15,10 @@ constexpr uint32_t kActivationRetryMs = 1000;
 bool configured = true, enabled = true, attempted = false, quarantined = false, usable = true;
 bool bootstrapAttached = false;
 uint32_t lastPoll = 0, heldSince = 0, lastAttemptMs = 0;
+uint32_t releasedHeldMs = 0;
+bool singleButton(uint32_t bits) { return bits && !(bits & (bits - 1)); }
 
-void clearFrame() { frame = {}; heldSince = millis(); }
+void clearFrame() { frame = {}; heldSince = millis(); releasedHeldMs = 0; }
 bool ready() {
     if (quarantined) return false; // The graph may be backed by the read-only boot store.
     if (api) return true;
@@ -45,18 +47,30 @@ bool ready() {
 }
 void nativeNavigationTick() {
     frame.pressed = frame.released = 0;
+    releasedHeldMs = 0;
     if (!enabled || !ready() || !usable) { clearFrame(); return; }
     const uint32_t now = millis();
     if (static_cast<uint32_t>(now - lastPoll) < 20) return;
     lastPoll = now;
     risc_input_navigation_frame_v1 next{};
     if (!api->poll(api->context, &next)) { clearFrame(); return; }
+    // The scalar legacy query can describe only one unambiguous gesture.
+    // Keep its duration for exactly the matching release frame, before changing
+    // the hold origin. Chords, button substitutions and unmatched edges are short.
+    if (singleButton(frame.buttons) && !next.buttons && !next.pressed &&
+        next.released == frame.buttons)
+        releasedHeldMs = static_cast<uint32_t>(now - heldSince);
     if (next.buttons != frame.buttons) heldSince = now;
     frame = next;
 }
 const risc_input_navigation_frame_v1& nativeNavigationFrame() { return frame; }
+bool nativeNavigationHasPhysicalPagePair() {
+    return enabled && usable && !quarantined &&
+        risc_input_navigation_has_physical_page_pair(api);
+}
 unsigned long nativeNavigationHeldMs() {
-    return frame.buttons ? static_cast<uint32_t>(millis() - heldSince) : 0;
+    if (frame.released) return releasedHeldMs;
+    return singleButton(frame.buttons) ? static_cast<uint32_t>(millis() - heldSince) : 0;
 }
 bool nativeNavigationClaim(uint32_t token, const char* capability, uint32_t version) {
     clearFrame();

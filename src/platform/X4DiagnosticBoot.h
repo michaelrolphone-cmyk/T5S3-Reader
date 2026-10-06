@@ -11,3 +11,7 @@ bool x4BeginClockDisplay();
 bool x4DrainProvidersForSleep();
 bool x4ReleaseDisplayForSleep();
 bool x4RestoreDisplayAfterSleep();
+
+// True only after all boot prerequisites, before the first Reader frame.
+bool x4ReaderStartupReady();
+void x4ReaderActivityScheduled();

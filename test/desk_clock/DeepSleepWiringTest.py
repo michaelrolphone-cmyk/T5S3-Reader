@@ -37,11 +37,18 @@ class ClockDeepSleepWiring(unittest.TestCase):
         self.assertIn("bool DeskClockSleep::consumeUserWake()", CLOCK)
         self.assertIn("const bool deskClockUserWake = DeskClockSleep::consumeUserWake();", MAIN)
         self.assertIn("&& !deskClockUserWake", MAIN)
-        self.assertIn("if (!deskClockUserWake)", MAIN)
+        self.assertIn("g_readerDeskClockWake = deskClockUserWake;", MAIN)
+        entry = MAIN.split("static void startReaderApplication()", 1)[1].split("void setup()", 1)[0]
+        self.assertIn("if (!g_readerDeskClockWake)", entry)
+        self.assertLess(entry.index("if (!g_readerDeskClockWake)"),
+                        entry.index("StartupScreen::armBootFade()"))
+        self.assertIn("if (!g_readerResumeOnBoot)", entry)
+        self.assertIn("activityManager.goToReader(path, readerResumeRefreshMode())", entry)
         self.assertIn("const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();", MAIN)
         self.assertLess(MAIN.index("const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();"),
-                        MAIN.index("} else if (!resumeReaderOnBoot)"))
+                        MAIN.index("g_readerResumeOnBoot = resumeReaderOnBoot;"))
         self.assertNotIn("deskClockUserWake && !resumeReaderOnBoot", MAIN)
+        self.assertNotIn("g_readerDeskClockWake && !g_readerResumeOnBoot", entry)
 
     def test_button_during_timer_repaint_survives_explicit_restart(self):
         self.assertIn("clockUiWakeMagic = kClockUiWakeMagic;", CLOCK)

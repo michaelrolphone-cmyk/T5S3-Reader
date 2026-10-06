@@ -19,6 +19,7 @@ void WifiSettingsActivity::onEnter() {
 
 void WifiSettingsActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     std::string wifiSettingsPath;
     if (!resolveInstalledAppPath("wifi_settings.elf", wifiSettingsPath)) {

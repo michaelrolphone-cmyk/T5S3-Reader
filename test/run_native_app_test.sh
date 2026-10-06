@@ -18,6 +18,10 @@ if [[ $# -gt 0 ]]; then
   timeout --kill-after=5s 60s "$binary" "$1"
   exit 0
 fi
+python3 "$repo_dir/test/native_text_layout/run_tests.py" --sanitize
+python3 "$repo_dir/test/native_text_font_generation_test.py"
+python3 "$repo_dir/test/native_text_layout_app/run_app_test.py" --sanitize --enforce-cost
+python3 "$repo_dir/test/navigation_hold/run_test.py"
 python3 "$repo_dir/test/text_page_writes/text_page_writes_test.py" --sanitize
 python3 "$repo_dir/test/text_page_writes/text_page_writes_test.py" --legacy
 python3 "$repo_dir/test/activities/txt_index_io_budget_test.py" --sanitize
@@ -46,6 +50,9 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   "$repo_dir/test/native_apps/compat_registration_stub.c" \
   "$repo_dir/test/native_apps/launcher_test.c" -o "$binary"
 "$binary"
+"$binary" reader
+"$binary" child-close
+python3 "$repo_dir/test/reader_entry/run_tests.py"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/src" \
   "$repo_dir/test/resources/app_allocation_test.cpp" -o "$binary"
 "$binary"

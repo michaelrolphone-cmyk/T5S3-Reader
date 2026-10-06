@@ -39,6 +39,7 @@ prefix = r'''
 #include <functional>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 #include <T5AppApi.h>
@@ -131,7 +132,14 @@ constexpr const char*CROSSPOINT_COMPAT_VERSION="1.3.102";
 constexpr int UI_12_FONT_ID=12;
 static bool validManifest=true, storageReady=true, resolveOkay=true;
 static bool risc_runtime_retention_required(){return false;}
-static bool readAppManifest(const char*,t5_app_manifest_t&out){if(storageHook)storageHook();out={};strcpy(out.file_name,"app.elf");strcpy(out.display_name,"Test");out.compatible=true;return validManifest;}
+static bool native_app_loader_retained(){return false;}
+namespace NativeReaderEntry{static bool mapped(){return false;}static bool pending(){return false;}}
+namespace RuntimeDevices{struct AppCapabilityRequirements{unsigned count=0;};}
+#ifdef READER_TEST_REAL_CONTEXT
+#else
+namespace RuntimeResources{struct ExecutionContext{bool begin(){return true;}void end(){}};}
+#endif
+static bool readAppManifest(const char*,t5_app_manifest_t&out,void* =nullptr,bool =false,RuntimeDevices::AppCapabilityRequirements* =nullptr){if(storageHook)storageHook();out={};strcpy(out.file_name,"app.elf");strcpy(out.display_name,"Test");out.compatible=true;return validManifest;}
 static bool t5_safe_elf_name(const char*){return true;}
 struct StorageMock{bool ready(){return storageReady;}bool exists(const char*p){return std::string(p).find(".bak")==std::string::npos;}}Storage;
 namespace RuntimePackages{
@@ -150,6 +158,7 @@ static bool verifiedManagedApp(const char*,RuntimePackages::Identity&){return tr
 static bool resolveInstalledAppPath(const char*,std::string&out){out="/sd/Apps/app.elf";return resolveOkay;}
 static void nativeNetworkBegin(){}static void nativeNetworkEnd(){}
 static void nativeSettingsBegin(GfxRenderer&,MappedInputManager&){}static void nativeSettingsEnd(){}
+static void nativeUiResetTextLayout(){}
 static void nativeSystemUiBegin(){}static void nativeStreamsBegin(){}static void nativeStreamsEnd(){}
 static bool nativeStreamsBindPackageResources(const RuntimePackages::Identity&){return true;}
 static const char*native_hardware_compat_last_error(){return nullptr;}
@@ -158,10 +167,13 @@ enum class NativeSystemUiNavigation{Home,Keyboard,None};
 static NativeSystemUiNavigation nativeSystemUiTakeNavigation(){return NativeSystemUiNavigation::None;}
 static bool nativeSettingsDispatchPendingAction(GfxRenderer&,MappedInputManager&,const char*){return false;}
 namespace StartupScreen{static void app(GfxRenderer&r,const char*,const char*){r.displayBuffer(DisplayPresentMode::Quality,false);}}
+static int launch_elf_reader_entry(const char*){return ESP_ERR_INVALID_STATE;}
 static int launch_elf_app(const char*){++launches;if(launchHook)launchHook();return ESP_OK;}
 '''
 bodies = '\n'.join(method(gfx, sig) for sig in ('void GfxRenderer::displayBuffer(', 'void GfxRenderer::displayGrayBuffer('))
 bodies += '\n' + method(host, 'bool pollInput(')
+bodies += '\n' + method(host, '[[noreturn]] static void retainNativeAppSession(')
+bodies += '\n' + method(host, 'static esp_err_t runNativeAppImpl(')
 bodies += '\n' + method(host, 'esp_err_t runNativeApp(')
 bodies += '\n' + method(host, 'bool runNativeSpringboard(')
 tests = r'''

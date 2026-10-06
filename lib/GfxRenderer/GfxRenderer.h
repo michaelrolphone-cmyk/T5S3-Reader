@@ -47,6 +47,9 @@ class GfxRenderer {
   DisplaySafeInsets safeInsets{};
   std::vector<uint8_t*> bwBufferChunks;
   std::map<int, EpdFontFamily> fontMap;
+  // Zero permanently disables reuse after generation exhaustion.
+  uint64_t fontLayoutGeneration_ = 1;
+  void invalidateFontLayout() { if (fontLayoutGeneration_) ++fontLayoutGeneration_; }
   // Mutable because ensureSdCardFontReady() is const (called from layout code
   // that holds a const GfxRenderer&) but triggers SD card reads and heap
   // allocation inside the SdCardFont objects. Same pragmatic compromise as
@@ -97,15 +100,17 @@ class GfxRenderer {
   // Coupled to avoid dangling SdCardFont* in sdCardFonts_ when callers free
   // the underlying SdCardFont and forget the SD-side unregister.
   void removeFont(int fontId) {
+    invalidateFontLayout();
     fontMap.erase(fontId);
     sdCardFonts_.erase(fontId);
   }
   void setFontCacheManager(FontCacheManager* m) { fontCacheManager_ = m; }
   FontCacheManager* getFontCacheManager() const { return fontCacheManager_; }
   const std::map<int, EpdFontFamily>& getFontMap() const { return fontMap; }
-  void registerSdCardFont(int fontId, SdCardFont* font) { sdCardFonts_[fontId] = font; }
+  uint64_t getFontLayoutGeneration() const { return fontLayoutGeneration_; }
+  void registerSdCardFont(int fontId, SdCardFont* font) { invalidateFontLayout(); sdCardFonts_[fontId] = font; }
   void unregisterSdCardFont(int fontId) { removeFont(fontId); }
-  void clearSdCardFonts() { sdCardFonts_.clear(); }
+  void clearSdCardFonts() { invalidateFontLayout(); sdCardFonts_.clear(); }
   const std::map<int, SdCardFont*>& getSdCardFonts() const { return sdCardFonts_; }
   bool isSdCardFont(int fontId) const { return sdCardFonts_.count(fontId) > 0; }
   // Ensure SD card font glyph data is loaded for the given text. Called from layout code

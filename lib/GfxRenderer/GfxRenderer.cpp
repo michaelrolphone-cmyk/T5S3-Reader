@@ -158,6 +158,7 @@ bool GfxRenderer::begin() {
 
 void GfxRenderer::insertFont(const int fontId, EpdFontFamily font) {
   auto result = fontMap.insert({fontId, font});
+  if (result.second) invalidateFontLayout();
   if (!result.second) {
     LOG_ERR("GFX", "Font ID %d already registered, ignoring duplicate", fontId);
   }

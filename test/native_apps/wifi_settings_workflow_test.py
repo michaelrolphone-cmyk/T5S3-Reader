@@ -70,6 +70,8 @@ class Activity {
     return true;
   }
 };
+inline bool deferEntry=false;
+struct ActivityManager {bool deferNativeAppLoop(Activity*){return deferEntry;}}; inline ActivityManager activityManager;
 class RequiredAppActivity : public Activity {
  public:
   std::string artifact, label;
@@ -109,7 +111,7 @@ CASES = r'''
 #include "activities/settings/WifiSettingsActivity.h"
 #include <iostream>
 void reset() {
-  installed=true; queueHandoff=false; pendingHandoff=false;
+  installed=true; queueHandoff=false; pendingHandoff=false; deferEntry=false;
   resolves=launches=0; launchedPath.clear(); launchResult=ESP_OK;
 }
 int main() {
@@ -118,6 +120,10 @@ int main() {
   assert(resolves==1 && launches==1);
   assert(launchedPath=="/sd/Apps/wifi_settings/wifi_settings.elf");
   assert(!a.finished); a.loop(); assert(a.finished && launches==1);
+  reset(); deferEntry=true; a.onEnter(); a.loop();
+  assert(!resolves&&!launches&&!a.finished&&!a.child);
+  deferEntry=false; a.loop(); assert(resolves==1&&launches==1);
+  a.loop(); assert(a.finished);
   // Re-entry starts a fresh resolution instead of using a cached generation.
   a.onEnter(); a.loop(); assert(resolves==2 && launches==2 && !a.finished);
   a.loop(); assert(a.finished);

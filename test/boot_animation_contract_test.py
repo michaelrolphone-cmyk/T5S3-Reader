@@ -47,7 +47,7 @@ class BootAnimationContract(unittest.TestCase):
         # The explicit headless branch has its own setup/loop and no animation.
         if main.startswith("#if defined(RISCRTE_PROFILE_HEADLESS)\n"):
             main = main.split("#else\n", 1)[1]
-        setup = main[main.index("void setup()") : main.index("void loop()")]
+        setup = main[main.index("void setup()") : main.index("static void readerApplicationLoop()")]
         t5 = setup.split("#ifdef BOARD_XTEINK_X4_PRO", 1)[-1]
         t5 = t5.split("#endif", 1)[-1]
         state = main.split("void setupReaderState() {", 1)[1].split("\n}", 1)[0]
@@ -55,8 +55,15 @@ class BootAnimationContract(unittest.TestCase):
                      "OPDS_STORE.loadFromFile()", "APP_STATE.loadFromFile()", "RECENT_BOOKS.loadFromFile()"):
             self.assertIn(work, state)
         for work in ("setupReaderState()", "logPlatformInputHealth()",
-                     "mappedInputManager.update()", "activityManager.goHome()"):
+                     "mappedInputManager.update()", "prepareReaderApplication(deskClockUserWake)"):
             self.assertLess(t5.index("StartupScreen::boot(renderer)"), t5.index(work))
+        self.assertNotIn("startReaderApplication();", setup)
+        entry = main.split("static void startReaderApplication()", 1)[1].split("void setup()", 1)[0]
+        self.assertIn("activityManager.goHome()", entry)
+        self.assertIn("activityManager.goToReader(path, readerResumeRefreshMode())", entry)
+        loop = main[main.rindex("void loop()") :]
+        self.assertIn("startReaderApplication, readerApplicationLoop, runReaderSleep", loop)
+        self.assertIn("startReaderApplication();", loop)
         start = SOURCE[SOURCE.index("bool bootWithVideo("):SOURCE.index("bool finishVideoBoot(")]
         self.assertNotIn("renderLayerReveal()", start)
         self.assertNotIn("kMinimumPulseMs", SOURCE)
