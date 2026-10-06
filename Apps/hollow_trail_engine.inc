@@ -133,6 +133,7 @@ typedef struct {
     bool isolator_view_active;
     uint8_t isolator_view_stage;
     uint16_t isolator_view_tick;
+    bool carriage_view_active,carriage_view_boots;
     bool partition_view_active;
     uint16_t partition_view_tick;
     bool warming_view_active;
@@ -2275,3 +2276,4 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_isolator_study.inc"
 
 #include "hollow_trail_first_house_study.inc"
+#include "hollow_trail_carriage_study.inc"
