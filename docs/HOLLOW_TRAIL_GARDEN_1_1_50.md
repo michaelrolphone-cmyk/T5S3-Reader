@@ -46,3 +46,7 @@ the child-drawing/older-card comparison, chosen far-pallet rest and
 Privacy/memory beats and broader route scenery remain gaps.
 No merge, release or device validation is
 claimed by this source checkpoint.
+
+The existing level-nine approach now also carries the [settlement streets and
+ordinary household traces](HOLLOW_TRAIL_SETTLEMENT_1_1_50.md), retaining the
+first-house interaction and all tower/final-door mechanics.

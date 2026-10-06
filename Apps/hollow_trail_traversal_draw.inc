@@ -1,4 +1,5 @@
 #include "hollow_trail_first_house_draw.inc"
+#include "hollow_trail_settlement_draw.inc"
 #include "hollow_trail_sleep_draw.inc"
 #include "hollow_trail_pouch_draw.inc"
 #include "hollow_trail_grip_draw.inc"
@@ -142,7 +143,9 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_counts_room(g);
     ht_drawing_room(g);
     ht_cabinet_room(g);
+    ht_settlement_streets(g);
     ht_first_house_room(g,g->first_house_lean);
+    ht_settlement_returns(g);
     ht_pouch_room(g);ht_grip_room(g);
     ht_quarry_ascent_traces(g);
     ht_waiting_room(g,g->waiting_view_active?(unsigned)ht_waiting_pull(g->waiting_view_tick):0,

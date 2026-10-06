@@ -168,8 +168,8 @@ static const unsigned golden[][2]={
 {3202950730u,1887044532u}, /* Opening support shelter; other 29 fixtures retained. */
 {1805041436,3386618820},
 {3469364471,1119496009},
-{4124658611,3847112319},
-{297423422,3292122172},
+{1310939257u,1646281843u}, /* Grounded settlement walls and first-window return; 28 other pairs exact. */
+{2025419423u,2270779796u}, /* Street plots, cistern and clipped inward return on unchanged supports. */
 {3021503600,3314516329},
 };
 int main(void){
