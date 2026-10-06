@@ -95,3 +95,9 @@ preserved in the delivered evidence archive. GitHub image publication is
 still in progress and may be partial; the PR records its exact status.
 Aggregate results and current CI are reported separately, without claiming
 whole-book completion, a merge, release or device validation.
+
+Nine full-size comparisons and the already uploaded contact sheets are now
+[available in the gallery](images/hollow-trail-privacy/README.md). The remaining
+seven full-size comparisons remain pending or blocked and are preserved in
+the complete delivery archive. This checkpoint adds only previously verified
+blobs; it does not retry a stopped image upload.
