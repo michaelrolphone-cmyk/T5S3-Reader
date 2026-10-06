@@ -18,7 +18,7 @@ static ht_joint ht_empty_cage_grip(const ht_game *g){
 static ht_joint ht_empty_cage_pulley(void){return ht_joint_at(HT_GOAL+3,ht_level_land(5)[9].top-104);}
 static ht_joint ht_empty_cage_roof(unsigned drop){return ht_joint_at(HT_GOAL+3,ht_level_land(5)[9].top-70+(int)drop);}
 static void ht_empty_cage_room(const ht_game *g){
- if(g->level!=5 || !g->puzzle.solved || g->puzzle.opening!=48)return;
+ if(g->level!=5)return; /* The parked cage exists before the balance is solved. */
  int x=HT_GOAL+3-g->camera/256,f=ht_level_land(5)[9].top-g->camera_y/256;
  if(x<-60-ht_view_margin() || x>HT_W+60+ht_view_margin())return;
  unsigned drop=ht_min(g->cage_view_drop,32);

@@ -375,10 +375,10 @@ static int ht_distribution_floor(void) {return ht_land_height(2,7,HT_DISTRIBUTIO
 static int ht_station_floor(void) {return ht_land_height(3,2,HT_STATION_TICKET_X);}
 #define HT_STOVE_X 1820
 static int ht_stove_floor(void) {return ht_land_height(2,5,HT_STOVE_X);}
-static int ht_evidence_platform(unsigned level,int item) { return level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
+static int ht_evidence_platform(unsigned level,int item) { return level==5 && item==2?9:level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
+    return level==5 && item==2?HT_GOAL-26:level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
 }
 static int ht_evidence_world_x(const ht_game *game,int item) {
     return game->level==0 && item==1?game->traversal.crate_x/256:ht_evidence_x(game->level,item);
@@ -396,7 +396,7 @@ static int ht_evidence_near(const ht_game *game) {
     if(!game->grounded) return -1;
     for(int item=0;item<3;++item) {
         if(game->level==0 && item==1 && !ht_mill_register_lit(game))continue;
-        if(ht_abs(game->x/256-ht_evidence_world_x(game,item))<=22 &&
+        if(ht_abs(game->x/256-ht_evidence_world_x(game,item))<=(game->level==5 && item==2?5:22) &&
            ht_abs(game->y/256-ht_surface_at(game,ht_evidence_platform(game->level,item),game->x/256))<=3) return item;
     }
     return -1;
@@ -2213,7 +2213,7 @@ static void ht_marked_tree(int x,int ground,bool paper) {
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
-        if((game->level==6 && (item==1 || item==2)) || (game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5 && (item==0 || item==1)))continue; /* Drawn on their actual scene furniture. */
+        if((game->level==6 && (item==1 || item==2)) || (game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         int extent=game->level==0 && item==0?34:12;
@@ -2257,7 +2257,7 @@ static void ht_evidence_prompt(const ht_game *game) {
     int item=ht_evidence_near(game);
     if(item<0) return;
     ht_rect(ht_scene,66,33,348,29,255);
-    ht_text_color(74,37,ht_evidence[game->level][item].title,1,85);
+    ht_text_color(74,37,game->level==5 && item==2?"THE PARKED CAGE":ht_evidence[game->level][item].title,1,85);
     ht_text_color(74,49,"A / CONFIRM INSPECT",1,85);
 }
 static void ht_draw_journal(const ht_game *game,unsigned page) {
@@ -2317,3 +2317,4 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_privacy_study.inc"
 
 #include "hollow_trail_cage_study.inc"
+#include "hollow_trail_floorboard_study.inc"

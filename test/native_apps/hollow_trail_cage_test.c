@@ -62,7 +62,7 @@ int main(void){
  uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*copy=malloc(HT_NATIVE_PIXELS),*bits=malloc(HT_NATIVE_PIXELS/8),*mono=malloc(HT_NATIVE_PIXELS/8);
  assert(memory&&copy&&bits&&mono);ht_bind(memory);ht_bind_native(memory);ht_reader_bitmap=bits;
  for(source=0;source<2;++source){
-  reset();ht_game frozen=ht;assert(ht_evidence_found(&ht,15) && ht_evidence_found(&ht,16) && ht_evidence_found(&ht,17));
+  reset();ht_game frozen=ht;assert(ht_evidence_found(&ht,15) && ht_evidence_found(&ht,16) && !ht_evidence_found(&ht,17));
   ht_game bad=ht;bad.puzzle.solved=false;assert(!ht_empty_cage_near(&bad));bad=ht;bad.puzzle.opening=47;assert(!ht_empty_cage_near(&bad));
   bad=ht;bad.puzzle.value[0]=3;assert(!ht_empty_cage_near(&bad));bad=ht;bad.puzzle.value[1]=0;assert(!ht_empty_cage_near(&bad));
   bad=ht;bad.grounded=false;assert(!ht_empty_cage_near(&bad));bad=ht;bad.x=ht_grip_x()*256;assert(!ht_empty_cage_near(&bad));
