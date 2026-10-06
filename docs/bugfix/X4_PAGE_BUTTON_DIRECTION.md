@@ -35,6 +35,16 @@ retain their direction. Ordinary app/menu queries, Home/Back/Confirm/Power,
 touch coordinates and tilt behavior are unchanged. Shared EPUB, TXT and XTC
 readers use the same query.
 
+## Current X4-base refresh (2026-10-06)
+
+The existing PR422 branch includes X4 source b91bc323 and retains original
+repair head 6f49c69b as its first parent. The only textual conflict is the
+firmware reservation: 1.3.136 / upstream 1.3.143 advances to 1.3.152. All original
+input/SDK/driver changes and tests remain unchanged; x4pro-buttons remains 0.1.5.
+Normal and ASan/UBSan production direction regressions pass on the combined
+tree. Exact-head target CI is recorded on the PR. Hardware is unavailable and
+unrun, not a prerequisite for software integration. PR350/master remain intact.
+
 ## Compatibility and delivery
 
 Firmware 1.3.136 needs the matching x4pro-buttons 0.1.5 SD package for this fix.
