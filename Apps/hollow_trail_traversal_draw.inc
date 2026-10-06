@@ -119,6 +119,7 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_stove_room(g,0,0);
     ht_station_room(g);
     ht_distribution_room(g,48);
+    ht_distribution_service_line(g);
     ht_sleep_room(g,g->sleep_view_active?ht_sleep_closure(g->sleep_view_stage,g->sleep_view_tick):0,
       !g->sleep_view_active || g->sleep_view_stage==0 || g->sleep_view_stage==4 || (g->sleep_view_stage==1 && g->sleep_view_tick<80) || (g->sleep_view_stage==3 && g->sleep_view_tick>=96));
     ht_gallery_floor(g);

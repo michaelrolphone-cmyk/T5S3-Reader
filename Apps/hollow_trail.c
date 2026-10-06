@@ -704,6 +704,7 @@ static void ht_input_update(uint32_t wait) {
         else if((down&HT_JOURNAL) || ((down&HT_ACCEPT) && ht_distribution.stage && !ht_distribution.paused)){
             ht_journal_open(8);reading=true;ht_distribution.direction=0;ht_input_rearm=true;
         }else if(down&HT_ACCEPT)(void)ht_distribution_take(&ht_distribution);
+        else if(down&(HT_JUMP|HT_UP))(void)ht_distribution_continue(&ht_distribution);
         if(down)++scene_revision;
         jump_down=pause_down=false;
         if(!ht_distribution.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}

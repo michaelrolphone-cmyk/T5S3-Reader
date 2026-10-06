@@ -43,3 +43,32 @@ static void ht_distribution_room(const ht_game *g,unsigned tick) {
  }
  ht_checkpoint();
 }
+
+/* The existing feed lever validates 4/4/0. Merely filling those measures,
+ * reading either list, or a failed release must not light the service line. */
+static int ht_distribution_lamp_level(const ht_game *g,unsigned index){
+ if(g->level!=2 || !g->puzzle.solved || g->puzzle.value[0]!=4 ||
+    g->puzzle.value[1]!=4 || g->puzzle.value[2] || index>=4)return 0;
+ return ht_clamp((int)g->puzzle.opening-(int)index*10,0,18)*256/18;
+}
+static void ht_distribution_service_line(const ht_game *g){
+ if(g->level!=2)return;
+ int cx=g->camera/256,cy=g->camera_y/256;
+ for(unsigned n=0;n<4;++n){
+  int wx=2840+(int)n*130,x=wx-cx,foot=ht_surface_at(g,9,wx)-cy;
+  if(x< -42-ht_view_margin() || x>HT_W+42+ht_view_margin())continue;
+  int light=ht_distribution_lamp_level(g,n),y=foot-86;
+  /* Low tanks recede behind the player-operated measuring vessels. */
+  ht_rect(ht_scene,x-38,foot-65,73,64,123);
+  ht_limb(ht_scene,x-37,foot-65,x+34,foot-65,3,3,150);
+  ht_limb(ht_scene,x-35,foot-60,x-35,foot-3,1,1,155);
+  ht_rect(ht_scene,x-30,foot-28,59,1,142);
+  ht_rect(ht_scene,x+25,foot-58,2,55,150-light*38/256);
+  /* Fixtures sit behind the existing vessels; nothing is a new foothold. */
+  ht_limb(ht_scene,x,y+1,x,foot,1,1,159);
+  ht_limb(ht_scene,x,y+1,x+10,y+1,1,1,159);
+  ht_rect(ht_scene,x+5,y+1,12,16,208);ht_rect(ht_scene,x+8,y+4,6,10,137-light*125/256);
+  ht_triangle(ht_scene,x+3,y+1,x+11,y-5,x+19,y+1,194);
+  if(light){ht_limb(ht_scene,x+20,y+4,x+23,y+4,0,0,137-light*105/256);ht_rect(ht_scene,x-3,foot-2,9,1,145-light*58/256);}
+ }
+}
