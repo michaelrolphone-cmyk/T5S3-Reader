@@ -1,0 +1,219 @@
+READ /sdboot/System/Config/boot.json success=1 bytes=538 sectors=6
+READ /sdboot/System/Config/board.json success=1 bytes=159 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/.package.json success=1 bytes=728 sectors=6
+READ /sdboot/Drivers/platform-clock-v1/driver.elf success=1 bytes=12120 sectors=28
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/privileged-imports.v1 success=1 bytes=21 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/provider-abi.v1 success=1 bytes=43 sectors=4
+REGISTER platform-clock-v1 platform.clock bytes=12120 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/platform-clock-v1/driver.elf id=platform-clock-v1 version=0.1.1 bytes=12120
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/.package.json success=1 bytes=765 sectors=8
+READ /sdboot/Drivers/x4pro-panel/driver.elf success=1 bytes=22532 sectors=51
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/privileged-imports.v1 success=1 bytes=1 sectors=6
+READ /sdboot/Drivers/x4pro-panel/provider-abi.v1 success=1 bytes=43 sectors=6
+REGISTER x4pro-panel display.output bytes=22532 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-panel/driver.elf id=x4pro-panel version=0.1.14 bytes=22532
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/.package.json success=1 bytes=722 sectors=6
+READ /sdboot/Drivers/x4pro-buttons/driver.elf success=1 bytes=4012 sectors=12
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/privileged-imports.v1 success=1 bytes=1 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/provider-abi.v1 success=1 bytes=45 sectors=4
+REGISTER x4pro-buttons input.navigation bytes=4012 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-buttons/driver.elf id=x4pro-buttons version=0.1.5 bytes=4012
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/.package.json success=1 bytes=727 sectors=6
+READ /sdboot/Drivers/x4pro-frontlight/driver.elf success=1 bytes=7484 sectors=19
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/privileged-imports.v1 success=1 bytes=113 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/provider-abi.v1 success=1 bytes=47 sectors=4
+REGISTER x4pro-frontlight display.frontlight bytes=7484 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-frontlight/driver.elf id=x4pro-frontlight version=0.1.3 bytes=7484
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/.package.json success=1 bytes=763 sectors=8
+READ /sdboot/Drivers/x4pro-sd/driver.elf success=1 bytes=58804 sectors=122
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/privileged-imports.v1 success=1 bytes=148 sectors=6
+READ /sdboot/Drivers/x4pro-sd/provider-abi.v1 success=1 bytes=43 sectors=6
+REGISTER x4pro-sd storage.volume bytes=58804 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-sd/driver.elf id=x4pro-sd version=0.2.3 bytes=58804
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/.package.json success=1 bytes=764 sectors=6
+READ /sdboot/Drivers/x4pro-i2c/driver.elf success=1 bytes=13472 sectors=32
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/privileged-imports.v1 success=1 bytes=113 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/provider-abi.v1 success=1 bytes=36 sectors=4
+REGISTER x4pro-i2c i2c.bus bytes=13472 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-i2c/driver.elf id=x4pro-i2c version=0.1.4 bytes=13472
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/.package.json success=1 bytes=802 sectors=6
+READ /sdboot/Drivers/x4pro-gt911/driver.elf success=1 bytes=10432 sectors=25
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/privileged-imports.v1 success=1 bytes=14 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/provider-abi.v1 success=1 bytes=44 sectors=4
+REGISTER x4pro-gt911 input.touch.raw bytes=10432 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-gt911/driver.elf id=x4pro-gt911 version=0.1.5 bytes=10432
+RESULT tick_us=0 readers=58 bytes=145544 sectors=537 scheduler_requests=1696 transaction_waits=1074 sector_waits=537 read_chunk_waits=85 filesystem_waits=0 loader_delays=7 modeled_us=7000
+READ /sdboot/System/Config/boot.json success=1 bytes=538 sectors=6
+READ /sdboot/System/Config/board.json success=1 bytes=159 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/.package.json success=1 bytes=728 sectors=6
+READ /sdboot/Drivers/platform-clock-v1/driver.elf success=1 bytes=12120 sectors=28
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/privileged-imports.v1 success=1 bytes=21 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/provider-abi.v1 success=1 bytes=43 sectors=4
+REGISTER platform-clock-v1 platform.clock bytes=12120 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/platform-clock-v1/driver.elf id=platform-clock-v1 version=0.1.1 bytes=12120
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/.package.json success=1 bytes=765 sectors=8
+READ /sdboot/Drivers/x4pro-panel/driver.elf success=1 bytes=22532 sectors=51
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/privileged-imports.v1 success=1 bytes=1 sectors=6
+READ /sdboot/Drivers/x4pro-panel/provider-abi.v1 success=1 bytes=43 sectors=6
+REGISTER x4pro-panel display.output bytes=22532 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-panel/driver.elf id=x4pro-panel version=0.1.14 bytes=22532
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/.package.json success=1 bytes=722 sectors=6
+READ /sdboot/Drivers/x4pro-buttons/driver.elf success=1 bytes=4012 sectors=12
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/privileged-imports.v1 success=1 bytes=1 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/provider-abi.v1 success=1 bytes=45 sectors=4
+REGISTER x4pro-buttons input.navigation bytes=4012 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-buttons/driver.elf id=x4pro-buttons version=0.1.5 bytes=4012
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/.package.json success=1 bytes=727 sectors=6
+READ /sdboot/Drivers/x4pro-frontlight/driver.elf success=1 bytes=7484 sectors=19
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/privileged-imports.v1 success=1 bytes=113 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/provider-abi.v1 success=1 bytes=47 sectors=4
+REGISTER x4pro-frontlight display.frontlight bytes=7484 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-frontlight/driver.elf id=x4pro-frontlight version=0.1.3 bytes=7484
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/.package.json success=1 bytes=763 sectors=8
+READ /sdboot/Drivers/x4pro-sd/driver.elf success=1 bytes=58804 sectors=122
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/privileged-imports.v1 success=1 bytes=148 sectors=6
+READ /sdboot/Drivers/x4pro-sd/provider-abi.v1 success=1 bytes=43 sectors=6
+REGISTER x4pro-sd storage.volume bytes=58804 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-sd/driver.elf id=x4pro-sd version=0.2.3 bytes=58804
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/.package.json success=1 bytes=764 sectors=6
+READ /sdboot/Drivers/x4pro-i2c/driver.elf success=1 bytes=13472 sectors=32
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/privileged-imports.v1 success=1 bytes=113 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/provider-abi.v1 success=1 bytes=36 sectors=4
+REGISTER x4pro-i2c i2c.bus bytes=13472 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-i2c/driver.elf id=x4pro-i2c version=0.1.4 bytes=13472
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/.package.json success=1 bytes=802 sectors=6
+READ /sdboot/Drivers/x4pro-gt911/driver.elf success=1 bytes=10432 sectors=25
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/privileged-imports.v1 success=1 bytes=14 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/provider-abi.v1 success=1 bytes=44 sectors=4
+REGISTER x4pro-gt911 input.touch.raw bytes=10432 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-gt911/driver.elf id=x4pro-gt911 version=0.1.5 bytes=10432
+RESULT tick_us=1000 readers=58 bytes=145544 sectors=537 scheduler_requests=1838 transaction_waits=1074 sector_waits=537 read_chunk_waits=85 filesystem_waits=142 loader_delays=7 modeled_us=1845000
+READ /sdboot/System/Config/boot.json success=1 bytes=538 sectors=6
+READ /sdboot/System/Config/board.json success=1 bytes=159 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/.package.json success=1 bytes=728 sectors=6
+READ /sdboot/Drivers/platform-clock-v1/driver.elf success=1 bytes=12120 sectors=28
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/manifest.json success=1 bytes=276 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/privileged-imports.v1 success=1 bytes=21 sectors=4
+READ /sdboot/Drivers/platform-clock-v1/provider-abi.v1 success=1 bytes=43 sectors=4
+REGISTER platform-clock-v1 platform.clock bytes=12120 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/platform-clock-v1/driver.elf id=platform-clock-v1 version=0.1.1 bytes=12120
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/.package.json success=1 bytes=765 sectors=8
+READ /sdboot/Drivers/x4pro-panel/driver.elf success=1 bytes=22532 sectors=51
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/manifest.json success=1 bytes=393 sectors=6
+READ /sdboot/Drivers/x4pro-panel/privileged-imports.v1 success=1 bytes=1 sectors=6
+READ /sdboot/Drivers/x4pro-panel/provider-abi.v1 success=1 bytes=43 sectors=6
+REGISTER x4pro-panel display.output bytes=22532 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-panel/driver.elf id=x4pro-panel version=0.1.14 bytes=22532
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/.package.json success=1 bytes=722 sectors=6
+READ /sdboot/Drivers/x4pro-buttons/driver.elf success=1 bytes=4012 sectors=12
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/manifest.json success=1 bytes=302 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/privileged-imports.v1 success=1 bytes=1 sectors=4
+READ /sdboot/Drivers/x4pro-buttons/provider-abi.v1 success=1 bytes=45 sectors=4
+REGISTER x4pro-buttons input.navigation bytes=4012 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-buttons/driver.elf id=x4pro-buttons version=0.1.5 bytes=4012
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/.package.json success=1 bytes=727 sectors=6
+READ /sdboot/Drivers/x4pro-frontlight/driver.elf success=1 bytes=7484 sectors=19
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/manifest.json success=1 bytes=307 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/privileged-imports.v1 success=1 bytes=113 sectors=4
+READ /sdboot/Drivers/x4pro-frontlight/provider-abi.v1 success=1 bytes=47 sectors=4
+REGISTER x4pro-frontlight display.frontlight bytes=7484 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-frontlight/driver.elf id=x4pro-frontlight version=0.1.3 bytes=7484
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/.package.json success=1 bytes=763 sectors=8
+READ /sdboot/Drivers/x4pro-sd/driver.elf success=1 bytes=58804 sectors=122
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/manifest.json success=1 bytes=389 sectors=6
+READ /sdboot/Drivers/x4pro-sd/privileged-imports.v1 success=1 bytes=148 sectors=6
+READ /sdboot/Drivers/x4pro-sd/provider-abi.v1 success=1 bytes=43 sectors=6
+REGISTER x4pro-sd storage.volume bytes=58804 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-sd/driver.elf id=x4pro-sd version=0.2.3 bytes=58804
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/.package.json success=1 bytes=764 sectors=6
+READ /sdboot/Drivers/x4pro-i2c/driver.elf success=1 bytes=13472 sectors=32
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/manifest.json success=1 bytes=383 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/privileged-imports.v1 success=1 bytes=113 sectors=4
+READ /sdboot/Drivers/x4pro-i2c/provider-abi.v1 success=1 bytes=36 sectors=4
+REGISTER x4pro-i2c i2c.bus bytes=13472 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-i2c/driver.elf id=x4pro-i2c version=0.1.4 bytes=13472
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/.package.json success=1 bytes=802 sectors=6
+READ /sdboot/Drivers/x4pro-gt911/driver.elf success=1 bytes=10432 sectors=25
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/manifest.json success=1 bytes=452 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/privileged-imports.v1 success=1 bytes=14 sectors=4
+READ /sdboot/Drivers/x4pro-gt911/provider-abi.v1 success=1 bytes=44 sectors=4
+REGISTER x4pro-gt911 input.touch.raw bytes=10432 os_cpu_abi=1
+SDBOOT: registered origin=/sdboot/Drivers/x4pro-gt911/driver.elf id=x4pro-gt911 version=0.1.5 bytes=10432
+RESULT tick_us=10000 readers=58 bytes=145544 sectors=537 scheduler_requests=2142 transaction_waits=1074 sector_waits=537 read_chunk_waits=85 filesystem_waits=446 loader_delays=7 modeled_us=21427000

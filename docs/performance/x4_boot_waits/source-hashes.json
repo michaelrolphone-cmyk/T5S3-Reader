@@ -1,0 +1,19 @@
+{
+  "src/platform/SdBootReader.cpp": "2ec876ba5becdeeedb9c46d15b296c4252d3eb0acf312d17145673d3e3146853",
+  "src/runtime/drivers/BootstrapModuleStore.cpp": "debab5b93535923370e1453a0b7efa2c8cc7616c519cb5d925fde009fa22004d",
+  "src/platform/SdPackageBoot.cpp": "c0ec3cd5961c0eff4dfdb8139cd36cfe5977a74ddb3fcd0eb74234da9cccd55c",
+  "src/platform/X4DiagnosticBoot.cpp": "aa08f8b48c1fb715ed96e8c94356ae9069b238d4a8312f1230ceff5ad7399328",
+  "src/platform/SdBootFatFs.h": "1694d7aa49396dd520a617f8ed0048f0c83c9dafce9e6ca6a6c5bd535258474b",
+  "src/platform/SdBootFatFs.c": "cbee78d9547a9e60219e8c27f19378f7c8d33d6503aebc319015f417fb37ad05",
+  "src/platform/SdBootFatUnicode.c": "f4861a1a46c6aeb81e9fde92bff293c05eb395963c118139c96552ef60ae3c33",
+  "Drivers/storage_fatfs/fatfs/ff.c": "8da38bea076a2016aaeed63a849aa5a9f880e89d15895143eda6f4ead1fd4e9b",
+  "Drivers/storage_fatfs/fatfs/ffconf.h": "760941150f5ed2e0c466db3816e1bfdc86d444fe714445f5e124f95bc9324395",
+  "Drivers/storage_fatfs/fatfs/ff.h": "7bddebd3db5ced9f78d925ac9817bb4b6fc33709aa3800b408895805fffe5eee",
+  "Drivers/storage_fatfs/fatfs/ffunicode.c": "6cd4dc4a664386ebd108e56d367582c35f005fc20381486366b5d77ac58119bd",
+  "platformio.ini": "bec502035668f72d6da5bc6a6fb1b3f6f9beba747f81c7cf87cba8181defbe42",
+  "lib/Board_T5S3/boards/t5s3-pro.json": "c5b86be0443bfe6e76e18208928ef65ac1fd46d92e657ce8b220ca9e416f570f",
+  "test/bootstrap_store/mount_failure_test.py": "f6864f4536636f62edfd12cd9389129036f0b13cdd1e42b1f2b340a5d49af077",
+  "test/bootstrap_store/test.cpp": "2cfd2f7f9ecaefca79448486e85048eb0bc3c6b2db8fc4d9ae4403d2705a1df3",
+  "external/idf-v4.4.7/sdmmc_cmd.c": "c1668f6932a12448bea2989e69497aca62cf3c4ad22bb3ef4ef8fa6efb5d3e3c",
+  "external/arduino-esp32-2.0.17/qio_opi/sdkconfig.h": "4a37af77762c307c4e4dd69e88061d27154e9c648fa58db8002108724a3ddd98"
+}
