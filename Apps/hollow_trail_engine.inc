@@ -133,6 +133,7 @@ typedef struct {
     bool isolator_view_active;
     uint8_t isolator_view_stage;
     uint16_t isolator_view_tick;
+    uint8_t cage_view_drop,cage_view_travel; /* Draw snapshot only; live boarding stays parked. */
     uint8_t drawing_view_stage;
     uint16_t drawing_view_tick;
     uint8_t counts_view_stage;
@@ -2116,6 +2117,7 @@ static void ht_narration(const ht_game *game) {
 #include "hollow_trail_isolator_draw.inc"
 #include "hollow_trail_warming_draw.inc"
 #include "hollow_trail_partition_draw.inc"
+#include "hollow_trail_cage_draw.inc"
 #include "hollow_trail_mechanism_draw.inc"
 static void ht_draw_puzzle(const ht_game *game) {
     int top=ht_level_land(game->level)[9].top-game->camera_y/256;
@@ -2128,6 +2130,7 @@ static void ht_draw_puzzle(const ht_game *game) {
         return;
     }
     ht_draw_chapter_gate(game,top);
+    ht_empty_cage_room(game);
     ht_partition_response(game,top);
 }
 static void ht_puzzle_prompt(const ht_game *game) {
@@ -2139,7 +2142,9 @@ static void ht_puzzle_prompt(const ht_game *game) {
         ht_text_color(74,49,!game->verdict?"A / CONFIRM AT THE GLASS: BREAK OR COMPLETE":
             !game->verdict_read?"A / CONFIRM AT THE GLASS: READ THE CHANGED TESTIMONY":
             "PASSAGE OPEN - WALK ON TO BEGIN ANOTHER JOURNEY",1,85);
-    } else if(game->puzzle.solved) ht_text_color(74,49,game->puzzle.opening<48?"THE PASSAGE IS OPENING":"PASSAGE OPEN - FOLLOW THE LIGHT",1,85);
+    } else if(game->level==5 && game->puzzle.solved && game->puzzle.opening==48 && ht_puzzle_near(game)==3)
+        ht_text_color(74,49,"A TEST EMPTY CAGE - WALK RIGHT TO BOARD",1,85);
+    else if(game->puzzle.solved) ht_text_color(74,49,game->puzzle.opening<48?"THE PASSAGE IS OPENING":"PASSAGE OPEN - FOLLOW THE LIGHT",1,85);
     else if(p->kind==HT_POINTS && ht_puzzle_near(game)<3) {
         ht_text_color(74,49,game->puzzle.selected==3?"A COUPLE REAR WAGON - RUN TESTS DEPARTURE":
             "A MOVE HERE - SAME ROAD RELEASES COUPLER",1,85);
@@ -2304,3 +2309,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_care_study.inc"
 
 #include "hollow_trail_privacy_study.inc"
+
+#include "hollow_trail_cage_study.inc"

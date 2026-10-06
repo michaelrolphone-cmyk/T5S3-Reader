@@ -320,8 +320,12 @@ static void ht_draw_traversal(const ht_game *g) {
     int x,y;
     /* Exit architecture follows its actual terrace when the camera climbs. */
     x=HT_GOAL-cx;y=land[9].top-cy;
-    ht_rect(ht_scene,x-20,y-52,6,52,255);ht_rect(ht_scene,x+14,y-52,6,52,255);
-    ht_rect(ht_scene,x-22,y-56,44,6,255);
+    /* The solved quarry draws its one moving cage with the mechanism;
+     * keeping this generic doorway would leave a second stationary frame. */
+    if(g->level!=5 || !g->puzzle.solved || g->puzzle.opening!=48){
+        ht_rect(ht_scene,x-20,y-52,6,52,255);ht_rect(ht_scene,x+14,y-52,6,52,255);
+        ht_rect(ht_scene,x-22,y-56,44,6,255);
+    }
 }
 static void ht_traversal_prompt(const ht_game *g) {
     if(g->level==0) {

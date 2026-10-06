@@ -261,8 +261,15 @@ static void ht_draw_mechanisms(const ht_game *g,int top) {
     if(ht_puzzle_controls(g->level)==4) {
         int lever=first+3*HT_PUZZLE_SPACING;
         ht_rect(ht_scene,lever-7,top-30,14,30,230);
-        ht_limb(ht_scene,lever,top-24,lever+8,top-39,2,2,245);
-        ht_disk(ht_scene,lever+8,top-39,3,255);
+        int turn=g->level==5?(g->cage_view_travel/8)%3:0;
+        ht_limb(ht_scene,lever,top-24,lever+8+turn*2,top-39+turn*2,2,2,245);
+        ht_disk(ht_scene,lever+8+turn*2,top-39+turn*2,3,255);
+        if(g->level==5 && g->puzzle.solved){
+            ht_joint grip=ht_empty_cage_grip(g);
+            int gx=grip.x-g->camera/256,gy=grip.y-g->camera_y/256;
+            ht_limb(ht_scene,gx-1,gy+2,gx+2,gy-3,2,2,146);
+            for(int n=0;n<3;++n)ht_limb(ht_scene,gx-2+n,gy+n,gx+2+n,gy-2+n,0,0,225);
+        }
         ht_text(lever-12,top-52,p->kind==HT_LOCK?"PUMP":p->kind==HT_SIGNAL?"WIRE":"RUN",1);
         if(ht_puzzle_near(g)==3) ht_rect(ht_scene,lever-12,top+3,24,2,0);
         if(p->kind==HT_SIGNAL) {

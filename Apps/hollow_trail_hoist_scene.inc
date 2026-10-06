@@ -17,7 +17,7 @@ static bool ht_hoist_step(ht_hoist_state *s){
 static int ht_hoist_descent(unsigned tick){return ht_clamp((int)tick-128,0,384)*240/384;}
 static int ht_hoist_floor(const ht_hoist_state *s,int x){
  int tilt=s->tick>=32 && s->tick<96?1:0;
- return 188+(x-240)*tilt/12;
+ return ht_cage_floor(240,188,tilt,x);
 }
 static ht_joint ht_hoist_grip(const ht_hoist_state *s,int hand){
  int pull=ht_clamp((int)s->tick-96,0,32)*3/32;
@@ -98,13 +98,7 @@ static void ht_hoist_render(const ht_hoist_state *s){
  ht_limb(ht_scene,238,94-descent,238,118,1,1,90);
  ht_limb(ht_scene,214,86-descent,238,94-descent,2,2,104);
  ht_disk(ht_scene,238,94-descent,7,113);ht_disk(ht_scene,238,94-descent,3,190);
- ht_rect(ht_scene,214,118,51,3,83);ht_rect(ht_scene,213,118,3,73,95);ht_rect(ht_scene,263,118,3,73,95);
- for(int x=216;x<264;++x){
-  int floor=ht_hoist_floor(s,x);
-  if((x>=233 && x<235) || (x>=248 && x<250)){ht_rect(ht_scene,x,floor,1,5,240);continue;}
-  ht_rect(ht_scene,x,floor,1,5,x>=235 && x<248?105:137);
-  if(x>=235 && x<248 && !(x%3))ht_rect(ht_scene,x,floor+1,1,2,106);
- }
+ ht_cage_frame(240,188,s->tick>=32 && s->tick<96?1:0);
  ht_joint grip=ht_hoist_grip(s,0),other=ht_hoist_grip(s,1);
  ht_limb(ht_scene,254,121,grip.x,grip.y,1,1,75);
  ht_limb(ht_scene,grip.x,grip.y,other.x,other.y,1,1,75);
