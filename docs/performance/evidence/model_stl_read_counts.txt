@@ -1,0 +1,27 @@
+## model-normal.log
+triangles=1 size=134 stream_reads=3 row50=1 header84=2 bytes=218 hal_waits=3 parse_polls=1 card_sector_reads=2 provider_waits=0 model_verified=1 closes=1 storage_locks=19
+triangles=512 size=25684 stream_reads=514 row50=512 header84=2 bytes=25768 hal_waits=514 parse_polls=1 card_sector_reads=53 provider_waits=50 model_verified=1 closes=1 storage_locks=1041
+triangles=1000 size=50084 stream_reads=1002 row50=1000 header84=2 bytes=50168 hal_waits=1002 parse_polls=2 card_sector_reads=100 provider_waits=97 model_verified=1 closes=1 storage_locks=2017
+triangles=10000 size=500084 stream_reads=10002 row50=10000 header84=2 bytes=500168 hal_waits=10002 parse_polls=20 card_sector_reads=986 provider_waits=976 model_verified=1 closes=1 storage_locks=20017
+triangles=80000 size=4000084 stream_reads=80002 row50=80000 header84=2 bytes=4000168 hal_waits=80002 parse_polls=157 card_sector_reads=7876 provider_waits=7812 model_verified=1 closes=1 storage_locks=160017
+
+## model-sanitized.log
+triangles=1 size=134 stream_reads=3 row50=1 header84=2 bytes=218 hal_waits=3 parse_polls=1 card_sector_reads=2 provider_waits=0 model_verified=1 closes=1 storage_locks=19
+triangles=512 size=25684 stream_reads=514 row50=512 header84=2 bytes=25768 hal_waits=514 parse_polls=1 card_sector_reads=53 provider_waits=50 model_verified=1 closes=1 storage_locks=1041
+triangles=1000 size=50084 stream_reads=1002 row50=1000 header84=2 bytes=50168 hal_waits=1002 parse_polls=2 card_sector_reads=100 provider_waits=97 model_verified=1 closes=1 storage_locks=2017
+triangles=10000 size=500084 stream_reads=10002 row50=10000 header84=2 bytes=500168 hal_waits=10002 parse_polls=20 card_sector_reads=986 provider_waits=976 model_verified=1 closes=1 storage_locks=20017
+triangles=80000 size=4000084 stream_reads=80002 row50=80000 header84=2 bytes=4000168 hal_waits=80002 parse_polls=157 card_sector_reads=7876 provider_waits=7812 model_verified=1 closes=1 storage_locks=160017
+
+## model-app-normal.log
+triangles=1 size=134 stream_reads=3 row50=1 header84=2 bytes=218 hal_waits=3 parse_polls=1 card_sector_reads=2 provider_waits=0 model_verified=1 closes=1 storage_locks=19
+triangles=512 size=25684 stream_reads=514 row50=512 header84=2 bytes=25768 hal_waits=514 parse_polls=1 card_sector_reads=53 provider_waits=50 model_verified=1 closes=1 storage_locks=1041
+triangles=1000 size=50084 stream_reads=1002 row50=1000 header84=2 bytes=50168 hal_waits=1002 parse_polls=2 card_sector_reads=100 provider_waits=97 model_verified=1 closes=1 storage_locks=2017
+triangles=10000 size=500084 stream_reads=10002 row50=10000 header84=2 bytes=500168 hal_waits=10002 parse_polls=20 card_sector_reads=986 provider_waits=976 model_verified=1 closes=1 storage_locks=20017
+triangles=80000 size=4000084 stream_reads=80002 row50=80000 header84=2 bytes=4000168 hal_waits=80002 parse_polls=157 card_sector_reads=7876 provider_waits=7812 model_verified=1 closes=1 storage_locks=160017
+
+## model-app-sanitized.log
+triangles=1 size=134 stream_reads=3 row50=1 header84=2 bytes=218 hal_waits=3 parse_polls=1 card_sector_reads=2 provider_waits=0 model_verified=1 closes=1 storage_locks=19
+triangles=512 size=25684 stream_reads=514 row50=512 header84=2 bytes=25768 hal_waits=514 parse_polls=1 card_sector_reads=53 provider_waits=50 model_verified=1 closes=1 storage_locks=1041
+triangles=1000 size=50084 stream_reads=1002 row50=1000 header84=2 bytes=50168 hal_waits=1002 parse_polls=2 card_sector_reads=100 provider_waits=97 model_verified=1 closes=1 storage_locks=2017
+triangles=10000 size=500084 stream_reads=10002 row50=10000 header84=2 bytes=500168 hal_waits=10002 parse_polls=20 card_sector_reads=986 provider_waits=976 model_verified=1 closes=1 storage_locks=20017
+triangles=80000 size=4000084 stream_reads=80002 row50=80000 header84=2 bytes=4000168 hal_waits=80002 parse_polls=157 card_sector_reads=7876 provider_waits=7812 model_verified=1 closes=1 storage_locks=160017

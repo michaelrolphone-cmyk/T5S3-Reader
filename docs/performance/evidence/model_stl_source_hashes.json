@@ -1,0 +1,462 @@
+{
+  "Apps/display_output_client.h": {
+    "git_blob": "03c8b43ba4e54ff90707bff6fa91fe8db8db8aa5",
+    "sha256": "68385133a5e0ae3049d57d035d9a5cb31b44f1cdb4f53ff907b717dff5301155"
+  },
+  "Apps/model_viewer.c": {
+    "git_blob": "847614bf0d4d6d289cc5d88df653829da1ec3bc5",
+    "sha256": "d19a87485b712abfe6412ce2628a4c761ace72fa5b625b6b9a1d6e6a0867434c"
+  },
+  "Apps/model_viewer.json": {
+    "git_blob": "48282a01baa4bb2ea9918dfb81e1bbdf2f26a2f9",
+    "sha256": "bd6cbca680b6be43fe70a2f612e265766cf3ad5fafa968a890f4806d360dd57b"
+  },
+  "Apps/model_viewer_controls.h": {
+    "git_blob": "75e2a82c3f3f85d219b602402c62f79227ea03ed",
+    "sha256": "8546d45a56583a1bdded79f8b765e81026508ffba919600e43f8a3da2f4ff1f1"
+  },
+  "Apps/model_viewer_preview.h": {
+    "git_blob": "a5470361084791ee1e910b727cbd8533ae28293e",
+    "sha256": "3e70d1fc21952af7c11f6a4b43516b0686d1b710bbd748064323fe861c0c54a1"
+  },
+  "Apps/model_viewer_shading.h": {
+    "git_blob": "e3d2d9160d22bf6514ffe0362d757143dc5526fd",
+    "sha256": "ceb7ce5f7da20021e5fd1604590e316eb92dfb32e09b9b784a2722673b9e9c36"
+  },
+  "Drivers/storage_fatfs/fatfs/ff.c": {
+    "git_blob": "9a5953ce97aeea26a327b0b11260257cb620357c",
+    "sha256": "8da38bea076a2016aaeed63a849aa5a9f880e89d15895143eda6f4ead1fd4e9b"
+  },
+  "Drivers/storage_fatfs/fatfs/ff.h": {
+    "git_blob": "e0a77124c782e7e866a2c7fb9d22b17d61a28538",
+    "sha256": "7bddebd3db5ced9f78d925ac9817bb4b6fc33709aa3800b408895805fffe5eee"
+  },
+  "Drivers/storage_fatfs/fatfs/ffconf.h": {
+    "git_blob": "d95d019dc77f05f4c7d2adaa467e58a2262de3a9",
+    "sha256": "760941150f5ed2e0c466db3816e1bfdc86d444fe714445f5e124f95bc9324395"
+  },
+  "Drivers/storage_fatfs/fatfs/ffunicode.c": {
+    "git_blob": "e6bcacae6b36ab562910e763269fd73163d5f04c",
+    "sha256": "6cd4dc4a664386ebd108e56d367582c35f005fc20381486366b5d77ac58119bd"
+  },
+  "Drivers/storage_fatfs/volume.c": {
+    "git_blob": "c47cbca4da28351081c89cd50263c1be267d9f01",
+    "sha256": "6cc9400aa0b0b1e5be3c05220fe28ffedd99736047e9fd49e3a3bdbfe6cdcbcd"
+  },
+  "Drivers/t5s3_sd/driver.c": {
+    "git_blob": "ceb8b621aff599a9366c817600e7452b543804d8",
+    "sha256": "0243c7ca1348f114190fe171ee4be4c5cbe37673bb7906773f77ebf5f1c2b6f4"
+  },
+  "lib/NativeApps/include/AppManifestRules.h": {
+    "git_blob": "7121109e7724e53c297a829470d110127305fa4a",
+    "sha256": "85058eb3720cfd370864c2821a06dab89e9c559ba80f2ff3fec63282609e9a76"
+  },
+  "lib/NativeApps/include/NativeAppLauncher.h": {
+    "git_blob": "76d512de570e28845153851e723f67649511b738",
+    "sha256": "be2ef4119f9addfcd89a251722dec57e8d8736aea90b9d90e183dcdf4a79de13"
+  },
+  "lib/NativeApps/include/NativeHardwareCompatSymbols.def": {
+    "git_blob": "5bbeaa8de6f1b504643ecc78549e520dbbe9e066",
+    "sha256": "3cb203144145a764db962c169638e313271f1bc21fafa39675374047e6930546"
+  },
+  "lib/NativeApps/include/RetiredDisplayImports.def": {
+    "git_blob": "7bc5f606f3afcd9fc2df1c90580ba7b81faa48a3",
+    "sha256": "ad669bae93fa428f22b695a502626456e5c1c0ac7c6555b62e0b8c6f6c7d4b61"
+  },
+  "lib/NativeApps/include/RetiredStorageImports.def": {
+    "git_blob": "9bfc337ff1be64e924bb4d0668376c22052bdfcc",
+    "sha256": "661b8dbc545bc7b67364aea37251e22d71140ca31cf27caca52f663127c3b234"
+  },
+  "lib/NativeApps/include/RiscRteLocationRecords.h": {
+    "git_blob": "f7dab9a4cd579550fa3dd391c022cd9df8a0e633",
+    "sha256": "ed5e1b8665f75602433a0d72aaeb5f5ba472cad054957854e56c190ae3b96a81"
+  },
+  "lib/NativeApps/include/T5AppApi.h": {
+    "git_blob": "b5d5cc0162aa6c5caa055563b928c8ceaf3e5cfd",
+    "sha256": "eb0acebe0b1a151916b9f05afd98025e8e516c251337b8fe48fd3961bd58a981"
+  },
+  "lib/NativeApps/include/T5ArchiveApi.h": {
+    "git_blob": "26d57ef9db244ce4cf96a2b9829dd0437674af88",
+    "sha256": "2b24877dac9b205889fb37e01b028bf27b8f4bae2809b8de46d3c950111e2468"
+  },
+  "lib/NativeApps/include/T5BatteryApi.h": {
+    "git_blob": "67592547d55d25ca3769d46392bc5c823f410071",
+    "sha256": "f939c924102099de4ed746519791ce2b68eb2bac79bc212caeaad1366dc8c9a5"
+  },
+  "lib/NativeApps/include/T5ButtonRemapApi.h": {
+    "git_blob": "792ca01aac6055d0a2a707ac01e4df54063d2b64",
+    "sha256": "2a1d8091221712c1cf7b7e500aad22e03f5db7d660a7f749684fca9d054a16ea"
+  },
+  "lib/NativeApps/include/T5CacheApi.h": {
+    "git_blob": "f3bd3a4a18dd80f7238b4d28533fac012041afcc",
+    "sha256": "2fd5da1a4e034310be041726b77f5ff5a5069e3a272f902294c4d0887425aff4"
+  },
+  "lib/NativeApps/include/T5DeviceApi.h": {
+    "git_blob": "a13b1486911b81c144aad2a6e424c5819dde6147",
+    "sha256": "1b145a80ead90349208dff1c1573bf9efa2bb0b25e126874dcb977fd3c14589c"
+  },
+  "lib/NativeApps/include/T5DriverManagerApi.h": {
+    "git_blob": "42f4d913e017af8aeec3dedc302a39336ac61395",
+    "sha256": "f03a43f5c1fdc0e13b33af5300c655ba3a856d0f28907a59aa874ce7db151478"
+  },
+  "lib/NativeApps/include/T5FileBrowserApi.h": {
+    "git_blob": "4ff1991bac664b0bfe86b86a5eeecf4f86e6f8d9",
+    "sha256": "4af0cf7ee92b85b72eadbdfcb988d7b562fc1f24b744c58d01047ad4a2b6fca9"
+  },
+  "lib/NativeApps/include/T5FileOpenApi.h": {
+    "git_blob": "4b697ae5bc8e2613959954556ceab0c48e6ac4f6",
+    "sha256": "c1b873e364dba81ce39d8c8a62668db618735407a6291dca87b9795ce4accc30"
+  },
+  "lib/NativeApps/include/T5FontApi.h": {
+    "git_blob": "f019bf858c9ec85d316ac35c79cf12ab8139a7c2",
+    "sha256": "06f5de46f0e373e77fb331029940c3db505a8b91b9d0fd35bf4f5ae9f8554bab"
+  },
+  "lib/NativeApps/include/T5GpsApi.h": {
+    "git_blob": "77d25dcc5d587a814a28da974da64ec4f5d3c8ad",
+    "sha256": "a0550bc74574ba073a419d8a65ae73bd2697f531dc1b6d5172d6eab5ccea3262"
+  },
+  "lib/NativeApps/include/T5HardwareTakeover.h": {
+    "git_blob": "33f7180cfb71a4f5fcef8a62f0bf9c61693b5e85",
+    "sha256": "4e4bdfd0e923a41dde2fada074ed79365aafa48190140cd18153ad95ed922664"
+  },
+  "lib/NativeApps/include/T5ImageApi.h": {
+    "git_blob": "6b767a71810b65ab3651f13703f79e55666d5bcf",
+    "sha256": "845638fc39cd391b5d043eeea9e39fb78f966d56b854f322542fc50d20695780"
+  },
+  "lib/NativeApps/include/T5KOReaderApi.h": {
+    "git_blob": "ccccb8245d44181dffd4109f63042646e3b77799",
+    "sha256": "dd285755ce61a97436d530d373a0be40d538fa9f4e9b1b8556df9c98a608a2fc"
+  },
+  "lib/NativeApps/include/T5LanguageApi.h": {
+    "git_blob": "d5126e0eb05b66836491af67ebdfa2cfb20c1235",
+    "sha256": "cc6c343f52e0033b032cce5a6009d20a74a9464eea59019b3b128f7bc4fbbfff"
+  },
+  "lib/NativeApps/include/T5LoRaApi.h": {
+    "git_blob": "031b61087c2c933d50316ed2de8d00f6d71cc6bb",
+    "sha256": "d1f2d58159c94142ea62596b8cd164f1eba07b8bbe7791a978b74e6b3dd293c1"
+  },
+  "lib/NativeApps/include/T5LocationApi.h": {
+    "git_blob": "5400582f8ccf0b921c448c9d5439f185a7b95737",
+    "sha256": "e7c192a3708a429e9fb22dc3ded74fbb1087864ec677d470357627fa93cd10a6"
+  },
+  "lib/NativeApps/include/T5MathApi.h": {
+    "git_blob": "725b98e9d76a42f9c9c67c9c080f6ebb6e55d6ff",
+    "sha256": "68f04f92554e111de49fc5b3daedea3c9ea3549df014eca8da425f12e62de266"
+  },
+  "lib/NativeApps/include/T5NetworkApi.h": {
+    "git_blob": "0866fc8d75b854c4c6af895bab8987fcd5da7636",
+    "sha256": "7aff710c9216c3e2af9e78c7312a5d31d9510d7326cf8dfafe847418ff2f7c33"
+  },
+  "lib/NativeApps/include/T5OpdsApi.h": {
+    "git_blob": "fe9fc8e6a8fccc448796ce1f25729d7597e9299d",
+    "sha256": "5e0c8b9472b21fd1b67123903301e2fb358c532f383b57557920d2496bd4f99b"
+  },
+  "lib/NativeApps/include/T5OtaApi.h": {
+    "git_blob": "257c52496b0b3a2dfc651714b626dd0758af11b7",
+    "sha256": "2cd1cf9de3bf99bea9c67fa2bf80faffb8bce1b6dcc62ea223f98883329f64da"
+  },
+  "lib/NativeApps/include/T5PackageManagerApi.h": {
+    "git_blob": "6a2802e25dbcee5d8f31f3046250fac1c8bc3965",
+    "sha256": "0b468ff5d6a45a79a82c9003dc6270a4859c821850250693fbb60148d34bdf2c"
+  },
+  "lib/NativeApps/include/T5PackageResourceApi.h": {
+    "git_blob": "c96f4ac818600371ef291d5525c2c5df9efe6b88",
+    "sha256": "121a2720290cecc769fefd9d8b0456e426c7e0dda0ec12231e71af715a65dac9"
+  },
+  "lib/NativeApps/include/T5PackageVersion.h": {
+    "git_blob": "af26164fcc5ff9588cfb3c6bc4fe3d4f2b998ffa",
+    "sha256": "956106b2dd21c8e5a25cdb93814d20c4cf62ef758339ef23b79cc2b959d89f2a"
+  },
+  "lib/NativeApps/include/T5ProgramEspRomApi.h": {
+    "git_blob": "ad5be17797f3da1a3cfbc31d16cd8c319ac923cf",
+    "sha256": "7153353e70a4435a1f034ac75a6a15ed33094db0a4fb77b495adf9aa9303da8c"
+  },
+  "lib/NativeApps/include/T5ProviderCapabilityApi.h": {
+    "git_blob": "1d4a90561b53002147a4aec06b547b66482f3269",
+    "sha256": "f348bc6b64017607ada44f5370631693e240c0cbef45251cae52a7dbcbe9894c"
+  },
+  "lib/NativeApps/include/T5ReaderEntryApi.h": {
+    "git_blob": "a1ec6fa2dc172f6bb9f06059e058bd4ce0b86905",
+    "sha256": "4da0c06667ee2b805b8fd4808927dec4a80ca7e4e8294341d71279ca6e9b2394"
+  },
+  "lib/NativeApps/include/T5SdFirmwareApi.h": {
+    "git_blob": "3a3c87d74edd99dd2bb06b437dff580b2a976f9b",
+    "sha256": "8c6d467c2bc105256c22d5343778874358d82e8d1f49d4f81937f59da9647633"
+  },
+  "lib/NativeApps/include/T5SerialPortApi.h": {
+    "git_blob": "c159ffa53da64381376621ae5fb66bc0fb16dbb1",
+    "sha256": "36fdedb9776220ddf9a4201ca292cc597aaea9703d3ca05737e2a161eb38529f"
+  },
+  "lib/NativeApps/include/T5StatusBarApi.h": {
+    "git_blob": "d0cd8e4d77671a596ffa2b1a05daf07b3a0083b2",
+    "sha256": "6a2011799bff49e29cbacf3214b86a4d6db9751f385c36a05d40860e527bf6ec"
+  },
+  "lib/NativeApps/include/T5StorageApi.h": {
+    "git_blob": "e6c49d4b7c665d8c07bf4e756fc46acef9cf7c98",
+    "sha256": "be0d63a89943a75a58723b703284992e8c6e95956c7cb39a9b3523af2c5d23ba"
+  },
+  "lib/NativeApps/include/T5StreamApi.h": {
+    "git_blob": "12538cd6a097b0f23685d7dbc82c2a9e4211fde3",
+    "sha256": "9f087d8f5446da8ae34b9815ca231285473fbbba0ad43dc6c367208126b554c5"
+  },
+  "lib/NativeApps/include/T5SystemApi.h": {
+    "git_blob": "51e734eaf633126d5c18c500c6984a77821aa77b",
+    "sha256": "56179941cac6dac7c71c2fe43013015a2d286620172a4d5945425c9cebc6d2d2"
+  },
+  "lib/NativeApps/include/T5SystemUiApi.h": {
+    "git_blob": "41d06ae089ddb7d7e4e7378123ff7c6854e642d2",
+    "sha256": "aea03c2fe4ea5944dbda4ad6cfc499baa69fc2711bb55167a1e10461d500c8d1"
+  },
+  "lib/NativeApps/include/T5TimeZoneApi.h": {
+    "git_blob": "dfc3a0c90efe0a4b7069b447134c9933abfa7615",
+    "sha256": "e01ce2583308f89387d75bd1f5a697741d936f996dff8d10ce6d9e158b719021"
+  },
+  "lib/NativeApps/include/T5UiApi.h": {
+    "git_blob": "78434b75d4ee173f30035a351e5fd076d3af7bae",
+    "sha256": "5ce32f393197867783d1a8286c4140feb72c7cdbc781887bc54e9fb2fed9cd11"
+  },
+  "lib/NativeApps/include/T5UsbApi.h": {
+    "git_blob": "34d764b7019bb61a02fd9796e259f596aabc96c1",
+    "sha256": "691874b691c1813d9fdf2812fc70ab655ae8de36a2d123402435512da82c2157"
+  },
+  "lib/NativeApps/include/T5VideoApi.h": {
+    "git_blob": "f364ce77eda7ca10ca8a6822f8c146ee0cc012fe",
+    "sha256": "a064c330927c60aa8572aa4c07ab596daf8bd9c1fa1601d10d5aec32d7f7819c"
+  },
+  "lib/NativeApps/include/T5WebServerApi.h": {
+    "git_blob": "880fa84d557ea84f049bef0dcde858d740a9386b",
+    "sha256": "dbe3a30dd1a405398a078810b0876648922952770c3d1b0f9c7044b99fdaf628"
+  },
+  "lib/hal/HalReadBudget.h": {
+    "git_blob": "485e1c27149e1e5a9df138559d3c22947d2dac6d",
+    "sha256": "e5767e306de8e97d53293130d10e0088512051745bf81cebcffa4daeaa91eb9c"
+  },
+  "lib/hal/HalStorage.h": {
+    "git_blob": "942ee713107dddc0f1df8920efa93a2ff0150b34",
+    "sha256": "9b150d9865df22864d905d0898a6a915598de1429f9df3f6356bb56be14b412d"
+  },
+  "lib/hal/HalStorageVolume.cpp": {
+    "git_blob": "6080e6d872844ed3a38bc85b051a522468fe414f",
+    "sha256": "607c029b70dc14ce52a19f05b35d68c251e5b9f16906476e2609879f9e207833"
+  },
+  "lib/hal/HalWriteBudget.h": {
+    "git_blob": "ce2d218ddbe78633c0bf26cf75814bce68f79580",
+    "sha256": "337be95aade29a77a97223f4bc8028eb1c9b27638c520759958224129b3d45ee"
+  },
+  "lib/hal/StorageGeneration.h": {
+    "git_blob": "7f23ac2367d2a5f538294104c62a9c15655a0f34",
+    "sha256": "b0f61f618d814ac07c699fb83040d3909a7554b79b0a6d16d21e52e95c30efd5"
+  },
+  "sdk/driver/RiscArchiveZipV1.h": {
+    "git_blob": "72903e887db4b8fdbc12c87e998f52ad6368de38",
+    "sha256": "5909fdfe34a457895e4e4112b80bf0fbba98cc01a405fa62ee0171387b84ca05"
+  },
+  "sdk/driver/RiscBatteryGaugeV1.h": {
+    "git_blob": "5be4d9bbdf32c4e6bfd0a058a1a3ffa14f86cab8",
+    "sha256": "b756b190c40a24cc019d09f0dd8c37140b14770c8c7c2c65ef04118bac6fa6f8"
+  },
+  "sdk/driver/RiscBq25896ProfileV1.h": {
+    "git_blob": "0523df41c0d100bf065819372cb871c601317eb9",
+    "sha256": "04e33c1b5a3385c2bedf275b85aa62a5dbfbec8cb38c2f3879ebb413e70a0c98"
+  },
+  "sdk/driver/RiscCameraCaptureV1.h": {
+    "git_blob": "bef7228320a450731abb02c6288b748d13e05be7",
+    "sha256": "7ad066a782e017361093f4a32780b7f2d7b720c72989ed1aa6babb2872170d88"
+  },
+  "sdk/driver/RiscCameraEsp32s3ProfileV1.h": {
+    "git_blob": "ebc214a653d8a1364db6a264456e2a51a0404da5",
+    "sha256": "4a47e72f77a5c44d77f83a1e00fa4f3528c4263147d8d1a539f504eb77cbdcbc"
+  },
+  "sdk/driver/RiscCpuCacheV2.h": {
+    "git_blob": "4e9957da9af2e1dcb6d19c2d46de62a9d3523137",
+    "sha256": "dc575f444775e3b3523ed7b330e6f6c8a9d7a8c37e02921a4f78ae59008ee572"
+  },
+  "sdk/driver/RiscCpuDmaV3.h": {
+    "git_blob": "d1c19c597503805c0bfcec82f4419b4b8ca30c4f",
+    "sha256": "99312ac098d645ccff4493cc169573e398015fd6dc34458a3d39d7c6e11acd50"
+  },
+  "sdk/driver/RiscCpuWorkerV2.h": {
+    "git_blob": "d64daeac35562a60258688f1b8118753f7ee78b2",
+    "sha256": "96c76f4d26bfc148686d5d5ad1ef99542798ec6ae4f2afd8ea99a504de80d102"
+  },
+  "sdk/driver/RiscDisplayOutputV1.h": {
+    "git_blob": "4df123930c759e29ce0dcfe9cffe4d08f3b285a9",
+    "sha256": "99b682ba34f07e7868dec8e78dfb816c067fdc184e647033bc6ed8d489b9c9a2"
+  },
+  "sdk/driver/RiscDisplayPowerV1.h": {
+    "git_blob": "09388a7943dec495f09ba986cb5683f890953250",
+    "sha256": "097c226f2e9f5a222115dd226b30b303231cd009a8401acf6d311a61a000d027"
+  },
+  "sdk/driver/RiscFirmwareI2cCompatV1.h": {
+    "git_blob": "4a201a6ccaeb961cd6d917bf6cf817250d984c8b",
+    "sha256": "4abe4c6d4b83432bd76ca8fdbf9502dfbab25f5579ae0acd6de367cc133bb0ef"
+  },
+  "sdk/driver/RiscFirmwareSpiCompatV1.h": {
+    "git_blob": "2b4493db5ca3cd1066b4545fcd05bd14177a701c",
+    "sha256": "8556e7dea8d6f83dbc47c68a363cc785182ef78343589e3c9573ad2fd08f2942"
+  },
+  "sdk/driver/RiscFrontlightV1.h": {
+    "git_blob": "479a73194cb48f843e34fe7357efa84a881e1071",
+    "sha256": "86272e0189dc5329d1ace67dfd64e2ee71768f1685e004faac6b4252bf6ba3f6"
+  },
+  "sdk/driver/RiscGpioExpanderV1.h": {
+    "git_blob": "1660b562ed1046570542e603e5d891f33af6d786",
+    "sha256": "110f0b141842e7cdc6798519cc5cd61c371cfe0d3e0af59a3f19c12598242f55"
+  },
+  "sdk/driver/RiscI2cBusV1.h": {
+    "git_blob": "4b85555a28ae31d40b1a581bb2eb8fa5954f300e",
+    "sha256": "651d470d29618654dc59af98feae504ff135c37324a11e650c966cd79b151fb5"
+  },
+  "sdk/driver/RiscInputNavigationV1.h": {
+    "git_blob": "f0189de2dad7e345eb044911acb4e2c636a82cb9",
+    "sha256": "022ab46c1a94372524c519d04db42d34e06e814171fa1b4bd17f85a8ee217ef2"
+  },
+  "sdk/driver/RiscMspFetV1.h": {
+    "git_blob": "290eae0e35d1b3f4c3019fefaa22a498e2e71ca6",
+    "sha256": "883879ee0ce2ac3ff5df42eb549a856557132a4da5a1dfe22edff8ad8c4e015b"
+  },
+  "sdk/driver/RiscPackageResourcesV1.h": {
+    "git_blob": "c80cc6d7114cebcb600959f8c22ccd8d8b6a626b",
+    "sha256": "8aff53415cf68a46e8e492dd02d12bde802ce2a1d69629dd4f3b0aad5794e459"
+  },
+  "sdk/driver/RiscPlatformClockV1.h": {
+    "git_blob": "33a5b27dcea7e30698d0177ad5db065166082194",
+    "sha256": "41a12f6529f38731ee874f8bc166e1cf89fe376a1448fe5a4dd4c9abac90e5e2"
+  },
+  "sdk/driver/RiscProgramMspV1.h": {
+    "git_blob": "90341072516af35761fdd8b1a511ccda592330a9",
+    "sha256": "fd1a7c6ebdfdaeb951c3b82abf2baca6f84f4a4e533841c12d2eb81ff2e0166f"
+  },
+  "sdk/driver/RiscProviderV2.h": {
+    "git_blob": "1e491a6887cf20a3dda1fa42748711bbe921330b",
+    "sha256": "2935d83493a411e19ee98b8c7e805b86f4adf98c6bde66fd031df7cc379bdc17"
+  },
+  "sdk/driver/RiscReaderTypographyV1.h": {
+    "git_blob": "e8c9ced05545d0247cd74e07a92d37a8ee1c6799",
+    "sha256": "74505fcfb76664d076c1562ed91f0c63d503595f5ea86b6d19e9fda49d9ec6c4"
+  },
+  "sdk/driver/RiscRtcCalendarV2.h": {
+    "git_blob": "0157a7c3ff98ed4a676f1ecf028d384d209b0453",
+    "sha256": "4cc86a4faa64a268908c1a073caadeddd205c2eca28f4e2658fde9b8f2ea865f"
+  },
+  "sdk/driver/RiscRtcClockV2.h": {
+    "git_blob": "6c7a90d1ea6e1e2529899018d2aa0ded83939872",
+    "sha256": "7c5d0b540c681e70875abec1eefc4f412a47d020033cf54f3556a1abf5cd3af7"
+  },
+  "sdk/driver/RiscSerialPortV1.h": {
+    "git_blob": "16b59c5db0242f06de166e4bf572e2ca34739e7e",
+    "sha256": "7f00311161a071c6575be8b65e7aba30ebef7a8f1a45f9c0bf9168bc25e05700"
+  },
+  "sdk/driver/RiscSpiBusV1.h": {
+    "git_blob": "dd9b875961caea774868d0647a1940586272975c",
+    "sha256": "f6c972e5dedb44e55422754d6b43af9b15cad039caac64f7a59266cc9ce6913a"
+  },
+  "sdk/driver/RiscStlinkV1.h": {
+    "git_blob": "6540af993431b2bf39a088dd96029e8659a8279e",
+    "sha256": "1261bd3a8ed77646d03a686cb13b72461ca9ca040ef81d48329e92228461ed8d"
+  },
+  "sdk/driver/RiscStorageVolumeV1.h": {
+    "git_blob": "85566781bc6031c52ca52b2277f75ceecd0785c2",
+    "sha256": "969d1283b622fe3109cd52ab48749012f9dd0cb7396f80d7a7a085ec7b8aa517"
+  },
+  "sdk/driver/RiscStreamProviderV1.h": {
+    "git_blob": "04f61f2271ea356a1c6bd778767a9f099772ba01",
+    "sha256": "0fe306e060321387c816bb70ec4370a501a423f4fe19a20c9be80aa1b98f3432"
+  },
+  "sdk/driver/RiscTextInputV1.h": {
+    "git_blob": "1569cac0e7abef3f8d746f0d126430a65987a253",
+    "sha256": "32f2a6cda3b7a4fef8487cc046ceb891261e483feafed32908cbd924112a1a77"
+  },
+  "sdk/driver/RiscTouchV1.h": {
+    "git_blob": "6f6ba399424b4f1984d73b3d0a881b1db5c64561",
+    "sha256": "fe18fab3ac20fda95747388f1428408b7795e5da3511c7a9fff07c16ddfd2c7d"
+  },
+  "sdk/driver/RiscUsbControllerV1.h": {
+    "git_blob": "7b2ecba98cd431484296327c1d8d701cad431aea",
+    "sha256": "226f083493085ecdcaa21a7c3bf1c269640b7d1ebaa099e7217fb64124f1dbed"
+  },
+  "sdk/driver/RiscUsbDiscoveryDiagnosticsV1.h": {
+    "git_blob": "48b879d8dc0cc01e22ba647db274513e2e3c76f8",
+    "sha256": "b0a2652e3724f5cb3003485397fae860a6f49a38092d5f30345573ec8931c4d7"
+  },
+  "sdk/driver/RiscUsbGamepadDiagnosticsV1.h": {
+    "git_blob": "75e2f396069663d9d0be21440681a4810aca9e61",
+    "sha256": "b58df5e7618f8a0e3e58ae023fd034c96ff9f7d04b6c35080a4b6661a064ae0a"
+  },
+  "sdk/driver/RiscUsbHidV1.h": {
+    "git_blob": "47913ebeda94dcc4138173be45eafe9315191e91",
+    "sha256": "5b5549c4cb718dec55f2aca8bc93f401b2d5a703d30aaa1a78d1bcdd26755b5c"
+  },
+  "sdk/driver/RiscUsbInterruptV1.h": {
+    "git_blob": "0c46bcae5f9bb970af95e0bf33dba0fe30958c87",
+    "sha256": "bfdd4644feaf3f4dc5d06070f052104579d3fb902e27e707f27943d7bf22815e"
+  },
+  "sdk/driver/RiscUsbProviderV1.h": {
+    "git_blob": "1b01570c3292600738d59211b812daf4b5c8221a",
+    "sha256": "65bbde81bf4159918392d9525dc0dfd5a075bf028a693d9a4d9981b1cecf516e"
+  },
+  "sdk/driver/RiscUsbVbusV1.h": {
+    "git_blob": "8a58c88bc678ae5042ba8c941225b2797be5d18c",
+    "sha256": "9936cde4d585e7ff6ae2d5441d746b47e14cf800806ce49c5a269d37eb84e110"
+  },
+  "sdk/driver/T5DisplayProviderV1.h": {
+    "git_blob": "2ef1d7e316f9c21b6333a56110e5789ee515b81a",
+    "sha256": "e16678232c244043656f00d152da2f5abd8dbf06a53d125edd0f7b090d7cb64f"
+  },
+  "sdk/driver/T5DriverApi.h": {
+    "git_blob": "ff145230b225231cbb53afc597e0d058d606be75",
+    "sha256": "e0960f0b2e2579d7b7245734b593182841806c5eb7b7d67af4194ac8eb0c4b55"
+  },
+  "sdk/driver/T5GnssProvider.h": {
+    "git_blob": "eff67c3b1db4b7c3e4d1c317ea844cc734953f36",
+    "sha256": "f093ed0f5707b1cbe12caa5086f248e884fb5f69c7fbcf1f6f6a3ce911747116"
+  },
+  "sdk/driver/T5UsbClassDriver.h": {
+    "git_blob": "d1b9a8fe2fb61c624645f3122d996d33e5d30c3e",
+    "sha256": "64a6a3a8081509ce9ab8e15c15095578174d9d7afb4343672576b89b4f65300d"
+  },
+  "src/native/NativePlatformBridge.cpp": {
+    "git_blob": "d01b5553e74b95b4dc48cd9db6db53ac96c2853a",
+    "sha256": "ef0556f71a8f5dcd745299fc0c996979479c873221b9e328f8d0ceced1a883a3"
+  },
+  "test/storage_volume/os_cpu_fake.c": {
+    "git_blob": "f8b56939bc9133f4c36e938d5578444e6321cc8a",
+    "sha256": "afb7eede81202f9366f0a6a6e1865bb75c1cd90ffc039d512108912879d1593c"
+  },
+  "test/storage_volume/os_cpu_fake.h": {
+    "git_blob": "e17ee6141a7b01094376f1566c308424ad4f96fd",
+    "sha256": "78029992013ed048981f9538cd62eee1adcb28cee04501d8052d1ca36251cc18"
+  },
+  "test/storage_volume/runtime_test.cpp": {
+    "git_blob": "ba6f976f3f8873726df699baa157c82df77510cc",
+    "sha256": "9da8e26c3f3b72d07dbd08b4fd015a21504a6492159a6aa8d8ee9b2ed9868a19"
+  },
+  "test/storage_volume/spi_card_model.h": {
+    "git_blob": "0dcfc6a3782f382bed17350e24c804ea30e14c27",
+    "sha256": "9ed411261e425089ae09e727da8e9f70e2bc15096b47415aa66930d9c8d0b796"
+  },
+  "test/storage_volume/stubs/Arduino.h": {
+    "git_blob": "ce80c915986d08f62b8edbbcb84f283dd90f2a02",
+    "sha256": "6ae1f358eb8688309f917b99d977e1bc642f7e1687be1b228a0bc231fc16c09c"
+  },
+  "test/storage_volume/stubs/Logging.h": {
+    "git_blob": "67315f40944663def08be9bbcd4fb092947f63d1",
+    "sha256": "a8aae9cdc3fade9b0c1328ed4ff8097acbd44585d990f34c6009d55cec9e990b"
+  },
+  "test/storage_volume/stubs/Print.h": {
+    "git_blob": "3a27bde0d075f9f8c670e3bd73e1a2cf8fa0602c",
+    "sha256": "bf200f152f6eaf3153a5e4b6f4d95c268550ba8fc7736efcb5faa3b9ce032081"
+  },
+  "test/storage_volume/stubs/common/FsApiConstants.h": {
+    "git_blob": "47f9fa328df1c794486b29b02b9d8c30f4269e0c",
+    "sha256": "e96a7edd090f53a24e92863e2f14632d80b90e17d821ea2db684123f00d8c9d5"
+  },
+  "test/storage_volume/stubs/esp_heap_caps.h": {
+    "git_blob": "0f3548875c2d6c06460b6bc4dbf84882c2ad7253",
+    "sha256": "da43e4de17a48a2a93391196e507506432077a20951b8d66f67fb1a816dc0b40"
+  },
+  "test/storage_volume/stubs/freertos/semphr.h": {
+    "git_blob": "b179b4044de4c8af474a2784a0f3c956a1c3602a",
+    "sha256": "a17793132544b36c9e1791f647a6c99a5e7a0f7a3ed7cc059b46257d9db5f39b"
+  }
+}
