@@ -49,8 +49,8 @@ class TxtReaderActivity final : public Activity {
 
   void initializeReader();
   bool loadPageAtOffset(size_t offset, bool fenceOpen, std::vector<TxtDisplayLine>& outLines, size_t& nextOffset,
-                        bool& fenceOpenAfter);
-  void buildPageIndex();
+                        bool& fenceOpenAfter, Txt::ReadWindow* window = nullptr);
+  bool buildPageIndex();
   void collectChapters();
   bool peekMarkdownLine(size_t offset, Markdown::Line& outLine) const;
   const Markdown::Chapter* chapterForPage(int page) const;

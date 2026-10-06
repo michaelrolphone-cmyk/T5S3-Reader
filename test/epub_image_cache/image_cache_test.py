@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory(prefix="epub-image-cache-") as temporary:
     command = ["c++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function"]
     if args.sanitize:
         command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g"]
-    for include in [Path(temporary), here / "stubs", root / "lib/Serialization", root / "lib/Epub/Epub",
+    for include in [Path(temporary), here / "stubs", root / "lib/hal", root / "lib/Serialization", root / "lib/Epub/Epub",
                     root / "lib/Epub/Epub/blocks", root / "lib/Epub/Epub/converters"]:
         command += ["-I", str(include)]
     command += [str(source), str(here / "image_cache_test.cpp"), "-o", str(binary)]

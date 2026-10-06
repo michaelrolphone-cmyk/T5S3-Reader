@@ -5,14 +5,23 @@ Claim: [2026-10-06 repair](https://github.com/michaelrolphone-cmyk/T5S3-Reader/p
 Repository: `michaelrolphone-cmyk/T5S3-Reader` (1367546328).
 Canonical bug number remains pending the existing ledger coordinator.
 
-Source and repair base: `xteink-x4-pro-boot`,
+Original report/test baseline: `xteink-x4-pro-boot` at
 `b91bc323fb736eb6a13ea1a9403470cf699c6128`, [PR #350](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/350).
-Repair branch: `perf/keyboard-prefix-fit`. PR #350 is not yet integrated into
-master `21ce3b5b720e106815c8f3a7778bc7003294e0e2`; PR #348 is closed-unmerged
-and retained through PR #350. The separate [performance consolidation PR #433](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/433)
-at `9e8693be42ede01a6b9c9bfd66010905751df9a2` retains the same keyboard code.
-Firmware advances **1.3.143 → 1.3.148**, above the live 1.3.147 reservation;
-no independently distributed app, driver, service or provider changes.
+Repair branch/PR: `perf/keyboard-prefix-fit`, [PR #434](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/434).
+The 2026-10-06 refresh backmerges verified PR #350 head
+`cbf44781cb36c12a716f32fcfbdb31ce95b40342`, which merged
+[performance consolidation PR #433](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/433)
+head `9e8693be42ede01a6b9c9bfd66010905751df9a2`. Both lines' renderer helpers,
+regressions and cooperative read/write changes are retained. The sole textual
+merge conflict is firmware 1.3.147 versus this repair's reserved **1.3.148**;
+1.3.148 is retained. The original repair advanced 1.3.143 → 1.3.148.
+No independently distributed app, driver, service or provider changes.
+
+PR #350 is not yet integrated into master
+`21ce3b5b720e106815c8f3a7778bc7003294e0e2`; PR #348 is closed-unmerged and
+retained through PR #350. The refreshed repair preserves its original
+`b91bc323` test oracle and source provenance. No PR #350/master write or PR
+merge is performed by this refresh.
 
 ## Change and compatibility
 
