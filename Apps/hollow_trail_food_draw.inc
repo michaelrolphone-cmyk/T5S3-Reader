@@ -3,7 +3,11 @@
 #define HT_FOOD_X 373
 #define HT_FOOD_CUPBOARD_X 426
 static int ht_food_floor(void){return ht_land_height(6,0,HT_FOOD_X);}
+static unsigned ht_food_departure_stage(unsigned stage){
+ return stage==14?0:stage==15?6:stage==16?7:stage==17?8:stage==21?13:stage>=18?11:stage;
+}
 static unsigned ht_food_open(unsigned stage,unsigned tick){
+ stage=ht_food_departure_stage(stage);
  if(stage<6)return 0;
  if(stage==6)return (unsigned)ht_clamp((int)tick-96,0,64)*256/64;
  if(stage==13)return 256-ht_min(tick,128)*256/128;
@@ -43,7 +47,8 @@ static void ht_food_room(const ht_game *g){
  ht_rect(ht_scene,x+74,f-18,8,11,116);ht_rect(ht_scene,x+74,f-20,8,3,208);
  for(int n=0;n<5;++n)ht_disk(ht_scene,x+76+n%2*3,f-16+n/2*3,1,190);
  ht_rect(ht_scene,x+62,f-9,9,2,139);
- bool taken=g->food_view_active && (g->food_view_stage>8 || (g->food_view_stage==8 && g->food_view_tick>=64));
+ unsigned stage=ht_food_departure_stage(g->food_view_stage);
+ bool taken=(g->packet&HT_PACKET_FOOD) || (g->food_view_active && (stage>8 || (stage==8 && g->food_view_tick>=64)));
  if(!taken)ht_rect(ht_scene,x+63,f-12,8,2,132);
  ht_rect(ht_scene,x+83,f-6,8,2,113);ht_limb(ht_scene,x+84,f-11,x+87,f-6,1,0,179);ht_limb(ht_scene,x+88,f-12,x+88,f-6,1,0,167);
  unsigned open=g->food_view_active?ht_food_open(g->food_view_stage,g->food_view_tick):0;

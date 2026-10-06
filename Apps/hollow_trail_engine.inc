@@ -114,6 +114,7 @@ typedef struct {
 #include "hollow_trail_story.inc"
 #include "hollow_trail_puzzles.inc"
 #include "hollow_trail_evidence.inc"
+enum { HT_PACKET_DOG=1,HT_PACKET_FOOD=2,HT_PACKET_CRUMBS=4 };
 typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
@@ -132,6 +133,7 @@ typedef struct {
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
     uint8_t scarf; /* 0 on ridge post, 1 carried, 2 inside collar, 3 inside coat. */
+    uint8_t packet; /* Physical optional keepsakes/provisions, never archive discoveries. */
     uint16_t waiting_view_tick; /* Draw snapshot only. */
     bool waiting_view_active;
     int8_t first_house_lean;
@@ -584,6 +586,7 @@ static void ht_spawn(bool restart) {
     uint16_t weather_age=restart?0:ht.weather_age;
     uint32_t evidence=ht.evidence;
     uint8_t scarf=restart && ht.level<8?0:ht.scarf;
+    uint8_t packet=restart && ht.level==0?0:ht.packet;
     uint8_t verdict=restart?0:ht.verdict,last_verdict=ht.last_verdict,endings=ht.endings;
     bool verdict_read=!restart && ht.verdict_read;
     uint8_t seen[HT_LEVELS]; memcpy(seen,ht.story_seen,sizeof(seen));
@@ -592,7 +595,7 @@ static void ht_spawn(bool restart) {
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
-    ht.evidence=evidence; ht.puzzle=puzzle; ht.scarf=scarf;
+    ht.evidence=evidence; ht.puzzle=puzzle; ht.scarf=scarf; ht.packet=packet;
     ht.scene_evidence=scene_evidence;ht.weather_amount=weather_amount;ht.weather_age=weather_age;
     ht.verdict=verdict; ht.last_verdict=last_verdict; ht.endings=endings; ht.verdict_read=verdict_read;
     memcpy(ht.story_seen,seen,sizeof(seen));
@@ -2227,9 +2230,11 @@ static void ht_marked_tree(int x,int ground,bool paper) {
  * arrows; nearby interaction reveals the title without exposing the contents. */
 #include "hollow_trail_recorder_draw.inc"
 #include "hollow_trail_scarf_draw.inc"
+#include "hollow_trail_ridge_papers_draw.inc"
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
         if(game->level==8 && item==0){ht_scarf_post(game);continue;}
+        if(game->level==8 && item==1){ht_papers_room(game);continue;}
         if(game->level==7 && item==2){ht_recorder_cabinet(game,0);continue;}
         if((game->level==9 && item==1) || (game->level==7 && (item==0 || item==1)) || (game->level==6 && (item==1 || item==2)) || (game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
@@ -2345,3 +2350,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_tower_study.inc"
 #include "hollow_trail_shelter_study.inc"
 #include "hollow_trail_scarf_study.inc"
+
+#include "hollow_trail_ridge_papers_study.inc"

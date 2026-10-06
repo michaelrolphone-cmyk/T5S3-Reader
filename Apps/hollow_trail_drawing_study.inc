@@ -9,7 +9,7 @@ static bool ht_drawing_step(ht_drawing_state *s){
  if(!(s->stage&1))return false;
  if(++s->tick==96){++s->stage;s->tick=0;}return true;
 }
-static bool ht_drawing_action(ht_drawing_state *s){if(!s->active || s->paused || (s->stage&1) || s->stage>=8)return false;++s->stage;s->tick=0;s->direction=0;return true;}
+static bool ht_drawing_action(ht_drawing_state *s){if(!s->active || s->paused || (s->stage&1) || s->stage>=8)return false;s->stage=(uint8_t)(s->stage==2 && !(ht.packet&HT_PACKET_DOG)?7:s->stage+1);s->tick=0;s->direction=0;return true;}
 static const char *ht_drawing_label(const ht_drawing_state *s){
  if(s->paused)return "PAUSED - PRESS PAUSE TO RESUME";
  if(!s->stage)return "A CHILD'S DRAWING HUNG BESIDE AN OLDER CARD.";
@@ -72,16 +72,16 @@ static ht_joint ht_drawing_dog_hand(const ht_drawing_state *s){
  if(s->stage==5){unsigned t=ht_min(s->tick-64,32);return ht_joint_at(bag.x+(normal.x-bag.x)*(int)t/32,bag.y+(normal.y-bag.y)*(int)t/32);}
  return normal;
 }
-static void ht_drawing_insert(const ht_drawing_state *s){
+static void ht_drawing_insert(const ht_drawing_state *s,bool dog){
  int shift=s->stage==2?s->shift:0,left=35+shift,right=249;
  ht_rect(ht_scene,right,49,188,156,71);ht_drawing_picture(right+4,53,false);
  ht_rect(ht_scene,left,46,187,158,46);ht_drawing_picture(left+3,49,true);
  ht_limb(ht_scene,left,47,left+185,47,1,0,137);ht_limb(ht_scene,left,203,left+186,203,1,1,112);
  ht_limb(ht_scene,95,253,left+8,193,6,4,239);ht_disk(ht_scene,left+8,193,4,220);
- unsigned q=ht_drawing_dog_open(s);if(q)ht_drawing_dog(197,151,q);
+ unsigned q=dog?ht_drawing_dog_open(s):0;if(q)ht_drawing_dog(197,151,q);
  /* The right hand releases the wall card, takes the railway paper from below
   * frame and stays attached to its corner through placement and withdrawal. */
- ht_joint hand=ht_drawing_dog_hand(s);ht_limb(ht_scene,401,253,hand.x,hand.y,6,4,239);ht_disk(ht_scene,hand.x,hand.y,4,220);
+ ht_joint hand=dog?ht_drawing_dog_hand(s):ht_joint_at(427,194);ht_limb(ht_scene,401,253,hand.x,hand.y,6,4,239);ht_disk(ht_scene,hand.x,hand.y,4,220);
 }
 static ht_person_pose ht_drawing_pose(const ht_game *game,const ht_drawing_state *s){
  ht_game v=*game;int target=ht_drawing_x()-2,wx=game->x/256;
@@ -99,8 +99,8 @@ static ht_person_pose ht_drawing_pose(const ht_game *game,const ht_drawing_state
 static void ht_drawing_study_render(const ht_game *game,const ht_drawing_state *s){
  ht_game v=*game;v.camera=(ht_drawing_x()-239)*256;v.camera_y=(ht_drawing_floor()-192)*256;v.intimacy=0;v.vista=v.drop_zoom=0;v.rotation_phase=v.sway_phase=0;v.drawing_view_stage=s->stage;v.drawing_view_tick=s->tick;
  ht_frame_camera(&v,ht_camera_mode==HT_CAMERA_NATIVE?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode);ht_render_scene_from(&v,false);ht_world_scale=ht_scene_scale(&v);
- if(s->stage>=2 && s->stage<=6){ht_world_scale=256;ht_drawing_insert(s);}else{ht_person_pose p=ht_drawing_pose(&v,s);ht_person_draw(&p);if((s->stage==1 && s->tick>=64) || (s->stage==7 && s->tick<64))ht_drawing_small_sheet(p.hand[0].x-6,p.hand[0].y-25,false);}
+ if(s->stage>=2 && s->stage<=6){ht_world_scale=256;ht_drawing_insert(s,(game->packet&HT_PACKET_DOG)!=0);}else{ht_person_pose p=ht_drawing_pose(&v,s);ht_person_draw(&p);if((s->stage==1 && s->tick>=64) || (s->stage==7 && s->tick<64))ht_drawing_small_sheet(p.hand[0].x-6,p.hand[0].y-25,false);}
  ht_world_scale=256;ht_rect(ht_scene,5,226,470,35,255);const char *label=ht_drawing_label(s);ht_text_color((HT_W-(int)strlen(label)*6)/2,230,label,1,65);
- const char *keys=!s->stage?"A LIFT DRAWING  START NOTE  X RETURN":s->stage==2?"L/R COMPARE  A SET DOG BESIDE  X RETURN":s->stage==4?"A PUT DOG AWAY  START NOTE  X RETURN":s->stage==6?"A RETURN DRAWING  START NOTE  X RETURN":s->stage==8?"A READ NOTE  START NOTE  X RETURN":"PAUSE HOLD  START NOTE  X RETURN";
+ const char *keys=!s->stage?"A LIFT DRAWING  START NOTE  X RETURN":s->stage==2?((game->packet&HT_PACKET_DOG)?"L/R COMPARE  A SET DOG BESIDE  X RETURN":"L/R COMPARE  A RETURN DRAWING  X RETURN"):s->stage==4?"A PUT DOG AWAY  START NOTE  X RETURN":s->stage==6?"A RETURN DRAWING  START NOTE  X RETURN":s->stage==8?"A READ NOTE  START NOTE  X RETURN":"PAUSE HOLD  START NOTE  X RETURN";
  ht_text_color((HT_W-(int)strlen(keys)*6)/2,244,keys,1,103);ht_vignette();
 }

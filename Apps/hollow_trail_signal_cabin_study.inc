@@ -2,20 +2,22 @@
 typedef struct {bool active,paused;int8_t direction,tilt;uint8_t stage;uint16_t tick;} ht_cabin_state;
 static ht_cabin_state ht_cabin;
 static bool ht_cabin_near(const ht_game *g){return g->level==3 && g->grounded && !g->traversal.mode && ht_evidence_near(g)==1;}
-static void ht_cabin_begin(void){ht_cabin=(ht_cabin_state){true,false,0,0,0,0};}
+static void ht_cabin_begin(void){ht_cabin=(ht_cabin_state){true,false,0,0,(uint8_t)((ht.packet&HT_PACKET_DOG)?8:ht.puzzle.solved?6:0),0};}
 static bool ht_cabin_step(ht_cabin_state *s){
  if(!s->active || s->paused)return false;
  if(s->stage==2){int old=s->tilt;s->tilt=(int8_t)ht_clamp(old+s->direction,-16,16);return old!=s->tilt;}
- unsigned limit=s->stage==1?HT_CABIN_PICKUP_TICKS:s->stage==3?HT_CABIN_UNROLL_START+HT_CABIN_UNROLL_TICKS:s->stage==5?128:0;
+ unsigned limit=s->stage==1?HT_CABIN_PICKUP_TICKS:s->stage==3?HT_CABIN_UNROLL_START+HT_CABIN_UNROLL_TICKS:s->stage==5?128:s->stage==7?192:0;
  if(!limit)return false;
- if(++s->tick==limit){++s->stage;s->tick=0;}return true;
+ if(++s->tick==limit){++s->stage;s->tick=0;if(s->stage==8)ht.packet|=HT_PACKET_DOG;}return true;
 }
 static bool ht_cabin_action(ht_cabin_state *s){
- if(!s->active || s->paused || (s->stage!=0 && s->stage!=2 && s->stage!=4))return false;
+ if(!s->active || s->paused || (s->stage!=0 && s->stage!=2 && s->stage!=4 && !(s->stage==6 && ht.puzzle.solved && !(ht.packet&HT_PACKET_DOG))))return false;
  ++s->stage;s->tick=0;s->direction=0;return true;
 }
 static const char *ht_cabin_label(const ht_cabin_state *s){
  if(s->paused)return "PAUSED - PRESS PAUSE TO RESUME";
+ if(s->stage==7)return s->tick<112?"BEFORE LEAVING, I WENT BACK FOR THE CHILD'S DRAWING.":"I LEFT A CLEAN STRIP FROM MY SHIRT AROUND THE LEVER IN ITS PLACE.";
+ if(s->stage==8)return "BEFORE LEAVING, I WENT BACK FOR THE CHILD'S DRAWING.";
  if(!s->stage)return "THE MAP HAD BEEN CORRECTED IN HER HAND.";
  if(s->stage==1)return "I TILTED IT TOWARD THE WINDOW.";
  if(s->stage==2)return s->tilt>=12?"WHO HAS BEEN HERE BEFORE?":"ONLY THE PRESSURE SURVIVED.";
@@ -83,6 +85,14 @@ static ht_person_pose ht_cabin_pose(const ht_game *game,const ht_cabin_state *s)
  else if(s->stage>=5){x=ht_cabin_x()+3;v.facing=1;q=64;}
  v.x=x*256;v.y=ht_surface_at(&v,4,x)*256;v.vx=(s->stage==1 || s->stage==3) && q<64?248:0;v.vy=0;v.grounded=true;v.landing_ticks=0;memset(&v.traversal,0,sizeof(v.traversal));v.stride=s->tick*96;
  ht_person_pose p=ht_person_pose_at(x-v.camera/256,(v.y-v.camera_y)/256,&v);if(v.vx){++p.hip.y;++p.shoulder.y;}
+ if(s->stage==7){
+  ht_joint lever=ht_joint_at(ht_cabin_x()+12-v.camera/256,ht_cabin_floor()-27-v.camera_y/256);
+  ht_joint bag=ht_joint_at(p.hip.x+4,p.hip.y+3),shirt=ht_joint_at(p.shoulder.x+2,p.shoulder.y+4);
+  unsigned t=s->tick;
+  if(t<48){unsigned q=t*256/48;p.hand[0].x+=(lever.x-p.hand[0].x)*(int)q/256;p.hand[0].y+=(lever.y-p.hand[0].y)*(int)q/256;}
+  else if(t<112){unsigned q=(t-48)*256/64;p.hand[0]=ht_joint_at(lever.x+(bag.x-lever.x)*(int)q/256,lever.y+(bag.y-lever.y)*(int)q/256);}
+  else {unsigned q=ht_min(t-112,64)*256/64;p.hand[0]=bag;p.hand[1]=ht_joint_at(shirt.x+(lever.x-shirt.x)*(int)q/256,shirt.y+(lever.y-shirt.y)*(int)q/256);}
+ }
  if(s->stage==1 || s->stage==3 || s->stage==5){
   int reach=ht_clamp((q-48)*16,0,256);if(s->stage==5)reach=s->tick<112?256:ht_clamp((128-(int)s->tick)*16,0,256);
   int hx=ht_cabin_x()+(s->stage==1?-24:12)-v.camera/256,hy=ht_cabin_floor()-(s->stage==1?29:27)-v.camera_y/256;
@@ -96,8 +106,8 @@ static void ht_cabin_study_render(const ht_game *game,const ht_cabin_state *s){
  ht_frame_camera(&v,ht_camera_mode==HT_CAMERA_NATIVE?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode);ht_render_scene_from(&v,false);ht_world_scale=ht_scene_scale(&v);
  if(s->stage==2){ht_world_scale=256;ht_cabin_map(s->tilt);}
  else if(s->stage==4 || (s->stage==3 && s->tick>=HT_CABIN_UNROLL_START) || (s->stage==5 && s->tick<64)){ht_world_scale=256;ht_cabin_paper(s);}
- else{ht_person_pose p=ht_cabin_pose(&v,s);ht_person_draw(&p);if(s->stage==5 && s->tick>=64 && s->tick<112)ht_rect(ht_scene,p.hand[0].x-2,p.hand[0].y-2,4,5,55);}
+ else{ht_person_pose p=ht_cabin_pose(&v,s);ht_person_draw(&p);if((s->stage==5 && s->tick>=64 && s->tick<112) || (s->stage==7 && s->tick>=48 && s->tick<112))ht_rect(ht_scene,p.hand[0].x-2,p.hand[0].y-2,4,5,55);if(s->stage==7 && s->tick>=112 && s->tick<176)ht_limb(ht_scene,p.hand[1].x-1,p.hand[1].y-3,p.hand[1].x+1,p.hand[1].y+4,1,1,93);}
  ht_world_scale=256;ht_rect(ht_scene,7,226,466,35,255);const char *label=ht_cabin_label(s);ht_text_color((HT_W-(int)strlen(label)*6)/2,230,label,1,65);
- const char *keys=!s->stage?"A TAKE MAP  START NOTE  X RETURN":s->stage==2?"L/R TILT MAP  A UNWRAP GRIP  X RETURN":s->stage==4?"A WRAP IT BACK  START NOTE  X RETURN":s->stage==6?"A READ NOTE  START NOTE  X RETURN":"START NOTE  PAUSE HOLD  X RETURN";
+ const char *keys=!s->stage?"A TAKE MAP  START NOTE  X RETURN":s->stage==2?"L/R TILT MAP  A UNWRAP GRIP  X RETURN":s->stage==4?"A WRAP IT BACK  START NOTE  X RETURN":s->stage==6?(game->puzzle.solved?"A TAKE DOG FOR ROAD  START NOTE  X RETURN":"A READ NOTE  START NOTE  X RETURN"):s->stage==8?"A RETURN  START NOTE  X RETURN":"START NOTE  PAUSE HOLD  X RETURN";
  ht_text_color((HT_W-(int)strlen(keys)*6)/2,244,keys,1,103);ht_vignette();
 }

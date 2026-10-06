@@ -34,7 +34,15 @@ static void ticks(unsigned n){for(unsigned i=0;i<n;++i)ht_advance(now+=HT_STEP_M
 static void present(void){ht_journal_render();assert(ht_journal_page_ready);ht_read_submitted_revision=scene_revision;}
 
 static void reset(void){
- memset(&ht,0,sizeof(ht));ht.level=6;ht_select_level(6);ht_spawn(true);ht_drawing=(ht_drawing_state){0};
+ /* This owned-paper fixture earns the departure transfer at its real cabin.
+  * The separate packet test covers declining it and the no-dog branch. */
+ memset(&ht,0,sizeof(ht));ht.level=3;ht_select_level(3);ht_spawn(true);
+ ht.x=ht_cabin_x()*256;ht.y=ht_cabin_floor()*256;
+ for(const char *move=walk_solutions[3];*move;++move)ht_puzzle_operate(&ht.puzzle,3,(unsigned)(*move-'0'));
+ assert(ht.puzzle.solved);ht_cabin_begin();assert(ht_cabin_action(&ht_cabin));
+ for(unsigned n=0;n<192;++n)assert(ht_cabin_step(&ht_cabin));
+ assert(ht.packet==HT_PACKET_DOG);ht_cabin.active=false;
+ ht.level=6;ht_select_level(6);ht_spawn(true);ht_drawing=(ht_drawing_state){0};
  ht_counts=(ht_counts_state){0};ht_sleep=(ht_sleep_state){0};ht_partition=(ht_partition_state){0};ht_bed=(ht_bed_state){0};ht_hoist=(ht_hoist_state){0};
  ht_cutscene.active=false;ht_cutscene.finished=true;ht_cutscene_seen=63;reading=paused=quitting=loading=debug_jump=debug_select=jump_down=pause_down=false;
  ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=mapped=0;ht_pad_owned=ht_input_rearm=ht_pad_fault=false;ht_pad_source=-1;ht_pad_device=0;simulation_started=false;simulation_accumulator=0;

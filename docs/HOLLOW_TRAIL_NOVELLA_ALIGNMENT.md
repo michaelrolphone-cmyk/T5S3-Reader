@@ -131,7 +131,7 @@ traversal wholesale with autoplay.
 | 36 Storm galleries | Existing weather/rope/valve narrative | Physical paper comparison and one hard lightning shadow, no blanket strobe |
 | 37 Recorder/distributor | Published: actual cold-start priming earns palm-to-return warming and westward condensation clearing; running solution unchanged. Local 1.1.50 [dry recorder cabinet and manual](HOLLOW_TRAIL_RECORDER_MANUAL_1_1_50.md) adds rubber seal, handled dry pages, jointed-arm/selector diagrams, shared-shutter tracing with the damaged knife and anonymous thumbprint | Tiny mast exit vista remains separate |
 | 38 Shelter/ascent | Existing snow/rock/tree gradient | Shelter/ice basin and route-specific vegetation reduction |
-| 39 Scarf panorama | Local 1.1.50 [first-post scarf/tracing comparison and deliberate untie/wrap](HOLLOW_TRAIL_RIDGE_SCARF_1_1_50.md), original page 24 and mountain route, single cloth ownership through the tower | Interconnected backward country, continuous sleet visibility contraction, and page-25 weighted papers/wet dog/lamp burn remain |
+| 39 Scarf panorama | Local 1.1.50 [first-post scarf/tracing comparison and deliberate untie/wrap](HOLLOW_TRAIL_RIDGE_SCARF_1_1_50.md), original page 24 and single cloth ownership; [page25 weighted papers, carried wet dog, old lamp burn and biscuit crumbs](HOLLOW_TRAIL_RIDGE_PAPERS_1_1_50.md), with explicit earlier packet transfers | Interconnected backward country and continuous sleet visibility contraction remain |
 | 40 False signal | Published: actual return isolation stops real lamps, reachable catch/knife/lid, silver gap and two dark held intervals; chime solution retained | Continuous worsening sleet and backward ridge panorama remain separate |
 | 41 Settlement | Published: first-house reflected-doorpost observation, bare-knuckle knock and unanswered wait; existing houses/mast retained | Connected alleys/retaining walls and broader mundane occupancy traces remain |
 | 42 Tower | Local 1.1.50 [grounded hooks/bench, powdering chip, scarf pause and post-channel radio card](HOLLOW_TRAIL_TOWER_1_1_50.md); existing climbing/channel boat retained | Broader older-tower light strips and visibly steadier boat handling remain |
@@ -221,3 +221,9 @@ clean towel fold and quarry-dust print, repeated home-curtain pin memory and
 exact-state return. The [chosen-night sister memory](HOLLOW_TRAIL_GARDEN_MEMORY_1_1_50.md)
 also connects the folded hand, fading crease, younger/tired faces and uncertain
 carriage face. These remain part of the cumulative unreleased 1.1.50 update.
+
+[Wind-shelter papers](HOLLOW_TRAIL_RIDGE_PAPERS_1_1_50.md) now connect the original
+page25 shelf/stone, spread papers, carried wet drawing, old lamp burn, clearing
+roof light and carried biscuit crumbs. The optional railway and garden departure
+transfers establish actual packet ownership; declining either leaves its late
+action absent, with the route, scarf and isolation/chime solution unchanged.

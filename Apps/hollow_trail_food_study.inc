@@ -7,24 +7,30 @@ static bool ht_food_near(const ht_game *g){
  return g->level==6 && g->grounded && !g->traversal.mode && ht_abs(g->x/256-HT_FOOD_X)<=7 &&
   ht_abs(g->y/256-ht_surface_at(g,0,g->x/256))<3 && (g->traversal.crate_x<(HT_FOOD_X-25)*256 || g->traversal.crate_x>481*256);
 }
-static void ht_food_begin(void){ht_food=(ht_food_state){true,false,0,0,0};}
+static void ht_food_begin(void){ht_food=(ht_food_state){true,false,(uint8_t)(ht.puzzle.solved?14:0),0,0};}
 static unsigned ht_food_limit(unsigned stage){
- return stage==1?192:stage==4?128:stage==2?96:stage==6 || stage==8?160:stage==13?320:stage==10?256:0;
+ return stage==15?160:stage==17?224:stage==19?224:stage==21?320:stage==1?192:stage==4?128:stage==2?96:stage==6 || stage==8?160:stage==13?320:stage==10?256:0;
 }
 static bool ht_food_step(ht_food_state *s){
  if(!s->active || s->paused)return false;
  unsigned limit=ht_food_limit(s->stage);bool changed=false;
  if(s->stage<6){s->ambient=(s->ambient+1)&255u;changed=s->ambient==0 || s->ambient>=240;}
  if(!limit)return changed;
- if(++s->tick==limit){if(s->stage==13)s->active=false;else{++s->stage;s->tick=0;}}
+ if(++s->tick==limit){if(s->stage==13 || s->stage==21)s->active=false;else{++s->stage;s->tick=0;if(s->stage==16 && (ht.packet&HT_PACKET_FOOD))s->stage=20;if(s->stage==20)ht.packet|=HT_PACKET_FOOD;}}
  return true;
 }
 static bool ht_food_action(ht_food_state *s){
- if(!s->active || s->paused || ht_food_limit(s->stage))return false;
+ if(!s->active || s->paused || ht_food_limit(s->stage) || s->stage>=21)return false;
  ++s->stage;s->tick=0;return true;
 }
 static const char *ht_food_label(const ht_food_state *s){
  if(s->paused)return "PAUSED - PRESS PAUSE TO RESUME";
+ if(s->stage==14 || s->stage==15)return "BEFORE LEAVING, I WENT BACK TO THE CUPBOARD.";
+ if(s->stage==16)return "THERE WAS FOOD IN A CUPBOARD UNDER THE WORKBENCH.";
+ if(s->stage==17)return "I TOOK FOOD FOR THE ROAD AND WROTE DOWN WHAT I HAD TAKEN.";
+ if(s->stage==18)return "THE PENCIL WAS BLUNT.";
+ if(s->stage==19)return s->tick<96?"I PUT A WRONG NUMBER IN THE SECOND COLUMN.":s->tick<144?"FOR A LONG MOMENT I STARED AT IT.":"THEN I CROSSED IT OUT AND WROTE THE RIGHT ONE.";
+ if(s->stage==20)return "THERE WAS NO WAY TO MAKE THE CORRECTION THAT DID NOT LOOK DELIBERATE.";
  if(!s->stage)return "THE THICK RETURN SWEATED IN THE COOLER AIR.";
  if(s->stage==1)return "I DRANK.";
  if(s->stage==2 || s->stage==3)return "WAITED.";
@@ -38,11 +44,13 @@ static const char *ht_food_label(const ht_food_state *s){
 }
 static ht_joint ht_food_mix(ht_joint a,ht_joint b,unsigned q){return ht_joint_at(a.x+(b.x-a.x)*(int)q/256,a.y+(b.y-a.y)*(int)q/256);}
 static ht_person_pose ht_food_pose(const ht_game *game,const ht_food_state *s){
+ ht_food_state departure=*s;unsigned original=s->stage;
+ departure.stage=(uint8_t)ht_food_departure_stage(s->stage);s=&departure;
  ht_game v=*game;unsigned t=s->tick;int wx=HT_FOOD_X,f=ht_food_floor();
  if(s->stage==1)wx+=12*ht_clamp((int)t-32,0,32)/32;
  if(s->stage>=2 && s->stage<=5)wx+=12;
  if(s->stage>=7)wx=HT_FOOD_CUPBOARD_X;
- else if(s->stage==6)wx=t<32?HT_FOOD_X+12-(int)t*12/32:t<96?HT_FOOD_X+83*ht_clamp((int)t-32,0,64)/64:456-30*(int)ht_min(t-96,64)/64;
+ else if(s->stage==6)wx=t<32?(original==15?HT_FOOD_X:HT_FOOD_X+12-(int)t*12/32):t<96?HT_FOOD_X+83*ht_clamp((int)t-32,0,64)/64:456-30*(int)ht_min(t-96,64)/64;
  if(s->stage==13)wx=t<128?HT_FOOD_CUPBOARD_X+30*(int)t/128:456+(game->x/256-456)*(int)ht_min(t-128,128)/128;
  v.x=wx*256;v.y=f*256;v.vx=s->stage==6 && t>=32 && t<96?232:s->stage==13 && t>=128 && t<256?-232:0;v.vy=0;v.facing=s->stage==13 && t>=128?-1:1;v.grounded=true;v.landing_ticks=0;v.stride=t*92;memset(&v.traversal,0,sizeof(v.traversal));
  int x=wx-v.camera/256,y=f-v.camera_y/256;ht_person_pose p=ht_person_pose_at(x,y,&v);
@@ -54,7 +62,7 @@ static ht_person_pose ht_food_pose(const ht_game *game,const ht_food_state *s){
  }
  else if(s->stage==2 || s->stage==3 || s->stage==5)p.hand[0]=hold;
  else if(s->stage==4)p.hand[0]=t<32?ht_food_mix(hold,mouth,t*256/32):t<96?mouth:ht_food_mix(mouth,hold,(t-96)*256/32);
- else if(s->stage==6 && t<32)p.hand[0]=ht_food_mix(hold,cup,t*256/32);
+ else if(s->stage==6 && t<32 && original!=15)p.hand[0]=ht_food_mix(hold,cup,t*256/32);
  if(s->stage==6 && t>=96){
   unsigned open=ht_food_open(s->stage,t),q=ht_min(t-96,16)*256/16;p.shoulder.y+=(int)q*4/256;
   ht_joint contact=ht_joint_at(HT_FOOD_X+90-(int)open*42/256-v.camera/256,y-13);
@@ -78,6 +86,11 @@ static ht_person_pose ht_food_pose(const ht_game *game,const ht_food_state *s){
   unsigned q=ht_min(t-256,64)*256/64;p.hip=ht_food_mix(p.hip,end.hip,q);p.shoulder=ht_food_mix(p.shoulder,end.shoulder,q);
   for(int i=0;i<2;++i){p.hand[i]=ht_food_mix(p.hand[i],end.hand[i],q);p.foot[i]=ht_food_mix(p.foot[i],end.foot[i],q);}
  }
+ if(original==17 && t>=128){
+  unsigned q=ht_min(t-128,96)*256/96;ht_joint bag=ht_joint_at(p.hip.x+4,p.hip.y+3);
+  for(int i=0;i<2;++i)p.hand[i]=ht_food_mix(p.hand[i],ht_joint_at(bag.x+(i?1:-1),bag.y),q);
+ }
+ if(original==19 || original==20)p.hand[0]=ht_joint_at(HT_FOOD_X+49-v.camera/256,f-15-v.camera_y/256);
  return p;
 }
 static void ht_food_insert(bool note){
@@ -123,19 +136,37 @@ static void ht_food_water_insert(const ht_food_state *s){
  ht_limb(ht_scene,69,231,108,196,8,5,235);ht_limb(ht_scene,161,235,140,195,8,5,233);
  ht_rect(ht_scene,107,164,34,34,76);ht_limb(ht_scene,106,164,141,164,2,2,199);ht_limb(ht_scene,142,170,151,173,2,2,194);ht_limb(ht_scene,151,173,149,186,2,2,194);ht_limb(ht_scene,149,186,142,190,2,2,194);
 }
+/* Same inner-door list; amounts remain unreadable marks because the source
+ * does not specify their values. The second-column error is visibly struck
+ * through before a distinct replacement is written with a blunt pencil. */
+static void ht_food_record_insert(const ht_food_state *s){
+ ht_food_insert(true);unsigned t=s->stage==20?224:s->tick;
+ int x=129,y=127;ht_rect(ht_scene,116,112,69,24,29);
+ unsigned write=ht_min(t,64);int yy=y-9+(int)write*9/64;
+ ht_limb(ht_scene,x,y-9,x+6,y-7,1,0,163);ht_limb(ht_scene,x+6,y-7,x+3,yy,1,1,163);
+ ht_joint tip=ht_joint_at(x+3,yy);
+ if(t>=144){unsigned q=ht_min(t-144,32);tip=ht_joint_at(x-3+(int)q*14/32,y-12+(int)q*17/32);ht_limb(ht_scene,x-3,y-12,tip.x,tip.y,1,0,206);}
+ if(t>=176){unsigned q=ht_min(t-176,48);int xx=x+25;tip=ht_joint_at(xx+5,y-9+(int)q*13/48);ht_limb(ht_scene,xx,y-9,xx+5,y-8,1,0,171);ht_limb(ht_scene,xx+5,y-8,tip.x,tip.y,1,1,177);}
+ if(s->stage==19){
+  ht_joint grip=ht_joint_at(tip.x+27,tip.y+19);
+  ht_limb(ht_scene,300,249,grip.x+19,grip.y+24,12,7,241);ht_limb(ht_scene,grip.x+19,grip.y+24,grip.x,grip.y,7,4,209);
+  ht_limb(ht_scene,tip.x,tip.y,grip.x+6,grip.y+4,2,2,185);ht_disk(ht_scene,tip.x,tip.y,1,213);ht_disk(ht_scene,grip.x,grip.y,4,220);
+ }
+}
 static void ht_food_study_render(const ht_game *game,const ht_food_state *s){
  ht_game v=*game;v.camera=(HT_FOOD_X+35-240)*256;v.camera_y=(ht_food_floor()-172)*256;v.intimacy=512;v.vista=v.drop_zoom=0;v.rotation_phase=v.sway_phase=0;
  v.food_view_active=true;v.food_view_stage=s->stage;v.food_view_tick=s->tick;v.food_view_ambient=s->ambient;
  ht_frame_camera(&v,ht_camera_mode==HT_CAMERA_NATIVE?(unsigned)HT_CAMERA_BASELINE:ht_camera_mode);ht_render_scene_from(&v,false);ht_world_scale=ht_scene_scale(&v);
  ht_person_pose p=ht_food_pose(&v,s);
- if(s->stage!=2 && s->stage!=3 && s->stage!=7 && s->stage!=12){ht_person_draw(&p);
+ if(s->stage!=2 && s->stage!=3 && s->stage!=7 && s->stage!=12 && s->stage!=16 && s->stage!=19 && s->stage!=20){ht_person_draw(&p);
   if((s->stage==1 && s->tick>=32) || (s->stage>=2 && s->stage<=5) || (s->stage==6 && s->tick<32))ht_food_cup(p.hand[0].x,p.hand[0].y);
-  if((s->stage==8 && s->tick>=64) || s->stage==9 || (s->stage==10 && s->tick<96)){ht_rect(ht_scene,p.hand[0].x-3,p.hand[0].y-2,s->stage==10 && s->tick>=32?3:6,3,113);}
+  if((s->stage==8 && s->tick>=64) || s->stage==9 || (s->stage==10 && s->tick<96) || (s->stage==17 && s->tick>=64 && s->tick<216)){ht_rect(ht_scene,p.hand[0].x-3,p.hand[0].y-2,s->stage==10 && s->tick>=32?3:6,3,113);if(s->stage==17)ht_rect(ht_scene,p.hand[0].x-3,p.hand[0].y-5,6,2,123);}
  }
  ht_world_scale=256;if(s->stage==2 || s->stage==3)ht_food_water_insert(s);
- if(s->stage==7 || s->stage==12)ht_food_insert(s->stage==12);
+ if(s->stage==7 || s->stage==12 || s->stage==16)ht_food_insert(s->stage==12);
+ if(s->stage==19 || s->stage==20)ht_food_record_insert(s);
  ht_rect(ht_scene,5,226,470,35,255);const char *label=ht_food_label(s);ht_text_color((HT_W-(int)strlen(label)*6)/2,230,label,1,65);
- const char *keys=!s->stage?"A DRINK  START NOTES  X RETURN":s->stage==3?"A DRINK AGAIN  START NOTES  X RETURN":s->stage==5?"A OPEN CUPBOARD  START NOTES  X RETURN":s->stage==7?"A TAKE ONE BISCUIT  START NOTES  X RETURN":s->stage==9?"A EAT  START NOTES  X RETURN":s->stage==11?"A READ THE LIST  START NOTES  X RETURN":s->stage==12?"A CLOSE GENTLY  START NOTES  X RETURN":"PAUSE HOLD  START NOTES  X RETURN";
+ const char *keys=s->stage==14?((game->packet&HT_PACKET_FOOD)?"A REVIEW ROAD FOOD RECORD  START NOTES  X RETURN":"A OPEN CUPBOARD  START NOTES  X RETURN"):s->stage==16?"A TAKE FOOD FOR ROAD  START NOTES  X RETURN":s->stage==18?"A RECORD WHAT I TOOK  START NOTES  X RETURN":s->stage==20?"A CLOSE GENTLY  START NOTES  X RETURN":!s->stage?"A DRINK  START NOTES  X RETURN":s->stage==3?"A DRINK AGAIN  START NOTES  X RETURN":s->stage==5?"A OPEN CUPBOARD  START NOTES  X RETURN":s->stage==7?"A TAKE ONE BISCUIT  START NOTES  X RETURN":s->stage==9?"A EAT  START NOTES  X RETURN":s->stage==11?"A READ THE LIST  START NOTES  X RETURN":s->stage==12?"A CLOSE GENTLY  START NOTES  X RETURN":"PAUSE HOLD  START NOTES  X RETURN";
  ht_text_color((HT_W-(int)strlen(keys)*6)/2,244,keys,1,103);ht_vignette();
 }
-static void ht_food_prompt(const ht_game *g){if(ht_food_near(g)){ht_rect(ht_scene,133,221,214,15,255);ht_text_color(144,225,"A WATER AND FOOD BY THE WARM RETURN",1,85);}}
+static void ht_food_prompt(const ht_game *g){if(ht_food_near(g)){ht_rect(ht_scene,133,221,214,15,255);ht_text_color(144,225,g->puzzle.solved?"A FOOD FOR THE ROAD AT THE CUPBOARD":"A WATER AND FOOD BY THE WARM RETURN",1,85);}}

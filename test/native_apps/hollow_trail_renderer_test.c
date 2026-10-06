@@ -167,7 +167,7 @@ static const unsigned golden[][2]={
 {3385086579u,435798566u}, /* Far valve furniture on unchanged support four; other 29 pairs retained. */
 {3202950730u,1887044532u}, /* Opening support shelter; other 29 fixtures retained. */
 {1805041436,3386618820},
-{3469364471,1119496009},
+{793447873u,1798168286u}, /* Page25 shelf, slab-roof lee and old floor burn on support four; 29 pairs exact. */
 {1310939257u,1646281843u}, /* Grounded settlement walls and first-window return; 28 other pairs exact. */
 {2025419423u,2270779796u}, /* Street plots, cistern and clipped inward return on unchanged supports. */
 {3021503600,3314516329},

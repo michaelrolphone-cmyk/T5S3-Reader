@@ -29,7 +29,7 @@ static void journal(void){input(0,8);input(source?128:512,8);}
 static void ticks(unsigned n){for(unsigned i=0;i<n;++i)ht_advance(now+=HT_STEP_MS);}
 static void reset(void) {
     memset(&ht,0,sizeof(ht));ht.level=8;ht_select_level(8);ht_spawn(true);
-    ht_shelter=(ht_shelter_state){0};ht_isolator=(ht_isolator_state){0};ht_tower=(ht_tower_state){0};ht_scarf=(ht_scarf_state){0};
+    ht_shelter=(ht_shelter_state){0};ht_scarf=(ht_scarf_state){0};ht_papers=(ht_papers_state){0};ht_isolator=(ht_isolator_state){0};ht_tower=(ht_tower_state){0};
     ht_cutscene.active=false;ht_cutscene.finished=true;ht_cutscene_seen=63;
     reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
     held=previous=mapped=0;ht_pad_owned=ht_input_rearm=ht_pad_fault=false;
@@ -91,11 +91,14 @@ static void reach_ridge(void) {
             if(!found) {
                 assert(ht_scarf.active && !reading && !ht_scarf.stage && !ht.scarf);
                 journal();
+            } else if(found==1) {
+                assert(ht_papers.active && !reading && !ht_papers.stage);
+                journal();
             }
             assert(reading && journal_page==24u+found && ht_evidence_found(&ht,24u+found));
             ++found;cancel();if(reading)cancel();input(0,8);
-            if(ht_scarf.active){cancel();input(0,8);}
-            assert(!reading && !ht_shelter.active && !ht_isolator.active && !ht_scarf.active && !ht.scarf);
+            if(ht_scarf.active || ht_papers.active){cancel();input(0,8);}
+            assert(!reading && !ht_shelter.active && !ht_isolator.active && !ht_scarf.active && !ht_papers.active && !ht.scarf && !ht.packet);
         }
         if(!rope && ht.traversal.mode==HT_FREE && ht_traversal_near(&ht)==HT_ROPE) {
             action();input(0,8);assert(ht.traversal.mode==HT_ROPE);
