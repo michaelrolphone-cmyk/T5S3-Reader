@@ -2,6 +2,7 @@
 
 #include <FontDecompressor.h>
 #include <HalGPIO.h>
+#include <HalReadBudget.h>
 #include <Logging.h>
 #include <SdCardFont.h>
 #include <Utf8.h>
@@ -877,6 +878,14 @@ void GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
     return;
   }
 
+  // One finite budget per render pass: 4 KiB / 32 reads or rows / 8 ms, then
+  // a real scheduler wait. No read-ahead, retained bytes or global wait change.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalReadBudget readBudget([]() -> uint32_t { return millis(); }, []() { vTaskDelay(1); });
+  auto* rowReads = &readBudget;
+#else
+  HalReadBudget* rowReads = nullptr;
+#endif
   for (int bmpY = 0; bmpY < (bitmap.getHeight() - cropPixY); bmpY++) {
     // The BMP's (0, 0) is the bottom-left corner (if the height is positive, top-left if negative).
     // Screen's (0, 0) is the top-left corner.
@@ -889,7 +898,7 @@ void GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
       break;
     }
 
-    if (bitmap.readNextRow(outputRow, rowBytes) != BmpReaderError::Ok) {
+    if (bitmap.readNextRow(outputRow, rowBytes, rowReads) != BmpReaderError::Ok) {
       LOG_ERR("GFX", "Failed to read row %d from bitmap", bmpY);
       free(outputRow);
       free(rowBytes);
@@ -930,6 +939,8 @@ void GfxRenderer::drawBitmap(const Bitmap& bitmap, const int x, const int y, con
     }
   }
 
+  // Account for rendering CPU time after the final decoded row as well.
+  if (rowReads) rowReads->checkpoint();
   free(outputRow);
   free(rowBytes);
 }
@@ -959,9 +970,17 @@ void GfxRenderer::drawBitmap1Bit(const Bitmap& bitmap, const int x, const int y,
     return;
   }
 
+  // One finite budget per render pass: 4 KiB / 32 reads or rows / 8 ms, then
+  // a real scheduler wait. No read-ahead, retained bytes or global wait change.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalReadBudget readBudget([]() -> uint32_t { return millis(); }, []() { vTaskDelay(1); });
+  auto* rowReads = &readBudget;
+#else
+  HalReadBudget* rowReads = nullptr;
+#endif
   for (int bmpY = 0; bmpY < bitmap.getHeight(); bmpY++) {
     // Read rows sequentially using readNextRow
-    if (bitmap.readNextRow(outputRow, rowBytes) != BmpReaderError::Ok) {
+    if (bitmap.readNextRow(outputRow, rowBytes, rowReads) != BmpReaderError::Ok) {
       LOG_ERR("GFX", "Failed to read row %d from 1-bit bitmap", bmpY);
       free(outputRow);
       free(rowBytes);
@@ -999,6 +1018,8 @@ void GfxRenderer::drawBitmap1Bit(const Bitmap& bitmap, const int x, const int y,
     }
   }
 
+  // Account for rendering CPU time after the final decoded row as well.
+  if (rowReads) rowReads->checkpoint();
   free(outputRow);
   free(rowBytes);
 }

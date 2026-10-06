@@ -20,6 +20,9 @@ if [[ $# -gt 0 ]]; then
 fi
 python3 "$repo_dir/test/native_text_layout/run_tests.py" --sanitize
 python3 "$repo_dir/test/native_text_font_generation_test.py"
+python3 "$repo_dir/test/bmp_row_reads/run_test.py" --sanitize
+python3 "$repo_dir/test/bmp_row_reads/run_test.py" --t5 --sanitize
+python3 "$repo_dir/test/bmp_row_reads/run_test.py" --legacy
 python3 "$repo_dir/test/native_text_layout_app/run_app_test.py" --sanitize --enforce-cost
 python3 "$repo_dir/test/navigation_hold/run_test.py"
 python3 "$repo_dir/test/text_page_writes/text_page_writes_test.py" --sanitize
