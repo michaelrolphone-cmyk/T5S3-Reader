@@ -1,0 +1,6 @@
+Verified 86 fixture files and 19 actual packages
+STAGE direct-keyboard-first roots=8 profiles=158 read_calls=1821 bytes=849609 upper_waits=2460 directory_peak=7 directory_failures=0 live=0 sectors=3262 modules=14 pins=14
+STAGE touch-after-keyboard-witness roots=3 profiles=58 read_calls=147 bytes=46945 upper_waits=295 directory_peak=2 directory_failures=0 live=0 sectors=576 modules=15 pins=15
+STAGE touch-first-keyboard-witness roots=3 profiles=58 read_calls=147 bytes=46945 upper_waits=295 directory_peak=2 directory_failures=0 live=0 sectors=576 modules=9 pins=9
+STAGE direct-keyboard-after-touch roots=8 profiles=158 read_calls=1821 bytes=849609 upper_waits=2460 directory_peak=7 directory_failures=0 live=0 sectors=3262 modules=15 pins=15
+Production provider admission keyboard (original control) PASS

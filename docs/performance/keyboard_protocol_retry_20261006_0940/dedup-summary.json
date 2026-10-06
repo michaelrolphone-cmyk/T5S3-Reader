@@ -1,0 +1,132 @@
+{
+  "branches": 394,
+  "prs": 436,
+  "heads": 588,
+  "missing_source_heads": [],
+  "historical_report_blobs": 257,
+  "missing_report_blobs": [],
+  "variants": {
+    "Drivers/usb_hid_keyboard/driver.c": {
+      "859071a1b6e34ae5a72eac04b74aa507c80d3eb4": 463,
+      "dea50fe25badebc46947b68caf147fcdec27f4d1": 9
+    },
+    "Drivers/usb_hid/driver.c": {
+      "f404a73dcea13d4a01d51efa4205e64644fb78d2": 465,
+      "d376befb9bac438ce2729af30a5f3d2699a7dd41": 5,
+      "2171bbbb274f6c49bdcebabd67ff6dd1f08a8375": 2
+    },
+    "Drivers/usb_hid_text_input/driver.c": {
+      "8020d667589106419a2149e123013387e5d3fb21": 352
+    },
+    "Drivers/usb_host_v2/driver.c": {
+      "5cdddf061b454d514f237ffcdc9a77341b6e238c": 356,
+      "7469b4ac7479a2661a632eb9cdd85184bc69a464": 101,
+      "58496d0b990e4610918cbeec371114c056a61ec2": 40,
+      "0318f6d8ad6fc3c3b7ef9d7ff72e9fd46ade8dc4": 5,
+      "b27bf5fc13c5dfa74f65d7d923a916c2d5e32153": 10
+    },
+    "Drivers/usb_ui_navigation/driver.c": {
+      "9489a1aff999bb7cfea335d22b3635d9596f3de5": 238,
+      "79221497c5d1ec1eae471b4b602124bd8530b04c": 114,
+      "e3262b0ec1efa333347d92406b09ef01697b8633": 95
+    },
+    "src/native/NativeNavigationInput.cpp": {
+      "9c0ff4d8ff44dfb787509a43186c8b9a1b1ecb2d": 267,
+      "21c0fffa48374a598b0186e97f285c2fad02be65": 27,
+      "eb501adbfcc43ab2de3b818ff34553d01eb4ba15": 62,
+      "187bfcba53645449de9fd10ec4d18221a6535a51": 79,
+      "7c097f9b4f6ecd9b908e444becbafc6c46ba32fe": 1,
+      "c8f47a0429efdfc11fce5f52489c6cb4126d21d9": 8,
+      "4132bbcde4be8b8ba422018bffcb99ecd8bcddb2": 1,
+      "685f26c71a4d0e8135820ce3d47b95d2ab31ecf2": 1,
+      "6011064bfa4c48bfa4e69d17122040dd8c2aaf9e": 1
+    },
+    "src/MappedInputManager.cpp": {
+      "79538dc01e057e9f45a7b5e5fa4d4c869202d1e2": 146,
+      "253026c5c5e27ab5ef19a740d8721ce44b14c637": 27,
+      "cca2d258a563559663ad02c2fe744901af2b81f2": 140,
+      "576cb03dcc21651f80d2caf776d72ef12bdfd458": 47,
+      "e40a247a073f1b9714ce05afe21f0ec0c7b37fa3": 137,
+      "96676ea1efff4084a680b02ee6d1c2dbde9d5c44": 79,
+      "b709269211da0d44f010c05f803ed7752366d656": 8,
+      "e16f705ef12ce86e2e3377a33c78de6af3c7fabc": 1,
+      "3f6de9641af0832fd0a2766ec4bafdf68690bc69": 1,
+      "645d0b038124afa8fd1c3cad16271c6c220756b5": 1
+    }
+  },
+  "non_pr_issues": 0,
+  "prior_pr332_comments": 194,
+  "last_pr332_comment": 6013753617,
+  "reviewed_related_prs": [
+    303,
+    216
+  ],
+  "report_pattern_matches": [
+    {
+      "blob": "1ea4be940d3252fe7056b9bf1f7c4ecb84f3b230",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "8371a1da129786972b471520e11bd05aeb710b3f",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "1979443151341a52159390c5fd7be9eaad66b416",
+      "paths": [
+        "docs/BUG_FIX_PROGRESS.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "ba28fc8ccee2d05f3800afe0227354a9dd77af93",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "f96157a4cc20571a77dfde6195dd426eaf3310b8",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "142eb88181cd6ef64b56c91eedec44c1650bcfc5",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "9b028b5937f8ad1584d61e9212608c19156fe67e",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "2dfb47e4a4f887b976204e931a8531611cdcad5a",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    },
+    {
+      "blob": "75a68144e74d8d4234e72b5f77a51c2215c0814d",
+      "paths": [
+        "bugs.md"
+      ],
+      "classification": "unrelated keyboard result truncation or Time Card load failure"
+    }
+  ],
+  "reviewed_related_canonical_reports": [
+    254
+  ]
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "path": "test/installed_provider_registration/README.md",
+    "sha": "8cba7c5ad49556b169d68c725ed7c4be68f116ae",
+    "size": 6040,
+    "verified": true
+  },
+  {
+    "path": "test/installed_provider_registration/card_fixture.h",
+    "sha": "bcdaecafcebc55f6291edcc840d668bfbc07b6b7",
+    "size": 2298,
+    "verified": true
+  },
+  {
+    "path": "test/installed_provider_registration/regression.cpp",
+    "sha": "95b9ba26b84d482ab21f2de96d1c4e8cf94db215",
+    "size": 25280,
+    "verified": true
+  },
+  {
+    "path": "test/installed_provider_registration/run_test.py",
+    "sha": "9dbf0f4987415d282804300602fbcc356886c705",
+    "size": 9073,
+    "verified": true
+  },
+  {
+    "path": "test/installed_provider_registration/fixtures/manifest.json",
+    "sha": "c0990e25d2d84349e0a9b3744ba65cb9d2e452de",
+    "size": 21665,
+    "verified": true
+  },
+  {
+    "path": "test/installed_provider_registration/fixtures/t5-expanded.tar.gz.b64",
+    "sha": "dec9941474b853da7335d6b1502409d51c422a78",
+    "size": 704161,
+    "verified": true
+  },
+  {
+    "path": "test/installed_provider_registration/stubs/native/NativeStreamBridge.h",
+    "sha": "03eda3df8e496e2e1af8f9a1313aa72a2f968462",
+    "size": 422,
+    "verified": true
+  }
+]

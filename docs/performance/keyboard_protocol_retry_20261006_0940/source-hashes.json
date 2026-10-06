@@ -1,0 +1,11 @@
+{
+  "Drivers/usb_host_v2/driver.c": "e87717502bf21a7d17fc5eb576c01d359749f6a41c72f6731a69db9c8f0e066f",
+  "Drivers/usb_hid/driver.c": "b2c9aea4281243c6a91c8f11b9ee9f2ffb3e43337bc671286cefcea26dbf8267",
+  "Drivers/usb_hid_keyboard/driver.c": "2b91319f239033c3613ba37d4840411480ff5cb6e8496688b5122780bc8a8a87",
+  "Drivers/usb_hid_text_input/driver.c": "f6a04dd121ade8745769443bd05eb63234448fc1b9afad503fb3ce5dd6285652",
+  "Drivers/usb_ui_navigation/driver.c": "eb42e2c39bf04440f40359c639fc076bb54ffb0780efac4f20ed561b44c6ddb8",
+  "src/native/NativeNavigationInput.cpp": "31903d07d3c935e85c2c3211532194f7dc17a7f22cb01e97cf7f8ef8e49616f3",
+  "src/MappedInputManager.cpp": "bc1d33d026adc28627c22d0678d3ba761598de063325a7cee5e061b7a0c9c123",
+  "Drivers/usb_controller_esp32s3/driver_base.cpp": "c18a616c6a92fc9d4f3091b62341c91cfec0072c0afe7c1375ebf8f297383d66",
+  "Apps/text_editor.c": "2223f0e78b0e7d291f765857d02f00430ffeb95f99656881aa920562a1dbc01e"
+}

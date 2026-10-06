@@ -1,0 +1,14 @@
+{
+  "normal": {
+    "full_log_sha256": "d492359116aa1c6ddbfe598a5fdbb62d75157d441ee26905a11674bc52804f6b",
+    "compiler_warning_lines": 0,
+    "outcome": "passed",
+    "output_filter": "Fixture verification, measurement and terminal result lines retained; compiler warning detail omitted."
+  },
+  "san": {
+    "full_log_sha256": "714b759bc85b8c8c04533db972414679ab27b093f8fda30d9c6441088a665701",
+    "compiler_warning_lines": 16,
+    "outcome": "passed",
+    "output_filter": "Fixture verification, measurement and terminal result lines retained; compiler warning detail omitted."
+  }
+}
