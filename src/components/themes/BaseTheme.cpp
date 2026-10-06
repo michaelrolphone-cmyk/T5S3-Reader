@@ -63,6 +63,12 @@ std::string truncatedPreparedText(const GfxRenderer& renderer, const int fontId,
     return item;
   }
 
+  size_t prefixBytes = 0;
+  if (!renderer.isSdCardFont(fontId) && renderer.getTruncationPrefix(fontId, item, maxWidth, prefixBytes, style)) {
+    item.resize(prefixBytes);
+    return item + ellipsis;
+  }
+
   while (!item.empty()) {
     const std::string candidate = item + ellipsis;
     if (measureRoleTextWidth(renderer, fontId, candidate.c_str(), style) < maxWidth) {

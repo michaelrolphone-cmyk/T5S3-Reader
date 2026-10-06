@@ -18,7 +18,7 @@
 #include "components/UITheme.h"
 
 namespace {
-constexpr size_t CHUNK_SIZE = 8 * 1024;
+constexpr size_t CHUNK_SIZE = Txt::ReadWindow::CAPACITY;
 
 bool isUtf8ContinuationByte(char c) { return (static_cast<uint8_t>(c) & 0xC0) == 0x80; }
 
@@ -35,7 +35,7 @@ size_t nextUtf8Boundary(const std::string& text, size_t pos) {
 }  // namespace
 
 bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vector<TxtDisplayLine>& outLines,
-                                        size_t& nextOffset, bool& fenceOpenAfter) {
+                                        size_t& nextOffset, bool& fenceOpenAfter, Txt::ReadWindow* window) {
   outLines.clear();
   fenceOpenAfter = fenceOpen;
   const size_t fileSize = txt->getFileSize();
@@ -45,17 +45,21 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
   }
 
   size_t chunkSize = std::min(CHUNK_SIZE, fileSize - offset);
-  auto* buffer = static_cast<uint8_t*>(malloc(chunkSize + 1));
+  // Indexing reuses its operation-local window. Independent page rendering
+  // retains its existing random-access allocation and read path.
+  auto* ownedBuffer = window ? nullptr : static_cast<uint8_t*>(malloc(chunkSize + 1));
+  const uint8_t* buffer = window ? window->read(offset, chunkSize) : ownedBuffer;
   if (!buffer) {
-    LOG_ERR("TRS", "Failed to allocate %zu bytes", chunkSize);
+    LOG_ERR("TRS", "Failed to read/allocate %zu bytes", chunkSize);
     return false;
   }
-
-  if (!txt->readContent(buffer, offset, chunkSize)) {
-    free(buffer);
-    return false;
+  if (!window) {
+    if (!txt->readContent(ownedBuffer, offset, chunkSize)) {
+      free(ownedBuffer);
+      return false;
+    }
+    ownedBuffer[chunkSize] = '\0';
   }
-  buffer[chunkSize] = '\0';
 
   if (renderer.isSdCardFont(cachedFontId)) {
     renderer.ensureSdCardFontReady(cachedFontId, reinterpret_cast<const char*>(buffer), 0x01);
@@ -154,7 +158,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
     bool hasCR = (lineContentLen > 0 && buffer[pos + lineContentLen - 1] == '\r');
     size_t displayLen = hasCR ? lineContentLen - 1 : lineContentLen;
 
-    std::string source(reinterpret_cast<char*>(buffer + pos), displayLen);
+    std::string source(reinterpret_cast<const char*>(buffer + pos), displayLen);
     uint8_t headingLevel = 0;
     std::string line = source;
 
@@ -244,7 +248,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
   }
   fenceOpenAfter = inFence;
 
-  free(buffer);
+  free(ownedBuffer);
   return !outLines.empty() || nextOffset > offset;
 }
 

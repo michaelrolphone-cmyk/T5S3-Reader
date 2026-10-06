@@ -55,6 +55,15 @@ class GfxRenderer {
   int getLineHeight(int) const;
 };
 struct Txt {
+  // This oracle uses independent page reads. The real ReadWindow/SD/FatFs
+  // path is covered by test/txt_index/index_test.py, including failure/retry.
+  struct ReadWindow {
+    static constexpr size_t CAPACITY = 8 * 1024;
+    const uint8_t* read(size_t, size_t) {
+      assert(false && "Independent-page oracle must not use a fixture read window");
+      return nullptr;
+    }
+  };
   std::string content;
   bool failRead = false;
   size_t getFileSize() const { return content.size(); }
@@ -74,5 +83,9 @@ class TxtReaderActivity {
   GfxRenderer& renderer;
   int cachedFontId = 1, viewportWidth = 400, viewportHeight = 640, linesPerPage = 18;
   bool markdownMode = false;
+#ifdef TXT_HAS_READ_WINDOW
+  bool loadPageAtOffset(size_t, bool, std::vector<TxtDisplayLine>&, size_t&, bool&, Txt::ReadWindow* = nullptr);
+#else
   bool loadPageAtOffset(size_t, bool, std::vector<TxtDisplayLine>&, size_t&, bool&);
+#endif
 };

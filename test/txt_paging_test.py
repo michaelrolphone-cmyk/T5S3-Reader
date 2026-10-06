@@ -53,6 +53,9 @@ with tempfile.TemporaryDirectory(prefix='txt-paging-') as temp:
 ''' + methods[opening:]
     (d / 'measurement.cpp').write_text('#include <GfxRenderer.h>\n#include <Utf8.h>\n#include <Logging.h>\n' + methods)
     paging = source('src/activities/reader/TxtReaderPaging.cpp')
+    has_window = 'Txt::ReadWindow* window' in paging
+    if has_window:
+        assert 'static constexpr size_t CAPACITY = 8 * 1024;' in source('lib/Txt/Txt.h')
     boundary = function(paging, 'size_t nextUtf8Boundary(')
     boundary = boundary.replace('  if (pos >= text.size())', '  ++work.boundaries; const size_t before = pos;\n  if (pos >= text.size())')
     boundary = boundary.replace('  return pos;', '  work.boundaryBytes += pos - before;\n  return pos;')
@@ -63,7 +66,7 @@ with tempfile.TemporaryDirectory(prefix='txt-paging-') as temp:
     page = re.sub(r'(utf8Boundaries.push_back\([^;]+;)',
                   r'\1\n      work.maxBoundaries = std::max(work.maxBoundaries, utf8Boundaries.size());', page)
     body = '\n'.join([
-        'constexpr size_t CHUNK_SIZE = 8 * 1024;',
+        re.search(r'constexpr size_t CHUNK_SIZE = [^;]+;', paging).group(),
         function(paging, 'bool isUtf8ContinuationByte('), boundary,
         '#define malloc testMalloc\n#define free testFree\n#define vTaskDelay testDelay',
         '#define LOG_ERR(...) ((void)0)',
@@ -78,6 +81,8 @@ with tempfile.TemporaryDirectory(prefix='txt-paging-') as temp:
         target.write_text(source(path))
         files.append(target)
     cmd = [os.environ.get('CXX', 'c++'), '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror']
+    if has_window:
+        cmd += ['-DTXT_HAS_READ_WINDOW']
     if os.environ.get('TXT_SANITIZE') == '1':
         cmd += ['-fsanitize=address,undefined', '-fno-sanitize-recover=undefined', '-fno-omit-frame-pointer']
     if args.enforce_cost:

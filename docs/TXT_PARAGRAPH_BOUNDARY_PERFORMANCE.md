@@ -6,9 +6,19 @@ Stable report: `michaelrolphone-cmyk/T5S3-Reader::PERF-20261005-TXT-WRAP-SUFFIX-
 [Isolated repair claim](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/332#issuecomment-6008581278).
 Canonical numbering remains with the existing ledger coordinator.
 
-Source/ref/base: `xteink-x4-pro-boot` at
+Original source/ref/base: `xteink-x4-pro-boot` at
 `b91bc323fb736eb6a13ea1a9403470cf699c6128`, [PR #350](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/350).
 Repair branch: `perf/txt-paragraph-boundaries`.
+The same PR is refreshed after PR #433 actually merged into PR #350 as
+`cbf44781cb36c12a716f32fcfbdb31ce95b40342` on October 6, 2026 at 03:51 UTC.
+The refresh preserves both the existing repair history and the new source
+history. Firmware **1.3.149** remains reserved above the integrated 1.3.147.
+The only textual merge conflict was that version line. Production boundary
+reuse merges alongside the newly integrated `Txt::ReadWindow` path unchanged;
+the host page oracle accepts its optional parameter while continuing to use
+independent page reads. The real window/SD/FatFs path and failure/retry behavior
+are covered separately by the integrated `test/txt_index/index_test.py` suite.
+The original provenance and baseline measurements below remain preserved.
 Default master is `21ce3b5b720e106815c8f3a7778bc7003294e0e2`;
 PR #350 remains unmerged. PR #348 is closed-unmerged, with its head included
 in PR #350 rather than master. Firmware **1.3.143 → 1.3.149**, above the
@@ -29,7 +39,9 @@ report. **All existing font measurements remain.** It does not remove the
 report's larger remaining remeasurement cost or change word wrapping. Output,
 font/kerning/ligature behavior, Markdown transformation, page offsets/fences,
 storage calls, validation and existing per-16-wrap yields remain unchanged.
-No unmerged PR #434 metric API or PR #433 storage primitive is copied.
+The original isolated repair copied no then-unmerged PR #434 metric API or
+PR #433 storage primitive. The refresh integrates the actual PR #433 merge
+normally, preserving its complete read-window and other performance changes.
 
 The existing vector is retained only within one parsed line in one page call;
 it is never a persistent text/font/storage cache. Short fitting lines allocate
@@ -108,7 +120,8 @@ Pre-claim dedup checked 434 all-state PRs, 384 live branches, 577 distinct heads
 and all 169 PR #332 comments. Both paging variants among the 575 source-bearing
 heads have identical wrapping bodies. PR #433 and its closed source PR #416
 alter separate content-read plumbing and retain the affected boundary loop.
-PR #433/#434 are terminal ready with released active claims, awaiting owner
-integration; neither is modified here. Shared ledger ownership stays unchanged.
+At initial publication, PR #433/#434 were terminal ready with released active
+claims, awaiting owner integration. PR #433 is now incorporated by the refresh
+described above; neither other PR is modified. Shared ledger ownership stays unchanged.
 No master/owner-branch update, merge, auto-merge, release, deployment, flash,
 device or schedule action is included.

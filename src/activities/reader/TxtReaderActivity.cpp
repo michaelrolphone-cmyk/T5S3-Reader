@@ -4,6 +4,10 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+#include <HalReadBudget.h>
+#include <HalWriteBudget.h>
+#endif
 #include <I18n.h>
 #include <Logging.h>
 #include <Markdown.h>
@@ -153,8 +157,8 @@ void TxtReaderActivity::initializeReader() {
   LOG_DBG("TRS", "Viewport: %dx%d, lines per page: %d, markdown=%d", viewportWidth, viewportHeight, linesPerPage,
           markdownMode ? 1 : 0);
   if (markdownMode || !loadPageIndexCache()) {
-    buildPageIndex();
-    if (!markdownMode) {
+    const bool complete = buildPageIndex();
+    if (!markdownMode && complete) {
       savePageIndexCache();
     }
   }
@@ -163,7 +167,7 @@ void TxtReaderActivity::initializeReader() {
   initialized = true;
 }
 
-void TxtReaderActivity::buildPageIndex() {
+bool TxtReaderActivity::buildPageIndex() {
   pageOffsets.clear();
   pageFenceOpen.clear();
   pageOffsets.push_back(0);
@@ -173,11 +177,13 @@ void TxtReaderActivity::buildPageIndex() {
   const size_t fileSize = txt->getFileSize();
   LOG_DBG("TRS", "Building page index for %zu bytes...", fileSize);
   GUI.drawPopup(renderer, tr(STR_INDEXING));
+  Txt::ReadWindow window(*txt);
+  uint32_t lastYield = millis();
   while (offset < fileSize) {
     std::vector<TxtDisplayLine> tempLines;
     size_t nextOffset = offset;
     bool fenceAfter = fenceOpen;
-    if (!loadPageAtOffset(offset, fenceOpen, tempLines, nextOffset, fenceAfter)) {
+    if (!loadPageAtOffset(offset, fenceOpen, tempLines, nextOffset, fenceAfter, &window)) {
       break;
     }
     if (nextOffset <= offset) {
@@ -189,12 +195,20 @@ void TxtReaderActivity::buildPageIndex() {
       pageOffsets.push_back(offset);
       pageFenceOpen.push_back(fenceOpen ? 1 : 0);
     }
-    if ((pageOffsets.size() & 0x07) == 0) {
+    if ((pageOffsets.size() & 0x07) == 0 || static_cast<uint32_t>(millis() - lastYield) >= 20) {
       vTaskDelay(1);
+      lastYield = millis();
     }
   }
+  const bool closed = window.close();
   totalPages = pageOffsets.size();
-  LOG_DBG("TRS", "Built page index: %d pages", totalPages);
+  const bool complete = offset >= fileSize && closed;
+  if (complete) {
+    LOG_DBG("TRS", "Built page index: %d pages", totalPages);
+  } else {
+    LOG_ERR("TRS", "Incomplete page index at %zu/%zu bytes; cache not saved", offset, fileSize);
+  }
+  return complete;
 }
 
 void TxtReaderActivity::render(RenderLock&&) {
@@ -330,31 +344,38 @@ bool TxtReaderActivity::loadPageIndexCache() {
     LOG_DBG("TRS", "No page index cache found");
     return false;
   }
+  // Operation-local scheduling only: retain scalar I/O, cache bytes and return handling.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalReadBudget readBudget([]() -> uint32_t { return millis(); }, []() { vTaskDelay(1); });
+  const auto readPod = [&](auto& value) { serialization::readPod(f, value, readBudget); };
+#else
+  const auto readPod = [&](auto& value) { serialization::readPod(f, value); };
+#endif
   uint32_t magic;
-  serialization::readPod(f, magic);
+  readPod(magic);
   if (magic != CACHE_MAGIC) return false;
   uint8_t version;
-  serialization::readPod(f, version);
+  readPod(version);
   if (version != CACHE_VERSION) return false;
   uint32_t fileSize;
-  serialization::readPod(f, fileSize);
+  readPod(fileSize);
   if (fileSize != txt->getFileSize()) return false;
   int32_t cachedWidth;
-  serialization::readPod(f, cachedWidth);
+  readPod(cachedWidth);
   if (cachedWidth != viewportWidth) return false;
   int32_t cachedLines;
-  serialization::readPod(f, cachedLines);
+  readPod(cachedLines);
   if (cachedLines != linesPerPage) return false;
   int32_t fontId;
-  serialization::readPod(f, fontId);
+  readPod(fontId);
   if (fontId != cachedFontId) return false;
   int32_t margin;
-  serialization::readPod(f, margin);
+  readPod(margin);
   if (margin != cachedScreenMargin) return false;
   uint8_t alignment;
-  serialization::readPod(f, alignment);
+  readPod(alignment);
   uint32_t numPages;
-  serialization::readPod(f, numPages);
+  readPod(numPages);
   const size_t cacheHeaderSize = sizeof(uint32_t) + sizeof(uint8_t) + sizeof(uint32_t) + sizeof(int32_t) +
                                  sizeof(int32_t) + sizeof(int32_t) + sizeof(int32_t) + sizeof(uint8_t) +
                                  sizeof(uint32_t);
@@ -365,7 +386,7 @@ bool TxtReaderActivity::loadPageIndexCache() {
   pageOffsets.reserve(numPages);
   for (uint32_t i = 0; i < numPages; i++) {
     uint32_t offset;
-    serialization::readPod(f, offset);
+    readPod(offset);
     pageOffsets.push_back(offset);
   }
   totalPages = pageOffsets.size();
@@ -380,17 +401,24 @@ void TxtReaderActivity::savePageIndexCache() const {
     LOG_ERR("TRS", "Failed to save page index cache");
     return;
   }
-  serialization::writePod(f, CACHE_MAGIC);
-  serialization::writePod(f, CACHE_VERSION);
-  serialization::writePod(f, static_cast<uint32_t>(txt->getFileSize()));
-  serialization::writePod(f, static_cast<int32_t>(viewportWidth));
-  serialization::writePod(f, static_cast<int32_t>(linesPerPage));
-  serialization::writePod(f, static_cast<int32_t>(cachedFontId));
-  serialization::writePod(f, static_cast<int32_t>(cachedScreenMargin));
-  serialization::writePod(f, cachedParagraphAlignment);
-  serialization::writePod(f, static_cast<uint32_t>(pageOffsets.size()));
+  // Operation-local scheduling only: retain scalar I/O, cache bytes and return handling.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalWriteBudget writeBudget([]() -> uint32_t { return millis(); }, []() { vTaskDelay(1); });
+  const auto writePod = [&](const auto& value) { serialization::writePod(f, value, writeBudget); };
+#else
+  const auto writePod = [&](const auto& value) { serialization::writePod(f, value); };
+#endif
+  writePod(CACHE_MAGIC);
+  writePod(CACHE_VERSION);
+  writePod(static_cast<uint32_t>(txt->getFileSize()));
+  writePod(static_cast<int32_t>(viewportWidth));
+  writePod(static_cast<int32_t>(linesPerPage));
+  writePod(static_cast<int32_t>(cachedFontId));
+  writePod(static_cast<int32_t>(cachedScreenMargin));
+  writePod(cachedParagraphAlignment);
+  writePod(static_cast<uint32_t>(pageOffsets.size()));
   for (size_t offset : pageOffsets) {
-    serialization::writePod(f, static_cast<uint32_t>(offset));
+    writePod(static_cast<uint32_t>(offset));
   }
   LOG_DBG("TRS", "Saved page index cache: %d pages", totalPages);
 }
