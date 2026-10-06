@@ -2223,8 +2223,10 @@ static void ht_marked_tree(int x,int ground,bool paper) {
 }
 /* Tiny scraps/containers embedded in scenery. No flashing markers or distant
  * arrows; nearby interaction reveals the title without exposing the contents. */
+#include "hollow_trail_recorder_draw.inc"
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
+        if(game->level==7 && item==2){ht_recorder_cabinet(game,0);continue;}
         if((game->level==6 && (item==1 || item==2)) || (game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
@@ -2333,3 +2335,4 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_floorboard_study.inc"
 
 #include "hollow_trail_ferry_study.inc"
+#include "hollow_trail_recorder_study.inc"

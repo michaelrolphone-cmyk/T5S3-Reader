@@ -129,7 +129,7 @@ traversal wholesale with autoplay.
 | 34 Service ledges | Existing climb route | Route-aligned buttress occlusion, sheltered wet rock and landing sightline |
 | 35 Reservoir | Existing boat/waterfall benchmark retained | Authored gust/bag/oar recovery only with reviewed boat/contact regressions |
 | 36 Storm galleries | Existing weather/rope/valve narrative | Physical paper comparison and one hard lightning shadow, no blanket strobe |
-| 37 Recorder/distributor | Published: actual cold-start priming earns palm-to-return warming and westward condensation clearing; running solution unchanged | Dry-cabinet manual inspection and tiny mast exit vista remain |
+| 37 Recorder/distributor | Published: actual cold-start priming earns palm-to-return warming and westward condensation clearing; running solution unchanged. Local 1.1.50 [dry recorder cabinet and manual](HOLLOW_TRAIL_RECORDER_MANUAL_1_1_50.md) adds rubber seal, handled dry pages, jointed-arm/selector diagrams, shared-shutter tracing with the damaged knife and anonymous thumbprint | Tiny mast exit vista remains separate |
 | 38 Shelter/ascent | Existing snow/rock/tree gradient | Shelter/ice basin and route-specific vegetation reduction |
 | 39 Scarf panorama | Existing scarf and mountain route | Interconnected backward country, then continuous sleet visibility contraction |
 | 40 False signal | Published: actual return isolation stops real lamps, reachable catch/knife/lid, silver gap and two dark held intervals; chime solution retained | Continuous worsening sleet and backward ridge panorama remain separate |
