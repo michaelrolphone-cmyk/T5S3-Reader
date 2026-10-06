@@ -14,7 +14,8 @@ typedef struct {bool active,paused;uint8_t stage;uint16_t tick;int8_t direction;
 static ht_ferry_state ht_ferry;
 static bool ht_ferry_begin(void) {
  if(!ht_ferry_near(&ht))return false;
- ht_ferry=(ht_ferry_state){.active=true,.stage=ht.traversal.boat_x<ht_mech(&ht)->boat_right*256?2:0};
+ ht_ferry=(ht_ferry_state){true,false,0,0,0};
+ ht_ferry.stage=(uint8_t)(ht.traversal.boat_x<ht_mech(&ht)->boat_right*256?2:0);
  ht.traversal.ferry_line_taken=true;
  ht.vx=ht.vy=0;ht.facing=1;ht.coyote=ht.jump_buffer=0;return true;
 }
