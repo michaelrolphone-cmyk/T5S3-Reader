@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - master
+      # Temporary software-only navigation validation; remove after this run.
+      - perf/navigation-admission-cursors
     paths:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
