@@ -6,6 +6,7 @@
 #include "hollow_trail_distribution_draw.inc"
 #include "hollow_trail_station_draw.inc"
 #include "hollow_trail_carriage_draw.inc"
+#include "hollow_trail_signal_cabin_draw.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"

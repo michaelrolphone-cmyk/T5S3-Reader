@@ -152,7 +152,7 @@ static const unsigned golden[][2]={
 {3644739766,32595887},
 {1846896691u,846753261u},
 {3241840614,1097779836},
-{128270345,3663626548},
+{1894069161u,2141184015u}, /* Corrected-map cabin at the existing rail evidence. */
 {2033607303,4272025260},
 {737287855,150225469},
 {2871873071,1039595674}, /* Reviewed waiting awning on the actual marsh bank. */

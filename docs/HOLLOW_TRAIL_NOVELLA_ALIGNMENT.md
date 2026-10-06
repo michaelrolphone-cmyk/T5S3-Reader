@@ -110,7 +110,7 @@ traversal wholesale with autoplay.
 | 15 Distribution | [Physical paired lists](HOLLOW_TRAIL_DISTRIBUTION_LISTS_1_1_49.md): tied can row, nested lists, empty/marked eighth line and reversible comparison; existing vessel puzzle retained | Gust/caught blank sheet, notebook gesture and feed-driven steady lamp line remain |
 | 16 Carriage/rail dawn | Existing train/yard art | Wheel-less sleeping carriage and coherent dawn reveal |
 | 17 HOME ticket | [Station inspection](HOLLOW_TRAIL_STATION_TICKET_1_1_49.md): relocated HOME ticket, reversible crease, cancellation book, warning and same-world blocked cutting | Relative warning → cancellation → collapse order is preserved; no calendar dates invented |
-| 18 Trestle/cabin | Existing crossing/route puzzle | Under-track bracing route, wool contact and five-legged dog at lever |
+| 18 Trestle/cabin | Existing crossing/route puzzle; corrected-map tilt and five-legged paper-dog interaction implemented in local source `df9b3eead`, publication/checks tracked in PR414 | Under-track bracing route and wool contact remain; no new route implied by the cabin insert |
 | 19 Shunting/marsh | Existing three-wagon puzzle | Distinct heavy bodies and continuous ballast-to-reed terrain transition |
 | 20 Ferry | Existing approved boat/grotto retained | Far-bank canvas/person ambiguity and pulling boat to shore; preserve hull quality |
 | 21 Marsh path | Partial wet terrain/depth | Raised bank with transparent/mirrored water and quarry sightline |

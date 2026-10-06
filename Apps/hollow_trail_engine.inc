@@ -133,6 +133,8 @@ typedef struct {
     bool isolator_view_active;
     uint8_t isolator_view_stage;
     uint16_t isolator_view_tick;
+    uint8_t cabin_view_stage;
+    uint16_t cabin_view_tick;
     bool carriage_view_active,carriage_view_boots;
     bool partition_view_active;
     uint16_t partition_view_tick;
@@ -2188,7 +2190,7 @@ static void ht_marked_tree(int x,int ground,bool paper) {
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
-        if((game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && item==0) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5 && item==0))continue; /* Drawn on their actual scene furniture. */
+        if((game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5 && item==0))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         int extent=game->level==0 && item==0?34:12;
@@ -2277,3 +2279,4 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 
 #include "hollow_trail_first_house_study.inc"
 #include "hollow_trail_carriage_study.inc"
+#include "hollow_trail_signal_cabin_study.inc"
