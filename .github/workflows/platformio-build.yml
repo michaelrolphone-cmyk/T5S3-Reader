@@ -286,7 +286,8 @@ jobs:
           bash test/run_wifi_credential_store_fault_test.sh
 
       - name: Run native app launcher tests
-        timeout-minutes: 10
+        # The expanded sanitizer suite reached its final passing line at the old 10-minute limit.
+        timeout-minutes: 15
         run: bash test/run_native_app_test.sh
 
       - name: Verify display abstraction contract
