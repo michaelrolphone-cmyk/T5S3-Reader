@@ -161,7 +161,7 @@ static const unsigned golden[][2]={
 {3095071177,861699871},
 {3355158656u,3446346229u}, /* First living bed on the existing glasshouse arrival support. */
 {719806906,1462119617},
-{1326196981,2258384156},
+{2317935994u,3755071145u}, /* Reviewed page-19 count wire, clear pane, slates and empty pot; other 29 pairs unchanged. */
 {1143499482,207677384},
 {3747272453,2052152225},
 {512589384,2061789897},
