@@ -29,6 +29,15 @@ static void walk_route_tick(void) {
         if(!t->mode && ht.grounded && ht.x>=1490*256){walk_phase=3;walk_task=0;}
         return;
     }
+    if(ht.level==4 && !t->ferry_retrieved){
+        if(ht_ferry.active){
+            if(ht_ferry.stage==0 || ht_ferry.stage==2)assert(ht_ferry_action(&ht_ferry));
+            ht_ferry.direction=-1;(void)ht_ferry_step(&ht_ferry);
+            if(ht_ferry.stage==4)ht_ferry.active=false;
+        }else if(ht_ferry_near(&ht))assert(ht_ferry_begin());
+        else ht_step_controls(1,0,false,false);
+        return;
+    }
     /* The mill register has to be physically brought into the window beam.
      * This witness uses the same A grip and horizontal input as a player. */
     if(ht.level==0 && walk_phase==3 && !ht_evidence_found(&ht,1) && !ht_mill_register_lit(&ht)) {

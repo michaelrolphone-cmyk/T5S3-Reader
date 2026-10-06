@@ -287,6 +287,7 @@ static void ht_draw_traversal(const ht_game *g) {
             ht_rect(ht_scene,at,y+13+rip/3,4+i,1,45);
         }
     }
+    ht_ferry_boat_draw(g);
     if(m->rope_length) {
         int rest_x=m->rope_anchor_x-cx,rest_y=m->rope_anchor_y-cy;
         int ax=g->traversal.rope_px[0]/256-cx,ay=g->traversal.rope_py[0]/256-cy;

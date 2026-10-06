@@ -178,7 +178,8 @@ int main(void){
  cab_step_plant_tests(mem,bits);
  for(unsigned ready=0;ready<=HT_OPT_SIMD_ALL;++ready)
   for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
-   ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
+   ht_bind(mem);ht.level=level;ht_spawn(true);ht.traversal.boat_x=ht_mech(&ht)->boat_left*256; /* Frozen pre-retrieval renderer fixture. */
+   ht.camera=view*733*256;ht.x=(view*733+190)*256;
    ht.vista=view?256:0;ht.sway_phase=view?128+view*317:0;ht.rotation_phase=(128+view*219)<<8;ht.camera_mood=256;
    ht_simd_stage_ready=ready;ht_simd_ready=ready!=0;
    ht_render_scene();ht_pack_mono(bits,HT_W/4);

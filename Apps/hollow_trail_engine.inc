@@ -109,6 +109,7 @@ typedef struct {
     int16_t trestle_print_left,trestle_print_right;
     bool trestle_tested;
     bool rope_awake;
+    bool ferry_retrieved,ferry_line_taken;
 } ht_traversal;
 #include "hollow_trail_story.inc"
 #include "hollow_trail_puzzles.inc"
@@ -572,6 +573,9 @@ static void ht_spawn(bool restart) {
     if(!restart && ht.door_stage)return; /* No death/respawn can erase the held ending. */
     int16_t scrape_left=ht.traversal.mill_scrape_left,scrape_right=ht.traversal.mill_scrape_right;
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
+    bool ferry_retrieved=!restart && ht.traversal.ferry_retrieved;
+    bool ferry_line_taken=!restart && ht.traversal.ferry_line_taken;
+    int ferry_x=ht.traversal.boat_x;
     uint8_t window_open=restart?0:ht.traversal.window_open;
     bool window_print=!restart && ht.traversal.window_print;
     uint8_t scene_evidence=restart?0:ht.scene_evidence;
@@ -608,6 +612,12 @@ static void ht_spawn(bool restart) {
         ht.traversal.mill_scrape_right=(int16_t)(!restart && scrape_right?scrape_right:HT_MILL_DESK_START+9);
     }
     ht.traversal.boat_x=m->boat_left*256;
+    if(level==4){
+        ht.traversal.ferry_retrieved=ferry_retrieved || cp>0;
+        ht.traversal.ferry_line_taken=ferry_line_taken;
+        ht.traversal.boat_x=cp?m->boat_right*256:ferry_retrieved?m->boat_left*256:restart?m->boat_right*256:
+            ht_clamp(ferry_x,m->boat_left*256,m->boat_right*256);
+    }
     ht.traversal.rope_grip=m->rope_length*256;
     for(int i=0;i<HT_ROPE_NODES;++i) {
         ht.traversal.rope_px[i]=ht.traversal.rope_ox[i]=m->rope_anchor_x*256;
@@ -2283,6 +2293,7 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 }
 
 #include "hollow_trail_atmosphere_draw.inc"
+#include "hollow_trail_ferry_draw.inc"
 #include "hollow_trail_traversal_draw.inc"
 
 #include "hollow_trail_stove_study.inc"
@@ -2320,3 +2331,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 
 #include "hollow_trail_cage_study.inc"
 #include "hollow_trail_floorboard_study.inc"
+
+#include "hollow_trail_ferry_study.inc"
