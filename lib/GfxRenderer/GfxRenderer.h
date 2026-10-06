@@ -185,6 +185,12 @@ class GfxRenderer {
                             EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
 
   int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style) const;
+  // Optional operation-local fitting for keyboard lines. Evaluates every prefix,
+  // including nonmonotonic kerning/ligatures, without retaining font/text state.
+  // False leaves prefixBytes unchanged: keep the ordinary measurement path for
+  // non-ASCII/oversized input, SD/lazy fonts, timeout, or no nonempty fitting prefix.
+  bool getTextFittingPrefix(int fontId, const char* text, size_t length, int maxWidth,
+                            size_t& prefixBytes, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;
   std::string truncatedText(int fontId, const char* text, int maxWidth,
