@@ -182,6 +182,10 @@ jobs:
       - name: Verify actual runtime sidecar parser and owned app admission
         run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
 
+      - name: Verify font catalog scheduler and failure parity on both SD providers
+        if: matrix.board_id == 'xteink-x4-pro'
+        run: python3 test/native_apps/font_catalog_cooperation_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitizers address,undefined
+
       - name: Verify OPDS reload failure and recovery with actual ArduinoJson
         run: python3 test/opds_reload/reload_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitize
 
@@ -353,7 +357,8 @@ jobs:
           bash test/run_wifi_credential_store_fault_test.sh
 
       - name: Run native app launcher tests
-        timeout-minutes: 10
+        # Keep a bounded budget for the combined performance and application suites.
+        timeout-minutes: 20
         run: bash test/run_native_app_test.sh
 
       - name: Verify display abstraction contract
