@@ -7,6 +7,8 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "FontCacheManager.h"
 #include "../../src/native/NativeTouchInput.h"
@@ -1109,6 +1111,73 @@ void GfxRenderer::requestNextPageTurnEffect(const bool isForwardTurn) const {
                                                  : DisplayEffect::PageTurnBackwardStandard);
 }
 
+bool GfxRenderer::getTruncationPrefix(const int fontId, const std::string& text, const int maxWidth,
+                                      size_t& prefixBytes, const EpdFontFamily::Style style) const {
+  // Optional RAM-only path. Keep the existing algorithm for unsupported inputs;
+  // do not speculate through lazy glyph callbacks or change SD-font behavior.
+  constexpr size_t kMaxBytes = 8192;
+  constexpr uint32_t kBudgetMs = 1000;
+  if (text.empty() || text.size() > kMaxBytes || maxWidth <= 0 || isSdCardFont(fontId)) return false;
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return false;
+  const EpdFontData* data = fontIt->second.getData(style);
+  if (!data || data->glyphMissHandler) return false;
+  const EpdFont font(data);
+  const EpdGlyph* ellipsis = font.getGlyph(0x2026);
+
+  // This is the horizontal state of EpdFont::getTextBounds with no combining
+  // marks/ligatures. Preserve differential rounding, missing-glyph resets and
+  // signed bearings/kerning. Widths need not be monotonic: evaluate EVERY prefix.
+  int x = 0, minX = 0, maxX = 0;
+  int32_t advance = 0;
+  uint32_t previous = 0, previousInput = 0;
+  size_t longest = 0, checkpointBytes = 0;
+  const uint32_t started = millis();
+  uint32_t checkpointAt = started;
+  const auto* begin = reinterpret_cast<const uint8_t*>(text.c_str());
+  const auto* cursor = begin;
+  const auto* end = begin + text.size();
+  while (cursor < end) {
+    const uint32_t cp = utf8NextCodepoint(&cursor);
+    if (!cp || cp == REPLACEMENT_GLYPH || cursor > end || utf8IsCombiningMark(cp)) return false;
+    // A font may contain ligatures that this text never uses. Refuse only
+    // actual input/suffix pairs; no prior pair has ligated on the accepted path.
+    if ((previousInput && font.getLigature(previousInput, cp)) || font.getLigature(cp, 0x2026)) return false;
+    previousInput = cp;
+    const EpdGlyph* glyph = font.getGlyph(cp);
+    if (!glyph) {
+      x += fp4::toPixel(advance);
+      advance = 0;
+      previous = 0;
+    } else {
+      if (previous) x += fp4::toPixel(advance + font.getKerning(previous, cp));
+      minX = std::min(minX, x + glyph->left);
+      maxX = std::max(maxX, x + glyph->left + glyph->width);
+      advance = glyph->advanceX;
+      previous = cp;
+    }
+    int candidateMin = minX, candidateMax = maxX;
+    if (ellipsis) {
+      const int suffixX = x + (previous ? fp4::toPixel(advance + font.getKerning(previous, 0x2026)) : 0);
+      candidateMin = std::min(candidateMin, suffixX + ellipsis->left);
+      candidateMax = std::max(candidateMax, suffixX + ellipsis->left + ellipsis->width);
+    }
+    const size_t consumed = static_cast<size_t>(cursor - begin);
+    if (candidateMax - candidateMin < maxWidth) longest = consumed;
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= kBudgetMs) return false;
+    if (consumed - checkpointBytes >= 256 || static_cast<uint32_t>(now - checkpointAt) >= 8) {
+      vTaskDelay(1);
+      checkpointAt = millis();
+      checkpointBytes = consumed;
+    }
+  }
+  if (static_cast<uint32_t>(millis() - started) >= kBudgetMs) return false;
+  // Publish only a complete result. Zero retains the legacy ellipsis-only case.
+  prefixBytes = longest;
+  return true;
+}
+
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
                                        const EpdFontFamily::Style style) const {
   if (!text || maxWidth <= 0) return "";
@@ -1120,6 +1189,12 @@ std::string GfxRenderer::truncatedText(const int fontId, const char* text, const
   if (textWidth <= maxWidth) {
     // Text fits, return as is
     return item;
+  }
+
+  size_t prefixBytes = 0;
+  if (getTruncationPrefix(fontId, item, maxWidth, prefixBytes, style)) {
+    item.resize(prefixBytes);
+    return item + ellipsis;
   }
 
   while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style) >= maxWidth) {

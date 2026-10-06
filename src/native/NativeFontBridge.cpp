@@ -3,6 +3,9 @@
 
 #include <ArduinoJson.h>
 #include <HalStorage.h>
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+#include <HalReadBudget.h>
+#endif
 #include <Logging.h>
 #include <esp_rom_crc.h>
 #include <freertos/FreeRTOS.h>
@@ -88,6 +91,22 @@ bool computeCrc32(const char* path, uint32_t& out) {
   return true;
 }
 
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+// ArduinoJson's generic reader consumes one byte at a time. Keep those exact
+// request/error/tail boundaries; only amortize the volume HAL's scheduler waits.
+class CatalogReader {
+ public:
+  explicit CatalogReader(FsFile& file) : file_(file), budget_([]() { return static_cast<uint32_t>(millis()); }, []() { vTaskDelay(1); }) {}
+  int read() {
+    uint8_t byte;
+    return file_.readCooperatively(&byte, 1, budget_) == 1 ? byte : -1;
+  }
+ private:
+  FsFile& file_;
+  HalReadBudget budget_;
+};
+#endif
+
 t5_font_result_t refreshCatalog() {
   if (!active()) return T5_FONT_UNAVAILABLE;
   static constexpr const char* tempPath = "/fonts_manifest.tmp";
@@ -96,7 +115,12 @@ t5_font_result_t refreshCatalog() {
   FsFile file;
   if (!Storage.openFileForRead("FONT", tempPath, file)) { Storage.remove(tempPath); return T5_FONT_STORAGE_ERROR; }
   JsonDocument doc;
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  CatalogReader reader(file);
+  const auto err = deserializeJson(doc, reader);
+#else
   const auto err = deserializeJson(doc, file);
+#endif
   file.close();
   Storage.remove(tempPath);
   if (err || (doc["version"] | 0) != FONTS_MANIFEST_VERSION) return T5_FONT_MANIFEST_ERROR;

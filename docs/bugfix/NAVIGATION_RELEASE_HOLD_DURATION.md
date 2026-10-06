@@ -1,5 +1,17 @@
 # Navigation release-frame hold duration
 
+## Current performance integration refresh (2026-10-06)
+
+PR350 advanced independently to cbf44781 by merging performance PR433.
+This branch retains its prior green head and includes cbf44781 as the new
+integration parent, preserving all twelve consolidated performance repairs.
+Firmware 1.3.153 remains above the new base 1.3.147; no separate package
+version or payload is changed by conflict resolution. The native runner retains
+both the long-release regression and all newly integrated performance tests.
+Final software checks and exact-head target CI are recorded on the PR.
+No write to PR350/master, release or device operation is performed. Earlier
+sections below preserve the original repair and refresh evidence.
+
 Firmware 1.3.137, based on X4 integration commit 36891e71. No driver/package ABI or payload changes.
 
 ## Current X4-base refresh (2026-10-06)

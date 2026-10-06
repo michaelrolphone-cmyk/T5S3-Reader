@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+python3 "$(dirname "${BASH_SOURCE[0]}")/txt_index/index_test.py" --sanitize
 python3 "$(dirname "${BASH_SOURCE[0]}")/epub_guide/guide_test.py"
 python3 "$(dirname "${BASH_SOURCE[0]}")/epub_container/container_test.py"
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,6 +21,10 @@ CXXFLAGS="${CXXFLAGS:-} -fsanitize=address,undefined -fno-omit-frame-pointer" \
 EPUB_SANITIZE=1 python3 "$repo_dir/test/epub_toc_index/index_test.py"
 python3 "$repo_dir/test/epub_paths/normalise_test.py"
 python3 "$repo_dir/test/epub_image_cache/image_cache_test.py" --sanitize
+python3 "$repo_dir/test/epub_image_cache_reads/image_cache_reads_test.py" --sanitize
+python3 "$repo_dir/test/font_style_prewarm/prewarm_test.py" --sanitize --enforce-cost
+python3 "$repo_dir/test/text_page_reads/text_page_reads_test.py" --sanitize
+python3 "$repo_dir/test/text_page_reads/text_page_reads_test.py" --legacy
 python3 "$repo_dir/test/epub_css/selected_stats_test.py"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT

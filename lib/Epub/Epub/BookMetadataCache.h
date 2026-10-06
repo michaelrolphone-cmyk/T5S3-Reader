@@ -6,6 +6,9 @@
 #include <deque>
 #include <string>
 
+class HalReadBudget;
+class HalWriteBudget;
+
 class BookMetadataCache {
  public:
   struct BookMetadata {
@@ -84,10 +87,10 @@ class BookMetadataCache {
     return hash;
   }
 
-  uint32_t writeSpineEntry(FsFile& file, const SpineEntry& entry) const;
-  uint32_t writeTocEntry(FsFile& file, const TocEntry& entry) const;
-  SpineEntry readSpineEntry(FsFile& file) const;
-  TocEntry readTocEntry(FsFile& file) const;
+  uint32_t writeSpineEntry(FsFile& file, const SpineEntry& entry, HalWriteBudget* budget = nullptr) const;
+  uint32_t writeTocEntry(FsFile& file, const TocEntry& entry, HalWriteBudget* budget = nullptr) const;
+  SpineEntry readSpineEntry(FsFile& file, HalReadBudget* budget = nullptr) const;
+  TocEntry readTocEntry(FsFile& file, HalReadBudget* budget = nullptr) const;
 
  public:
   BookMetadata coreMetadata;

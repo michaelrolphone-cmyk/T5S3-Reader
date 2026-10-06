@@ -187,6 +187,10 @@ class GfxRenderer {
   int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;
+  // Exact bounded RAM-font prefix for the existing strict-fit ellipsis policy.
+  // False leaves prefixBytes untouched; caller retains its ordinary fallback.
+  bool getTruncationPrefix(int fontId, const std::string& text, int maxWidth, size_t& prefixBytes,
+                           EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   std::string truncatedText(int fontId, const char* text, int maxWidth,
                             EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   /// Word-wrap \p text into at most \p maxLines lines, each no wider than
