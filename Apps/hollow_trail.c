@@ -136,6 +136,15 @@ static void ht_advance(uint32_t now) {
         }
         ht_motion_emphasis=false;jump_down=pause_down=false;return;
     }
+    if(ht_drawing.active){
+        uint32_t elapsed=now-simulation_clock;simulation_clock=now;
+        if(ht_drawing.paused || ht_pad_fault || ht_input_rearm){simulation_accumulator=0;return;}
+        simulation_accumulator+=elapsed>128u?128u:elapsed;
+        for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps){
+            simulation_accumulator-=HT_STEP_MS;if(ht_drawing_step(&ht_drawing))++scene_revision;
+        }
+        ht_motion_emphasis=false;jump_down=pause_down=false;return;
+    }
     if(ht_counts.active){
         uint32_t elapsed=now-simulation_clock;simulation_clock=now;
         if(ht_counts.paused || ht_pad_fault || ht_input_rearm){simulation_accumulator=0;return;}
@@ -432,6 +441,18 @@ static void ht_input_update(uint32_t wait) {
         if(!ht_hoist.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
         previous=buttons;held=0;last_poll=now;return;
     }
+    if(ht_drawing.active && !reading){
+        if(down&HT_PAUSE)ht_drawing.paused=!ht_drawing.paused;
+        ht_drawing.direction=ht_drawing.paused?0:(int8_t)(((buttons&HT_RIGHT)!=0)-((buttons&HT_LEFT)!=0));
+        if(down&(HT_BACK|HT_EXIT)){ht_drawing.active=false;ht_input_rearm=true;}
+        else if((down&HT_JOURNAL) || ((down&HT_ACCEPT) && !ht_drawing.paused && ht_drawing.stage==8)){
+            ht_journal_open(20);reading=true;ht_drawing.direction=0;ht_input_rearm=true;
+        }else if(down&HT_ACCEPT)(void)ht_drawing_action(&ht_drawing);
+        if(down)++scene_revision;
+        jump_down=pause_down=false;
+        if(!ht_drawing.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
+        previous=buttons;held=0;last_poll=now;return;
+    }
     if(ht_counts.active && !reading){
         if(down&HT_PAUSE)ht_counts.paused=!ht_counts.paused;
         ht_counts.move_x=ht_counts.paused?0:(int8_t)(((buttons&HT_RIGHT)!=0)-((buttons&HT_LEFT)!=0));
@@ -680,6 +701,10 @@ static void ht_input_update(uint32_t wait) {
             ht_pouch_begin();ht_input_rearm=true;
             jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
         }
+        else if(page==20 && ht_drawing_near(&ht)){
+            ht_drawing_begin();ht_input_rearm=true;
+            jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
+        }
         else if(page==19 && ht_counts_near(&ht)){
             ht_counts_begin();ht_input_rearm=true;
             jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;
@@ -819,6 +844,7 @@ __attribute__((visibility("default"))) void app_main(void) {
     ht_cabin=(ht_cabin_state){0};
     ht_carriage=(ht_carriage_state){0};
     ht_bed=(ht_bed_state){0};
+    ht_drawing=(ht_drawing_state){0};
     ht_counts=(ht_counts_state){0};
     ht_partition=(ht_partition_state){0};
     ht_warming=(ht_warming_state){0};
@@ -918,14 +944,14 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
 
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_hoist.active && !ht_first_house.active && !ht_isolator.active && !ht_counts.active && !ht_bed.active && !ht_cabin.active && !ht_carriage.active && !ht_partition.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
+        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_hoist.active && !ht_first_house.active && !ht_isolator.active && !ht_drawing.active && !ht_counts.active && !ht_bed.active && !ht_cabin.active && !ht_carriage.active && !ht_partition.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
             memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
         }
-        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_hoist.active || ht_first_house.active || ht_isolator.active || ht_counts.active || ht_bed.active || ht_cabin.active || ht_carriage.active || ht_partition.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
+        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_hoist.active || ht_first_house.active || ht_isolator.active || ht_drawing.active || ht_counts.active || ht_bed.active || ht_cabin.active || ht_carriage.active || ht_partition.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -941,6 +967,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const ht_first_house_state rendering_first_house=ht_first_house;
             const ht_isolator_state rendering_isolator=ht_isolator;
             const ht_bed_state rendering_bed=ht_bed;
+            const ht_drawing_state rendering_drawing=ht_drawing;
             const ht_counts_state rendering_counts=ht_counts;
             const ht_cabin_state rendering_cabin=ht_cabin;
             const ht_carriage_state rendering_carriage=ht_carriage;
@@ -955,7 +982,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const unsigned rendering_signal_focus=ht_signal_room_focus,rendering_signal_ticks=ht_signal_room_ticks;
             prepared_reader=rendering_reading;
             prepared_door=rendering_game.door_stage!=HT_DOOR_NONE;
-            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_hoist.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_counts.active && !rendering_bed.active && !rendering_cabin.active && !rendering_carriage.active && !rendering_partition.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
+            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_hoist.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_drawing.active && !rendering_counts.active && !rendering_bed.active && !rendering_cabin.active && !rendering_carriage.active && !rendering_partition.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
             if(rendering_reading) ht_journal_render();
             else if(rendering_hoist.active){
                 ht_hoist_render(&rendering_hoist);
@@ -976,6 +1003,10 @@ __attribute__((visibility("default"))) void app_main(void) {
             else if(rendering_cabin.active){
                 ht_cabin_study_render(&rendering_game,&rendering_cabin);
                 ht_narration_key=2166136261u;ht_narration_hash(ht_cabin_label(&rendering_cabin));
+            }
+            else if(rendering_drawing.active){
+                ht_drawing_study_render(&rendering_game,&rendering_drawing);
+                ht_narration_key=2166136261u;ht_narration_hash(ht_drawing_label(&rendering_drawing));
             }
             else if(rendering_counts.active){
                 ht_counts_study_render(&rendering_game,&rendering_counts);

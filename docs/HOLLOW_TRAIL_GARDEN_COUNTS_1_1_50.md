@@ -24,15 +24,20 @@ full 960×540 grayscale and production packed monochrome. Before source is
 1.1.50 builds. Captions identify those actual builds; source hashes, real route
 input and byte-exact frame preservation are recorded in the comparison metadata.
 The final strict-C++ initializer correction explicitly zeroes fields that C
-already zeroed; it does not change the scene design or state-machine values.
+already zeroed. All 18 raw gray/mono frames were recaptured from final source
+`55b3b4c0` and are byte-identical to the retained `e0d217bf8` captures; source
+labels have not been rewritten. The final ELF bytes differ and were rebuilt
+and validated independently: 401,200 bytes, SHA-256
+`37c7453d3735a45b0648d3ec34add47a90615b26a63644576338ba040fbf9410`.
 
 ## Validation
 
 Focused ASan/UBSan controls, route/contact and exact-prose tests pass. The reviewed
 new world furniture changes only level 6/view 2 in the production-renderer
 references; the other 29 gray/mono pairs remain identical to the living-bed
-checkpoint. The corrected production renderer passes. A final integrated
-native-app aggregate is in progress and is not claimed complete here.
+checkpoint. The corrected production renderer passes. The final integrated native-app
+aggregate also completed with exit 0, including the complete route, mirror
+solution, all 300 grotto views, controls, ending/read guards and strict C++ math.
 
 The Xtensa S3 app build, structural ELF validation, ordinary package export and
 offline ZIP/version checks pass. The source, sidecar, manifest and catalog retain

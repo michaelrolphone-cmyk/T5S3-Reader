@@ -123,8 +123,8 @@ traversal wholesale with autoplay.
 | 28 Gallery | Published hoist handoff includes gallery walkout toward the glasshouses | Extend narrow wet gallery and continuous fern/glasshouse-rib arrival scenery |
 | 29 Living beds | Post-merge 1.1.50 source `641be8cc4`: tended first bed, strings/channels, broken-pot shoot, can on bricks, kneeling leaf/dust/cleaning/rebound and warm-soil response; [actual comparisons](images/hollow-trail-living-bed/README.md) | Three-row hillside continuity, cupboard/food/drink and evening tray/stem care remain |
 | 30 Sleeping/lock | Published: seven raised pallets, sacking curtain, inside lock and wedge, narrowing door-light and restored leaf shine | Towel/comb privacy gesture and chosen pallet/night rest remain |
-| 31 Garden night/counts | Local 1.1.50: clipped consecutive-morning sheets at the existing page-19 location, physical carry to clear pane, player-controlled two-axis duplicate correction alignment, weak reflected face, exact book prose and return beneath empty pot | Still pallet/night-rest sequence and child/printed drawing comparison remain |
-| 32 Mirror partition | Published: actual upper-vent solution earns leaf/condensation response and onward view; lower-latch solution retained | Physical child-drawing/older-card comparison remains separate |
+| 31 Garden night/counts | Connected 1.1.50: clipped consecutive-morning sheets at the existing page-19 location, physical carry to clear pane, player-controlled two-axis duplicate correction alignment, weak reflected face, exact book prose and return beneath empty pot | Still pallet/night-rest sequence remains; [physical child/printed-card comparison](HOLLOW_TRAIL_DRAWINGS_1_1_50.md) is connected |
+| 32 Mirror partition | Published: actual upper-vent solution earns leaf/condensation response and onward view; lower-latch solution retained | [Physical child-drawing/older-card comparison](HOLLOW_TRAIL_DRAWINGS_1_1_50.md) now includes the imperfect figures, reversible paper movement and the railway dog without identifying its author |
 | 33 Dam reveal | Existing detailed dam/falls retained | One coherent monumental reveal, turbine gauge/shared-feed diagram |
 | 34 Service ledges | Existing climb route | Route-aligned buttress occlusion, sheltered wet rock and landing sightline |
 | 35 Reservoir | Existing boat/waterfall benchmark retained | Authored gust/bag/oar recovery only with reviewed boat/contact regressions |
@@ -173,7 +173,7 @@ Local targeted timeline, input, full-route and Xtensa app results plus aggregate
 and CI status are recorded in the PR. No hardware appearance/FPS claim; no merge,
 release, catalog change or flash. The full novella map remains incomplete.
 
-## Current local increment: duplicate garden counts, 1.1.50
+## Connected increment: duplicate garden counts, 1.1.50
 
 The existing page-19 garden label on level 6 now opens a physical count-sheet
 sequence. The wire, clips, narrow row slates, last clear pane and empty pot share
@@ -195,3 +195,7 @@ the original route and uses normal app input. The before build opens the old
 journal at that same find, while the after build opens the physical scene.
 These are host C grayscale and production packed-monochrome pixels, not panel
 measurements or a release qualification claim.
+
+The subsequent [child drawing and older card](HOLLOW_TRAIL_DRAWINGS_1_1_50.md)
+connects the actual page-20 papers, reversible comparison and careful railway-dog
+placement/withdrawal. Existing mirror and read/ending guards remain intact.
