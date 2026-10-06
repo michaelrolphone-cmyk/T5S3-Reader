@@ -1,5 +1,18 @@
 # X4 / T5S3 installed Reader entry integration
 
+## Current X4-base refresh (2026-10-06)
+
+The existing PR419 branch now includes X4 source b91bc323 and retains original
+entry head 11daeb9d as its first parent. The only textual conflict was the
+firmware reservation: 1.3.133 / upstream 1.3.143 advances to 1.3.150. Original
+entry production files and tests are preserved; the native-app runner also
+retains the upstream EPUB anchor-read regressions. Application/default remains
+1.0.0 with minimum firmware 1.3.90; no package payload changed in this refresh.
+Focused production entry/boot/activity/navigation/lifetime regressions pass.
+Aggregate and exact-head hosted results are recorded on the PR. Hardware is
+unavailable and unrun; it is not a prerequisite for this software integration.
+PR350 and master are not changed. The sections below preserve prior provenance.
+
 ## Source and scope
 
 Integrates existing entry f5eda3ebffc98446fd5360d63a7c64e7f7963b9e with X4
