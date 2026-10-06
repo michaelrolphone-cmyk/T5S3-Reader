@@ -1,0 +1,8 @@
+/tmp/tmply0uoo97/home.cpp: In function ‘int main()’:
+/tmp/tmply0uoo97/home.cpp:379:2: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  379 |  for(size_t i=16;i<64;++i)assert(s.renderer.frames[2][i]==0x42);appFrame(s.renderer.frames[3]);
+      |  ^~~
+/tmp/tmply0uoo97/home.cpp:379:65: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  379 |  for(size_t i=16;i<64;++i)assert(s.renderer.frames[2][i]==0x42);appFrame(s.renderer.frames[3]);
+      |                                                                 ^~~~~~~~
+production Home/modal timing, takeover, refresh exclusion, framebuffer and shutdown behavior PASS

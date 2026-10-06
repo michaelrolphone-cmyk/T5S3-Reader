@@ -1,0 +1,98 @@
+[
+  {
+    "path": "src/native/NativeNavigationInput.cpp",
+    "git_blob": "c8f47a0429efdfc11fce5f52489c6cb4126d21d9",
+    "sha256": "31903d07d3c935e85c2c3211532194f7dc17a7f22cb01e97cf7f8ef8e49616f3",
+    "size": 6316
+  },
+  {
+    "path": "src/native/NativeTouchInput.cpp",
+    "git_blob": "5c938798a8e332c191290e7803120170d8a62d6a",
+    "sha256": "c2704f5e566138d13056d0571fb0e3d11e22a79b82c45ac6f4cd39eb49f70739",
+    "size": 27996
+  },
+  {
+    "path": "src/native/NativeAppHost.cpp",
+    "git_blob": "6d074e4b307020c8b2a03bd0ba6f6eef5f44c9e4",
+    "sha256": "ef0105fa7c1b4371f7e04e48a5c39ec5b3d0b381b1b34e658f607680ec31a3d1",
+    "size": 74063
+  },
+  {
+    "path": "src/MappedInputManager.cpp",
+    "git_blob": "b709269211da0d44f010c05f803ed7752366d656",
+    "sha256": "bc1d33d026adc28627c22d0678d3ba761598de063325a7cee5e061b7a0c9c123",
+    "size": 11212
+  },
+  {
+    "path": "src/main.cpp",
+    "git_blob": "72cee04d39531ca7f8bccec7796dd084bf25961c",
+    "sha256": "e467ec8fab8e9af5c5fe670316cbdde71d92c4182419774bafd234b0ed11e741",
+    "size": 43135
+  },
+  {
+    "path": "Drivers/usb_controller_esp32s3/PendingInterrupt.h",
+    "git_blob": "d0fd0c63bd56a98eb37a87feea5884f12e9a705e",
+    "sha256": "aa53cd36e15fd39ccdb67fd6938e71a870983d701c3eca79ab7f6375a239214b",
+    "size": 4137
+  },
+  {
+    "path": "Drivers/usb_controller_esp32s3/driver.cpp",
+    "git_blob": "aeccbf941aa6e6f70e9b7f7e024c436e5919033d",
+    "sha256": "d3e52f4eff3b8b0f54d9023c1d39197c5ca761870cfd77e3af58b7f646a6ae92",
+    "size": 5412
+  },
+  {
+    "path": "Drivers/usb_hid/driver.c",
+    "git_blob": "f404a73dcea13d4a01d51efa4205e64644fb78d2",
+    "sha256": "b2c9aea4281243c6a91c8f11b9ee9f2ffb3e43337bc671286cefcea26dbf8267",
+    "size": 12286
+  },
+  {
+    "path": "Drivers/usb_hid_keyboard/driver.c",
+    "git_blob": "859071a1b6e34ae5a72eac04b74aa507c80d3eb4",
+    "sha256": "2b91319f239033c3613ba37d4840411480ff5cb6e8496688b5122780bc8a8a87",
+    "size": 10480
+  },
+  {
+    "path": "Drivers/usb_hid_gamepad/driver.c",
+    "git_blob": "0e31b792cf9ff982ef4769afedae4de764333469",
+    "sha256": "d07a775bcf0ab159e6efa9ff0476fe17ec9ce0029e8006a8579c10d01aba9cf7",
+    "size": 22006
+  },
+  {
+    "path": "Drivers/usb_xinput_gamepad/driver.c",
+    "git_blob": "7f68505443ffafe3ac3f2cb6f24e3ca5315b98b3",
+    "sha256": "a9a3f2aff9a9a50d25c3fd875e279f310981c8d3f525ab0cb5cabfbdf0fc4e32",
+    "size": 17444
+  },
+  {
+    "path": "Drivers/usb_ui_navigation/driver.c",
+    "git_blob": "79221497c5d1ec1eae471b4b602124bd8530b04c",
+    "sha256": "eb42e2c39bf04440f40359c639fc076bb54ffb0780efac4f20ed561b44c6ddb8",
+    "size": 10418
+  },
+  {
+    "path": "src/activities/ActivityManager.cpp",
+    "git_blob": "c389a2faea5e0b9d3422d50260b8673db6348086",
+    "sha256": "5903655c0e71dbaecfccafcbb04dc115eea67ab4f05556b459e942bc07989fab",
+    "size": 16489
+  },
+  {
+    "path": "src/native/NativeReaderEntry.cpp",
+    "git_blob": "cf169abff7fc2de46c74c4d529b1bcf0e0737e66",
+    "sha256": "80b361225609493f1566aaf66a72a21183f203fab59cdd202f23976a66c05e04",
+    "size": 3059
+  },
+  {
+    "path": "src/native/ManagedAppAdmission.cpp",
+    "git_blob": "6c91fd8a37a826e949a39a86da26fe9ffaa60a46",
+    "sha256": "8ab3677c6ba4d29c93fa53c08a7bff7fc5e912c1e7eec49b728e665cf6d70a90",
+    "size": 9455
+  },
+  {
+    "path": "lib/NativeApps/src/NativeAppLauncher.c",
+    "git_blob": "fafd3431cd98f53e57eb0d33144ab54ac34bae5d",
+    "sha256": "d84d3708e1d85daab94cfd26a967e636d3c885f57b56a470b2f6e7e823d7bc6f",
+    "size": 13537
+  }
+]

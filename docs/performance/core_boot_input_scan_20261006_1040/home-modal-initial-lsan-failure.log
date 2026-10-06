@@ -1,0 +1,16 @@
+/tmp/tmpojxi11ym/home.cpp: In function ‘int main()’:
+/tmp/tmpojxi11ym/home.cpp:379:2: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+  379 |  for(size_t i=16;i<64;++i)assert(s.renderer.frames[2][i]==0x42);appFrame(s.renderer.frames[3]);
+      |  ^~~
+/tmp/tmpojxi11ym/home.cpp:379:65: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+  379 |  for(size_t i=16;i<64;++i)assert(s.renderer.frames[2][i]==0x42);appFrame(s.renderer.frames[3]);
+      |                                                                 ^~~~~~~~
+==21==LeakSanitizer has encountered a fatal error.
+==21==HINT: For debugging, try setting environment variable LSAN_OPTIONS=verbosity=1:log_threads=1
+==21==HINT: LeakSanitizer does not work under ptrace (strace, gdb, etc)
+Traceback (most recent call last):
+  File "/workspace/scratch/c744abbbbd60/reader-performance-scan-20261006-1040/test/native_apps/global_home_overlay_behavior_test.py", line 165, in <module>
+    subprocess.run([str(binary)],check=True,timeout=30)
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/tmpojxi11ym/home']' returned non-zero exit status 1.

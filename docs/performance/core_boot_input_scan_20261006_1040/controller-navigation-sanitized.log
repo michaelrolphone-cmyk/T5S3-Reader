@@ -1,0 +1,2 @@
+Controller persistent interrupt reads, independent endpoints and safe drain: PASS
+Firmware navigation acquisition, retry, focus, polling and sleep lifetime: PASS
