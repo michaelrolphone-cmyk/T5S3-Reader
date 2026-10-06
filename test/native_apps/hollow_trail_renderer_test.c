@@ -162,7 +162,7 @@ static const unsigned golden[][2]={
 {3195525885u,56340071u}, /* Reviewed shared gallery, pane and three ridge-anchored rows. */
 {1623275131u,2992220726u}, /* Same three rows recede with the existing camera. */
 {2250815207u,1628315133u}, /* Rows leave the horizon; grounded count-row care is retained. */
-{1143499482,207677384},
+{1305748946u,1440843516u}, /* Turbine approach rail and puddle on support zero; other 29 pairs retained. */
 {3747272453,2052152225},
 {3385086579u,435798566u}, /* Far valve furniture on unchanged support four; other 29 pairs retained. */
 {413184930,1205470550},
