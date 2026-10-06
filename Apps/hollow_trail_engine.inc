@@ -2095,25 +2095,18 @@ static void ht_narration(const ht_game *game) {
     }
 }
 
+#include "hollow_trail_cabinet_room_draw.inc"
 #include "hollow_trail_isolator_draw.inc"
 #include "hollow_trail_warming_draw.inc"
 #include "hollow_trail_mechanism_draw.inc"
 static void ht_draw_puzzle(const ht_game *game) {
-    int camera=game->camera/256,top=ht_level_land(game->level)[9].top-game->camera_y/256;
+    int top=ht_level_land(game->level)[9].top-game->camera_y/256;
     ht_draw_mechanisms(game,top);
     ht_isolator_box(game,game->isolator_view_active?ht_isolator_lid(game->isolator_view_stage,game->isolator_view_tick):0,
        game->isolator_view_active && !game->isolator_view_stage?ht_isolator_lift(game->isolator_view_tick):game->puzzle.stage?4:0);
     ht_warming_pipe(game,game->warming_view_active?ht_warming_amount(game->warming_view_tick):game->puzzle.stage?256:0);
-    int x=HT_GOAL-camera;
     if(game->level==HT_LEVELS-1 && game->puzzle.solved) {
-        ht_rect(ht_scene,x-18,top-48,36,48,255);
-        ht_rect(ht_scene,x-15,top-45,30,37,0);
-        ht_rect(ht_scene,x-1,top-45,2,37,255);
-        ht_rect(ht_scene,x-12,top-38,8,19,game->verdict==2?255:140);
-        ht_limb(ht_scene,x+4,top-39,x+11,top-18,1,1,255);
-        if(game->verdict==1) ht_rect(ht_scene,x+2,top-45,13,37,255);
-        ht_disk(ht_scene,x,top-56,4,255);
-        if(game->verdict!=1) ht_disk(ht_scene,x,top-56,2,0);
+        ht_cabinet_case(game,top);
         return;
     }
     ht_draw_chapter_gate(game,top);

@@ -166,6 +166,10 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
   "$repo_dir/test/native_apps/hollow_trail_first_house_test.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/hollow_trail_first_house_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_cabinet_room_test.c" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/native_apps/hollow_trail_register_prose_test.py"
 python3 "$repo_dir/test/native_apps/hollow_trail_capture_source_test.py"
 python3 "$repo_dir/test/native_apps/hollow_trail_watch_memory_prose_test.py"
