@@ -1,0 +1,209 @@
+{
+  "source_commit": "24d5c40f9bba1211f64a14d51937cfcd113c9cce",
+  "version": "1.1.50",
+  "source_files": {
+    "Apps/hollow_trail.c": "3bd05cb8e917eb928f128660db38a1a5585efc03ce0f10799084e53ac974d08c",
+    "Apps/hollow_trail.json": "4b81d29d6e388f0153f365c103985a38a252282c4d8d129b8d24694a636bca4c",
+    "Apps/hollow_trail_atmosphere_draw.inc": "49d86d82d4a8a482efc5e9511725bdea97fd52e892d47a5d43053208f3771c6b",
+    "Apps/hollow_trail_cabinet_room_draw.inc": "f425b0928290a58a9932587ebc460d5eb3ed5b1be3f277ffa452aef194ae702f",
+    "Apps/hollow_trail_carriage_draw.inc": "d795ee8c94daa3dcd9edfa7742409021a2a4c02a7d5a329778d8cda82c62bb86",
+    "Apps/hollow_trail_carriage_study.inc": "d080f2871371e1727a152719ac67a4eabaa7e1ff6ac8ba6170ee08716bf3f7f2",
+    "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+    "Apps/hollow_trail_character_pose.inc": "84d8af7d3976236ab102299532951baf543102ce0a96dea4802e2067b2d9d758",
+    "Apps/hollow_trail_city_draw.inc": "079ea6077921a66fba0b70b584a017a41559ba9e7188909ce1322ef42c111be7",
+    "Apps/hollow_trail_counts_draw.inc": "97a47802234ed8d25e5b0e8eb773060e05b354516546e2087565bf9c8531ff5e",
+    "Apps/hollow_trail_counts_study.inc": "a27b83c8e75d9313fd106dc6e6224c53fbfabe8de41bb1a073bbbe1f079a3c1a",
+    "Apps/hollow_trail_cutscene.inc": "709e0b7c21875ebde49b60e7d719d7242e4523c6dd9aa090c581a852df03ebb6",
+    "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+    "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+    "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+    "Apps/hollow_trail_distribution_draw.inc": "f9cefb3a9f3513b4a7b6815dc7fda37ec0760c1b944b516d5aba8446ff702062",
+    "Apps/hollow_trail_distribution_study.inc": "d792a46b972eaa3eb6ef769ce9604be0a1bc5cc4d8477c178c8cefb7b525f251",
+    "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+    "Apps/hollow_trail_drawing_draw.inc": "1e7f6a5d03bb968dc9f1eee3ea7a17c07aff9f09f671179a3771a28de6ac2491",
+    "Apps/hollow_trail_drawing_study.inc": "c8b1ccd144554c450709f1910903ef5c3fba6d6c9eaa5e5eb0bfb48234adb4dd",
+    "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+    "Apps/hollow_trail_engine.inc": "6fc9cb9bafdc9428cd95da730458176c6184f1905b6a85a5d9a917a69be8d2d8",
+    "Apps/hollow_trail_evidence.inc": "56ec42539fd03f0bfcf6476846b017b47aad767857772d0c5f17d04c83636131",
+    "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+    "Apps/hollow_trail_final_door.inc": "c936355bbd0b9dffa7fdd5a35f8039679b9a73d1a83c4a8fa828252e7536a431",
+    "Apps/hollow_trail_final_door_draw.inc": "b36493ff71302a954ede740956f431a09fa1b7003325fd16666fa97a55e4e528",
+    "Apps/hollow_trail_first_house_draw.inc": "8e2bddc13688d10dd64046b62516c59fa8e8e33fc0d8a00e31055ddbe30c9f37",
+    "Apps/hollow_trail_first_house_study.inc": "58d05dbc39f9afeb1cc9ab0b51a7b46c8e989c69417cc9de932a5b8b20fed560",
+    "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+    "Apps/hollow_trail_forest_draw.inc": "33f473c80162339b24d9b977594963888e13e2123160718e42771e4b4b869760",
+    "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+    "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+    "Apps/hollow_trail_garden_night.inc": "0ed1dc10967aee4eed936e2c6faa0c7fa975d5063ecac829772a95eeac8f7c24",
+    "Apps/hollow_trail_geography_draw.inc": "97f69eb7460fc132eae459a6b0fcb7eef93faa157fa10b0d9058c2ebe04f0359",
+    "Apps/hollow_trail_hoist_scene.inc": "5e51b0d53335b9a211099890907ea9017f96eaf0b5a3ad289c1d249b00e89ae7",
+    "Apps/hollow_trail_isolator_draw.inc": "ac54e11ae6ef3124e889c7ff701f4715a89d800dd7598f5e12d96aa043703ce8",
+    "Apps/hollow_trail_isolator_study.inc": "8a4f55306e84f55149fe7cc06300bdb574024f91e2ed6f0022c234918c6ff919",
+    "Apps/hollow_trail_journal.inc": "4ee5ec3e822926864d93e8f528f4108ab57529fe0f0cf2370b1ae98c7ffe0a08",
+    "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+    "Apps/hollow_trail_living_bed_draw.inc": "461fdf2e5794d78864041d42743af4ef4461022399f33e632c484c03106142ee",
+    "Apps/hollow_trail_living_bed_study.inc": "c381669581b8f3fee394ca69573de014ed03d73e3f7fd07c7294a87315a73bb8",
+    "Apps/hollow_trail_lore.inc": "80432c04a5c2f99976006754f767c94f8194cc1e3da87a00fb2ea1f90c43ecfe",
+    "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+    "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+    "Apps/hollow_trail_mechanism_draw.inc": "bdc1013ce60a3783846c717d298f68946fef00cd8dc6b053c37a850ed0600800",
+    "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+    "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+    "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+    "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+    "Apps/hollow_trail_partition_draw.inc": "0df30410e921a527c35d90830c4737f2d9d466af708b35ea5ceeaf26994460aa",
+    "Apps/hollow_trail_partition_study.inc": "142c3b840de3b5ec7b5743306cc0dea0a6d37749ba030020a0d445f2ba38e78c",
+    "Apps/hollow_trail_pouch_draw.inc": "a4e5d15464e3ed0090994a53246f20957f519151b19734da42fc84ed1ea2acb7",
+    "Apps/hollow_trail_pouch_study.inc": "d27ca512470eb5c634b6775a326b28beb066312fd0be09fb8776618af45f6486",
+    "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+    "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+    "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+    "Apps/hollow_trail_signal_cabin_draw.inc": "3df588c9115d0fccb1e4e8d87064285e94937a68142ca631393fed61c53f4fc2",
+    "Apps/hollow_trail_signal_cabin_study.inc": "e50c7ffebc5191d6b1a20428a7115a3ccf282e1d736a8f4f1fa5780cfca86f91",
+    "Apps/hollow_trail_signal_room.inc": "536b31378408797e71ed6003e77c4a0335554f58e840b2572506db2209359db0",
+    "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+    "Apps/hollow_trail_sleep_draw.inc": "c7000f07bf0d40afed5a91730f0c86472d23eb7e6df38d448c95c2cfb60c5659",
+    "Apps/hollow_trail_sleep_study.inc": "3d9980c69eb37d256537d0ad1250501bf352fcd744195ea353c3054a4df5aa13",
+    "Apps/hollow_trail_station_draw.inc": "229b3c3cf1f83b62683f2097c3bc4430421a1b11c5421ecaf5a39ddd20c79057",
+    "Apps/hollow_trail_station_study.inc": "ecd4b7a41d5950a695e1ae9834ecca711555919fb06126eed9437065d5c674e5",
+    "Apps/hollow_trail_story.inc": "ca918b47b38fea35f12e3dec317b4e47118c1c359467f39d58c138216a83dbbe",
+    "Apps/hollow_trail_stove_draw.inc": "bed5786629b57b1037a0f35638d01784fef26f50a0223bd5e5c363037a47a5bc",
+    "Apps/hollow_trail_stove_study.inc": "36c098d2763e904212118ad55ecf894f1e06610f4bc191ff09075f88206b0212",
+    "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+    "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+    "Apps/hollow_trail_traversal.inc": "7536205d8e8d30ff27bd0d9cc2edd710bfe4f89247ccd38961be2ea41ffa8708",
+    "Apps/hollow_trail_traversal_draw.inc": "73e6e75e97484cab49edc898ce70d08fa4b5d83e5d9703dc9bb0362d09aeb91a",
+    "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+    "Apps/hollow_trail_waiting_draw.inc": "47692a9028a19014c014d8f2aeeecfa5a9b87285ddf27aad9346d70c9e85b45d",
+    "Apps/hollow_trail_waiting_study.inc": "70a3e2858eb4b9d306d3a644671fb48dad1d90b89c1a08b5ea42c75927ba59d0",
+    "Apps/hollow_trail_warming_draw.inc": "9ba482b0b65cc907a14765177e1a1876efab0e7f72b6370f75f0ce5a7ce07c53",
+    "Apps/hollow_trail_warming_study.inc": "2427cbab3c6a7b2878e0cd1a5cc011704ce53883d72c52ae982f811d176b1947",
+    "Apps/hollow_trail_watch_memory.inc": "ff458f6f2e00eef834ebccc7bd7502ed015dadf2b1195dac142384132c7ad978",
+    "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+  },
+  "fixture": "The player walks from the real glasshouse spawn and jumps past the original crate. Normal mapped input earns first drink, mandatory wait, deliberate second drink, cupboard opening, one biscuit, eating/recovery, reading the inner-door note and gentle closure. Before remains in ordinary play at the same position. Terrain, crate, mirrors and evidence identities are unchanged.",
+  "raster": [
+    960,
+    540
+  ],
+  "captures": [
+    {
+      "view": "outside",
+      "requested_tick": 0,
+      "observed_state": "game requested_tick=0 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "water",
+      "requested_tick": 0,
+      "observed_state": "game requested_tick=0 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "drink",
+      "requested_tick": 144,
+      "observed_state": "game requested_tick=144 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "wait",
+      "requested_tick": 48,
+      "observed_state": "game requested_tick=48 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "slow-tap",
+      "requested_tick": 216,
+      "observed_state": "game requested_tick=216 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "drink-again",
+      "requested_tick": 80,
+      "observed_state": "game requested_tick=80 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "food",
+      "requested_tick": 0,
+      "observed_state": "game requested_tick=0 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "biscuit",
+      "requested_tick": 0,
+      "observed_state": "game requested_tick=0 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "bite",
+      "requested_tick": 48,
+      "observed_state": "game requested_tick=48 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "recovery",
+      "requested_tick": 192,
+      "observed_state": "game requested_tick=192 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "note",
+      "requested_tick": 0,
+      "observed_state": "game requested_tick=0 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "closing",
+      "requested_tick": 64,
+      "observed_state": "game requested_tick=64 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    },
+    {
+      "view": "returned",
+      "requested_tick": 0,
+      "observed_state": "game requested_tick=0 evidence=0 x=95169 y=56320 stage=-1 tick=0 ambient=0",
+      "hashes": {
+        "gray": "8b647cd6652b655dfa2d4670ded068bdd9bdb7f5080bf2d110f86533f5b91360",
+        "mono": "c4812c200ab60ca4927529c0876ae0ff75252b3366074b6d55d07d2ab71630b1"
+      }
+    }
+  ],
+  "source_snapshot_sha256": "f52f5089fc7cc60cef09d7e1b485cc0c71f0250b3b5bfee4893b3254a4f775bc"
+}

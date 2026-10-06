@@ -137,6 +137,9 @@ typedef struct {
     uint16_t drawing_view_tick;
     uint8_t counts_view_stage;
     uint16_t counts_view_tick;
+    bool food_view_active;
+    uint8_t food_view_stage;
+    uint16_t food_view_tick,food_view_ambient;
     uint8_t bed_view_stage;
     uint16_t bed_view_tick;
     uint8_t cabin_view_stage;
@@ -2292,3 +2295,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_drawing_study.inc"
 
 #include "hollow_trail_garden_night.inc"
+
+#include "hollow_trail_food_study.inc"

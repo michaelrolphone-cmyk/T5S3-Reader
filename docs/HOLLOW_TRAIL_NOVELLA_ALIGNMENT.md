@@ -121,7 +121,7 @@ traversal wholesale with autoplay.
 | 26 Quarry ascent | Existing ladders/ledges | Cloth boundary/small bootprints and recognizable distant travelled country |
 | 27 Hoist | Published: real balance transition earns cage descent, shared feet/brake-cord contacts, passing fern and preserved destination spawn | Earlier scarf-grip inspection and empty-cage test remain distinct beats |
 | 28 Gallery | Published hoist handoff includes gallery walkout toward the glasshouses | Extend narrow wet gallery and continuous fern/glasshouse-rib arrival scenery |
-| 29 Living beds | Post-merge 1.1.50 source `641be8cc4`: tended first bed, strings/channels, broken-pot shoot, can on bricks, kneeling leaf/dust/cleaning/rebound and warm-soil response; [actual comparisons](images/hollow-trail-living-bed/README.md) | Three-row hillside continuity, cupboard/food/drink and evening tray/stem care remain |
+| 29 Living beds | Post-merge 1.1.50 source `641be8cc4`: tended first bed, strings/channels, broken-pot shoot, can on bricks, kneeling leaf/dust/cleaning/rebound and warm-soil response; [actual comparisons](images/hollow-trail-living-bed/README.md) | [Water, food and cupboard note](HOLLOW_TRAIL_FOOD_1_1_50.md) now connected; three-row hillside continuity and evening tray/stem care remain |
 | 30 Sleeping/lock | Published: seven raised pallets, sacking curtain, inside lock and wedge, narrowing door-light and restored leaf shine | [Chosen far-pallet night rest](HOLLOW_TRAIL_GARDEN_NIGHT_1_1_50.md) is connected; towel/comb privacy gesture and sister-face memory remain |
 | 31 Garden night/counts | Connected 1.1.50: clipped consecutive-morning sheets at the existing page-19 location, physical carry to clear pane, player-controlled two-axis duplicate correction alignment, weak reflected face, exact book prose and return beneath empty pot | [Chosen pallet/night-rest sequence](HOLLOW_TRAIL_GARDEN_NIGHT_1_1_50.md) is connected; sister-face/crease memory remains; [physical child/printed-card comparison](HOLLOW_TRAIL_DRAWINGS_1_1_50.md) is connected |
 | 32 Mirror partition | Published: actual upper-vent solution earns leaf/condensation response and onward view; lower-latch solution retained | [Physical child-drawing/older-card comparison](HOLLOW_TRAIL_DRAWINGS_1_1_50.md) now includes the imperfect figures, reversible paper movement and the railway dog without identifying its author |
@@ -203,3 +203,7 @@ placement/withdrawal. Existing mirror and read/ending guards remain intact.
 [Chosen rest at the farthest existing pallet](HOLLOW_TRAIL_GARDEN_NIGHT_1_1_50.md)
 now connects the bounded settling pose, near-still night leaf/pipe detail and
 player-chosen morning without changing the live puzzle, route or evidence.
+
+[First-house water, food and cupboard note](HOLLOW_TRAIL_FOOD_1_1_50.md) now
+connects deliberate drink/wait/drink, reachable biscuit pickup, recovery and
+gentle closure without changing the original crate, mirror or evidence state.

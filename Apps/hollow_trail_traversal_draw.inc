@@ -8,6 +8,7 @@
 #include "hollow_trail_carriage_draw.inc"
 #include "hollow_trail_signal_cabin_draw.inc"
 #include "hollow_trail_living_bed_draw.inc"
+#include "hollow_trail_food_draw.inc"
 #include "hollow_trail_counts_draw.inc"
 #include "hollow_trail_drawing_draw.inc"
 #include "hollow_trail_geography_draw.inc"
@@ -117,6 +118,7 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_sleep_room(g,g->sleep_view_active?ht_sleep_closure(g->sleep_view_stage,g->sleep_view_tick):0,
       !g->sleep_view_active || g->sleep_view_stage==0 || g->sleep_view_stage==4 || (g->sleep_view_stage==1 && g->sleep_view_tick<80) || (g->sleep_view_stage==3 && g->sleep_view_tick>=96));
     ht_living_bed(g);
+    ht_food_room(g);
     ht_counts_room(g);
     ht_drawing_room(g);
     ht_cabinet_room(g);

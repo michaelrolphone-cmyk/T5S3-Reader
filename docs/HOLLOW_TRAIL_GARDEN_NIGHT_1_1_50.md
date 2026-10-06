@@ -39,6 +39,7 @@ pass; final integrated ELF is 413,012 bytes, SHA-256
 The source, sidecar, package manifest and catalog retain 1.1.50; minimum firmware
 stays 1.3.37. No hardware appearance/FPS or release qualification is claimed.
 
-The sister's face/crease memory, food/drink, evening tending, improvised-privacy
+[First-house food/drink](HOLLOW_TRAIL_FOOD_1_1_50.md) is now connected. The sister's
+face/crease memory, evening tending, improvised-privacy
 gesture and broader hillside continuity remain separate book gaps. This rest
 does not claim to complete the whole garden chapter or the book.
