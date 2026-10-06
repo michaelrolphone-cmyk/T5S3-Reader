@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture the real marsh route, first-house interaction and both raster modes."""
+"""Capture the real settlement route, first-house interaction and both raster modes."""
 import argparse
 import hashlib
 import json

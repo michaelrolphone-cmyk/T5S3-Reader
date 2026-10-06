@@ -8,6 +8,7 @@
 #include "RiscReaderTypographyV1.h"
 #include "hollow_trail_engine.inc"
 #include "hollow_trail_cutscene.inc"
+#include "hollow_trail_hoist_scene.inc"
 
 static const t5_app_api_v1 *app;
 static const t5_provider_capability_api_v1 *caps;
@@ -108,6 +109,15 @@ static void ht_acquire_pad(void) {
 static void ht_advance(uint32_t now) {
     if(reading || ht_schoolroom_studying || loading || debug_jump || ht.level!=ht_geometry_level) { ht_motion_emphasis=false; simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
+    if(ht_hoist.active){
+        uint32_t elapsed=now-simulation_clock;simulation_clock=now;
+        if(ht_hoist.paused || ht_pad_fault){simulation_accumulator=0;return;}
+        simulation_accumulator+=elapsed>128u?128u:elapsed;
+        for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps){
+            simulation_accumulator-=HT_STEP_MS;if(ht_hoist_step(&ht_hoist))++scene_revision;
+        }
+        ht_motion_emphasis=false;jump_down=pause_down=false;return;
+    }
     if(ht_pouch.active){
         uint32_t elapsed=now-simulation_clock;simulation_clock=now;
         if(ht_pouch.paused || ht_pad_fault){simulation_accumulator=0;return;}
@@ -258,6 +268,10 @@ static void ht_advance(uint32_t now) {
             simulation_accumulator=0;++scene_revision;break;
         }
         if(before.level!=ht.level) {
+            if(ht_hoist_earned(&before,&ht)){
+                ht_hoist_begin(&before,&ht);ht_input_rearm=true;
+                held=previous=0;jump_down=pause_down=false;++scene_revision;
+            }
             if(ht_cutscene_city_arrival(&before,&ht)) {
                 ht_cutscene_begin(HT_CUTSCENE_CITY);
                 held=previous=0;jump_down=pause_down=false;++scene_revision;
@@ -362,6 +376,15 @@ static void ht_input_update(uint32_t wait) {
         previous=held=0;jump_down=pause_down=false;last_poll=now;return;
     }
     uint32_t down=buttons&~previous;
+    if(ht_hoist.active && !reading){
+        if(down&HT_PAUSE)ht_hoist.paused=!ht_hoist.paused;
+        if((down&(HT_BACK|HT_EXIT)) || ((down&HT_ACCEPT) && !ht_hoist.paused && ht_hoist.tick==HT_HOIST_TICKS)){ht_hoist.active=false;ht_input_rearm=true;}
+        else if(down&HT_JOURNAL){ht_journal_index=true;ht_journal_selection=0;reading=true;ht_input_rearm=true;}
+        if(down)++scene_revision;
+        jump_down=pause_down=false;
+        if(!ht_hoist.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
+        previous=buttons;held=0;last_poll=now;return;
+    }
     if(ht_first_house.active && !reading){
         if(down&HT_PAUSE)ht_first_house.paused=!ht_first_house.paused;
         if(!ht_first_house.paused)ht_first_house.direction=(int8_t)(((buttons&HT_RIGHT)!=0)-((buttons&HT_LEFT)!=0));
@@ -678,6 +701,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: narration extra black passes require firmware 1.3.48; ordinary display remains available");
     memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_seen=0; ht_cutscene_begin(HT_CUTSCENE_INTRO);
     ht_pouch=(ht_pouch_state){0};
+    ht_hoist=(ht_hoist_state){0};
     ht_first_house=(ht_first_house_state){0};
     ht_isolator=(ht_isolator_state){0};
     ht_warming=(ht_warming_state){0};
@@ -777,14 +801,14 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
 
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_first_house.active && !ht_isolator.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
+        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_hoist.active && !ht_first_house.active && !ht_isolator.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
             memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
         }
-        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_first_house.active || ht_isolator.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
+        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_hoist.active || ht_first_house.active || ht_isolator.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -796,6 +820,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const bool rendering_paused=paused,rendering_reading=reading,rendering_study=ht_schoolroom_studying;
             const unsigned rendering_focus=ht_schoolroom_focus;
             const ht_pouch_state rendering_pouch=ht_pouch;
+            const ht_hoist_state rendering_hoist=ht_hoist;
             const ht_first_house_state rendering_first_house=ht_first_house;
             const ht_isolator_state rendering_isolator=ht_isolator;
             const ht_warming_state rendering_warming=ht_warming;
@@ -808,8 +833,12 @@ __attribute__((visibility("default"))) void app_main(void) {
             const unsigned rendering_signal_focus=ht_signal_room_focus,rendering_signal_ticks=ht_signal_room_ticks;
             prepared_reader=rendering_reading;
             prepared_door=rendering_game.door_stage!=HT_DOOR_NONE;
-            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
+            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_hoist.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
             if(rendering_reading) ht_journal_render();
+            else if(rendering_hoist.active){
+                ht_hoist_render(&rendering_hoist);
+                ht_narration_key=2166136261u;ht_narration_hash(ht_hoist_label(&rendering_hoist));
+            }
             else if(rendering_pouch.active){
                 ht_pouch_study_render(&rendering_game,&rendering_pouch);
                 ht_narration_key=2166136261u;ht_narration_hash(ht_pouch_label(&rendering_pouch));
