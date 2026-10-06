@@ -1,6 +1,7 @@
 #include "hollow_trail_first_house_draw.inc"
 #include "hollow_trail_sleep_draw.inc"
 #include "hollow_trail_pouch_draw.inc"
+#include "hollow_trail_grip_draw.inc"
 #include "hollow_trail_material_detail.inc"
 #include "hollow_trail_waiting_draw.inc"
 #include "hollow_trail_distribution_draw.inc"
@@ -128,7 +129,7 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_drawing_room(g);
     ht_cabinet_room(g);
     ht_first_house_room(g,g->first_house_lean);
-    ht_pouch_room(g);
+    ht_pouch_room(g);ht_grip_room(g);
     ht_waiting_room(g,g->waiting_view_active?(unsigned)ht_waiting_pull(g->waiting_view_tick):0,
         g->waiting_view_active && g->waiting_view_tick>=104?ht_waiting_swing(g->waiting_view_tick-104):0);
     if(m->plate_kind) {
