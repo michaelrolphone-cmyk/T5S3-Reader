@@ -210,6 +210,11 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/hollow_trail_food_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_garden_memory_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_garden_memory_prose_test.py"
 python3 "$repo_dir/test/native_apps/hollow_trail_food_prose_test.py"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \

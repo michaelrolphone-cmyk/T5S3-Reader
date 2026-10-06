@@ -35,7 +35,7 @@ static void reset(void){
  report=(risc_usb_gamepad_state_v1){.connected=1,.device=1,.hat=8};pad=source?NULL:&gamepad;hid_pad=source?&gamepad:NULL;host_exit=pad_failure=false;app=&fake_app;
  walk_level=999;for(unsigned i=0;i<20000 && !ht_night_near(&ht);++i)walk_route_tick();assert(ht.level==6 && ht_night_near(&ht) && !ht.deaths);ht_input(1);input(0,8);
 }
-static void equal_clock(const ht_night_state *s){assert(s->stage==ht_night.stage && s->tick==ht_night.tick && s->ambient==ht_night.ambient);}
+static void equal_clock(const ht_night_state *s){assert(s->stage==ht_night.stage && s->tick==ht_night.tick && s->ambient==ht_night.ambient && s->memory_tick==ht_night.memory_tick);}
 static void controls(void){
  reset();ht_game frozen=ht;action();assert(ht_night.active && !reading);input(0,8);assert(!memcmp(&ht,&frozen,sizeof(ht)));
  for(unsigned stage=0;stage<6;++stage){
@@ -54,16 +54,16 @@ int main(void){
  uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*copy=malloc(HT_NATIVE_PIXELS),*bits=malloc(HT_NATIVE_PIXELS/8),*mono=malloc(HT_NATIVE_PIXELS/8);assert(memory&&copy&&bits&&mono);ht_bind(memory);ht_bind_native(memory);ht_reader_bitmap=bits;
  for(source=0;source<2;++source)controls();
  source=0;reset();ht_game frozen=ht;
- for(unsigned stage=0;stage<6;++stage)for(unsigned tick=0;tick<=160;++tick){ht_night_state s={true,false,(uint8_t)stage,(uint16_t)tick,0};ht_person_pose p=ht_night_pose(&frozen,&s);reach(&p,stage,tick);}
- for(unsigned native=0;native<2;++native){ht_camera_mode=native?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;unsigned bytes=native?HT_NATIVE_PIXELS:HT_PIXELS;for(unsigned stage=0;stage<6;++stage){ht_night_state s={true,false,(uint8_t)stage,100,120};ht_night_study_render(&frozen,&s);memcpy(copy,ht_scene,bytes);ht_pack_mono(mono,120);ht_night_study_render(&frozen,&s);ht_pack_mono(bits,120);assert(!memcmp(copy,ht_scene,bytes)&&!memcmp(mono,bits,HT_NATIVE_PIXELS/8)&&!memcmp(&ht,&frozen,sizeof(ht)));}
+ for(unsigned stage=0;stage<6;++stage)for(unsigned tick=0;tick<=160;++tick){ht_night_state s={true,false,(uint8_t)stage,(uint16_t)tick,0,0};ht_person_pose p=ht_night_pose(&frozen,&s);reach(&p,stage,tick);}
+ for(unsigned native=0;native<2;++native){ht_camera_mode=native?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;unsigned bytes=native?HT_NATIVE_PIXELS:HT_PIXELS;for(unsigned stage=0;stage<6;++stage){ht_night_state s={true,false,(uint8_t)stage,100,120,0};ht_night_study_render(&frozen,&s);memcpy(copy,ht_scene,bytes);ht_pack_mono(mono,120);ht_night_study_render(&frozen,&s);ht_pack_mono(bits,120);assert(!memcmp(copy,ht_scene,bytes)&&!memcmp(mono,bits,HT_NATIVE_PIXELS/8)&&!memcmp(&ht,&frozen,sizeof(ht)));}
   /* Actual rendered head must share the world's caption-safe camera. This
    * catches a separate overlay camera leaving the resting body below its bed. */
   ht_game view=frozen;view.camera=(HT_NIGHT_X+14-240)*256;view.camera_y=(ht_night_floor()-164)*256;view.intimacy=512;view.vista=view.drop_zoom=0;view.rotation_phase=view.sway_phase=0;ht_frame_camera(&view,HT_CAMERA_BASELINE);
-  ht_night_state standing={true,false,0,0,0};ht_person_pose pose=ht_night_pose(&view,&standing);int scale=ht_scene_scale(&view),hx=240+(pose.shoulder.x-240)*scale/256,hy=135+(pose.shoulder.y-5-135)*scale/256;
+  ht_night_state standing={true,false,0,0,0,0};ht_person_pose pose=ht_night_pose(&view,&standing);int scale=ht_scene_scale(&view),hx=240+(pose.shoulder.x-240)*scale/256,hy=135+(pose.shoulder.y-5-135)*scale/256;
   ht_night_study_render(&frozen,&standing);int raster=native?2:1;assert(ht_scene[(hy*raster)*(native?HT_NATIVE_W:HT_W)+hx*raster]==255);
-  ht_night_state resting={true,false,2,0,0};pose=ht_night_pose(&view,&resting);for(int side=0;side<2;++side){assert(pose.foot[side].x+view.camera/256>=HT_NIGHT_X+24 && pose.foot[side].x+view.camera/256<=HT_NIGHT_X+32);assert(pose.foot[side].y+view.camera_y/256==ht_night_floor()-9);}
-  ht_night_state night={true,false,2,0,64};ht_night_study_render(&frozen,&night);ht_pack_mono(mono,120);night.ambient=128;ht_night_study_render(&frozen,&night);ht_pack_mono(bits,120);unsigned change=0;for(unsigned n=0;n<120*440;++n){unsigned delta=mono[n]^bits[n];for(unsigned bit=0;bit<8;++bit)change+=(delta>>bit)&1u;}fprintf(stderr,"night native=%u changed_pixels=%u\n",native,change);assert(change>8);
+  ht_night_state resting={true,false,2,0,0,0};pose=ht_night_pose(&view,&resting);for(int side=0;side<2;++side){assert(pose.foot[side].x+view.camera/256>=HT_NIGHT_X+24 && pose.foot[side].x+view.camera/256<=HT_NIGHT_X+32);assert(pose.foot[side].y+view.camera_y/256==ht_night_floor()-9);}
+  ht_night_state night={true,false,2,0,64,0};ht_night_study_render(&frozen,&night);ht_pack_mono(mono,120);night.ambient=128;ht_night_study_render(&frozen,&night);ht_pack_mono(bits,120);unsigned change=0;for(unsigned n=0;n<120*440;++n){unsigned delta=mono[n]^bits[n];for(unsigned bit=0;bit<8;++bit)change+=(delta>>bit)&1u;}fprintf(stderr,"night native=%u changed_pixels=%u\n",native,change);assert(change>8);
  }
  assert(ht_night_leaf_width(64)==0 && ht_night_leaf_width(128)==5);
- free(mono);free(bits);free(copy);free(memory);puts("Garden night: actual far pallet, chosen rest/morning, bounded limbs and leaf/pipe motion, both rasters, frozen crate/mirror/evidence and HID/XInput interruption/retry/exit PASS");
+ free(mono);free(bits);free(copy);free(memory);puts("Garden night: actual far pallet, chosen rest/morning, bounded limbs and leaf/pipe motion, both rasters, frozen crate/mirror/evidence and HID/XInput interruption/retry/exit PASS");return 0;
 }

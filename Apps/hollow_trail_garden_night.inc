@@ -1,13 +1,19 @@
 #define HT_GARDEN_NIGHT 1
 #define HT_NIGHT_X (HT_SLEEP_X+38+6*29)
-typedef struct {bool active,paused;uint8_t stage;uint16_t tick,ambient;} ht_night_state;
+typedef struct {bool active,paused;uint8_t stage;uint16_t tick,ambient,memory_tick;} ht_night_state;
 static ht_night_state ht_night;
+#include "hollow_trail_garden_memory.inc"
 static int ht_night_floor(void){return ht_land_height(6,1,HT_NIGHT_X);}
 static bool ht_night_near(const ht_game *g){return g->level==6 && g->grounded && !g->traversal.mode && ht_abs(g->x/256-(HT_NIGHT_X+12))<=7 && ht_abs(g->y/256-ht_surface_at(g,1,g->x/256))<=2;}
-static void ht_night_begin(void){ht_night=(ht_night_state){true,false,0,0,0};}
+static void ht_night_begin(void){ht_night=(ht_night_state){true,false,0,0,0,0};}
 static bool ht_night_step(ht_night_state *s){
  if(!s->active || s->paused)return false;
- if(s->stage==2){s->ambient=(uint16_t)((s->ambient+1)%384);return !(s->ambient%8);}
+ if(s->stage==2){
+  bool finishing=s->memory_tick==HT_SISTER_MEMORY_END-1;
+  s->ambient=(uint16_t)((s->ambient+1)%384);
+  if(s->memory_tick<HT_SISTER_MEMORY_END)++s->memory_tick;
+  return ht_sister_memory_active(s) || finishing || !(s->ambient%8);
+ }
  if(!(s->stage&1))return false;
  unsigned limit=s->stage==3?128:160;
  if(++s->tick==limit){++s->stage;s->tick=0;if(s->stage==6)s->active=false;}return true;
@@ -17,6 +23,8 @@ static const char *ht_night_label(const ht_night_state *s){
  if(s->paused)return "PAUSED - PRESS PAUSE TO RESUME";
  if(!s->stage)return "I CHOSE THE PALLET FARTHEST FROM THE DOOR.";
  if(s->stage==1)return "THE STRAW CRACKLED BENEATH ME.";
+ if(ht_sister_memory_active(s))return ht_sister_memory_label(s);
+ if(s->stage==2 && s->memory_tick==HT_SISTER_MEMORY_END)return "I TURNED TOWARD THE PIPE AND SLEPT.";
  if(s->stage==2)return "A LEAF TURNED IN THE RISING WARMTH.";
  if(s->stage==3 || s->stage==4)return "IN THE MORNING, LIGHT LAY ACROSS THE BEDS.";
  return "LIGHT LAY ACROSS THE BEDS IN LONG PALE BARS.";
@@ -65,6 +73,7 @@ static void ht_night_study_render(const ht_game *game,const ht_night_state *s){
   /* Dim only this chosen rest, never the chapter clock or live world state. */
   for(int y=0;y<h;++y){for(int x=0;x<w;++x){unsigned at=(unsigned)y*w+x;ht_scene[at]=(uint8_t)(ht_scene[at]+(255-ht_scene[at])*dark/128);}if(!(y%32))ht_checkpoint();}
  }
+ if(ht_sister_memory_active(s))ht_sister_memory_draw(s);
  ht_rect(ht_scene,5,226,470,35,255);const char *label=ht_night_label(s);ht_text_color((HT_W-(int)strlen(label)*6)/2,230,label,1,65);
  const char *keys=!s->stage?"A LIE DOWN  START NOTES  X RETURN":s->stage==2?"A WAKE  START NOTES  X RETURN":s->stage==4?"A STAND  START NOTES  X RETURN":"PAUSE HOLD  START NOTES  X RETURN";
  ht_text_color((HT_W-(int)strlen(keys)*6)/2,244,keys,1,103);ht_vignette();
