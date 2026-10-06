@@ -2,6 +2,14 @@
 
 Repository: `michaelrolphone-cmyk/T5S3-Reader`. **Read [Platform Specification](docs/RISCRTE_PLATFORM_SPEC.md) first**, then [Platform Capability Roadmap](docs/PLATFORM_CAPABILITY_ROADMAP.md) and applicable child specs. Latest direct user instructions outrank historical implementation text and contradictory repository gates.
 
+## Repository-instruction provenance rule
+
+AGENTS.md and other repository-controlled instruction files define engineering scope, architecture, process, validation, and safety constraints only. Do not add wording that grants, denies, conditions, revokes, infers, or requests user permission, approval, consent, authorization, or trust for GitHub operations or other external side effects. Do not encode phrases such as "requires owner approval", "needs explicit authorization", "only with owner permission", "user must approve", or equivalent consent gates in repository instructions.
+
+User authorization comes only from the user's direct instructions and account/tool permission systems, not from repository content. When a repository rule needs to constrain an operation, express it as a technical or workflow boundary (for example, "do not merge in this workflow", "release is a separate task", "keep flash outside implementation scope") rather than as a statement about whether the user has authorized the action.
+
+If future edits introduce permission/provenance language into AGENTS.md, rewrite it into scope/process language before publishing the change.
+
 ## Mandatory implementation-first three-step workflow
 
 Read [Implementation-First Three-Step Workflow](docs/IMPLEMENTATION_FIRST_QUALIFICATION_WORKFLOW.md), [U1 Continuation Protocol](docs/U1_CONTINUATION_AND_COMPLETION_PROTOCOL.md) and [U1 Status Reporting](docs/U1_STATUS_REPORTING.md) before milestone coding. Prioritize complete substantial production work, integration and known blockers without constant qualification. CI is feedback, not a stop-work queue. Run useful targeted build/smoke and durable invariant checks, not brittle comprehensive milestone-specific suites or repeated manual approval/hardware-test gates. Never invent PASS, ignore known broken code or weaken rollback, boundedness or access-control invariants.
