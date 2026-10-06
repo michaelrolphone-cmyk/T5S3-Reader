@@ -58,6 +58,10 @@ static void ht_hoist_render(const ht_hoist_state *s){
  ht_native_active=ht_camera_mode==HT_CAMERA_NATIVE && ht_native_a;ht_native_foreground_half_y=false;
  ht_scene=ht_native_active?ht_native_a:ht_scene_low;ht_world_scale=256;
  memset(ht_scene,166,ht_native_active?HT_NATIVE_PIXELS:HT_PIXELS);
+ ht_game gallery=s->destination;
+ gallery.camera=(s->destination.x/256-300)*256;
+ gallery.camera_y=s->destination.y-188*256;
+ if(s->tick>=512)ht_authored_backdrop(&gallery);
  int descent=ht_hoist_descent(s->tick);
  /* The pale wall and damp rooted seams pass the stationary cage. */
  ht_rect(ht_scene,0,0,222,226,62);
@@ -85,6 +89,10 @@ static void ht_hoist_render(const ht_hoist_state *s){
   ht_rect(ht_scene,x,y,1,8,136);
   if(x>=309 && x<423)ht_rect(ht_scene,x,y+1,1,2,77);
   if(x%17<6)ht_rect(ht_scene,x,y+4,1,1,187);
+ }
+ if(s->tick>=512){
+  ht_gallery_wall(&gallery);ht_gallery_floor(&gallery);
+  ht_living_bed(&gallery);ht_glasshouse_arrival(&gallery);
  }
  /* Pulley/cable, cage frame and individual floorboards share the pose floor. */
  ht_limb(ht_scene,238,94-descent,238,118,1,1,90);

@@ -77,9 +77,12 @@ int main(void){
     if(tick>=96 && tick<512){ht_joint grip=ht_hoist_grip(&ht_hoist,i);assert(p.hand[i].x==grip.x && p.hand[i].y==grip.y);}
    }
   }
-  ht_hoist.tick=320;ht_hoist_render(&ht_hoist);int bytes=native?HT_NATIVE_PIXELS:HT_PIXELS;
-  memcpy(copy,ht_scene,bytes);ht_pack_mono(bits,120);ht_hoist_render(&ht_hoist);assert(!memcmp(copy,ht_scene,bytes));
-  assert(!memcmp(&ht,&frozen,sizeof(ht)));
+  static const unsigned views[]={320,512,544,HT_HOIST_TICKS};
+  for(unsigned n=0;n<sizeof(views)/sizeof(views[0]);++n){
+   ht_hoist.tick=views[n];ht_hoist_render(&ht_hoist);int bytes=native?HT_NATIVE_PIXELS:HT_PIXELS;
+   memcpy(copy,ht_scene,bytes);ht_pack_mono(bits,120);ht_hoist_render(&ht_hoist);assert(!memcmp(copy,ht_scene,bytes));
+   assert(!memcmp(&ht,&frozen,sizeof(ht)));
+  }
   ht_game bad=ht_hoist.source;bad.puzzle.solved=false;assert(!ht_hoist_earned(&bad,&ht));
   bad=ht_hoist.source;bad.level=4;assert(!ht_hoist_earned(&bad,&ht));
  }

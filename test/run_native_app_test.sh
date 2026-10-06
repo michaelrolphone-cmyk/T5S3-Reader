@@ -176,6 +176,10 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
 "$binary"
 cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_glasshouse_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/hollow_trail_partition_test.c" -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/hollow_trail_partition_prose_test.py"

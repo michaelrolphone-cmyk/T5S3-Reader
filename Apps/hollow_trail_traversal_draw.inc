@@ -8,6 +8,7 @@
 #include "hollow_trail_carriage_draw.inc"
 #include "hollow_trail_signal_cabin_draw.inc"
 #include "hollow_trail_living_bed_draw.inc"
+#include "hollow_trail_glasshouse_draw.inc"
 #include "hollow_trail_food_draw.inc"
 #include "hollow_trail_care_draw.inc"
 #include "hollow_trail_counts_draw.inc"
@@ -79,6 +80,7 @@ static void ht_draw_traversal(const ht_game *g) {
      * From here forward, native A/B uses 960x270 detail: full horizontal
      * resolution with one computed row duplicated to each physical row pair. */
     if(ht_native_active)ht_native_foreground_half_y=true;
+    ht_gallery_wall(g);
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(g->level==1 || i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
@@ -118,7 +120,9 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_distribution_room(g,48);
     ht_sleep_room(g,g->sleep_view_active?ht_sleep_closure(g->sleep_view_stage,g->sleep_view_tick):0,
       !g->sleep_view_active || g->sleep_view_stage==0 || g->sleep_view_stage==4 || (g->sleep_view_stage==1 && g->sleep_view_tick<80) || (g->sleep_view_stage==3 && g->sleep_view_tick>=96));
+    ht_gallery_floor(g);
     ht_living_bed(g);
+    ht_glasshouse_arrival(g);
     ht_food_room(g);
     ht_counts_room(g);
     ht_drawing_room(g);

@@ -159,9 +159,9 @@ static const unsigned golden[][2]={
 {1684780377,2737385310},
 {1477351146,501319504},
 {3095071177,861699871},
-{3249540629u,2277296604u}, /* Reviewed first-house cups/barrel beyond the living bed; other 29 pairs unchanged. */
-{719806906,1462119617},
-{2381833222u,811005477u}, /* Reviewed tending trays, gutter, slates and stem grounded to the count-row slope; other 29 pairs unchanged. */
+{3195525885u,56340071u}, /* Reviewed shared gallery, pane and three ridge-anchored rows. */
+{1623275131u,2992220726u}, /* Same three rows recede with the existing camera. */
+{2250815207u,1628315133u}, /* Rows leave the horizon; grounded count-row care is retained. */
 {1143499482,207677384},
 {3747272453,2052152225},
 {512589384,2061789897},

@@ -77,38 +77,53 @@ static void ht_authored_pump(int x,int y,int tone) {
     ht_rect(ht_scene,x+62,y-10,13,8,tone+14);
 
 }
-static void ht_authored_glasshouse(int x,int y,int w,int h,int tone) {
-    /* Continuous curved glazing ribs, with panes missing near the crown. */
-    int previous_x=x,previous_y=y-24;
-    for(int k=1;k<=40;++k) {
-        int u=k*256/40,nx=x+w*k/40,ny=y-24-h*4*u*(256-u)/65536;
-        ht_limb(ht_scene,previous_x,previous_y,nx,ny,1,1,tone);
-        /* Thin mullions divide curved glazing into panes; occasional missing
-         * panes expose the iron skeleton rather than a solid triangle roof. */
-        if(k%2==0) {
-            ht_limb(ht_scene,nx,ny,nx,y,0,0,tone);
-            if(k%10!=0)ht_limb(ht_scene,nx-3,ny+9,nx-3,y-5,0,0,tone-40);
-        }
-        for(int course=1;course<=3;++course) {
-            int ay=previous_y+(y-previous_y)*course/4,by=ny+(y-ny)*course/4;
-            ht_limb(ht_scene,previous_x,ay,nx,by,0,0,tone-8);
-        }
-        previous_x=nx;previous_y=ny;
-    }
-    ht_limb(ht_scene,x,y-24,x+w,y-24,1,1,tone);
-    ht_rect(ht_scene,x,y-3,w,7,tone);
-    ht_rect(ht_scene,x+w/2-9,y-35,18,35,tone+8);
-    ht_limb(ht_scene,x+w/2,y-34,x+w/2,y,0,0,tone-30);
-    for(int leaf=0;leaf<5;++leaf) {
-        int root=x+w/3,side=leaf%2?1:-1;
-        ht_detail_leaf(root,y-4,root+side*(17+leaf*5),y-42-leaf*7,4,tone+9);
-    }
-
+/* Three rows descend the surveyed lee slope. Their brick feet sample the
+ * existing ridge, never the player collision route. Glazing thins downhill. */
+static void ht_glasshouse_rows(const ht_game *g){
+ const ht_chapter_composition *c=&ht_chapter_compositions[6];
+ int cx=g->camera/256*c->rates[1]/100,cy=g->camera_y/256*c->rates[1]/100;
+ static const int left[3]={74,209,344},width[3]={126,126,126},height[3]={76,64,52};
+ for(int row=0;row<3;++row){
+  int wx=left[row],w=width[row],x=wx-cx;
+  if(x+w< -ht_view_margin() || x>HT_W+ht_view_margin())continue;
+  int foundation=ht_chapter_ridge(6,1,wx);
+  for(int at=wx;at<=wx+w;at+=8)foundation=ht_max(foundation,ht_chapter_ridge(6,1,at));
+  int y=foundation+3-cy,h=height[row],tone=134+row*8;
+  /* Plinth down to the same hill; no thin deck or exposed walkable underside. */
+  for(int at=wx;at<=wx+w;++at){
+   int soil=ht_chapter_ridge(6,1,at)-cy;
+   ht_rect(ht_scene,at-cx,soil-4,1,y-soil+7,tone-23);
+  }
+  int previous_x=x,previous_y=y-17;
+  for(int k=1;k<=20;++k){
+   int u=k*256/20,nx=x+w*k/20,ny=y-17-h*4*u*(256-u)/65536;
+   /* Only the upper row retains broad panes; the last is bare over beds. */
+   if(row<2 && (k%5==0 || (row==0 && k>2 && k<12))){
+    ht_triangle(ht_scene,previous_x,previous_y,nx,ny,nx,y-18,tone-67);
+    ht_triangle(ht_scene,previous_x,previous_y,nx,y-18,previous_x,y-18,tone-67);
+    ht_limb(ht_scene,nx-2,ny+8,nx-3,y-23,0,0,tone-91);
+   }
+   ht_limb(ht_scene,previous_x,previous_y,nx,ny,1,1,tone);
+   if(k%3==0){ht_limb(ht_scene,nx,ny,nx,y,0,0,tone);ht_rect(ht_scene,nx-1,ny+4,2,2,tone+10);}
+   if(k%4==0)ht_limb(ht_scene,previous_x,previous_y+(y-previous_y)/2,nx,ny+(y-ny)/2,0,0,tone-7);
+   previous_x=nx;previous_y=ny;
+  }
+  ht_limb(ht_scene,x,y,x,y-17,1,1,tone);
+  ht_limb(ht_scene,x,y-17,x+w,y-17,0,0,tone);
+  for(int plant=0;plant<8;++plant){int root=x+8+plant*13;
+   ht_detail_leaf(root,y-2,root-5,y-11-plant%2*4,2,tone+9);
+   ht_detail_leaf(root,y-2,root+6,y-10,2,tone+9);
+  }
+  ht_limb(ht_scene,x+w,y,x+w,y-17,1,1,tone);
+  for(int mark=0;mark<4;++mark){int at=x+9+mark*34;ht_limb(ht_scene,at,y+2,at+20,y+2,0,0,tone-46);}
+  ht_checkpoint();
+ }
 }
 static void ht_authored_landmarks(const ht_game *g) {
     unsigned level=g->level;
     const ht_chapter_composition *c=&ht_chapter_compositions[level];
     int cx=g->camera/256,cy=g->camera_y/256,margin=ht_view_margin();
+    if(level==6){ht_glasshouse_rows(g);return;}
     /* Four deliberately spaced sites, each with a fixed footprint on its bank. */
     static const int sites[4]={95,620,1210,1860};
     for(int i=0;i<4;++i) {
@@ -154,8 +169,7 @@ static void ht_authored_landmarks(const ht_game *g) {
                 ht_limb(ht_scene,x-15,y-30,x+12,y-70,1,1,tone);
 
             }
-        } else if(level==6)ht_authored_glasshouse(x-80,y,240,105+i%2*35,tone);
-        else if(level==7) {
+        } else if(level==7) {
             /* Fine aqueduct through the distant valley; the main dam is unique. */
             ht_rect(ht_scene,x-100,y-35,280,6,tone);
             for(int pier=0;pier<5;++pier)ht_rect(ht_scene,x-91+pier*59,y-30,7,38,tone);
