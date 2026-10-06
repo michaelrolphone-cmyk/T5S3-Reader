@@ -108,6 +108,9 @@ static void ht_acquire_pad(void) {
 }
 static void ht_advance(uint32_t now) {
     if(reading || ht_schoolroom_studying || loading || debug_jump || ht.level!=ht_geometry_level) { ht_motion_emphasis=false; simulation_started=false; simulation_accumulator=0; jump_down=pause_down=false; return; }
+    if(ht.traversal.mode==HT_TRESTLE && (ht_pad_fault || ht_input_rearm)) {
+        simulation_clock=now;simulation_accumulator=0;jump_down=pause_down=false;ht_motion_emphasis=false;return;
+    }
     if(!simulation_started) { simulation_clock=now; simulation_started=true; }
     if(ht_hoist.active){
         uint32_t elapsed=now-simulation_clock;simulation_clock=now;
@@ -452,7 +455,12 @@ static void ht_input_update(uint32_t wait) {
     } else {
         ht_pad_fault=false;
         if(connected!=ht_pad_owned || (connected &&
-           (selected_source!=ht_pad_source || selected_device!=ht_pad_device))) ht_input_rearm=true;
+           (selected_source!=ht_pad_source || selected_device!=ht_pad_device))) {
+            ht_input_rearm=true;
+            /* The new report may already be neutral; discard old held input
+             * before that neutral report can rearm a precision crossing. */
+            if(ht.traversal.mode==HT_TRESTLE){held=0;jump_down=false;simulation_accumulator=0;simulation_clock=app->millis();}
+        }
         ht_pad_source=selected_source; ht_pad_device=selected_device;
         ht_pad_owned=connected;
         if(!connected) {

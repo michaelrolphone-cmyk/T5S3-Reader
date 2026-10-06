@@ -82,7 +82,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER, HT_WINDOW };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER, HT_WINDOW, HT_TRESTLE };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -105,6 +105,9 @@ typedef struct {
     int window_entry_left,window_entry_right;
     uint8_t window_phase,window_open,window_touch;
     bool window_print;
+    uint16_t trestle_phase;
+    int16_t trestle_print_left,trestle_print_right;
+    bool trestle_tested;
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -1670,7 +1673,7 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
     for(int i=0;i<HT_PLATFORMS;++i)
         for(int part=0;part<3;++part) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
-            if(x>=l && x<r) floor=ht_min(floor,(part==2?top:ht_surface_at(g,i,x))-g->camera_y/256);
+            if(x>=l && x<r) floor=ht_min(floor,ht_piece_top(g,i,part,top,x)-g->camera_y/256);
         }
     return floor;
 }
@@ -2104,6 +2107,8 @@ static void ht_narration(const ht_game *game) {
             text=line?"THE WAY IS OPEN WHEN I HAVE READ WHAT I CHANGED.":
                 (game->verdict==1?"I BROKE THE FEED. HER PLAN INCLUDED MY RESCUE.":
                                   "I COMPLETED THE FEED. THE PEN WRITES AS HER.");
+        if(game->level==3 && game->traversal.mode==HT_TRESTLE)
+            text=ht_trestle_caption(game,line);
         ht_narration_hash(text);
         int x=(HT_W-(int)strlen(text)*6)/2, y=233+line*10;
         for(;*text;++text,x+=6) {

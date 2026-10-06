@@ -24,6 +24,7 @@ static const ht_contour ht_contours[HT_LEVELS][32]={
 };
 static int ht_land_height(unsigned level,int i,int x) {
     int top=ht_level_land(level)[i].top;
+    if(level==3 && i==3 && x<HT_TRESTLE_CAP)return HT_TRESTLE_FLOOR;
     if(ht_terrain_kind(level,i)==HT_DECK) return top;
     const ht_contour *points=ht_contours[level];
     for(int n=1;n<32 && points[n].x>points[n-1].x;++n) {

@@ -15,6 +15,7 @@
 #include "hollow_trail_counts_draw.inc"
 #include "hollow_trail_drawing_draw.inc"
 #include "hollow_trail_quarry_ascent_draw.inc"
+#include "hollow_trail_trestle_draw.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
@@ -344,6 +345,10 @@ static void ht_traversal_prompt(const ht_game *g) {
     }
     const char *text=NULL;
     switch(ht_traversal_near(g)) {
+    case HT_TRESTLE: text=g->traversal.mode==HT_TRESTLE?
+        (g->traversal.trestle_phase==HT_TRESTLE_TOUCH && !g->traversal.trestle_tested?
+         "A TEST NEXT FOOTING - LEFT TO GO BACK":"L/R FEEL ALONG BRACING - REVERSE TO RETURN"):
+         "A TAKE BRACE - L/R LOWER AND CROSS";break;
     case HT_WINDOW: text=g->traversal.mode==HT_WINDOW?"L/R OPEN AND CROSS - REVERSE TO GO BACK":"A TAKE WINDOW - L/R OPEN AND CLIMB";break;
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
     case HT_CLIMB: text="CLIMBING";break;

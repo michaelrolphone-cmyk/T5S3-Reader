@@ -110,7 +110,7 @@ traversal wholesale with autoplay.
 | 15 Distribution | [Physical paired lists](HOLLOW_TRAIL_DISTRIBUTION_LISTS_1_1_49.md), [caught blank sheet/notebook gestures and actual feed response](HOLLOW_TRAIL_DISTRIBUTION_STORY_1_1_50.md): player-held catch, copying/crossing/rubbing and service lamps derived from the released 4/4/0 feed; existing vessel puzzle retained | Refine close hand/paper materials against owner feedback |
 | 16 Carriage/rail dawn | Published wheel-less sleeper, shared window entry/exit and dawn reveal; [chosen sideways-pane reflection and uncertain account-sheet/sister dream](HOLLOW_TRAIL_CARRIAGE_DREAM_1_1_50.md) now connect deliberate sleep/wake holds | Refine only against concrete owner feedback; preserve the intact train, actual route and shunting puzzle |
 | 17 HOME ticket | [Station inspection](HOLLOW_TRAIL_STATION_TICKET_1_1_49.md): relocated HOME ticket, reversible crease, cancellation book, warning and same-world blocked cutting | Relative warning → cancellation → collapse order is preserved; no calendar dates invented |
-| 18 Trestle/cabin | Published source `547a83eb`: corrected-map tilt, erased-question pressure, five-legged paper-dog cutscene and careful rewrapping | Under-track bracing route and wool contact remain; no new route implied by the cabin insert |
+| 18 Trestle/cabin | Corrected-map tilt, erased-question pressure and five-legged paper dog retained; [actual lower-bracing route and wool contact](HOLLOW_TRAIL_TRESTLE_1_1_50.md) now connect reversible descent, a deliberate next-footing check, palm prints and the existing rope handoff | Refine against concrete owner feedback; preserve the real gap, cabin evidence and shunting |
 | 19 Shunting/marsh | Existing three-wagon puzzle | Distinct heavy bodies and continuous ballast-to-reed terrain transition |
 | 20 Ferry | Existing approved boat/grotto retained | Far-bank canvas/person ambiguity and pulling boat to shore; preserve hull quality |
 | 21 Marsh path | Partial wet terrain/depth | Raised bank with transparent/mirrored water and quarry sightline |
@@ -149,8 +149,9 @@ Fresh source `641be8cc4` interaction/contact sanitizer checks, real captures and
 S3 ELF/package checks pass; aggregate validation is recorded with the new PR.
 
 Continue substantive partial/missing sets above rather than waiting for review
-or repeatedly polishing the opening. Physical duplicate garden counts and the
-remaining marsh/trestle continuity are meaningful next gaps. The completed
+or repeatedly polishing the opening. Remaining marsh terrain, shunting bodies and the early pump/cut continuity
+are meaningful next gaps. Garden counts and the actual lower trestle route are
+connected. The completed
 cold-stove, ticket, pouch, sleeping-house, hoist, return, isolator, first-house
 and cabinet work should not be proposed again as missing.
 

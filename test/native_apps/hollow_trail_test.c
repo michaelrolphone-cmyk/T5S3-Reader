@@ -294,7 +294,7 @@ int main(void) {
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
-    const unsigned required_mechanics[HT_LEVELS]={104,68,5,12,16,5,6,28,14,20};
+    const unsigned required_mechanics[HT_LEVELS]={104,68,5,76,16,5,6,28,14,20};
     for(int tick=0;tick<HT_LEVELS*4500 && !ht.door_stage;++tick) {
         walk_route_tick();
         if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);

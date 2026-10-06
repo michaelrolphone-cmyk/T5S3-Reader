@@ -3,6 +3,7 @@
  * locality instead of introducing another full-frame texture/filter pass. */
 static int16_t ht_land_tops[HT_W+256],ht_land_bottoms[HT_W+256];
 static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
+    if(g->level==3 && i==3){ht_trestle_member(g,part);return;}
     int cx=g->camera/256,cy=g->camera_y/256,kind=ht_terrain_kind(g->level,i);
     int begin=ht_max(l,cx-ht_view_margin()),end=ht_min(r,cx+HT_W+ht_view_margin());
     if(begin>=end) return;

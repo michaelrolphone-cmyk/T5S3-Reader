@@ -158,10 +158,12 @@ static void ht_signal_window_step(int direction) {
         t->mode=HT_FREE;t->window_phase=t->window_touch=0;ht.grounded=true;
     }
 }
+#include "hollow_trail_trestle.inc"
 static int ht_traversal_near(const ht_game *g) {
     const ht_traversal *t=&g->traversal;const ht_mechanics *m=ht_mech(g);
     if(t->mode) return t->mode;
     int x=g->x/256,y=g->y/256;
+    if(ht_trestle_near(g))return HT_TRESTLE;
     if(ht_mill_shutter_near(g))return HT_SHUTTER;
     if(ht_signal_window_near(g))return HT_WINDOW;
     if(m->ball_x && g->grounded && ht_abs(x-t->ball_x/256)<=HT_BALL_RADIUS+9 &&
@@ -182,6 +184,10 @@ static bool ht_traversal_interact(void) {
     if(!t->mode && ht_forest_log_near(&ht)) {
         t->mode=HT_PUSH;t->forest_push=0;ht.vx=ht.vy=0;return true;
     }
+    if(t->mode==HT_TRESTLE) {
+        if(t->trestle_phase==HT_TRESTLE_TOUCH)t->trestle_tested=true;
+        return true;
+    }
     if(t->mode==HT_SHUTTER || t->mode==HT_WINDOW)return true; /* L/R returns to either grounded end. */
     if(t->mode==HT_TREE)return false; /* A remains inspection, never tree capture/release. */
     if(t->mode==HT_LEDGE) {t->mode=HT_CLIMB;t->climb=t->climb_phase=0;return true;}
@@ -193,6 +199,7 @@ static bool ht_traversal_interact(void) {
         t->mode=HT_FREE;return true;
     }
     int near=ht_traversal_near(&ht);if(!near || near==HT_LADDER) return false;
+    if(near==HT_TRESTLE)ht_trestle_enter();
     if(near==HT_WINDOW) {
         int side=ht_signal_window_near(&ht);
         t->window_entry_left=side>0?ht.x:(HT_SIGNAL_WINDOW_LEFT-5)*256;
@@ -233,6 +240,11 @@ static int ht_platform_piece(const ht_game *g,int i,int part,int *left,int *righ
     const ht_platform *p=&ht_level_land(g->level)[i];const ht_mechanics *m=ht_mech(g);
     *left=p->left;*right=p->right;*top=ht_platform_top(g,i);
     if(g->level==0 && i==1)return part==0 && g->traversal.forest_log_phase==32;
+    if(g->level==3 && i==3) {
+        if(part==0){*right=HT_TRESTLE_CAP;*top=HT_TRESTLE_FLOOR;return true;}
+        if(part==1){*left=HT_TRESTLE_CAP;return true;}
+        return false;
+    }
     if(i!=m->pit_platform) return part==0;
     if(part==0) *right=m->pit_x-(HT_BALL_RADIUS+8);
     else if(part==1) *left=m->pit_x+(HT_BALL_RADIUS+8);
@@ -240,23 +252,31 @@ static int ht_platform_piece(const ht_game *g,int i,int part,int *left,int *righ
     else return false;
     return true;
 }
+/* A split trestle member must not borrow the neighbouring cap's height at
+ * its exclusive right edge. Pit floors retain their existing flat surface. */
+static int ht_piece_top(const ht_game *g,int i,int part,int flat,int x) {
+    return part==2 || (g->level==3 && i==3)?flat:ht_surface_at(g,i,x);
+}
+static int ht_piece_bottom(const ht_game *g,int i,int flat,int x) {
+    return g->level==3 && i==3?flat+18:ht_terrain_bottom(g,i,x);
+}
 static void ht_body_step(int *x,int *y,int *vx,int *vy,int radius,int height,bool round) {
     int old_x=*x,old_y=*y;*vy=ht_min(*vy+88,2400);*x+=*vx;*y+=*vy;
     for(int i=0;i<HT_PLATFORMS;++i) for(int part=0;part<3;++part) {
         int l,r,top;if(!ht_platform_piece(&ht,i,part,&l,&r,&top)) break;
         int dx=ht_max(l-*x/256,ht_max(*x/256-r,0));
-        int old_top=part==2?top:ht_surface_at(&ht,i,ht_clamp(old_x/256,l,r));
-        if(part!=2) top=ht_surface_at(&ht,i,ht_clamp(*x/256,l,r));
+        int old_top=ht_piece_top(&ht,i,part,top,ht_clamp(old_x/256,l,r));
+        top=ht_piece_top(&ht,i,part,top,ht_clamp(*x/256,l,r));
         if(dx>radius) continue;
         int rest=(top-(round?(int)ht_isqrt((unsigned)(radius*radius-dx*dx)):0))*256;
         bool follows=*vy==88 && old_x>=l*256 && old_x<r*256 && *x>=l*256 && *x<r*256 &&
             ht_abs(old_y-(old_top-(round?radius:0))*256)<=256;
         if(*vy>=0 && ((old_y<=rest+(old_top-top)*256+256 && *y>=rest) || follows)) {*y=rest;*vy=0;}
         int bottom=round?*y+radius*256:*y,head=round?*y-radius*256:*y-height*256;
-        int wall_bottom=ht_terrain_bottom(&ht,i,*x/256);
+        int wall_bottom=ht_piece_bottom(&ht,i,top,*x/256);
         if(bottom>top*256+256 && head<wall_bottom*256) {
             int old_head=round?old_y-radius*256:old_y-height*256;
-            if(*x>=l*256 && *x<r*256 && old_head>=ht_terrain_bottom(&ht,i,old_x/256)*256) {*x=old_x;*vx=0;}
+            if(*x>=l*256 && *x<r*256 && old_head>=ht_piece_bottom(&ht,i,old_top,old_x/256)*256) {*x=old_x;*vx=0;}
             int wall_l=l,wall_r=r,old_l=l,old_r=r;
             if(part==0 && head/256>top+8) {
                 ht_cliff_bounds(&ht,i,head/256,bottom/256,&wall_l,&wall_r);
@@ -388,12 +408,12 @@ static void ht_collide(int left,int right,int top,int bottom,int old_x,int old_y
 static void ht_land_collision(int i,int old_x,int old_y) {
     for(int part=0;part<3;++part) {
         int l,r,top;if(!ht_platform_piece(&ht,i,part,&l,&r,&top)) break;
-        int old_top=part==2?top:ht_surface_at(&ht,i,ht_clamp(old_x/256,l,r));
-        if(part!=2) top=ht_surface_at(&ht,i,ht_clamp(ht.x/256,l,r));
+        int old_top=ht_piece_top(&ht,i,part,top,ht_clamp(old_x/256,l,r));
+        top=ht_piece_top(&ht,i,part,top,ht_clamp(ht.x/256,l,r));
         bool on_slope=ht.vy>=0 && ht.vy<=HT_GRAVITY && old_x>=l*256 && old_x<r*256 &&
             ht.x>=l*256 && ht.x<r*256 && ht_abs(old_y-old_top*256)<=256;
         if(on_slope) {ht.y=top*256;ht.vy=0;ht.grounded=true;}
-        int bottom=ht_terrain_bottom(&ht,i,ht.x/256);
+        int bottom=ht_piece_bottom(&ht,i,top,ht.x/256);
         int wall_l=l,wall_r=r;
         if(part==0 && ht.y/256-29>top+8)
             ht_cliff_bounds(&ht,i,ht.y/256-29,ht.y/256,&wall_l,&wall_r);
@@ -408,7 +428,7 @@ static void ht_land_collision(int i,int old_x,int old_y) {
         }
         /* The back of an undercut is solid too, not a visual-only wall. */
         if(ht.x>=l*256 && ht.x<r*256 && ht.y>top*256+256 && ht.y-29*256<bottom*256 &&
-           old_y-29*256>=ht_terrain_bottom(&ht,i,old_x/256)*256) {ht.x=old_x;ht.vx=0;}
+           old_y-29*256>=ht_piece_bottom(&ht,i,old_top,old_x/256)*256) {ht.x=old_x;ht.vx=0;}
         if(i==ht_mech(&ht)->bridge && ht.x+5*256>l*256 && ht.x-5*256<r*256 && ht.grounded && ht.y==top*256) ht.traversal.support=4;
     }
 }
@@ -426,8 +446,8 @@ static void ht_reconcile_ground(int old_x,int old_y) {
             /* A ladder's authored opening permits passage through its upper
              * terrace only while attached. Its lower ground is always solid. */
             if(t->mode==HT_LADDER && i==ht_mech(&ht)->ladders[t->ladder].upper)continue;
-            if(part!=2)top=ht_surface_at(&ht,i,ht_clamp(ht.x/256,l,r));
-            int bottom=ht_terrain_bottom(&ht,i,ht.x/256);
+            top=ht_piece_top(&ht,i,part,top,ht_clamp(ht.x/256,l,r));
+            int bottom=ht_piece_bottom(&ht,i,top,ht.x/256);
             if(ht.y<=top*256 || ht.y-29*256>=bottom*256)continue;
             int wall_l=l,wall_r=r;
             if(part==0 && ht.y/256-29>top+8)
@@ -435,9 +455,9 @@ static void ht_reconcile_ground(int old_x,int old_y) {
             if(ht.x+5*256<=wall_l*256 || ht.x-5*256>=wall_r*256)continue;
             int up=ht.y-top*256,down=(bottom+29)*256-ht.y;
             int left=ht.x-(wall_l-5)*256,right=(wall_r+5)*256-ht.x;
-            int old_top=part==2?top:ht_surface_at(&ht,i,ht_clamp(old_x/256,l,r));
+            int old_top=ht_piece_top(&ht,i,part,top,ht_clamp(old_x/256,l,r));
             bool above=old_y<=old_top*256+256;
-            bool below=old_y-29*256>=ht_terrain_bottom(&ht,i,old_x/256)*256;
+            bool below=old_y-29*256>=ht_piece_bottom(&ht,i,old_top,old_x/256)*256;
             bool over=ht.x>=l*256 && ht.x<r*256;
             if(!below && ((above || up<=2*256 || (over && up<29*256)) || (up<=down && up<=left && up<=right))) {
                 bool descending=ht.y>=old_y;
@@ -513,7 +533,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(jump_pressed) {ht.vx=-t->ledge_side*ht_motion_speed(&ht);ht.vy=-1000;}
         jump_pressed=false;
     }
-    if(jump_pressed && t->mode && t->mode!=HT_CLIMB && t->mode!=HT_SHUTTER && t->mode!=HT_WINDOW) {
+    if(jump_pressed && t->mode && t->mode!=HT_CLIMB && t->mode!=HT_SHUTTER && t->mode!=HT_WINDOW && t->mode!=HT_TRESTLE) {
         int mode=t->mode;t->mode=HT_FREE;
         if(mode==HT_LADDER || mode==HT_TREE) t->drop_cooldown=12;
         if(mode==HT_LADDER || mode==HT_TREE || mode==HT_ROPE || mode==HT_BOAT) {
@@ -522,7 +542,9 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             ht.vy=-HT_JUMP_SPEED+(mode==HT_ROPE?ht_clamp(rvy,-384,384):0);ht.grounded=false;ht.coyote=0;jump_pressed=false;
         }
     }
-    if(t->mode==HT_WINDOW) {
+    if(t->mode==HT_TRESTLE) {
+        ht_trestle_step(direction);
+    } else if(t->mode==HT_WINDOW) {
         ht_signal_window_step(direction);
     } else if(t->mode==HT_SHUTTER) {
         ht_mill_shutter_step(direction);

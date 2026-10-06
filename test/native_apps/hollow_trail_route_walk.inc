@@ -21,6 +21,14 @@ static void walk_route_tick(void) {
         if(!t->mode && ht_signal_window_near(&ht)>0){assert(ht_traversal_interact());walk_mechanics|=64;}
         ht_step_controls(1,0,false,false);return;
     }
+    if(ht.level==3 && (t->mode==HT_TRESTLE || (!t->mode && x>=1232 && x<1490))) {
+        if(!t->mode && ht_trestle_near(&ht)){assert(ht_traversal_interact());walk_mechanics|=64;}
+        if(t->mode==HT_TRESTLE && t->trestle_phase==HT_TRESTLE_TOUCH && !t->trestle_tested)
+            assert(ht_traversal_interact());
+        ht_step_controls(1,0,false,false);
+        if(!t->mode && ht.grounded && ht.x>=1490*256){walk_phase=3;walk_task=0;}
+        return;
+    }
     /* The mill register has to be physically brought into the window beam.
      * This witness uses the same A grip and horizontal input as a player. */
     if(ht.level==0 && walk_phase==3 && !ht_evidence_found(&ht,1) && !ht_mill_register_lit(&ht)) {
