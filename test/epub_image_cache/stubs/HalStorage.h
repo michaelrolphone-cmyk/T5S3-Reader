@@ -6,6 +6,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <HalReadBudget.h>
 struct TestStorage;
 class FsFile {
  public:
@@ -14,6 +15,7 @@ class FsFile {
   FsFile& operator=(const FsFile&) = delete;
   ~FsFile() { close(); }
   int read(void* out, size_t count);
+  int readCooperatively(void* out, size_t count, HalReadBudget& budget) { int n=read(out,count); budget.afterRead(n > 0 ? n : 0); return n; }
   size_t write(const uint8_t*, size_t) { return 0; }
   explicit operator bool() const { return data != nullptr; }
   size_t size() const { return data ? data->size() : 0; }

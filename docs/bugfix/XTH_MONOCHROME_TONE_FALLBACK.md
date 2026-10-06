@@ -1,5 +1,17 @@
 # Preserve XTH tones on monochrome surfaces
 
+## Current performance integration refresh (2026-10-06)
+
+PR350 advanced independently to cbf44781 by merging performance PR433.
+This branch retains its prior green head and includes cbf44781 as the new
+integration parent, preserving all twelve consolidated performance repairs.
+Firmware 1.3.151 remains above the new base 1.3.147; no separate package
+version or payload is changed by conflict resolution. Overlapping runner and
+source edits retain both sets of changes.
+Final software checks and exact-head target CI are recorded on the PR.
+No write to PR350/master, release or device operation is performed. Earlier
+sections below preserve the original repair and refresh evidence.
+
 Baseline: X4 working head 36891e71ab651152c618d60d1d248abb4a7f44ff.
 Branch: fix/xth-mono-tone-fallback. Firmware 1.3.128 -> 1.3.135, above the
 separate default-entry 1.3.133 and bookmark-performance 1.3.134 reservations.
