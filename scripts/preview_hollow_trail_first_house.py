@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture the real marsh route, ridge-isolator interaction and both raster modes."""
+"""Capture the real marsh route, first-house interaction and both raster modes."""
 import argparse
 import hashlib
 import json
@@ -22,7 +22,7 @@ ref = a.source_ref or 'HEAD'
 if a.source_ref:
     subprocess.run(['git', '-C', str(r), 'diff', '--exit-code', ref, '--', 'Apps'], check=True)
 commit = subprocess.check_output(['git', '-C', str(r), 'rev-parse', ref], text=True).strip()
-shots = [('connected-mast',0),('housing',0),('catch',32),('open',128),('knife',224),('first-interval',300),('second-interval',444),('gap',576),('closed',576),('chimes',576)]
+shots = [('outside',0),('window',0),('lean-left',0),('lean-right',0),('approach',48),('knock',128),('waiting',260),('unanswered',448)]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,53 +39,46 @@ const t5_app_api_v1 *t5_app_get_api(uint32_t v){(void)v;return &capture_api;}
 const t5_video_api_v1 *t5_video_get_api(uint32_t v){(void)v;return NULL;}
 const t5_math_api_v1 *t5_math_get_api(uint32_t v){(void)v;return NULL;}
 const t5_provider_capability_api_v1 *t5_provider_capability_get_api(uint32_t v){(void)v;return NULL;}
-static void move_to(int target){
- for(int i=0;i<4000 && (abs(ht.x/256-target)>3 || !ht.grounded);++i){capture_buttons=abs(ht.x/256-target)<=3?0:ht.x/256<target?T5_APP_BUTTON_RIGHT:T5_APP_BUTTON_LEFT;ht_input(32);}
- capture_buttons=0;ht_input(1);assert(abs(ht.x/256-target)<12);
-}
-static void confirm(void){capture_buttons=0;ht_input(1);capture_buttons=T5_APP_BUTTON_CONFIRM;ht_input(1);capture_buttons=0;ht_input(1);}
 int main(int argc,char **argv){
  if(argc!=4)return 2;
  uint8_t *mem=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*bits=malloc(HT_NATIVE_PIXELS/8);
  if(!mem||!bits)return 3;ht_bind(mem);ht_bind_native(mem);ht_reader_bitmap=bits;app=&capture_api;
- memset(&ht,0,sizeof(ht));ht.level=8;ht_select_level(8);ht_spawn(true);ht_camera_mode=HT_CAMERA_NATIVE;
- bool outside=(!strcmp(argv[1],"housing") || !strcmp(argv[1],"connected-mast"));
- for(int tick=0;tick<18000 && ht.level==8 && ht.x<2840*256;++tick)walk_route_tick();
- if(ht.level!=8 || ht.deaths)return 7;
+ memset(&ht,0,sizeof(ht));ht.level=9;ht_select_level(9);ht_spawn(true);ht_camera_mode=HT_CAMERA_NATIVE;
+ bool outside=!strcmp(argv[1],"outside");
+ int target=238;
+ for(int tick=0;tick<12000 && ht.level==9 && ht.x<target*256;++tick)walk_route_tick();
+ if(ht.level!=9 || ht.deaths)return 7;
  ht_cutscene.active=false;ht_cutscene.finished=true;ht_cutscene_seen=63;ht_input(1);
- move_to(HT_PUZZLE_FIRST+3*HT_PUZZLE_SPACING);
- if(!outside)confirm();
+ if(!outside) {
+
+  capture_buttons=T5_APP_BUTTON_CONFIRM;ht_input(1);capture_buttons=0;ht_input(1);
+ }
  unsigned ticks=(unsigned)atoi(argv[2]);
-#ifdef HT_ISOLATOR_STUDY
- if(!outside && !ht_isolator.active)return 9;
+#ifdef HT_FIRST_HOUSE_STUDY
+ if(!outside && !ht_first_house.active)return 9;
+ if(!outside && strcmp(argv[1],"window") && strcmp(argv[1],"lean-left") && strcmp(argv[1],"lean-right")){
+  capture_buttons=T5_APP_BUTTON_CONFIRM;ht_input(1);capture_buttons=0;ht_input(1);
+ }
+#endif
+#ifdef HT_FIRST_HOUSE_STUDY
+ if(!strcmp(argv[1],"lean-left") || !strcmp(argv[1],"lean-right")){
+  capture_buttons=!strcmp(argv[1],"lean-left")?T5_APP_BUTTON_LEFT:T5_APP_BUTTON_RIGHT;
+  for(int i=0;i<32;++i)ht_input(32);capture_buttons=0;ht_input(1);
+ }
 #endif
  for(unsigned i=0;i<ticks;++i)ht_input(32);
- if(!strcmp(argv[1],"closed") || !strcmp(argv[1],"chimes")){
-#ifdef HT_ISOLATOR_STUDY
-  confirm();for(int i=0;i<140;++i)ht_input(32);assert(ht_isolator.stage==2);
-#endif
- }
- if(!strcmp(argv[1],"chimes")){
-#ifdef HT_ISOLATOR_STUDY
-  confirm();assert(!ht_isolator.active);
-#endif
-  int notes[4]={1,0,2,1};for(int n=0;n<4;++n){move_to(HT_PUZZLE_FIRST+notes[n]*HT_PUZZLE_SPACING);confirm();}
-  assert(ht.puzzle.solved && ht.puzzle.stage);for(int i=0;i<64;++i)ht_input(32);assert(ht.puzzle.opening==48);
- }
  bool journal=reading;
- if(!strcmp(argv[1],"connected-mast")){
-  ht_game v=ht;int wx=ht_landmark_x(8,1),floor=ht_surface_at(&v,6,wx);
-  v.camera=(wx-240)*256;v.camera_y=(floor-220)*256;v.x=wx*256;v.y=floor*256;v.ticks=0;
-  v.intimacy=v.vista=v.drop_zoom=0;v.sway_phase=v.rotation_phase=0;ht_render_scene_from(&v,false);
- }
- else if(journal)ht_journal_render();
-#ifdef HT_ISOLATOR_STUDY
- else if(ht_isolator.active)ht_isolator_study_render(&ht,&ht_isolator);
+ if(journal)ht_journal_render();
+#ifdef HT_FIRST_HOUSE_STUDY
+ else if(ht_first_house.active)ht_first_house_study_render(&ht,&ht_first_house);
 #endif
  else {
-  ht.camera=2835*256;ht.camera_y=-30*256;ht.intimacy=0;ht.vista=0;
+  ht.camera=60*256;ht.camera_y=30*256;ht.intimacy=128;ht.vista=0;
   ht.sway_phase=ht.rotation_phase=ht.drop_zoom=0;
   ht_render_scene();ht_evidence_prompt(&ht);
+#ifdef HT_FIRST_HOUSE_STUDY
+  ht_first_house_prompt(&ht);
+#endif
  }
  char file[1024];snprintf(file,sizeof(file),"%s.pgm",argv[3]);FILE *f=fopen(file,"wb");if(!f)return 4;
  fprintf(f,"P5\n960 540\n255\n");
@@ -94,15 +87,15 @@ int main(int argc,char **argv){
  snprintf(file,sizeof(file),"%s.pbm",argv[3]);f=fopen(file,"wb");if(!f)return 4;
  fprintf(f,"P4\n960 540\n");fwrite(bits,1,HT_NATIVE_PIXELS/8,f);fclose(f);
  const char *mode=journal?"journal":"game";
-#ifdef HT_ISOLATOR_STUDY
- if(ht_isolator.active)mode="isolator";
+#ifdef HT_FIRST_HOUSE_STUDY
+ if(ht_first_house.active)mode="first-house";
 #endif
  printf("%s %u %u %d %d\n",mode,ticks,ht.evidence,ht.x,ht.y);
  free(bits);free(mem);return 0;
 }
 '''.replace('@APP@', str(r/'Apps/hollow_trail.c')).replace('@ROUTE@', str(r/'test/native_apps/hollow_trail_route_walk.inc'))
 captures = []
-with tempfile.TemporaryDirectory(prefix='isolator-preview-') as tmp:
+with tempfile.TemporaryDirectory(prefix='first_house-preview-') as tmp:
     tmp = pathlib.Path(tmp)
     c, exe = tmp/'capture.c', tmp/'capture'
     c.write_text(source)
@@ -110,7 +103,7 @@ with tempfile.TemporaryDirectory(prefix='isolator-preview-') as tmp:
                     '-I'+str(r/'sdk/driver'), str(c), '-o', str(exe)], check=True)
     sheet = Image.new('RGB', (1440, 30+4*295), '#e9e6df')
     draw = ImageDraw.Draw(sheet)
-    draw.text((12, 8), 'HOLLOW TRAIL | Real input and C renderer | Ridge isolator', fill='#252525')
+    draw.text((12, 8), 'HOLLOW TRAIL | Real input and C renderer | First house', fill='#252525')
     for i, (name, tick) in enumerate(shots):
         stem = tmp/name
         state = subprocess.check_output([str(exe), name, str(tick), str(stem)], text=True).strip()
@@ -128,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix='isolator-preview-') as tmp:
 meta = {'source_commit':commit, 'version':json.loads((r/'Apps/hollow_trail.json').read_text())['version'],
         'source_files':{str(f.relative_to(r)):hashlib.sha256(f.read_bytes()).hexdigest()
                         for f in sorted((r/'Apps').glob('hollow_trail*')) if f.is_file()},
-        'fixture':'The actual ridge route reaches the existing WIRE control. Confirm opens the inward contact. The after source stages catch, lid, knife contact and two intervals at the existing ridge mast. Connected-mast uses a fixed lit phase of that production mast. Both sources complete the unchanged 1/0/2/1 chime sequence and fully open the crossing.',
+        'fixture':'The actual settlement route reaches the first house before the signal terrace. Baseline Confirm has no new action there. After Confirm examines the pane; Left/Right leans and moves its reflected edge, then Confirm approaches the door, knocks and waits without a reply. The existing 30 discoveries and lamp puzzle are unchanged.',
         'raster':[960, 540], 'captures':captures}
 meta.update(source_identity(r, meta['source_files'], a.source_ref))
 (out/'capture-metadata.json').write_text(json.dumps(meta, indent=2)+'\n')

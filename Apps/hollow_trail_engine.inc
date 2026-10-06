@@ -129,6 +129,7 @@ typedef struct {
     bool grounded;
     uint16_t waiting_view_tick; /* Draw snapshot only. */
     bool waiting_view_active;
+    int8_t first_house_lean;
     bool isolator_view_active;
     uint8_t isolator_view_stage;
     uint16_t isolator_view_tick;
@@ -2274,3 +2275,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_warming_study.inc"
 
 #include "hollow_trail_isolator_study.inc"
+
+#include "hollow_trail_first_house_study.inc"

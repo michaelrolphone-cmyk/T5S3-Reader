@@ -135,6 +135,15 @@ static void ht_advance(uint32_t now) {
         }
         ht_motion_emphasis=false;jump_down=pause_down=false;return;
     }
+    if(ht_first_house.active){
+        uint32_t elapsed=now-simulation_clock;simulation_clock=now;
+        if(ht_first_house.paused || ht_pad_fault){simulation_accumulator=0;return;}
+        simulation_accumulator+=elapsed>128u?128u:elapsed;
+        for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps){
+            simulation_accumulator-=HT_STEP_MS;if(ht_first_house_step(&ht_first_house))++scene_revision;
+        }
+        ht_motion_emphasis=false;jump_down=pause_down=false;return;
+    }
     if(ht_sleep.active){
         uint32_t elapsed=now-simulation_clock;simulation_clock=now;
         if(ht_sleep.paused || ht_pad_fault){simulation_accumulator=0;return;}
@@ -353,6 +362,17 @@ static void ht_input_update(uint32_t wait) {
         previous=held=0;jump_down=pause_down=false;last_poll=now;return;
     }
     uint32_t down=buttons&~previous;
+    if(ht_first_house.active && !reading){
+        if(down&HT_PAUSE)ht_first_house.paused=!ht_first_house.paused;
+        if(!ht_first_house.paused)ht_first_house.direction=(int8_t)(((buttons&HT_RIGHT)!=0)-((buttons&HT_LEFT)!=0));
+        if(down&(HT_BACK|HT_EXIT)){ht_first_house.active=false;ht_input_rearm=true;}
+        else if(down&HT_JOURNAL){ht_journal_index=true;ht_journal_selection=0;reading=true;ht_first_house.direction=0;ht_input_rearm=true;}
+        else if(down&HT_ACCEPT)(void)ht_first_house_action(&ht_first_house);
+        if(down)++scene_revision;
+        jump_down=pause_down=false;
+        if(!ht_first_house.active || reading || (down&HT_PAUSE)){simulation_started=false;simulation_accumulator=0;}
+        previous=buttons;held=0;last_poll=now;return;
+    }
     if(ht_isolator.active && !reading){
         if(down&HT_PAUSE)ht_isolator.paused=!ht_isolator.paused;
         if(down&(HT_BACK|HT_EXIT)){ht_isolator.active=false;ht_input_rearm=true;}
@@ -556,6 +576,7 @@ static void ht_input_update(uint32_t wait) {
             ht_stove_begin();jump_down=pause_down=false;
             simulation_started=false;simulation_accumulator=0;
         }
+        else if(ht_first_house_near(&ht)){ht_first_house_begin();ht_input_rearm=true;jump_down=pause_down=false;simulation_started=false;simulation_accumulator=0;}
         else if(page>=0) { ht_journal_open((unsigned)page); reading=true; }
         else if(ht_traversal_interact()) { /* A grabs/releases a nearby traversal object. */ }
         else if(ht_puzzle_near(&ht)>=0) {
@@ -657,6 +678,7 @@ __attribute__((visibility("default"))) void app_main(void) {
         ht_log("Hollow Trail: narration extra black passes require firmware 1.3.48; ordinary display remains available");
     memset(&ht,0,sizeof(ht)); ht_spawn(true); ht_cutscene_seen=0; ht_cutscene_begin(HT_CUTSCENE_INTRO);
     ht_pouch=(ht_pouch_state){0};
+    ht_first_house=(ht_first_house_state){0};
     ht_isolator=(ht_isolator_state){0};
     ht_warming=(ht_warming_state){0};
     ht_sleep=(ht_sleep_state){0};
@@ -755,14 +777,14 @@ __attribute__((visibility("default"))) void app_main(void) {
         }
 
         uint32_t now=app->millis();
-        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_isolator.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
+        if(profile_was_paused && !paused && !reading && !ht_schoolroom_studying && !ht_signal_room_studying && !ht_stove.active && !ht_station.active && !ht_distribution.active && !ht_first_house.active && !ht_isolator.active && !ht_warming.active && !ht_sleep.active && !ht_waiting.active && !ht_pouch.active) {
             ht_fps_reset(&ht_fps,now);ht_perf.fps10=0;
             ht_perf.start=now;
             ht_perf.scan_start=video->frame_counter?video->frame_counter():0;
             ht_perf.frames=ht_perf.render_ms=ht_perf.pack_ms=ht_perf.wait_ms=ht_perf.cache_ms=ht_perf.copy_ms=ht_perf.input_ms=0;
             memset(&ht_perf.stages,0,sizeof(ht_perf.stages));
         }
-        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_isolator.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
+        profile_was_paused=paused || reading || ht_schoolroom_studying || ht_signal_room_studying || ht_stove.active || ht_station.active || ht_distribution.active || ht_first_house.active || ht_isolator.active || ht_warming.active || ht_sleep.active || ht_waiting.active || ht_pouch.active;
         bool redraw=scene_revision!=drawn_revision;
         if(!redraw && !prepared) last_submit=now;
         /* Render into app-owned PSRAM while the panel finishes its previous
@@ -774,6 +796,7 @@ __attribute__((visibility("default"))) void app_main(void) {
             const bool rendering_paused=paused,rendering_reading=reading,rendering_study=ht_schoolroom_studying;
             const unsigned rendering_focus=ht_schoolroom_focus;
             const ht_pouch_state rendering_pouch=ht_pouch;
+            const ht_first_house_state rendering_first_house=ht_first_house;
             const ht_isolator_state rendering_isolator=ht_isolator;
             const ht_warming_state rendering_warming=ht_warming;
             const ht_sleep_state rendering_sleep=ht_sleep;
@@ -785,11 +808,15 @@ __attribute__((visibility("default"))) void app_main(void) {
             const unsigned rendering_signal_focus=ht_signal_room_focus,rendering_signal_ticks=ht_signal_room_ticks;
             prepared_reader=rendering_reading;
             prepared_door=rendering_game.door_stage!=HT_DOOR_NONE;
-            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_isolator.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
+            prepared_profile=!rendering_paused && !rendering_reading && !rendering_study && !rendering_signal && !rendering_stove.active && !rendering_station.active && !rendering_distribution.active && !rendering_first_house.active && !rendering_isolator.active && !rendering_warming.active && !rendering_sleep.active && !rendering_waiting.active && !rendering_pouch.active;
             if(rendering_reading) ht_journal_render();
             else if(rendering_pouch.active){
                 ht_pouch_study_render(&rendering_game,&rendering_pouch);
                 ht_narration_key=2166136261u;ht_narration_hash(ht_pouch_label(&rendering_pouch));
+            }
+            else if(rendering_first_house.active){
+                ht_first_house_study_render(&rendering_game,&rendering_first_house);
+                ht_narration_key=2166136261u;ht_narration_hash(ht_first_house_label(&rendering_first_house));
             }
             else if(rendering_isolator.active){
                 ht_isolator_study_render(&rendering_game,&rendering_isolator);
@@ -851,7 +878,7 @@ __attribute__((visibility("default"))) void app_main(void) {
                 ht_narration(&rendering_game);
                 if(!rendering_game.door_stage) {
                     ht_observation_prompt(&rendering_game);
-                    ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game);
+                    ht_traversal_prompt(&rendering_game); ht_puzzle_prompt(&rendering_game); ht_evidence_prompt(&rendering_game); ht_first_house_prompt(&rendering_game);
                 }
             }
             if(rendering_paused) {

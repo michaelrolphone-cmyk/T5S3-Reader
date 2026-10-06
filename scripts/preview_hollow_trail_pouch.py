@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory(prefix='pouch-preview-') as tmp:
 meta = {'source_commit':commit, 'version':json.loads((r/'Apps/hollow_trail.json').read_text())['version'],
         'source_files':{str(f.relative_to(r)):hashlib.sha256(f.read_bytes()).hexdigest()
                         for f in sorted((r/'Apps').glob('hollow_trail*')) if f.is_file()},
-        'fixture':'Input-only marsh route preserves the boat and reaches the existing knots evidence. Exterior uses matching framing. Confirm opens the old journal before; after it examines the pouch place, then a deliberate second Confirm pulls the bell once. Tick progression shows narrowing swing and an unanswered hold.',
+        'fixture':'The input-only quarry route reaches the existing pouch evidence. Confirm opens the actual old journal before; after it takes six stones from the pouch. Left/Right turns the same face stone, and Confirm returns all six with the marked stone last.',
         'raster':[960, 540], 'captures':captures}
 meta.update(source_identity(r, meta['source_files'], a.source_ref))
 (out/'capture-metadata.json').write_text(json.dumps(meta, indent=2)+'\n')

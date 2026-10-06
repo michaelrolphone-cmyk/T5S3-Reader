@@ -115,7 +115,7 @@ with tempfile.TemporaryDirectory(prefix='sleep-preview-') as tmp:
 meta = {'source_commit':commit, 'version':json.loads((r/'Apps/hollow_trail.json').read_text())['version'],
         'source_files':{str(f.relative_to(r)):hashlib.sha256(f.read_bytes()).hexdigest()
                         for f in sorted((r/'Apps').glob('hollow_trail*')) if f.is_file()},
-        'fixture':'Input-only marsh route preserves the boat and reaches the existing knots evidence. Exterior uses matching framing. Confirm opens the old journal before; after it examines the sleep place, then a deliberate second Confirm pulls the bell once. Tick progression shows narrowing swing and an unanswered hold.',
+        'fixture':'The input-only glasshouse route reaches the first evidence. Confirm opens the actual old journal before and the sleeping-house inspection after. A lifts the wedge, the door narrows the floor light and is caught; a second A restores the wedge and light.',
         'raster':[960, 540], 'captures':captures}
 meta.update(source_identity(r, meta['source_files'], a.source_ref))
 (out/'capture-metadata.json').write_text(json.dumps(meta, indent=2)+'\n')

@@ -122,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix='warming-preview-') as tmp:
 meta = {'source_commit':commit, 'version':json.loads((r/'Apps/hollow_trail.json').read_text())['version'],
         'source_files':{str(f.relative_to(r)):hashlib.sha256(f.read_bytes()).hexdigest()
                         for f in sorted((r/'Apps').glob('hollow_trail*')) if f.is_file()},
-        'fixture':'Input-only marsh route preserves the boat and reaches the existing knots evidence. Exterior uses matching framing. Confirm opens the old journal before; after it examines the warming place, then a deliberate second Confirm pulls the bell once. Tick progression shows narrowing swing and an unanswered hold.',
+        'fixture':'The actual dam route reaches the distributor. Movement and Confirm transfers set 3/3/0 and run the cold start. The after scene is earned only by that transition. Both sources then use the unchanged transfers to reach 2/1/3 and the solved running state.',
         'raster':[960, 540], 'captures':captures}
 meta.update(source_identity(r, meta['source_files'], a.source_ref))
 (out/'capture-metadata.json').write_text(json.dumps(meta, indent=2)+'\n')
