@@ -1,0 +1,42 @@
+{
+  "Apps/file_browser.c": {
+    "sha256": "5e281d994b6d7770db067ee146e6428a22eac4a7835e67e9a4b997d434c32e39",
+    "git_blob": "d43cf776e8a4862fd7ee8d1682ad6581f84d3fdd"
+  },
+  "Apps/file_browser.json": {
+    "sha256": "e16794b6954ae808965c334506f4e951ef3a26142605f3c2858f470a4f9de5db",
+    "git_blob": "b24bcb2969c9ae73a6f9b689057d9179c8ab437a"
+  },
+  "src/native/NativeAppHost.cpp": {
+    "sha256": "ef0105fa7c1b4371f7e04e48a5c39ec5b3d0b381b1b34e658f607680ec31a3d1",
+    "git_blob": "6d074e4b307020c8b2a03bd0ba6f6eef5f44c9e4"
+  },
+  "src/native/NativeFileOpenBridge.cpp": {
+    "sha256": "2badcdab4ed5a2733b25325e73f2c4e1224e7a988fd9fe1365a847870d4b1333",
+    "git_blob": "9b46434ac4c9fbe439d4e637c21e7a7488de3ec5"
+  },
+  "lib/hal/HalStorageVolume.cpp": {
+    "sha256": "607c029b70dc14ce52a19f05b35d68c251e5b9f16906476e2609879f9e207833",
+    "git_blob": "6080e6d872844ed3a38bc85b051a522468fe414f"
+  },
+  "Drivers/x4pro_sd/driver.c": {
+    "sha256": "3782c99d5b2730753bef5a0d7e91514c85dc7fefaff13794944c0c78c0fc6e3f",
+    "git_blob": "c13765887011666b8aff3bf4a45f6d815cd54110"
+  },
+  "Drivers/storage_fatfs/volume.c": {
+    "sha256": "6cc9400aa0b0b1e5be3c05220fe28ffedd99736047e9fd49e3a3bdbfe6cdcbcd",
+    "git_blob": "c47cbca4da28351081c89cd50263c1be267d9f01"
+  },
+  "Drivers/storage_fatfs/fatfs/ff.c": {
+    "sha256": "8da38bea076a2016aaeed63a849aa5a9f880e89d15895143eda6f4ead1fd4e9b",
+    "git_blob": "9a5953ce97aeea26a327b0b11260257cb620357c"
+  },
+  "Drivers/storage_fatfs/fatfs/ffunicode.c": {
+    "sha256": "6cd4dc4a664386ebd108e56d367582c35f005fc20381486366b5d77ac58119bd",
+    "git_blob": "e6bcacae6b36ab562910e763269fd73163d5f04c"
+  },
+  "src/native/BmpLayout.h": {
+    "sha256": "9a4a4d297a9e34b15923eb3ad6948783766ad5fa736345d6e7f3ec574bb71f27",
+    "git_blob": "00f2b320dfbf6875748ad09f0c566dc7741e6fb9"
+  }
+}

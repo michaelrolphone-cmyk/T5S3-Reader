@@ -1,0 +1,10 @@
+FRAME path=/ count=9 selected=1 opens=3 closes=3 next_calls=30 returned=27 scan[/sd]=0/10 scan[/sd]=0/10 scan[/sd]=0/10 sectors=0
+FRAME path=/Books count=8 selected=0 opens=3 closes=3 next_calls=28 returned=25 scan[/sd]=1/10 scan[/sd/Books]=17/9 scan[/sd/Books]=18/9 sectors=36
+FRAME path=/ count=33 selected=1 opens=3 closes=3 next_calls=102 returned=99 scan[/sd]=64/34 scan[/sd]=64/34 scan[/sd]=64/34 sectors=192
+FRAME path=/Books count=32 selected=0 opens=3 closes=3 next_calls=100 returned=97 scan[/sd]=64/34 scan[/sd/Books]=110/33 scan[/sd/Books]=110/33 sectors=284
+FRAME path=/ count=65 selected=1 opens=3 closes=3 next_calls=198 returned=195 scan[/sd]=268/66 scan[/sd]=268/66 scan[/sd]=268/66 sectors=804
+FRAME path=/Books count=64 selected=0 opens=3 closes=3 next_calls=196 returned=193 scan[/sd]=268/66 scan[/sd/Books]=346/65 scan[/sd/Books]=346/65 sectors=960
+FRAME path=/ count=129 selected=1 opens=3 closes=3 next_calls=390 returned=387 scan[/sd]=1060/130 scan[/sd]=1060/130 scan[/sd]=1060/130 sectors=3180
+FRAME path=/Books count=128 selected=0 opens=3 closes=3 next_calls=388 returned=385 scan[/sd]=1060/130 scan[/sd/Books]=1202/129 scan[/sd/Books]=1202/129 sectors=3464
+FRAME path=/ count=201 selected=1 opens=3 closes=3 next_calls=606 returned=603 scan[/sd]=2564/202 scan[/sd]=2564/202 scan[/sd]=2564/202 sectors=7692
+FRAME path=/Books count=200 selected=0 opens=3 closes=3 next_calls=604 returned=601 scan[/sd]=2564/202 scan[/sd/Books]=2778/201 scan[/sd/Books]=2778/201 sectors=8120
