@@ -1,17 +1,24 @@
 #define HT_CARRIAGE_STUDY 1
+#define HT_CARRIAGE_DREAM 1
+#define HT_CARRIAGE_REFLECTION_TICKS 352u
+#define HT_CARRIAGE_DREAM_TICKS 704u
 typedef struct {bool active,paused;uint8_t stage;uint16_t tick;} ht_carriage_state;
 static ht_carriage_state ht_carriage;
+#include "hollow_trail_carriage_dream.inc"
 static bool ht_carriage_near(const ht_game *g){return g->level==3 && g->grounded && !g->traversal.mode && ht_abs(g->x/256-(HT_CARRIAGE_X-16))<=6;}
 static void ht_carriage_begin(void){ht_carriage=(ht_carriage_state){true,false,0,0};}
 static bool ht_carriage_step(ht_carriage_state *s){
- if(!s->active || s->paused || s->stage==1 || s->stage==3 || s->stage==5)return false;
- unsigned limit=s->stage==0?184:s->stage==2?224:s->stage==4?288:344;
- if(++s->tick==limit){if(s->stage==6)s->active=false;else {++s->stage;s->tick=0;}}
+ if(!s->active || s->paused || s->stage==1 || s->stage==3 || s->stage==5 || s->stage==9)return false;
+ unsigned limit=s->stage==0?184:s->stage==2?224:s->stage==4?288:s->stage==7?HT_CARRIAGE_REFLECTION_TICKS:s->stage==8?HT_CARRIAGE_DREAM_TICKS:344;
+ if(++s->tick==limit){
+  if(s->stage==6)s->active=false;
+  else {s->stage=s->stage==2?7:s->stage==7?3:s->stage==8?9:s->stage+1;s->tick=0;}
+ }
  return true;
 }
 static bool ht_carriage_action(ht_carriage_state *s){
- if(!s->active || s->paused || (s->stage!=1 && s->stage!=3 && s->stage!=5))return false;
- ++s->stage;s->tick=0;return true;
+ if(!s->active || s->paused || (s->stage!=1 && s->stage!=3 && s->stage!=5 && s->stage!=9))return false;
+ s->stage=s->stage==3?8:s->stage==9?4:s->stage+1;s->tick=0;return true;
 }
 static ht_joint ht_carriage_mix(ht_joint a,ht_joint b,int q,int span){return ht_joint_at(a.x+(b.x-a.x)*q/span,a.y+(b.y-a.y)*q/span);}
 static ht_person_pose ht_carriage_entry_pose(const ht_game *g,unsigned tick){
@@ -81,6 +88,14 @@ static const char *ht_carriage_label(const ht_carriage_state *s){
  if(s->stage==1)return "I CHOSE THE DRY BENCH.";
  if(s->stage==2)return s->tick<112?"I TOOK OFF MY BOOTS.":"I PUT MY FEET UNDER MY COAT.";
  if(s->stage==3)return "INSTEAD I HEARD NOTHING.";
+ if(s->stage==7)return s->tick<176?"IN THE PANE, MY REFLECTION LAY SIDEWAYS.":"I TURNED TOWARD THE SEAT BACK.";
+ if(s->stage==8){
+  if(s->tick<176)return "NEAR DAWN I DREAMED MY SISTER SAT OPPOSITE ME.";
+  if(s->tick<352)return "EACH PAPER TURNED OUT TO BE A HOUSEHOLD ACCOUNT.";
+  if(s->tick<528)return "SHE SAID I HAD LEFT SOMETHING OUT.";
+  return "\"WHAT?\"  SHE POINTED TO A BLANK PLACE.";
+ }
+ if(s->stage==9)return "\"YOU'LL REMEMBER.\"";
  if(s->stage==4 && s->tick<128)return "I WOKE WITH MY HAND EXTENDED ACROSS THE CARRIAGE.";
  if(s->stage==4 || s->stage==5)return "MORNING SHOWED ME THE LOCOMOTIVE.";
  return "THE RAILS REMAINED SILENT.";
@@ -111,8 +126,10 @@ static void ht_carriage_study_render(const ht_game *game,const ht_carriage_state
  int night=s->stage==3?90:s->stage==2?ht_clamp((int)s->tick-144,0,80)*90/80:s->stage==4?90-ht_min(s->tick,128)*90/128:0;
  if(night){int width=ht_native_active?HT_NATIVE_W:HT_W,height=ht_native_active?HT_NATIVE_H:HT_H;
   for(int y=0;y<height;++y){for(int x=0;x<width;++x){int at=y*width+x;ht_scene[at]=(uint8_t)(ht_scene[at]+(255-ht_scene[at])*(int)night/128);}if(!(y%32))ht_checkpoint();}}
+ if(s->stage==7 || s->stage==3)ht_carriage_reflection_draw(s->stage==3?HT_CARRIAGE_REFLECTION_TICKS:s->tick);
+ if(s->stage==8 || s->stage==9)ht_carriage_dream_draw(s->stage==9?HT_CARRIAGE_DREAM_TICKS:s->tick);
  ht_rect(ht_scene,7,226,466,35,255);const char *label=ht_carriage_label(s);ht_text_color((HT_W-(int)strlen(label)*6)/2,230,label,1,65);
- const char *keys=s->stage==1?"A REST  START JOURNAL  X RETURN":s->stage==3?"A WAKE  START JOURNAL  X RETURN":s->stage==5?"A LEAVE CARRIAGE  START JOURNAL  X RETURN":"START JOURNAL  PAUSE HOLD  X RETURN";
+ const char *keys=s->stage==1?"A REST  START JOURNAL  X RETURN":s->stage==3?"A SLEEP  START JOURNAL  X RETURN":s->stage==9?"A WAKE  START JOURNAL  X RETURN":s->stage==5?"A LEAVE CARRIAGE  START JOURNAL  X RETURN":"START JOURNAL  PAUSE HOLD  X RETURN";
  ht_text_color((HT_W-(int)strlen(keys)*6)/2,244,keys,1,103);ht_vignette();
 }
 static void ht_carriage_prompt(const ht_game *g){

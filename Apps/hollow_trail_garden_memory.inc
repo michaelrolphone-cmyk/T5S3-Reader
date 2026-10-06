@@ -24,11 +24,11 @@ static void ht_sister_room(int wall,int floor){
 }
 /* The same asymmetrical profile persists through all three uncertain faces.
  * Youth/tiredness alter the jaw and posture, not the identity of the figure. */
-static void ht_sister_face(int x,int y,int young,int crease,int ghost,bool closed,bool lying){
+static void ht_sister_face_toward(int x,int y,int young,int crease,int ghost,bool closed,bool lying,int facing){
  int hair=250-ghost,skin=137-ghost/3,edge=222-ghost;
  /* In bed, the same profile turns onto the pillow: neck toward the body,
   * cheek toward the folded hand. No upright head on a horizontal body. */
-#define SX(a,b) (x+(lying?(b):(a)))
+#define SX(a,b) (x+(lying?(b):(a)*facing))
 #define SY(a,b) (y+(lying?(a):(b)))
 #define SL(ax,ay,bx,by,ra,rb,ink) ht_limb(ht_scene,SX(ax,ay),SY(ax,ay),SX(bx,by),SY(bx,by),ra,rb,ink)
 #define SD(ax,ay,r,ink) ht_disk(ht_scene,SX(ax,ay),SY(ax,ay),r,ink)
@@ -45,6 +45,9 @@ static void ht_sister_face(int x,int y,int young,int crease,int ghost,bool close
 #undef SL
 #undef SY
 #undef SX
+}
+static void ht_sister_face(int x,int y,int young,int crease,int ghost,bool closed,bool lying){
+ ht_sister_face_toward(x,y,young,crease,ghost,closed,lying,1);
 }
 static ht_joint ht_sister_folded_hand(void){return ht_joint_at(200,155);}
 static void ht_sister_sleep(void){

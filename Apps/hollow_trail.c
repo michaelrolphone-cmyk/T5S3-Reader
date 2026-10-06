@@ -225,7 +225,7 @@ static void ht_advance(uint32_t now) {
     }
     if(ht_carriage.active){
         uint32_t elapsed=now-simulation_clock;simulation_clock=now;
-        if(ht_carriage.paused || ht_pad_fault){simulation_accumulator=0;return;}
+        if(ht_carriage.paused || ht_pad_fault || ht_input_rearm){simulation_accumulator=0;return;}
         simulation_accumulator+=elapsed>128u?128u:elapsed;
         for(unsigned steps=0;simulation_accumulator>=HT_STEP_MS && steps<8;++steps){
             simulation_accumulator-=HT_STEP_MS;if(ht_carriage_step(&ht_carriage))++scene_revision;
