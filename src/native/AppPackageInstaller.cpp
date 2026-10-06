@@ -50,7 +50,14 @@ struct StorageOps {
 
 bool existingRegularFile(const char* path) {
   if (!path) return false;
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  // The volume backend can request a real regular-file handle directly. Its
+  // provider rejects directories; keep all live-handle and close checks below.
+  HalFile file;
+  if (!Storage.openFileForRead("APPSTORE", path, file)) return false;
+#else
   HalFile file = Storage.open(path, O_RDONLY);
+#endif
   if (!file.isOpen() || file.isDirectory()) {
     if (file.isOpen()) file.close();
     return false;
@@ -63,7 +70,12 @@ bool verifyBytes(const char* elfPath, uint64_t declaredSize, const char* declare
   constexpr uint32_t kVerifyBudgetMs = 30000;
   const uint32_t started = millis();
   uint32_t yieldedAt = started, reportedAt = started;
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalFile elf;
+  if (!Storage.openFileForRead("APPSTORE", elfPath, elf)) return false;
+#else
   HalFile elf = Storage.open(elfPath, O_RDONLY);
+#endif
   if (!elf.isOpen() || elf.isDirectory()) return false;
   const uint64_t size = elf.fileSize64();
   if (size < 52 || size > kMaxAppBytes || size != declaredSize) {
