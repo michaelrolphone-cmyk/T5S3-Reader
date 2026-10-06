@@ -129,6 +129,9 @@ typedef struct {
     bool grounded;
     uint16_t waiting_view_tick; /* Draw snapshot only. */
     bool waiting_view_active;
+    bool isolator_view_active;
+    uint8_t isolator_view_stage;
+    uint16_t isolator_view_tick;
     bool warming_view_active;
     uint16_t warming_view_tick;
     bool sleep_view_active;
@@ -2091,11 +2094,14 @@ static void ht_narration(const ht_game *game) {
     }
 }
 
+#include "hollow_trail_isolator_draw.inc"
 #include "hollow_trail_warming_draw.inc"
 #include "hollow_trail_mechanism_draw.inc"
 static void ht_draw_puzzle(const ht_game *game) {
     int camera=game->camera/256,top=ht_level_land(game->level)[9].top-game->camera_y/256;
     ht_draw_mechanisms(game,top);
+    ht_isolator_box(game,game->isolator_view_active?ht_isolator_lid(game->isolator_view_stage,game->isolator_view_tick):0,
+       game->isolator_view_active && !game->isolator_view_stage?ht_isolator_lift(game->isolator_view_tick):game->puzzle.stage?4:0);
     ht_warming_pipe(game,game->warming_view_active?ht_warming_amount(game->warming_view_tick):game->puzzle.stage?256:0);
     int x=HT_GOAL-camera;
     if(game->level==HT_LEVELS-1 && game->puzzle.solved) {
@@ -2266,3 +2272,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_sleep_study.inc"
 
 #include "hollow_trail_warming_study.inc"
+
+#include "hollow_trail_isolator_study.inc"

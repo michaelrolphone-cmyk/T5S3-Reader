@@ -18,7 +18,7 @@ static void ht_signal(int x,int y,const ht_game *g) {
     /* Oil Fields service lamps burn steadily in daylight. Other chapters
      * retain the three-flash signal, including the final circuit. */
     unsigned phase=g->ticks%144u;bool lit=g->level==2 || (phase<54u && phase%18u<9u);
-    if(g->level==9 && g->verdict==1) lit=false;
+    if((g->level==9 && g->verdict==1) || (g->level==8 && g->puzzle.stage)) lit=false;
     ht_disk(ht_scene,x,y-57,3,lit?0:195);
     ht_rect(ht_scene,x-7,y-68,14,3,255);
     ht_limb(ht_scene,x,y-40,x+12,y-31,1,0,200);
