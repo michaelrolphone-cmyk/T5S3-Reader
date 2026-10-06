@@ -1,3 +1,4 @@
+#include "hollow_trail_sleep_draw.inc"
 #include "hollow_trail_pouch_draw.inc"
 #include "hollow_trail_material_detail.inc"
 #include "hollow_trail_waiting_draw.inc"
@@ -107,6 +108,8 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_stove_room(g,0,0);
     ht_station_room(g);
     ht_distribution_room(g,48);
+    ht_sleep_room(g,g->sleep_view_active?ht_sleep_closure(g->sleep_view_stage,g->sleep_view_tick):0,
+      !g->sleep_view_active || g->sleep_view_stage==0 || g->sleep_view_stage==4 || (g->sleep_view_stage==1 && g->sleep_view_tick<80) || (g->sleep_view_stage==3 && g->sleep_view_tick>=96));
     ht_pouch_room(g);
     ht_waiting_room(g,g->waiting_view_active?(unsigned)ht_waiting_pull(g->waiting_view_tick):0,
         g->waiting_view_active && g->waiting_view_tick>=104?ht_waiting_swing(g->waiting_view_tick-104):0);

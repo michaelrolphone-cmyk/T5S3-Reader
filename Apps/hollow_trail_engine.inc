@@ -129,6 +129,9 @@ typedef struct {
     bool grounded;
     uint16_t waiting_view_tick; /* Draw snapshot only. */
     bool waiting_view_active;
+    bool sleep_view_active;
+    uint8_t sleep_view_stage;
+    uint16_t sleep_view_tick;
     ht_traversal traversal;
     ht_puzzle_state puzzle;
     uint8_t verdict,last_verdict,endings; /* 0 undecided; 1 break; 2 complete; archive bitmask. */
@@ -2255,3 +2258,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_waiting_study.inc"
 
 #include "hollow_trail_pouch_study.inc"
+
+#include "hollow_trail_sleep_study.inc"
