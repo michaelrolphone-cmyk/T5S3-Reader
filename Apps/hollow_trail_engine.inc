@@ -2301,3 +2301,5 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 
 #include "hollow_trail_food_study.inc"
 #include "hollow_trail_care_study.inc"
+
+#include "hollow_trail_privacy_study.inc"

@@ -122,7 +122,7 @@ traversal wholesale with autoplay.
 | 27 Hoist | Published: real balance transition earns cage descent, shared feet/brake-cord contacts, passing fern and preserved destination spawn | Earlier scarf-grip inspection and empty-cage test remain distinct beats |
 | 28 Gallery | Published hoist handoff includes gallery walkout toward the glasshouses | Extend narrow wet gallery and continuous fern/glasshouse-rib arrival scenery |
 | 29 Living beds | Post-merge 1.1.50 source `641be8cc4`: tended first bed, strings/channels, broken-pot shoot, can on bricks, kneeling leaf/dust/cleaning/rebound and warm-soil response; [actual comparisons](images/hollow-trail-living-bed/README.md) | [Water, food and cupboard note](HOLLOW_TRAIL_FOOD_1_1_50.md) now connected; [evening tray/stem care](HOLLOW_TRAIL_CARE_1_1_50.md) is connected; three-row hillside continuity remains |
-| 30 Sleeping/lock | Published: seven raised pallets, sacking curtain, inside lock and wedge, narrowing door-light and restored leaf shine | [Chosen far-pallet night rest](HOLLOW_TRAIL_GARDEN_NIGHT_1_1_50.md) is connected; towel/comb privacy gesture and sister-face memory remain |
+| 30 Sleeping/lock | Published: seven raised pallets, sacking curtain, inside lock and wedge, narrowing door-light and restored leaf shine | [Chosen far-pallet night rest](HOLLOW_TRAIL_GARDEN_NIGHT_1_1_50.md) and [towel/comb privacy with the repeated curtain-pin memory](HOLLOW_TRAIL_PRIVACY_1_1_50.md) are connected; the later sister-face/crease memory remains |
 | 31 Garden night/counts | Connected 1.1.50: clipped consecutive-morning sheets at the existing page-19 location, physical carry to clear pane, player-controlled two-axis duplicate correction alignment, weak reflected face, exact book prose and return beneath empty pot | [Chosen pallet/night-rest sequence](HOLLOW_TRAIL_GARDEN_NIGHT_1_1_50.md) is connected; sister-face/crease memory remains; [physical child/printed-card comparison](HOLLOW_TRAIL_DRAWINGS_1_1_50.md) is connected |
 | 32 Mirror partition | Published: actual upper-vent solution earns leaf/condensation response and onward view; lower-latch solution retained | [Physical child-drawing/older-card comparison](HOLLOW_TRAIL_DRAWINGS_1_1_50.md) now includes the imperfect figures, reversible paper movement and the railway dog without identifying its author |
 | 33 Dam reveal | Existing detailed dam/falls retained | One coherent monumental reveal, turbine gauge/shared-feed diagram |
@@ -213,3 +213,9 @@ count-room row: moving the wet tray, shimming it, drawing cuff thread to lift
 and tie the stem, then turning the seedlings. Its fourteen actual comparisons
 are preserved with exact source provenance. The existing
 count and drawing interactions remain independently available.
+
+[Improvised privacy behind the existing sacking](HOLLOW_TRAIL_PRIVACY_1_1_50.md)
+now connects the grounded approach, feet-only screen, basin and damaged comb,
+clean towel fold and quarry-dust print, repeated home-curtain pin memory and
+exact-state return. This is another local 1.1.50 increment; remote publication
+remains stopped under the existing separate approval issue.
