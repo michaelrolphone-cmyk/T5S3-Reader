@@ -3,6 +3,10 @@
 
 #include <Arduino.h>
 #include <Logging.h>
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+#include <HalReadBudget.h>
+#include <HalWriteBudget.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -682,31 +686,45 @@ bool CssParser::saveToCache() const {
     return false;
   }
 
+  // Keep every scalar request and the on-disk layout; only amortize the
+  // volume HAL's scheduler waits. The parser caps rules at MAX_RULES and
+  // selectors at MAX_SELECTOR_LENGTH. Each HAL call retains its I/O deadline.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalWriteBudget budget([]() -> uint32_t { return millis(); }, []() { delay(1); });
+  auto write = [&file, &budget](const uint8_t* data, size_t size) {
+    return file.writeCooperatively(data, size, budget);
+  };
+  auto writeByte = [&write](uint8_t byte) { return write(&byte, sizeof(byte)); };
+#else
+  auto write = [&file](const uint8_t* data, size_t size) { return file.write(data, size); };
+  auto writeByte = [&file](uint8_t byte) { return file.write(byte); };
+#endif
+
   // Write version
-  file.write(CssParser::CSS_CACHE_VERSION);
+  writeByte(CssParser::CSS_CACHE_VERSION);
 
   // Write rule count
   const auto ruleCount = static_cast<uint16_t>(rulesBySelector_.size());
-  file.write(reinterpret_cast<const uint8_t*>(&ruleCount), sizeof(ruleCount));
+  write(reinterpret_cast<const uint8_t*>(&ruleCount), sizeof(ruleCount));
 
   // Write each rule: selector string + CssStyle fields
   for (const auto& pair : rulesBySelector_) {
     // Write selector string (length-prefixed)
     const auto selectorLen = static_cast<uint16_t>(pair.first.size());
-    file.write(reinterpret_cast<const uint8_t*>(&selectorLen), sizeof(selectorLen));
-    file.write(reinterpret_cast<const uint8_t*>(pair.first.data()), selectorLen);
+    write(reinterpret_cast<const uint8_t*>(&selectorLen), sizeof(selectorLen));
+    write(reinterpret_cast<const uint8_t*>(pair.first.data()), selectorLen);
 
     // Write CssStyle fields (all are POD types)
     const CssStyle& style = pair.second;
-    file.write(static_cast<uint8_t>(style.textAlign));
-    file.write(static_cast<uint8_t>(style.fontStyle));
-    file.write(static_cast<uint8_t>(style.fontWeight));
-    file.write(static_cast<uint8_t>(style.textDecoration));
+    writeByte(static_cast<uint8_t>(style.textAlign));
+    writeByte(static_cast<uint8_t>(style.fontStyle));
+    writeByte(static_cast<uint8_t>(style.fontWeight));
+    writeByte(static_cast<uint8_t>(style.textDecoration));
 
     // Write CssLength fields (value + unit)
-    auto writeLength = [&file](const CssLength& len) {
-      file.write(reinterpret_cast<const uint8_t*>(&len.value), sizeof(len.value));
-      file.write(static_cast<uint8_t>(len.unit));
+    auto writeLength = [&write, &writeByte](const CssLength& len) {
+      write(reinterpret_cast<const uint8_t*>(&len.value), sizeof(len.value));
+      writeByte(static_cast<uint8_t>(len.unit));
     };
 
     writeLength(style.textIndent);
@@ -720,7 +738,7 @@ bool CssParser::saveToCache() const {
     writeLength(style.paddingRight);
     writeLength(style.imageHeight);
     writeLength(style.imageWidth);
-    file.write(static_cast<uint8_t>(style.display));
+    writeByte(static_cast<uint8_t>(style.display));
 
     // Write defined flags as uint16_t
     uint16_t definedBits = 0;
@@ -740,7 +758,7 @@ bool CssParser::saveToCache() const {
     if (style.defined.imageHeight) definedBits |= 1 << 13;
     if (style.defined.imageWidth) definedBits |= 1 << 14;
     if (style.defined.display) definedBits |= 1 << 15;
-    file.write(reinterpret_cast<const uint8_t*>(&definedBits), sizeof(definedBits));
+    write(reinterpret_cast<const uint8_t*>(&definedBits), sizeof(definedBits));
   }
 
   LOG_DBG("CSS", "Saved %u rules to cache", ruleCount);
@@ -757,12 +775,22 @@ bool CssParser::loadFromCache() {
     return false;
   }
 
+  // No read-ahead or retained state: preserve scalar boundaries, validation,
+  // first-error handling and cleanup. Budget checkpoints cover byte/item work
+  // and elapsed time, including CPU gaps and failed/empty I/O.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalReadBudget budget([]() -> uint32_t { return millis(); }, []() { delay(1); });
+  auto read = [&file, &budget](void* data, size_t size) { return file.readCooperatively(data, size, budget); };
+#else
+  auto read = [&file](void* data, size_t size) { return file.read(data, size); };
+#endif
+
   // Clear existing rules
   clear();
 
   // Read and verify version
   uint8_t version = 0;
-  if (file.read(&version, 1) != 1 || version != CssParser::CSS_CACHE_VERSION) {
+  if (read(&version, 1) != 1 || version != CssParser::CSS_CACHE_VERSION) {
     LOG_DBG("CSS", "Cache version mismatch (got %u, expected %u), removing stale cache for rebuild", version,
             CssParser::CSS_CACHE_VERSION);
     // Explicitly close() file before calling Storage.remove()
@@ -773,7 +801,7 @@ bool CssParser::loadFromCache() {
 
   // Read rule count
   uint16_t ruleCount = 0;
-  if (file.read(&ruleCount, sizeof(ruleCount)) != sizeof(ruleCount)) {
+  if (read(&ruleCount, sizeof(ruleCount)) != sizeof(ruleCount)) {
     return false;
   }
 
@@ -800,7 +828,7 @@ bool CssParser::loadFromCache() {
       rulesBySelector_.clear();
       return false;
     }
-    if (file.read(&selectorLen, sizeof(selectorLen)) != sizeof(selectorLen)) {
+    if (read(&selectorLen, sizeof(selectorLen)) != sizeof(selectorLen)) {
       rulesBySelector_.clear();
       return false;
     }
@@ -813,7 +841,7 @@ bool CssParser::loadFromCache() {
 
     std::string selector;
     selector.resize(selectorLen);
-    if (file.read(&selector[0], selectorLen) != selectorLen) {
+    if (read(&selector[0], selectorLen) != selectorLen) {
       rulesBySelector_.clear();
       return false;
     }
@@ -828,37 +856,37 @@ bool CssParser::loadFromCache() {
     CssStyle style;
     uint8_t enumVal;
 
-    if (file.read(&enumVal, 1) != 1) {
+    if (read(&enumVal, 1) != 1) {
       rulesBySelector_.clear();
       return false;
     }
     style.textAlign = static_cast<CssTextAlign>(enumVal);
 
-    if (file.read(&enumVal, 1) != 1) {
+    if (read(&enumVal, 1) != 1) {
       rulesBySelector_.clear();
       return false;
     }
     style.fontStyle = static_cast<CssFontStyle>(enumVal);
 
-    if (file.read(&enumVal, 1) != 1) {
+    if (read(&enumVal, 1) != 1) {
       rulesBySelector_.clear();
       return false;
     }
     style.fontWeight = static_cast<CssFontWeight>(enumVal);
 
-    if (file.read(&enumVal, 1) != 1) {
+    if (read(&enumVal, 1) != 1) {
       rulesBySelector_.clear();
       return false;
     }
     style.textDecoration = static_cast<CssTextDecoration>(enumVal);
 
     // Read CssLength fields
-    auto readLength = [&file](CssLength& len) -> bool {
-      if (file.read(&len.value, sizeof(len.value)) != sizeof(len.value)) {
+    auto readLength = [&read](CssLength& len) -> bool {
+      if (read(&len.value, sizeof(len.value)) != sizeof(len.value)) {
         return false;
       }
       uint8_t unitVal;
-      if (file.read(&unitVal, 1) != 1) {
+      if (read(&unitVal, 1) != 1) {
         return false;
       }
       len.unit = static_cast<CssUnit>(unitVal);
@@ -875,7 +903,7 @@ bool CssParser::loadFromCache() {
 
     // Read display value
     uint8_t displayVal;
-    if (file.read(&displayVal, 1) != 1) {
+    if (read(&displayVal, 1) != 1) {
       rulesBySelector_.clear();
       return false;
     }
@@ -883,7 +911,7 @@ bool CssParser::loadFromCache() {
 
     // Read defined flags
     uint16_t definedBits = 0;
-    if (file.read(&definedBits, sizeof(definedBits)) != sizeof(definedBits)) {
+    if (read(&definedBits, sizeof(definedBits)) != sizeof(definedBits)) {
       rulesBySelector_.clear();
       return false;
     }
