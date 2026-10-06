@@ -4,6 +4,7 @@
 #include <iostream>
 
 class HalReadBudget;
+class HalWriteBudget;
 
 namespace serialization {
 template <typename T>
@@ -64,5 +65,18 @@ static void readString(File& file, std::string& s, HalReadBudget& budget) {
   readPod(file, len, budget);
   s.resize(len);
   file.readCooperatively(&s[0], len, budget);
+}
+
+// Explicit opt-in retains every write boundary and its historical return handling.
+template <typename File, typename T>
+static void writePod(File& file, const T& value, HalWriteBudget& budget) {
+  file.writeCooperatively(reinterpret_cast<const uint8_t*>(&value), sizeof(T), budget);
+}
+
+template <typename File>
+static void writeString(File& file, const std::string& s, HalWriteBudget& budget) {
+  const uint32_t len = s.size();
+  writePod(file, len, budget);
+  file.writeCooperatively(reinterpret_cast<const uint8_t*>(s.data()), len, budget);
 }
 }  // namespace serialization
