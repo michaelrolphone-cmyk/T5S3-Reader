@@ -45,6 +45,12 @@ Normal and ASan/UBSan production direction regressions pass on the combined
 tree. Exact-head target CI is recorded on the PR. Hardware is unavailable and
 unrun, not a prerequisite for software integration. PR350/master remain intact.
 
+A software-only composition check with PR423 reproduced missing existing
+HalGPIO members in this test's minimal facade. Adding BTN_PCA, wasAnyPressed
+and wasAnyReleased makes the complete page-direction regression compile and
+pass against either this isolated repair or both repairs together. The facade
+keeps real event-mask semantics; no production or package bytes change.
+
 ## Compatibility and delivery
 
 Firmware 1.3.136 needs the matching x4pro-buttons 0.1.5 SD package for this fix.

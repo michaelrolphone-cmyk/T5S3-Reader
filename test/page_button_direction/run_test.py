@@ -20,11 +20,13 @@ stub=r'''
 #include <cstdint>
 #include <BoardCapabilities.h>
 struct HalGPIO{
- enum {BTN_BACK=0,BTN_CONFIRM=1,BTN_LEFT=2,BTN_RIGHT=3,BTN_UP=4,BTN_DOWN=5,BTN_POWER=6};
+ enum {BTN_BACK=0,BTN_CONFIRM=1,BTN_LEFT=2,BTN_RIGHT=3,BTN_UP=4,BTN_DOWN=5,BTN_POWER=6,BTN_PCA=7};
  uint8_t pressed=0,released=0,held=0;
  bool wasPressed(uint8_t b)const{return pressed&(1u<<b);}
  bool wasReleased(uint8_t b)const{return released&(1u<<b);}
  bool isPressed(uint8_t b)const{return held&(1u<<b);}
+ bool wasAnyPressed()const{return pressed;}
+ bool wasAnyReleased()const{return released;}
  unsigned long getHeldTime()const{return 0;}
 };
 '''
