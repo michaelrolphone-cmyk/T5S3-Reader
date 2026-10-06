@@ -18,6 +18,17 @@ patches yields 0/32/32/32 black pixels per 32-pixel white/dark/light/black patch
 This is an actual software fallback defect, not evidence of a panel waveform
 failure. The successful T5 grayscale path remains separate and unchanged.
 
+## Current X4-base refresh (2026-10-06)
+
+The existing PR420 branch includes X4 source b91bc323 while retaining original
+repair head 9b2fa348 as its first parent. Only the firmware reservation conflicts:
+1.3.135 / upstream 1.3.143 advances to 1.3.151. The complete original render fix
+and pixel regression are unchanged, and all upstream source changes remain.
+Normal and ASan/UBSan production pixel regressions pass on the combined tree.
+Exact-head target CI is recorded on the PR; hardware is unavailable and unrun,
+not a prerequisite for software integration. No app/driver payload change,
+PR350/master write, release or device action is included.
+
 ## Repair
 
 When capture is unavailable or fails, clear the intermediate frame and draw
