@@ -164,7 +164,7 @@ static const unsigned golden[][2]={
 {2250815207u,1628315133u}, /* Rows leave the horizon; grounded count-row care is retained. */
 {1143499482,207677384},
 {3747272453,2052152225},
-{512589384,2061789897},
+{3385086579u,435798566u}, /* Far valve furniture on unchanged support four; other 29 pairs retained. */
 {413184930,1205470550},
 {1805041436,3386618820},
 {3469364471,1119496009},
