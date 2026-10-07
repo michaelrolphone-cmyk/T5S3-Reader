@@ -1,0 +1,124 @@
+{
+  "source_commit": "8ad776eecb9de7c9ad45fd8f027561709ba6a22a",
+  "version": "1.1.49",
+  "source_files": {
+    "Apps/hollow_trail.c": "c46979be55909832e38401397f1a486d32679c38b13d3ed1b2cd1a78dfee88a2",
+    "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+    "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+    "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+    "Apps/hollow_trail_character_pose.inc": "84d8af7d3976236ab102299532951baf543102ce0a96dea4802e2067b2d9d758",
+    "Apps/hollow_trail_city_draw.inc": "079ea6077921a66fba0b70b584a017a41559ba9e7188909ce1322ef42c111be7",
+    "Apps/hollow_trail_cutscene.inc": "709e0b7c21875ebde49b60e7d719d7242e4523c6dd9aa090c581a852df03ebb6",
+    "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+    "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+    "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+    "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+    "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+    "Apps/hollow_trail_engine.inc": "7fd04f4dfeb99a8cc5f9a6a2c14a41f495718b2e0c3b6d83535dae481d1b7dd2",
+    "Apps/hollow_trail_evidence.inc": "1355f5bbedeb6a31ce90647a0bf9f44830146da0fc3fb2ac0204bb5a9cf8b6eb",
+    "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+    "Apps/hollow_trail_final_door.inc": "c936355bbd0b9dffa7fdd5a35f8039679b9a73d1a83c4a8fa828252e7536a431",
+    "Apps/hollow_trail_final_door_draw.inc": "b36493ff71302a954ede740956f431a09fa1b7003325fd16666fa97a55e4e528",
+    "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+    "Apps/hollow_trail_forest_draw.inc": "33f473c80162339b24d9b977594963888e13e2123160718e42771e4b4b869760",
+    "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+    "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+    "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+    "Apps/hollow_trail_journal.inc": "4ee5ec3e822926864d93e8f528f4108ab57529fe0f0cf2370b1ae98c7ffe0a08",
+    "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+    "Apps/hollow_trail_lore.inc": "293cff405f3373f87390ecdd7f6c7266c66b512b078925fd445ac7baf263d513",
+    "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+    "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+    "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+    "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+    "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+    "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+    "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+    "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+    "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+    "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+    "Apps/hollow_trail_signal_room.inc": "536b31378408797e71ed6003e77c4a0335554f58e840b2572506db2209359db0",
+    "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+    "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+    "Apps/hollow_trail_stove_draw.inc": "bed5786629b57b1037a0f35638d01784fef26f50a0223bd5e5c363037a47a5bc",
+    "Apps/hollow_trail_stove_study.inc": "36c098d2763e904212118ad55ecf894f1e06610f4bc191ff09075f88206b0212",
+    "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+    "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+    "Apps/hollow_trail_traversal.inc": "7536205d8e8d30ff27bd0d9cc2edd710bfe4f89247ccd38961be2ea41ffa8708",
+    "Apps/hollow_trail_traversal_draw.inc": "e5545a542d632b171eea72394828e87abb51f8bfb84e474c578674dfe47553d8",
+    "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+    "Apps/hollow_trail_watch_memory.inc": "ff458f6f2e00eef834ebccc7bd7502ed015dadf2b1195dac142384132c7ad978",
+    "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+  },
+  "fixture": "Input-only oil-field route crosses the real culvert. Outside compares matching fixed world framing. Confirm at the physical stove-plate evidence opens the old journal before, and the new pipe interaction after. Reply uses an actual second Confirm. Study versus journal is the real changed behavior, not a fabricated baseline shed.",
+  "raster": [
+    960,
+    540
+  ],
+  "captures": [
+    {
+      "view": "outside",
+      "requested_tick": 0,
+      "observed_state": "game 0 192 461579 56320",
+      "hashes": {
+        "gray": "de2ec825f76f0b3cab95f04ba9dad3f95aad8cdf1b37dffa002a4b5533555cf6",
+        "mono": "3ee4fb32e6b2c8a13faf83b44ce97ea412402f7a6bedfb2af542b6b91259dfe6"
+      }
+    },
+    {
+      "view": "touch",
+      "requested_tick": 32,
+      "observed_state": "stove 32 192 460329 56320",
+      "hashes": {
+        "gray": "3c4f1bb196685847076647fbec93a69be2c5b80b052047060fad69051eca2025",
+        "mono": "6b9a560a1515c71f1dd7d1d9306b834bf8c9b6e62023013a7d91f3ac44113cbe"
+      }
+    },
+    {
+      "view": "first-ring",
+      "requested_tick": 44,
+      "observed_state": "stove 44 192 460329 56320",
+      "hashes": {
+        "gray": "eaa27683208fc7f11966e1ea894d2d1346663d7e493b9f32c16d69d2b8d8dc15",
+        "mono": "6d4265929b36548e50a1e96fd0870c2f30b200dc651a1167d47101c03ad153e2"
+      }
+    },
+    {
+      "view": "long-shudder",
+      "requested_tick": 122,
+      "observed_state": "stove 122 192 460329 56320",
+      "hashes": {
+        "gray": "812332b1d7e04871d39aa5524ca4490eee6bd1966453446c101e5dae87ab3ad3",
+        "mono": "89cf8fffbb138a0bf4d185a33210e0c2ea0213440ce5b30f794440f9e1e9a246"
+      }
+    },
+    {
+      "view": "listening",
+      "requested_tick": 208,
+      "observed_state": "stove 208 192 460329 56320",
+      "hashes": {
+        "gray": "5f2d3782941df894329f1ae9c78c763174e7648c5216b3670ba90329f7362e28",
+        "mono": "7e74aaeb8b8b03a6af4dd1e9de2b45618f84631d6612dc6751d0a8e093ba226e"
+      }
+    },
+    {
+      "view": "reply",
+      "requested_tick": 18,
+      "observed_state": "stove 18 192 460329 56320",
+      "hashes": {
+        "gray": "095ced709809237091f898a81be1a397da8e621b38e940646709285a0531bea9",
+        "mono": "0bb4a7db7f15b968bb2e3349ed090044469a2b8c77c050696ee0c85be51ebc65"
+      }
+    },
+    {
+      "view": "waiting",
+      "requested_tick": 470,
+      "observed_state": "stove 470 192 460329 56320",
+      "hashes": {
+        "gray": "3e317aaea7c6e8a7d66853b0c1170f6b3a20be76c16812562978d3d6070bd286",
+        "mono": "0459f8e6e3cc6e8095e327d168a713f5e7dcfd220de74914a5ee16b4816ff11a"
+      }
+    }
+  ],
+  "source_snapshot_sha256": "dffa93433b2f70df825cb9c7e0c829ca7224636b7d24e853d43c2d5ef71d452f"
+}

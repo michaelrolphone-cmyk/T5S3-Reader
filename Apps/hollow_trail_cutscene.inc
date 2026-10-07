@@ -3,7 +3,7 @@
  * language, but a fixed 32 ms cue track owns camera, actor pose, depth and
  * scene progression. Forward-X tableaus look down world X: screen X is world Y,
  * screen Y is world Z and world X controls perspective, fog and occlusion. */
-enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO, HT_CUTSCENE_MILL, HT_CUTSCENE_CITY, HT_CUTSCENE_RAIN, HT_CUTSCENE_SIGNAL, HT_CUTSCENE_RELAY };
+enum { HT_CUTSCENE_NONE, HT_CUTSCENE_INTRO, HT_CUTSCENE_MILL, HT_CUTSCENE_CITY, HT_CUTSCENE_RAIN, HT_CUTSCENE_SIGNAL, HT_CUTSCENE_RELAY, HT_CUTSCENE_REGISTER, HT_CUTSCENE_WEST, HT_CUTSCENE_WATCH };
 enum { HT_CUT_KITCHEN, HT_CUT_GRASS, HT_CUT_DEPARTURE, HT_CUT_ORCHARD, HT_CUT_MILL };
 enum { HT_CUT_VIEW_PROFILE, HT_CUT_VIEW_FORWARD_X };
 enum { HT_CUT_FACE_FRONT, HT_CUT_FACE_BACK, HT_CUT_FACE_LEFT_3Q, HT_CUT_FACE_RIGHT_3Q };
@@ -82,6 +82,40 @@ static const ht_cutscene_cue ht_relay_cues[]={
     {160,320,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,18,0,0,0,0,0,42,42,0,0,240,240},
     {320,432,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,42,0,0,0,240,384},
 };
+/* The book's westward view follows the attended log, before the relay.
+ * A slow dissolve opens the vista and returns to the exact terrace anchor. */
+#define HT_WESTERN_VISTA_TICKS 640u
+static const ht_cutscene_cue ht_western_cues[]={
+    {0,96,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,0,0,0,0,256,256},
+    {96,260,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,26,0,0,0,0,0,0,0,0,0,256,256},
+    {260,420,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,27,0,0,0,0,0,0,0,0,0,256,256},
+    {420,544,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,28,0,0,0,0,0,0,0,0,0,256,256},
+    {544,640,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,255,0,0,0,0,0,0,0,0,0,256,256},
+};
+/* A physical inspection earns this memory. The page, remembered furniture,
+ * departure and return each have time for their actual hand action to settle. */
+#define HT_REGISTER_MEMORY_TICKS 1440u
+static const ht_cutscene_cue ht_register_cues[]={
+    {   0, 180,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,19,0,0,0,0,0,0,0,0,0,256,256},
+    { 180, 500,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,20,0,0,0,0,0,0,0,0,0,256,256},
+    { 500, 690,HT_CUT_DEPARTURE,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_PACK,0,21,0,0,0,0,0,0,0,0,0,256,256},
+    { 690, 900,HT_CUT_DEPARTURE,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_PACK,0,22,0,0,0,0,0,0,0,0,0,256,256},
+    { 900,1110,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,23,0,0,0,0,0,0,0,0,0,256,256},
+    {1110,1280,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,24,0,0,0,0,0,0,0,0,0,256,256},
+    {1280,1440,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_IDLE,0,25,0,0,0,0,0,0,0,0,0,256,256},
+};
+/* The winter watch is earned by finishing the physically reached log.
+ * Quiet fixed holds; the last 288 ticks are two ordinary signal cycles. */
+#define HT_WATCH_MEMORY_TICKS 1200u
+static const ht_cutscene_cue ht_watch_cues[]={
+    {0,144,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_SIT,0,29,0,0,0,0,0,0,0,0,0,256,256},
+    {144,336,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_SIT,0,30,0,0,0,0,0,0,0,0,0,256,256},
+    {336,560,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_SIT,0,31,0,0,0,0,0,0,0,0,0,256,256},
+    {560,736,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_SIT,0,32,0,0,0,0,0,0,0,0,0,256,256},
+    {736,912,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_SIT,0,33,0,0,0,0,0,0,0,0,0,256,256},
+    {912,1056,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_SIT,0,34,0,0,0,0,0,0,0,0,0,256,256},
+    {1056,1200,HT_CUT_MILL,HT_CUT_VIEW_PROFILE,HT_CUT_POSE_SIT,0,35,0,0,0,0,0,0,0,0,0,256,256},
+};
 static const ht_cutscene_timeline ht_cutscene_tracks[]={
     {NULL,0,0,0},
     {ht_intro_cues,(uint8_t)(sizeof(ht_intro_cues)/sizeof(ht_intro_cues[0])),0,HT_INTRO_TICKS},
@@ -89,7 +123,10 @@ static const ht_cutscene_timeline ht_cutscene_tracks[]={
     {ht_city_cues,3,1,430},
     {ht_rain_cues,3,1,420},
     {ht_signal_cues,3,1,576},
-    {ht_relay_cues,3,1,HT_RELAY_REACTION_TICKS}
+    {ht_relay_cues,3,1,HT_RELAY_REACTION_TICKS},
+    {ht_register_cues,7,0,HT_REGISTER_MEMORY_TICKS},
+    [HT_CUTSCENE_WEST]={ht_western_cues,5,1,HT_WESTERN_VISTA_TICKS},
+    [HT_CUTSCENE_WATCH]={ht_watch_cues,7,1,HT_WATCH_MEMORY_TICKS}
 };
 static ht_cutscene_state ht_cutscene;
 static ht_game ht_cutscene_anchor;
@@ -111,14 +148,34 @@ static bool ht_cutscene_rain_arrival(const ht_game *before,const ht_game *after)
         ht_abs(after->y/256-ht_rain_tank_floor())<=3 && after->traversal.mode==HT_FREE;
 }
 static bool ht_cutscene_signal_arrival(const ht_game *before,const ht_game *after) {
+    /* The first deliberate opening step presses the glass while still on
+     * the exterior landing, before any sash or body crosses the aperture. */
     return !(ht_cutscene_seen&8u) && before->level==1 && after->level==1 &&
-        before->x<2090*256 && after->x>=2090*256 && after->x-before->x<=8*256 &&
-        after->grounded && ht_abs(after->y/256-ht_level_land(1)[7].top)<=3 &&
-        after->traversal.mode==HT_FREE;
+        before->traversal.mode==HT_WINDOW && after->traversal.mode==HT_WINDOW &&
+        !before->traversal.window_phase && after->traversal.window_phase==1 &&
+        !before->traversal.window_open && !after->traversal.window_open &&
+        after->traversal.window_print && after->grounded &&
+        after->y==ht_signal_window_floor()*256 && before->x==after->x &&
+        after->x==(HT_SIGNAL_WINDOW_LEFT-5)*256;
 }
 static bool ht_cutscene_relay_restored(const ht_game *before,const ht_game *after) {
     return !(ht_cutscene_seen&16u) && before->level==1 && after->level==1 &&
         !before->puzzle.solved && after->puzzle.solved && ht_puzzle_near(after)==3;
+}
+static bool ht_cutscene_western_departure(const ht_game *before,const ht_game *after) {
+    return !(ht_cutscene_seen&32u) && before->level==1 && after->level==1 &&
+        ht_evidence_found(after,5) && before->x<HT_SIGNAL_ROOM_RIGHT*256 &&
+        after->x>=HT_SIGNAL_ROOM_RIGHT*256 && after->x-before->x<=8*256 &&
+        after->grounded && ht_abs(after->y/256-ht_level_land(1)[7].top)<=3 &&
+        after->traversal.mode==HT_FREE;
+}
+static bool ht_cutscene_register_inspected(int page,const ht_game *g) {
+    return page==1 && g->level==0 && ht_evidence_found(g,1) &&
+        ht_mill_register_lit(g) && ht_evidence_near(g)==1;
+}
+static bool ht_cutscene_watch_read(const ht_game *g) {
+    return !(ht_cutscene_seen&64u) && g->level==1 && ht_evidence_found(g,5) &&
+        ht_signal_room_near(g) && g->traversal.mode==HT_FREE;
 }
 static const ht_cutscene_timeline *ht_cutscene_track(const ht_cutscene_state *s) {
     return s->id<sizeof(ht_cutscene_tracks)/sizeof(ht_cutscene_tracks[0])?
@@ -171,6 +228,8 @@ static void ht_cutscene_begin(unsigned id) {
     if(id==HT_CUTSCENE_RAIN)ht_cutscene_seen|=4u;
     if(id==HT_CUTSCENE_SIGNAL)ht_cutscene_seen|=8u;
     if(id==HT_CUTSCENE_RELAY)ht_cutscene_seen|=16u;
+    if(id==HT_CUTSCENE_WEST)ht_cutscene_seen|=32u;
+    if(id==HT_CUTSCENE_WATCH)ht_cutscene_seen|=64u;
 }
 static bool ht_cutscene_step(ht_cutscene_state *s) {
     if(!s->active)return false;
@@ -441,7 +500,7 @@ static void ht_cutscene_caption(unsigned caption) {
         {"I SPENT THE NIGHT DRESSED IN A CHAIR.","THE CUP REMAINED CLOUDY WITH SOAP."},
         {"MY COAT CAUGHT ON THE LATCH.","I FREED THE THREAD."},
         {"THE MILL STOOD IN A DIP BETWEEN HILLS.","ITS WHEEL WAS STILL BENEATH THE LEAVES."},
-        {"A BROKEN SHUTTER. A SLOPING DESK.","SEVEN NAMES IN THE WINDOW LIGHT."},
+        {"A BROKEN SHUTTER. A SLOPING DESK.","THE WRITING SANK INTO THE PAGE."},
         {"UPPER FLOORS ROSE FROM THE FOG.","THE HILLS CONTINUED UNDER THE CITY."},
         {"THE CITY BEGAN OVERHEAD.","NO STREETS JOINED THESE ROOFS."},
         {"I TOOK SHELTER BENEATH A WATER TANK.","ITS IRON BELLY HUNG OVER ME."},
@@ -450,6 +509,23 @@ static void ht_cutscene_caption(unsigned caption) {
         {"THE WHEEL TURNED. THE LIGHT FLASHED.","I WATCHED THE WHOLE SEQUENCE TWICE."},
         {"A ROW OF WINDOWS BELOW ME LIT.","SO DID THE SIGNAL BEHIND MY SHOULDER."},
         {"I HAD MADE A WAY OUT.","I HAD ALSO MADE THE CITY CALL AGAIN."},
+        {"ONE HAND WAS SMALL, UPRIGHT AND CAREFUL.","THE OTHER WAS HERS."},
+        {"NOT A VISION; A MEMORY FINDING", "FURNITURE TO INHABIT."},
+        {"\"YOU ALWAYS FIND SOMEONE", "WHO NEEDS YOU MORE,\" I HAD SAID."},
+        {"\"COME, THEN,\" SHE SAID.", "I THOUGHT SHE MEANT IT TO PUNISH ME."},
+        {"IN THE MILL, THE PAPER TREMBLED", "AGAINST MY THUMB."},
+        {"THEN I MOVED IT AWAY.", ""},
+        {"HE SIGNED HIMSELF THE KEEPER.", "THERE WAS NO NAME."},
+        [26]={"WHEN THE RAIN WEAKENED, THE CITY","BECAME VISIBLE FARTHER WEST."},
+        [27]={"WAREHOUSES THINNED INTO FENCED YARDS","AND SIDINGS. LOW BLUFFS HELD THE LIGHT."},
+        [28]={"BEYOND THE ROOFS, A FLAT COUNTRY.","TALL SHAPES STOOD WITH BENT NECKS."},
+        [29]={"I SAT IN THE EMPTY CHAIR.",""},
+        [30]={"AT HOME, DURING THE WINTER OUR MOTHER WAS ILL,","MY SISTER WOULD WAKE ME FOR MY TURN AT THE BED."},
+        [31]={"YOU'VE ONLY TO SIT THERE.","BUT SHE STAYED IN THE DOORWAY AFTER I SAT."},
+        [32]={"SOMETIMES I PRETENDED TO SLEEP","THROUGH HER KNOCKING."},
+        [33]={"THE SILENCE AFTER THAT DECISION WAS DIFFERENT","FROM THE SILENCE BEFORE IT."},
+        [34]={"THE LAMP FLASHED BESIDE MY HEAD.","I STAYED UNTIL MY COAT STOPPED DRIPPING."},
+        [35]={"SITTING IN IT, I MADE THE SAME","POOL OF LIGHT LOOK OCCUPIED."},
     };
     if(caption>=sizeof(lines)/sizeof(lines[0]))return;
     ht_narration_key=2166136261u;
@@ -485,6 +561,8 @@ static void ht_cutscene_queue_flash(int x,int y,int z,int radius,int ink) {
 }
 
 #include "hollow_trail_domestic_draw.inc"
+#include "hollow_trail_mill_memory.inc"
+#include "hollow_trail_watch_memory.inc"
 
 static void ht_cutscene_draw_departure_forward(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
     (void)cue;
@@ -598,6 +676,9 @@ static ht_game ht_cutscene_arrival_view(const ht_cutscene_state *s) {
         view.vista=(uint16_t)(view.vista+(256-view.vista)*shift/42);
     } else if(s->id==HT_CUTSCENE_SIGNAL) {
         view.ticks+=s->tick;
+        /* The palm leaves the glass one fingertip at a time. Only the draw
+         * snapshot changes; the player's attachment stays ready to resume. */
+        view.traversal.window_touch=(uint8_t)(s->tick<144?255:ht_clamp((224-(int)s->tick)*255/80,0,255));
         /* Ease from the actual framing, including an already-wide arrival. */
         view.intimacy=(uint16_t)(view.intimacy*(76-shift)/76);
         view.vista=(uint16_t)(view.vista*(76-shift)/76);
@@ -616,6 +697,7 @@ static void ht_cutscene_draw_arrival(const ht_cutscene_state *s) {
     if(s->id==HT_CUTSCENE_RELAY)ht_draw_puzzle(&view);
     ht_character(view.x/256-view.camera/256,(view.y-view.camera_y)/256,&view);
     ht_forest_foreground(&view);ht_city_observer_foreground(&view);
+    ht_signal_window_draw(&view,true);
     ht_world_scale=256;ht_native_foreground_half_y=false;
 }
 static void ht_cutscene_draw_intro_arrival(const ht_cutscene_state *s,const ht_cutscene_cue *cue) {
@@ -645,6 +727,30 @@ static void ht_cutscene_draw_intro_arrival(const ht_cutscene_state *s,const ht_c
         ht_character(x,feet,&actor);ht_world_scale=256;
     } else ht_render_scene_from(&view,true);
 }
+#include "hollow_trail_western_vista.inc"
+static void ht_cutscene_draw_western(const ht_cutscene_state *s) {
+    unsigned tick=ht_min((int)s->tick,HT_WESTERN_VISTA_TICKS);
+    unsigned alpha=tick<96?tick*256u/96u:tick>544?(640u-tick)*256u/96u:256u;
+    if(!alpha) { ht_render_scene_from(&ht_cutscene_anchor,true);return; }
+    uint8_t *saved=ht_native_active?ht_native_b:ht_near;
+    size_t pixels=ht_native_active?HT_NATIVE_PIXELS:HT_PIXELS;
+    if(alpha<256u) {
+        /* The ordinary camera may use native_b as scratch. Capture only after
+         * it returns, then draw the panorama without touching that arena. */
+        ht_render_scene_from(&ht_cutscene_anchor,true);
+        for(size_t i=0;i<pixels;i+=HT_W) {
+            memcpy(saved+i,ht_scene+i,HT_W);ht_checkpoint();
+        }
+    }
+    ht_world_scale=256;ht_western_vista_draw(tick*256u/640u);ht_vignette();
+    if(alpha<256u) {
+        for(size_t i=0;i<pixels;i+=HT_W) {
+            for(size_t j=i;j<i+HT_W;++j)
+                ht_scene[j]=(uint8_t)((saved[j]*(256u-alpha)+ht_scene[j]*alpha)/256u);
+            ht_checkpoint();
+        }
+    }
+}
 static void ht_cutscene_render(const ht_cutscene_state *s) {
     const ht_cutscene_cue *cue=ht_cutscene_cue_at(s);if(!cue)return;
     /* Match the selected output raster; later tableaus can start after native
@@ -652,7 +758,10 @@ static void ht_cutscene_render(const ht_cutscene_state *s) {
     ht_native_active=ht_camera_mode==HT_CAMERA_NATIVE && ht_native_a;
     ht_native_foreground_half_y=false;
     ht_scene=ht_native_active?ht_native_a:ht_scene_low;
-    if(s->id==HT_CUTSCENE_INTRO && s->tick>=2020)ht_cutscene_draw_intro_arrival(s,cue);
+    if(s->id==HT_CUTSCENE_WEST)ht_cutscene_draw_western(s);
+    else if(s->id==HT_CUTSCENE_REGISTER)ht_cutscene_draw_register_memory(s);
+    else if(s->id==HT_CUTSCENE_WATCH)ht_cutscene_draw_watch_memory(s);
+    else if(s->id==HT_CUTSCENE_INTRO && s->tick>=2020)ht_cutscene_draw_intro_arrival(s,cue);
     else if(s->id==HT_CUTSCENE_MILL || s->id==HT_CUTSCENE_CITY || s->id==HT_CUTSCENE_RAIN || s->id==HT_CUTSCENE_SIGNAL || s->id==HT_CUTSCENE_RELAY)ht_cutscene_draw_arrival(s);
     else if(cue->pose==HT_CUT_POSE_THREAD)ht_cutscene_draw_latch(s,cue);
     else if(cue->view==HT_CUT_VIEW_FORWARD_X) {
@@ -666,5 +775,9 @@ static void ht_cutscene_render(const ht_cutscene_state *s) {
     }
     if(s->id==HT_CUTSCENE_INTRO && s->tick>=2250){ht_game view=ht_intro_arrival_view(s->tick);ht_narration(&view);}
     else ht_cutscene_caption(cue->caption);
-    ht_vignette();
+    if(s->id==HT_CUTSCENE_REGISTER) {
+        ht_rect(ht_scene,164,217,153,11,24);
+        ht_text_color(171,219,"X / START READ REGISTER",1,205);
+    }
+    if(s->id!=HT_CUTSCENE_WEST)ht_vignette();
 }
