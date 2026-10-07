@@ -1,59 +1,83 @@
-# Implementation-first milestone: recommended three-step workflow
+# Implementation engineering reference
 
-**Preferred workflow, September 18, 2026.** Applies as the normal process for U1 and later RiscRTE milestones. Read with [root agent guidance](../AGENTS.md), [U1 continuation protocol](U1_CONTINUATION_AND_COMPLETION_PROTOCOL.md), and [status reporting](U1_STATUS_REPORTING.md).
+This document summarizes implementation and validation evidence used for RiscRTE milestone work.
 
-This document describes the intended default execution and communication model. Use it as the default when the current task does not specify a different approach.
+## Production implementation
 
-## Normal implementation trade-off
+A production implementation can include:
 
-The preferred default is to prioritize useful implementation and completion of a substantial integrated code block over continuous qualification.
+- connected source paths;
+- cross-component integration;
+- package manifests;
+- component versions;
+- build inputs;
+- release packaging inputs;
+- error handling;
+- recovery paths;
+- compatibility updates.
 
-Work independently: inspect real code, decide how to implement the intended architecture, wire coherent production paths, commit useful work, and continue to the next substantive task. Qualification and patching can happen when useful. Routine workflows normally proceed without repeated manual checkpoints.
+Specifications, prototypes, mocks, fixtures, and production code are recorded separately in status notes.
 
-Treat CI as nonblocking feedback where practical. Favor small relevant builds/smoke tests and checks for stable, material invariants or demonstrated defects over fragile exhaustive end-to-end suites for a rapidly changing milestone.
+## Validation categories
 
-Report failed or unrun checks accurately. Avoid knowingly hiding broken builds or weakening package extraction, rollback, runtime isolation, or recovery behavior merely to increase implementation throughput.
+Validation evidence can include:
 
-## Recommended three-step sequence
+- focused unit or regression tests;
+- host integration fixtures;
+- sanitizers;
+- target compilation;
+- package validation;
+- import/export checks;
+- ABI checks;
+- CI;
+- hardware deployment;
+- hardware behavior;
+- performance measurements.
 
-### 1. **Work Complete** — implementation completion signal
+Reports identify which categories were actually run.
 
-Under the standard workflow, complete the intended milestone functionality in production code, including useful cross-component integration, package manifests/versions, build/release paths, and known blocking software repairs. A spec, mock, stub, proxy, or partly connected feature is normally not considered the finished implementation.
+## Implementation status labels
 
-Use proportionate available development checks, disclose what was and was not run, and present a coherent candidate. Comprehensive qualification, all-green CI, frozen release artifacts, and hardware testing are normally separate from implementation completion.
+Existing milestone records use labels such as:
 
-When the implementation block is genuinely finished under the agreed scope, **Work Complete** is the preferred status signal. Include the implementation PR/commit and concise real evidence. The label means code implementation is complete under that scope; it does not itself mean release-qualified, accepted, published, merged, or physically validated.
+- Implementation In Progress
+- Work Complete
+- Improving Code
+- Release Qualification
 
-A current task can define a smaller experimental increment, prototype, quick fix, or alternate completion criterion.
+These labels describe the recorded state of a milestone or change set.
 
-### 2. **Improving Code** — productive work after implementation completion
+## Evidence records
 
-Under the standard workflow, when `continue` follows **Work Complete** without moving into qualification, remain on the same implementation branch/PR and do useful independent work: audit the implementation, review failure paths, improve maintainability/performance/diagnostics, add focused reusable checks, fix defects, and verify relevant changes.
+Useful implementation records include:
 
-Avoid inventing work merely to occupy time. If a real blocker shows that implementation was incomplete, state that and repair it. **Improving Code** is the normal status label for this phase.
+- repository;
+- branch or PR;
+- commit SHA;
+- changed components;
+- component versions;
+- tests and builds;
+- known defects;
+- untested areas;
+- hardware observations;
+- release artifact identifiers where applicable.
 
-A current task can instead call for merge, publication, release, different branching, qualification, or a scope switch.
+## Rate-limit and transport evidence
 
-### 3. **Release Qualification** — collaborative validation when useful
+GitHub rate-limit evidence includes HTTP 403/429 responses, rate-limit headers, and Retry-After values.
 
-The standard workflow enters Release Qualification when qualification is part of the current task. Typical work includes deployment/integration, hardware testing, reproduction/diagnosis, patches, repeated checks, and identifying the tested revision and coherent final artifacts.
+Transport failures, authentication failures, repository lookup failures, and service errors are recorded by their returned error class.
 
-State observed failures accurately and distinguish tested evidence from assumptions. Release Qualification normally remains a distinct phase from merge, tag, release, and flash.
+## Release evidence
 
-If the current task combines qualification with merge, release, flash, deployment, or another delivery action, use that task-specific sequence.
+Release-related records can include:
 
-## `continue` and reporting
-
-Before **Work Complete**, `continue` normally means the next substantive implementation task and can end **Implementation In Progress**.
-
-After **Work Complete**, `continue` normally means independent QA/improvement and can end **Improving Code**.
-
-During collaborative qualification, **Release Qualification** is the preferred label.
-
-A concise message usually includes changed code, real checks or blockers, and the next task, with one short truthful status label at the end when useful. This reporting convention is a default rather than a stop condition.
-
-For a verified GitHub rate limit, report the actual evidence and avoid wasteful repeated API calls until access recovers. Treat generic connection failures as their actual failure class, and treat tool cancellations or service rejections as execution-layer results.
-
-## Task-specific variation
-
-Current task instructions can specify a different sequence, smaller increment, accelerated path, experiment, branch structure, validation depth, publication flow, or delivery combination. Repository workflow documents describe the normal path.
+- tested commit;
+- artifact names;
+- hashes;
+- component versions;
+- package catalog state;
+- target hardware;
+- deployment result;
+- observed regressions;
+- accepted revisions.
