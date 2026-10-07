@@ -1,5 +1,5 @@
 from pathlib import Path
-import subprocess, tempfile
+import re, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 files={
 'esp_heap_caps.h':r'''
@@ -61,7 +61,13 @@ int main(){
 }
 '''
 resolver=(ROOT/'lib/elf_loader/src/esp_elf_symbol.c').read_text()
-assert 'if (!privileged_scope) {\n        uintptr_t app_memory = native_app_memory_symbol' in resolver
+scope = re.search(r'if \(!privileged_scope\) \{([^}]+)\}', resolver)
+assert scope, 'ordinary application resolver scope missing'
+body = scope.group(1)
+assert body.index('native_app_import_allowed') < body.index('native_app_memory_symbol')
+assert 'if (app_memory) return app_memory;' in body
+# Exercise the actual resolver ordering as well as the allocation bridge.
+subprocess.run(['python3', str(ROOT/'test/hal/retired_storage_import_test.py')], check=True)
 with tempfile.TemporaryDirectory() as temp:
  p=Path(temp)
  for name,text in files.items():

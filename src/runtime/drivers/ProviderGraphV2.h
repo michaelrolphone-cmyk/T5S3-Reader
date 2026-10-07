@@ -52,7 +52,16 @@ class GraphV2 final {
   // Trusted capability broker only; consumer is an authenticated context ID.
   bool grantStream(GrantV2, uint32_t consumer, uint32_t endpoint, uint32_t rights);
   const void* interfaceFor(GrantV2 grant) const;
+  // Copy diagnostics only while this exact grant still permits callbacks.
+  // Never expose provider pointers or revive stale/pending-release grants.
+  bool copyProviderError(GrantV2 grant, char* destination, size_t capacity) const;
   bool shutdown();
+  // Checked lifecycle barrier for firmware-owned persistent capabilities.
+  // Every live grant must be explicitly retained by exact generation. Only
+  // their healthy dependency closure may remain mapped. Unrelated failed
+  // activations are retried; pending-release grants still block this barrier.
+  // Does not imply that retained hardware is ready for power removal.
+  bool drainExcept(const GrantV2* retained, size_t count);
   // Serialized owner-task dispatcher: <=4 callbacks, 2ms each, 10ms per turn.
   // Caller supplies monotonic time and a real scheduler yield; no graph lock.
   void poll(uint32_t (*nowMs)(), void (*yield)());

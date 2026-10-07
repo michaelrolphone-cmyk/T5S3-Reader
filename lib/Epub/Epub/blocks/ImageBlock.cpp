@@ -1,6 +1,8 @@
 #include "ImageBlock.h"
 
+#include <Arduino.h>
 #include <GfxRenderer.h>
+#include <HalReadBudget.h>
 #include <Logging.h>
 #include <Serialization.h>
 
@@ -67,9 +69,12 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
 
   DirectPixelWriter pw;
   pw.init(renderer);
+  // Preserve row-sized reads and their exact failure/partial-frame boundary.
+  // Amortize only scheduler waits; do not prefetch pixels across an I/O error.
+  HalReadBudget readBudget([]() -> uint32_t { return millis(); }, []() { vTaskDelay(1); });
 
   for (int row = 0; row < cachedHeight; row++) {
-    if (cacheFile.read(rowBuffer, bytesPerRow) != bytesPerRow) {
+    if (cacheFile.readCooperatively(rowBuffer, bytesPerRow, readBudget) != bytesPerRow) {
       LOG_ERR("IMG", "Cache read error at row %d", row);
       free(rowBuffer);
       return false;
@@ -85,9 +90,7 @@ bool renderFromCache(GfxRenderer& renderer, const std::string& cachePath, int x,
       pw.writePixel(x + col, pixelValue);
     }
 
-    if (((row + 1) & 0x1F) == 0) {
-      vTaskDelay(1);
-    }
+    readBudget.afterRow();
   }
 
   free(rowBuffer);

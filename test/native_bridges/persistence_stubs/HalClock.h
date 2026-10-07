@@ -31,4 +31,3 @@ class HalClock {
   uint32_t syncCalls = 0;
 };
 extern HalClock halClock;
-

@@ -7,8 +7,11 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "FontCacheManager.h"
+#include "../../src/native/NativeTouchInput.h"
 
 namespace {
 
@@ -155,6 +158,7 @@ bool GfxRenderer::begin() {
 
 void GfxRenderer::insertFont(const int fontId, EpdFontFamily font) {
   auto result = fontMap.insert({fontId, font});
+  if (result.second) invalidateFontLayout();
   if (!result.second) {
     LOG_ERR("GFX", "Font ID %d already registered, ignoring duplicate", fontId);
   }
@@ -1079,14 +1083,17 @@ void GfxRenderer::invertScreen() const {
   }
 }
 
-void GfxRenderer::displayBuffer(const DisplayPresentMode refreshMode) const {
+void GfxRenderer::displayBuffer(const DisplayPresentMode refreshMode, bool interactive) const {
+  const uint32_t touchEpoch = nativeTouchPresentationEpoch();
   if (!initialized || !frameBuffer || !display.isReady()) {
+    if (interactive) nativeTouchSurfacePresented(touchEpoch, false);
     LOG_ERR("GFX", "Refusing displayBuffer before a validated, ready display surface");
     return;
   }
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   display.displayBuffer(refreshMode);
+  if (interactive) nativeTouchSurfacePresented(touchEpoch, display.lastPresentSucceeded());
 }
 
 void GfxRenderer::requestNextRefresh(const DisplayPresentMode refreshMode) const {
@@ -1105,6 +1112,73 @@ void GfxRenderer::requestNextPageTurnEffect(const bool isForwardTurn) const {
                                                  : DisplayEffect::PageTurnBackwardStandard);
 }
 
+bool GfxRenderer::getTruncationPrefix(const int fontId, const std::string& text, const int maxWidth,
+                                      size_t& prefixBytes, const EpdFontFamily::Style style) const {
+  // Optional RAM-only path. Keep the existing algorithm for unsupported inputs;
+  // do not speculate through lazy glyph callbacks or change SD-font behavior.
+  constexpr size_t kMaxBytes = 8192;
+  constexpr uint32_t kBudgetMs = 1000;
+  if (text.empty() || text.size() > kMaxBytes || maxWidth <= 0 || isSdCardFont(fontId)) return false;
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return false;
+  const EpdFontData* data = fontIt->second.getData(style);
+  if (!data || data->glyphMissHandler) return false;
+  const EpdFont font(data);
+  const EpdGlyph* ellipsis = font.getGlyph(0x2026);
+
+  // This is the horizontal state of EpdFont::getTextBounds with no combining
+  // marks/ligatures. Preserve differential rounding, missing-glyph resets and
+  // signed bearings/kerning. Widths need not be monotonic: evaluate EVERY prefix.
+  int x = 0, minX = 0, maxX = 0;
+  int32_t advance = 0;
+  uint32_t previous = 0, previousInput = 0;
+  size_t longest = 0, checkpointBytes = 0;
+  const uint32_t started = millis();
+  uint32_t checkpointAt = started;
+  const auto* begin = reinterpret_cast<const uint8_t*>(text.c_str());
+  const auto* cursor = begin;
+  const auto* end = begin + text.size();
+  while (cursor < end) {
+    const uint32_t cp = utf8NextCodepoint(&cursor);
+    if (!cp || cp == REPLACEMENT_GLYPH || cursor > end || utf8IsCombiningMark(cp)) return false;
+    // A font may contain ligatures that this text never uses. Refuse only
+    // actual input/suffix pairs; no prior pair has ligated on the accepted path.
+    if ((previousInput && font.getLigature(previousInput, cp)) || font.getLigature(cp, 0x2026)) return false;
+    previousInput = cp;
+    const EpdGlyph* glyph = font.getGlyph(cp);
+    if (!glyph) {
+      x += fp4::toPixel(advance);
+      advance = 0;
+      previous = 0;
+    } else {
+      if (previous) x += fp4::toPixel(advance + font.getKerning(previous, cp));
+      minX = std::min(minX, x + glyph->left);
+      maxX = std::max(maxX, x + glyph->left + glyph->width);
+      advance = glyph->advanceX;
+      previous = cp;
+    }
+    int candidateMin = minX, candidateMax = maxX;
+    if (ellipsis) {
+      const int suffixX = x + (previous ? fp4::toPixel(advance + font.getKerning(previous, 0x2026)) : 0);
+      candidateMin = std::min(candidateMin, suffixX + ellipsis->left);
+      candidateMax = std::max(candidateMax, suffixX + ellipsis->left + ellipsis->width);
+    }
+    const size_t consumed = static_cast<size_t>(cursor - begin);
+    if (candidateMax - candidateMin < maxWidth) longest = consumed;
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= kBudgetMs) return false;
+    if (consumed - checkpointBytes >= 256 || static_cast<uint32_t>(now - checkpointAt) >= 8) {
+      vTaskDelay(1);
+      checkpointAt = millis();
+      checkpointBytes = consumed;
+    }
+  }
+  if (static_cast<uint32_t>(millis() - started) >= kBudgetMs) return false;
+  // Publish only a complete result. Zero retains the legacy ellipsis-only case.
+  prefixBytes = longest;
+  return true;
+}
+
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
                                        const EpdFontFamily::Style style) const {
   if (!text || maxWidth <= 0) return "";
@@ -1116,6 +1190,12 @@ std::string GfxRenderer::truncatedText(const int fontId, const char* text, const
   if (textWidth <= maxWidth) {
     // Text fits, return as is
     return item;
+  }
+
+  size_t prefixBytes = 0;
+  if (getTruncationPrefix(fontId, item, maxWidth, prefixBytes, style)) {
+    item.resize(prefixBytes);
+    return item + ellipsis;
   }
 
   while (!item.empty() && getTextWidth(fontId, (item + ellipsis).c_str(), style) >= maxWidth) {
@@ -1311,6 +1391,91 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   return widthPx;
 }
 
+bool GfxRenderer::getTextPrefixMetrics(const int fontId, const std::string& text, TextPrefixMetrics& metrics,
+                                       const EpdFontFamily::Style style) const {
+  // The chapter parser caps tokens at 200 bytes. This optional, allocation-free path
+  // performs at most 200 RAM-only steps; oversized tokens keep the ordinary path.
+  if (text.empty() || text.size() > TextPrefixMetrics::MAX_BYTES) return false;
+  auto sdIt = sdCardFonts_.find(fontId);
+  const bool sd = sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable();
+  const auto fontIt = fontMap.find(fontId);
+  const EpdFontData* data = fontIt == fontMap.end() ? nullptr : fontIt->second.getData(style);
+  // Lazy glyph callbacks may perform I/O or change their cache. Do not speculate
+  // through those callbacks while measuring every prefix.
+  if (!sd && (!data || data->glyphMissHandler)) return false;
+  const EpdFont font(data);
+  const uint8_t sdStyle = sd ? resolveSdCardStyle(*sdIt->second, style) : 0;
+  const uint16_t hyphenAdvance = sd ? sdIt->second->getAdvance('-', sdStyle) : 0;
+  // A zero can mean a cache miss. Fall back to getTextAdvanceX so its SD-miss
+  // policy (including on-demand metrics) remains authoritative after integration.
+  if (sd && hyphenAdvance == 0) return false;
+
+  struct State {
+    int finishedPx = 0;
+    uint32_t beforeCp = 0, lastCp = 0;
+    int32_t beforeAdvance = 0, lastAdvance = 0;
+    bool canLigate = false;
+  } state;
+  const auto append = [&font](State& value, uint32_t cp) {
+    // Keep the last two glyphs pending: extending the last greedy ligature can
+    // change both its own advance and the kerning from its preceding glyph.
+    const uint32_t ligature = value.canLigate ? font.getLigature(value.lastCp, cp) : 0;
+    if (ligature) {
+      value.lastCp = ligature;
+    } else {
+      if (utf8IsCombiningMark(cp)) {
+        value.canLigate = false;  // A skipped mark still stops ligature lookahead.
+        return;
+      }
+      if (value.beforeCp) {
+        value.finishedPx += fp4::toPixel(value.beforeAdvance + font.getKerning(value.beforeCp, value.lastCp));
+      }
+      value.beforeCp = value.lastCp;
+      value.beforeAdvance = value.lastAdvance;
+      value.lastCp = cp;
+      value.canLigate = true;
+    }
+    const EpdGlyph* glyph = font.getGlyph(value.lastCp);
+    value.lastAdvance = glyph ? glyph->advanceX : 0;
+  };
+  const auto width = [&font](const State& value) {
+    return value.finishedPx +
+           (value.beforeCp ? fp4::toPixel(value.beforeAdvance + font.getKerning(value.beforeCp, value.lastCp)) : 0) +
+           fp4::toPixel(value.lastAdvance);
+  };
+
+  int32_t widthFP = 0;
+  const auto* begin = reinterpret_cast<const uint8_t*>(text.c_str());
+  const auto* cursor = begin;
+  const auto* end = begin + text.size();
+  while (cursor < end) {
+    const uint32_t cp = utf8NextCodepoint(&cursor);
+    // The fallback also preserves the decoder's malformed-input behavior and
+    // embedded NUL handling; never consume a partial table on failure.
+    if (cp == 0 || cp == REPLACEMENT_GLYPH || cursor > end) return false;
+    if (cp != 0x00AD) {  // Match measureWordWidth's removal of soft hyphens.
+      if (sd) {
+        const uint16_t advance = sdIt->second->getAdvance(cp, sdStyle);
+        if (advance == 0) return false;
+        widthFP += advance;
+      } else {
+        append(state, cp);
+      }
+    }
+    const size_t offset = cursor - begin;
+    if (sd) {
+      metrics.plain[offset] = static_cast<uint16_t>(fp4::toPixel(widthFP));
+      metrics.hyphenated[offset] = static_cast<uint16_t>(fp4::toPixel(widthFP + hyphenAdvance));
+    } else {
+      metrics.plain[offset] = static_cast<uint16_t>(width(state));
+      State withHyphen = state;
+      append(withHyphen, '-');
+      metrics.hyphenated[offset] = static_cast<uint16_t>(width(withHyphen));
+    }
+  }
+  return true;
+}
+
 int GfxRenderer::getFontAscenderSize(const int fontId) const {
   const auto fontIt = fontMap.find(fontId);
   if (fontIt == fontMap.end()) {
@@ -1338,6 +1503,63 @@ int GfxRenderer::getTextHeight(const int fontId) const {
     return 0;
   }
   return fontIt->second.getData(EpdFontFamily::REGULAR)->ascender;
+}
+
+bool GfxRenderer::getTextFittingPrefix(const int fontId, const char* text, const size_t length,
+                                      const int maxWidth, size_t& prefixBytes,
+                                      const EpdFontFamily::Style style) const {
+  // This is an optional bounded fast path, never a keyboard input-length cap.
+  // Unsupported input and slow work retain the original shrinking-prefix loop.
+  constexpr size_t kMaxBytes = 4096;
+  constexpr uint32_t kBudgetMs = 1000;
+  if (!text || !length || length > kMaxBytes || isSdCardFont(fontId)) return false;
+  const auto fontIt = fontMap.find(fontId);
+  if (fontIt == fontMap.end()) return false;
+  const EpdFontData* data = fontIt->second.getData(style);
+  if (!data || data->glyphMissHandler) return false;
+  const EpdFont font(data);
+
+  // Keep the final two glyphs pending. Extending a greedy ligature can change
+  // its advance AND its kerning from the previous glyph. Earlier pairs remain
+  // final. Use the same differential rounding as getTextAdvanceX/drawText.
+  int finishedPx = 0;
+  uint32_t beforeCp = 0, lastCp = 0;
+  int32_t beforeAdvance = 0, lastAdvance = 0;
+  size_t longest = 0, checkpointBytes = 0;
+  const uint32_t started = millis();
+  uint32_t checkpointAt = started;
+  for (size_t i = 0; i < length; ++i) {
+    const uint32_t cp = static_cast<unsigned char>(text[i]);
+    // Preserve legacy byte-truncation, malformed UTF-8 and embedded-NUL behavior
+    // by leaving those strings entirely to the existing decoder/measurement.
+    if (cp < 0x20 || cp > 0x7e) return false;
+    const uint32_t ligature = lastCp ? font.getLigature(lastCp, cp) : 0;
+    if (ligature) {
+      lastCp = ligature;
+    } else {
+      if (beforeCp) finishedPx += fp4::toPixel(beforeAdvance + font.getKerning(beforeCp, lastCp));
+      beforeCp = lastCp;
+      beforeAdvance = lastAdvance;
+      lastCp = cp;
+    }
+    const EpdGlyph* glyph = font.getGlyph(lastCp);
+    lastAdvance = glyph ? glyph->advanceX : 0;
+    const int width = finishedPx +
+        (beforeCp ? fp4::toPixel(beforeAdvance + font.getKerning(beforeCp, lastCp)) : 0) +
+        fp4::toPixel(lastAdvance);
+    // A later prefix can be narrower. Never binary-search or stop at overflow.
+    if (width <= maxWidth) longest = i + 1;
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= kBudgetMs) return false;
+    if (i + 1 - checkpointBytes >= 256 || static_cast<uint32_t>(now - checkpointAt) >= 8) {
+      vTaskDelay(1);
+      checkpointAt = millis();
+      checkpointBytes = i + 1;
+    }
+  }
+  if (!longest || static_cast<uint32_t>(millis() - started) >= kBudgetMs) return false;
+  prefixBytes = longest;
+  return true;
 }
 
 void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y, const char* text, const bool black,
@@ -1419,8 +1641,13 @@ bool GfxRenderer::captureGrayscaleBaseBuffer() const {
 }
 
 void GfxRenderer::displayGrayBuffer(const DisplayPresentMode refreshMode) const {
-  if (!initialized || !frameBuffer || !display.isReady()) return;
+  const uint32_t touchEpoch = nativeTouchPresentationEpoch();
+  if (!initialized || !frameBuffer || !display.isReady()) {
+    nativeTouchSurfacePresented(touchEpoch, false);
+    return;
+  }
   display.displayGrayBuffer(refreshMode);
+  nativeTouchSurfacePresented(touchEpoch, display.lastPresentSucceeded());
 }
 
 void GfxRenderer::freeBwBufferChunks() {

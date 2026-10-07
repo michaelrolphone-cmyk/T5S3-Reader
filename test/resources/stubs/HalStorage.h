@@ -64,5 +64,11 @@ struct FakeStorage {
     ++fakeSd.opens;
     return HalFile(path, fakeSd.files.count(path) != 0);
   }
+  bool openFileForRead(const char*, const char* path, HalFile& file) const {
+    if (file.isOpen() && !file.close()) return false;
+    file = const_cast<FakeStorage*>(this)->open(path, O_RDONLY);
+    return file.isOpen() && !file.isDirectory();
+  }
+
 };
 inline FakeStorage Storage;

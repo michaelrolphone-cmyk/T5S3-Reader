@@ -1,0 +1,14 @@
+{
+  "baseline": "b91bc323fb736eb6a13ea1a9403470cf699c6128",
+  "sdk_package": "3.20017.241212+sha.dcc1105b",
+  "source_sha256": {
+    "Stream.cpp": "ae150ff58c71712b66ce5a161d314a5f72b7b98089dcc14cbc1ff7b30de07d85",
+    "WString.cpp": "00ade52f2f236f5d1504ec800addebf9bea1c9dbb18128385d90cd8ed8b5afce",
+    "HWCDC.cpp": "d0a8ca606c2729c8522a041113285dbf27033c22a5a6af8649a7305ffe84c449"
+  },
+  "main_sha256": "819b7eed146bd3bb8110754aade23138cb7625db3a34426666ac48f6fc784a73",
+  "fixtures": {
+    "original_dispatch.inc": "b863792cf8bca6342ee50d8944d5c155a5a8848bde937adfefe598f2ada03975",
+    "sdk_reference.inc": "abdaf9efecae4f1841cd3c21da41152d30dd2e4192d946660daa5266b92b25f8"
+  }
+}

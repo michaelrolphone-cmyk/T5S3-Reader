@@ -12,4 +12,3 @@ struct CrossPointSettings {
   bool saveToFile() const { ++saveCalls; return saveResult; }
 };
 extern CrossPointSettings SETTINGS;
-

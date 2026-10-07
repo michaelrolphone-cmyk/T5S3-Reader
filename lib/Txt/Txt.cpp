@@ -4,6 +4,10 @@
 #include <JpegToBmpConverter.h>
 #include <Logging.h>
 
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+
 Txt::Txt(std::string path, std::string cacheBasePath)
     : filepath(std::move(path)), cacheBasePath(std::move(cacheBasePath)) {
   // Generate cache path from file path hash
@@ -173,4 +177,71 @@ bool Txt::readContent(uint8_t* buffer, size_t offset, size_t length) const {
 
   size_t bytesRead = file.read(buffer, length);
   return bytesRead > 0;
+}
+
+Txt::ReadWindow::ReadWindow(const Txt& source)
+    : txt(source), capacity(std::min(CAPACITY, source.fileSize)) {
+  buffer = static_cast<uint8_t*>(malloc(capacity + 1));
+}
+
+Txt::ReadWindow::~ReadWindow() {
+  (void)close();
+  free(buffer);
+}
+
+bool Txt::ReadWindow::close() {
+  const bool coherent = !failed && (!file || (!file.getError() && Storage.unchanged(stamp)));
+  available = 0;
+  failed = true;
+  const bool closed = file.close();
+  return coherent && closed;
+}
+
+const uint8_t* Txt::ReadWindow::read(size_t offset, size_t length) {
+  if (failed || !buffer || !txt.loaded || length == 0 || length > capacity ||
+      offset > txt.fileSize || length > txt.fileSize - offset) {
+    return nullptr;
+  }
+  // Never reuse bytes across an observed write/remount/external-storage window.
+  // Stop this operation instead of producing a mixed-generation page index.
+  if (file && !Storage.unchanged(stamp)) {
+    (void)close();
+    return nullptr;
+  }
+  if (!file) {
+    stamp = Storage.generation();
+    if (!stamp.quiescent || !Storage.openFileForRead("TXT", txt.filepath, file) ||
+        !file.seek(offset) || !Storage.unchanged(stamp)) {
+      (void)close();
+      return nullptr;
+    }
+    start = offset;
+    cursor = offset;
+  }
+
+  size_t retained = 0;
+  if (offset >= start && offset - start <= available) {
+    retained = std::min(length, available - (offset - start));
+    memmove(buffer, buffer + (offset - start), retained);
+  }
+  // Usually the retained suffix ends exactly at the current file position.
+  // Explicit cursor accounting also makes shorter/backward reads exact.
+  if (retained < length && cursor != offset + retained) {
+    if (!file.seek(offset + retained)) {
+      (void)close();
+      return nullptr;
+    }
+    cursor = offset + retained;
+  }
+  const size_t needed = length - retained;
+  if ((needed && file.read(buffer + retained, needed) != static_cast<int>(needed)) ||
+      file.getError() || !Storage.unchanged(stamp)) {
+    (void)close();
+    return nullptr;
+  }
+  cursor += needed;
+  start = offset;
+  available = length;
+  buffer[length] = '\0';
+  return buffer;
 }

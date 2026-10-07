@@ -20,6 +20,48 @@ bool retained() { return mounted; }
 int main(int argc,char** argv) {
  Fake::identity=false; assert(!Storage.begin()); Fake::identity=true;
  assert(Storage.begin()); auto initial=Storage.generation(); assert(initial.quiescent);
+ if(argc>1 && !strcmp(argv[1],"metadata")) {
+   auto dir=Storage.open("/"); assert(dir && dir.isDirectory());
+   HalFile::DirectoryEntry entry;
+   std::strcpy(Fake::entry.fname,"driver.elf"); Fake::entry.fsize=1234;
+   auto io=Fake::io;
+   assert(dir.readDirectoryEntry(entry) && Fake::io==io+1);
+   assert(!strcmp(entry.name,"driver.elf") && entry.size==1234 && !entry.isDirectory);
+   Fake::entry.fattrib=AM_DIR;
+   assert(dir.readDirectoryEntry(entry) && entry.isDirectory);
+   Fake::entry={}; io=Fake::io;
+   assert(!dir.readDirectoryEntry(entry) && !dir.getError() && !entry.name[0] && Fake::io==io+1);
+   Fake::task=reinterpret_cast<void*>(2); io=Fake::io;
+   assert(!dir.readDirectoryEntry(entry) && dir.getError() && Fake::io==io);
+   Fake::task=reinterpret_cast<void*>(1);
+   assert(!dir.getError() && dir.close());
+   for(const char* invalid:{"..","a/b","a\\b"}) {
+     dir=Storage.open("/"); std::strcpy(Fake::entry.fname,invalid);
+     assert(!dir.readDirectoryEntry(entry) && dir.getError()==FR_INVALID_NAME && !entry.name[0]);
+     Fake::entry={};io=Fake::io;
+     assert(!dir.readDirectoryEntry(entry) && dir.getError() && Fake::io==io);
+     assert(dir.close());
+   }
+   dir=Storage.open("/");std::memset(Fake::entry.fname,'x',sizeof(Fake::entry.fname));
+   assert(!dir.readDirectoryEntry(entry) && dir.getError()==FR_INVALID_NAME && dir.close());
+   Fake::entry={};dir=Storage.open("/");Fake::failDirectory=true;
+   assert(!dir.readDirectoryEntry(entry) && dir.getError()==FR_DISK_ERR);
+   Fake::failDirectory=false;io=Fake::io;
+   assert(!dir.readDirectoryEntry(entry) && Fake::io==io && dir.close());
+   dir=Storage.open("/");BootstrapSdmmc::operating=true;io=Fake::io;
+   assert(!dir.readDirectoryEntry(entry) && dir.getError()==FR_TIMEOUT && Fake::io==io);
+   BootstrapSdmmc::operating=false;assert(dir.close());
+   dir=Storage.open("/");std::strcpy(Fake::entry.fname,"file");
+   for(unsigned n=0;n<2048;++n)assert(dir.readDirectoryEntry(entry));
+   io=Fake::io;assert(!dir.readDirectoryEntry(entry) && dir.getError()==FR_TIMEOUT && Fake::io==io);
+   Fake::failDirectoryClose=true;assert(!dir.close() && !BootstrapHalStorage::releaseForHandoff());
+   Fake::failDirectoryClose=false;assert(dir.close());
+   dir=Storage.open("/");Storage.markUnavailable();io=Fake::io;
+   assert(!dir.readDirectoryEntry(entry) && dir.getError() && Fake::io==io && dir.close());
+   assert(BootstrapHalStorage::releaseForHandoff());
+   puts("CAM metadata cursor: copied size/type, one read/no child open, EOF, owner/name/I/O/budget/bounds, sticky failures and retained close PASS");
+   return 0;
+ }
  if(argc>1 && !strcmp(argv[1],"close")) {
    { auto f=Storage.open("/file",O_RDWR); assert(f); Fake::failClose=true; }
    assert(!Storage.generation().quiescent && !BootstrapHalStorage::releaseForHandoff());

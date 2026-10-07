@@ -207,6 +207,11 @@ typedef struct {
     // Non-consuming current contact, including movement, in oriented UI coords.
     // Returns false if unavailable; down=false means no eligible contact.
     bool (*touch_contact)(t5_app_contact_t *contact);
+    // Append-only checked directory completion. Closes the current directory
+    // and returns true only if enumeration had no error and close succeeded.
+    // Size-check before use. Older firmware exposes only EOF/error-ambiguous
+    // dir_next + dir_close, so clients must retain their legacy retry behavior.
+    bool (*dir_close_checked)(void);
 } t5_app_api_v1;
 
 // Native application entry point. Native ELFs are built with -fvisibility=hidden,

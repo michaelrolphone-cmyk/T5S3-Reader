@@ -1,0 +1,4 @@
+/* ABI 3 adds shared CPU DMA reservations; ABI 1/2 remain frozen. */
+#include "privileged_os_cpu_symbols_v2.def"
+RISC_OS_CPU_SYMBOL(risc_cpu_dma_reserve_tx_v3)
+RISC_OS_CPU_SYMBOL(risc_cpu_dma_release_v3)

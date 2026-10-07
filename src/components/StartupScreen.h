@@ -11,6 +11,9 @@ namespace StartupScreen {
 // boot() arms one fade for whichever normal startup destination renders first.
 // armBootFade() is idempotent and retained for Home's explicit handoff.
 void boot(GfxRenderer& renderer);
+// Present the existing complete logo once. No animation worker, takeover,
+// loading state or boot handoff is started; the caller retains display ownership.
+void staticLogo(GfxRenderer& renderer);
 void armBootFade();
 // Input must not activate a destination before the loading-screen handoff.
 bool isLoading();

@@ -643,7 +643,18 @@ int KeyboardEntryActivity::measureInputHeightForTouch(int maxLineWidth, int line
   int lineEndIdx = static_cast<int>(displayText.length());
   while (true) {
     std::string lineText = displayText.substr(lineStartIdx, lineEndIdx - lineStartIdx);
-    const int textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
+    int textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
+    // Short/single-line input keeps its existing one-measurement path. Only a
+    // new overflowing suffix needs fitting; unsupported fonts/text shrink as before.
+    if (textWidth > maxLineWidth && lineEndIdx == static_cast<int>(displayText.length())) {
+      size_t fittingBytes = 0;
+      if (renderer.getTextFittingPrefix(UI_12_FONT_ID, lineText.c_str(), lineText.length(),
+                                       maxLineWidth, fittingBytes)) {
+        lineEndIdx = lineStartIdx + static_cast<int>(fittingBytes);
+        lineText.resize(fittingBytes);
+        textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
+      }
+    }
     if (textWidth <= maxLineWidth || lineEndIdx <= lineStartIdx + 1) {
       if (lineEndIdx == static_cast<int>(displayText.length())) break;
       inputHeight += lineHeight;
@@ -722,6 +733,15 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   while (true) {
     std::string lineText = displayText.substr(lineStartIdx, lineEndIdx - lineStartIdx);
     textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
+    if (textWidth > maxLineWidth && lineEndIdx == static_cast<int>(displayText.length())) {
+      size_t fittingBytes = 0;
+      if (renderer.getTextFittingPrefix(UI_12_FONT_ID, lineText.c_str(), lineText.length(),
+                                       maxLineWidth, fittingBytes)) {
+        lineEndIdx = lineStartIdx + static_cast<int>(fittingBytes);
+        lineText.resize(fittingBytes);
+        textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
+      }
+    }
     if (textWidth <= maxLineWidth) {
       const bool isLastLine = (lineEndIdx == static_cast<int>(displayText.length()));
       bool isCursorLine = false;

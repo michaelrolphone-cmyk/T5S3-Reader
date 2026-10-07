@@ -9,12 +9,16 @@ c++ "${flags[@]}" lib/hal/HalStorage.cpp test/hal/storage_generation_test.cpp -o
 "$TMP/generation" failed-destructor
 c++ "${flags[@]}" lib/hal/HalStorage.cpp src/runtime/packages/InstalledCapabilityResolver.cpp test/hal/storage_snapshot_test.cpp -o "$TMP/snapshot"
 "$TMP/snapshot"
+c++ "${flags[@]}" -DESP_PLATFORM -Itest/hal/storage_timing_stubs \
+  lib/hal/HalStorage.cpp src/runtime/packages/InstalledCapabilityResolver.cpp \
+  test/hal/storage_snapshot_timing_test.cpp -o "$TMP/snapshot-timing"
+"$TMP/snapshot-timing"
 python3 test/hal/storage_inventory_test.py
 python3 test/hal/storage_compat_import_test.py
 python3 test/hal/storage_file_lifetime_test.py
 
-# Retained provider metadata must not rescan on unchanged UI polling.
+# Retained metadata and copied root companions preserve complete enumeration.
 python3 test/provider_enumeration/run_test.py --sanitize
 
-# Reuse the previously reviewed CDC negative-observation regression.
+# Preserve the merged CDC negative-observation regression.
 python3 test/resources/cdc_prepare_performance_test.py --current-only

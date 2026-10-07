@@ -25,11 +25,7 @@ class OrdinarySequentialSdReader final {
     if (offset == 0) {
       // A new entry must not inherit a previous entry's open descriptor.
       if (file_.isOpen() && !file_.close()) return false;
-      file_ = Storage.open(path.c_str(), O_RDONLY);
-      if (!file_.isOpen() || file_.isDirectory()) {
-        if (file_.isOpen()) (void)file_.close();
-        return false;
-      }
+      if (!Storage.openFileForRead("PKG", path.c_str(), file_)) return false;
       path_ = path;
       size_ = file_.fileSize64();
       next_ = 0;

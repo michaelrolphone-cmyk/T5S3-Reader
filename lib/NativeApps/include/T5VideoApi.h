@@ -31,7 +31,7 @@ typedef struct {
     uint16_t reserved;
 } t5_video_scan_stats_v1;
 
-typedef struct {
+typedef struct t5_video_api_v1 {
     uint32_t api_version;
     uint32_t struct_size;
 
@@ -80,6 +80,8 @@ typedef struct {
     bool (*try_stop)(void);
 } t5_video_api_v1;
 
+/* Capability query may precede takeover. Starting still requires exclusive
+ * display ownership; a null API selects the ordinary UI presentation path. */
 const t5_video_api_v1 *t5_video_get_api(uint32_t api_version);
 
 #ifdef __cplusplus

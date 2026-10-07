@@ -17,6 +17,7 @@ inline size_t directoryOpens=0,entryReads=0;
 inline std::string full(const char* path) { return root + path; }
 }  // namespace CdcSdTest
 class HalFile {
+  uint8_t metadataError_=0;
   std::fstream file_;
   std::string path_;
   bool directory_ = false, open_ = false;
@@ -43,13 +44,24 @@ class HalFile {
   }
   HalFile(HalFile&&) = default;
   HalFile& operator=(HalFile&&) = default;
+  struct DirectoryEntry { char name[128]{}; uint64_t size=0; bool isDirectory=false; };
+  bool readDirectoryEntry(DirectoryEntry& result) {
+    result={}; auto child=openNextFile();
+    if(!child.isOpen()) return false;
+    const size_t n=child.getName(result.name,sizeof(result.name));
+    result.isDirectory=child.isDirectory();
+    result.size=result.isDirectory?0:child.fileSize64();
+    const bool closed=child.close();
+    if(!n||n>=sizeof(result.name)||!closed){metadataError_=1;return false;}
+    return true;
+  }
   HalFile openNextFile() {
     ++CdcSdTest::entryReads;
     if(CdcSdTest::mutateDuringRead)++CdcSdTest::epoch;
     if (path_ == CdcSdTest::failDirectoryRead || next_ == children_.size()) return {};
     return HalFile(children_[next_++].c_str(), O_RDONLY);
   }
-  uint8_t getError() const { return path_ == CdcSdTest::failDirectoryRead ? 1 : 0; }
+  uint8_t getError() const { return metadataError_?metadataError_:path_ == CdcSdTest::failDirectoryRead ? 1 : 0; }
   size_t getName(char* out, size_t capacity) const {
     const auto name = std::filesystem::path(path_).filename().string();
     if (name.size() >= capacity) return capacity;
@@ -88,5 +100,11 @@ struct CdcStorage {
     return true;
   }
   bool remove(const char* path) const { return std::filesystem::remove(CdcSdTest::full(path)); }
+  bool openFileForRead(const char*, const char* path, HalFile& file) const {
+    if (file.isOpen() && !file.close()) return false;
+    file = const_cast<CdcStorage*>(this)->open(path, O_RDONLY);
+    return file.isOpen() && !file.isDirectory();
+  }
+
 };
 inline CdcStorage Storage;

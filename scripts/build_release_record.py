@@ -170,7 +170,10 @@ def package_bundle(kind: str, identity: str, version: str, root: Path) -> tuple[
                         raise ValueError('package ZIP entry size/SHA-256 mismatch')
                     if kind != 'application' and not resources and entry['name'] == 'provider-abi.v1':
                         capability, api = source['provides'][0]['capability'], source['provides'][0]['api']
-                        expected = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
+                        revision = source.get('os_cpu_abi', 1)
+                        if type(revision) is not int or revision not in (1, 2, 3):
+                            raise ValueError('unsupported source OS/CPU ABI')
+                        expected = f'os-cpu-abi={revision}\nprovides={capability}\napi={api}\n'.encode('ascii')
                         if payload != expected:
                             raise ValueError('bundled provider ABI differs from source manifest')
                     destination = snapshot / entry['name']

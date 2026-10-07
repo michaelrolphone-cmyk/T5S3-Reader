@@ -18,10 +18,31 @@ if [[ $# -gt 0 ]]; then
   timeout --kill-after=5s 60s "$binary" "$1"
   exit 0
 fi
+python3 "$repo_dir/test/native_text_layout/run_tests.py" --sanitize
+python3 "$repo_dir/test/native_text_font_generation_test.py"
+python3 "$repo_dir/test/native_text_layout_app/run_app_test.py" --sanitize --enforce-cost
+python3 "$repo_dir/test/navigation_hold/run_test.py"
+python3 "$repo_dir/test/text_page_writes/text_page_writes_test.py" --sanitize
+python3 "$repo_dir/test/text_page_writes/text_page_writes_test.py" --legacy
+python3 "$repo_dir/test/activities/txt_index_io_budget_test.py" --sanitize
+python3 "$repo_dir/test/activities/txt_index_io_budget_test.py" --legacy
+python3 "$repo_dir/test/debug_serial/run_test.py" --sanitize
+python3 "$repo_dir/test/debug_serial/run_test.py" --sanitize --negative-control
 BOOKMARK_TEST_SANITIZERS=1 bash "$repo_dir/test/run_bookmark_summary_test.sh"
+BOOKMARK_TOGGLE_SANITIZE=1 python3 "$repo_dir/test/bookmark_toggle/toggle_test.py"
 python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
 WRAP_TEST_SANITIZE=1 python3 "$repo_dir/test/text_wrap_regression.py"
+python3 "$repo_dir/test/title_truncation/truncation_test.py" --sanitize --enforce-cost
 python3 "$repo_dir/test/koreader_document_id/document_id_test.py" --sanitize
+python3 "$repo_dir/test/epub_anchor_reads/run_test.py" --sanitize --board x4
+python3 "$repo_dir/test/epub_anchor_reads/run_test.py" --sanitize --board t5
+python3 "$repo_dir/test/epub_anchor_reads/run_test.py" --sanitize --negative-control
+python3 "$repo_dir/test/epub_css_cache_io/run_test.py" --sanitize --board x4
+python3 "$repo_dir/test/epub_css_cache_io/run_test.py" --sanitize --board t5
+python3 "$repo_dir/test/epub_css_cache_io/run_test.py" --sanitize --negative-control
+bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board x4 --sanitize
+bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board t5 --sanitize
+bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board x4 --sanitize --negative-control
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
@@ -29,6 +50,9 @@ cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   "$repo_dir/test/native_apps/compat_registration_stub.c" \
   "$repo_dir/test/native_apps/launcher_test.c" -o "$binary"
 "$binary"
+"$binary" reader
+"$binary" child-close
+python3 "$repo_dir/test/reader_entry/run_tests.py"
 c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/src" \
   "$repo_dir/test/resources/app_allocation_test.cpp" -o "$binary"
 "$binary"
@@ -334,6 +358,12 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/file_browser_test.c" -o "$binary"
 (cd "$repo_dir" && "$binary")
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -fno-sanitize-recover=all -fno-omit-frame-pointer \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/file_browser_resume_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
+python3 "$repo_dir/test/native_apps/file_browser_resume_scan_test.py" --sanitize
 cc -std=c11 -Wall -Wextra -Werror \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/rom_manager_vimm_parser_test.c" -o "$binary"

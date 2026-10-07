@@ -10,6 +10,8 @@
 #include <cstring>
 
 static unsigned relocations = 0;
+static unsigned revision2Relocations = 0;
+static unsigned revision3Relocations = 0;
 static unsigned allocations = 0;
 static unsigned fallback_allocations = 0;
 static bool reject_allocations = false;
@@ -46,6 +48,16 @@ extern "C" int esp_elf_relocate_privileged_verified_v1(esp_elf_t* image,
   assert(retainedExpected ? imports != declared_imports : imports == declared_imports);
   return -1;
 }
+extern "C" int esp_elf_relocate_privileged_verified_v2(esp_elf_t* image,
+ const uint8_t* bytes,size_t length,const char* const* imports,size_t count) {
+ ++revision2Relocations;
+ return esp_elf_relocate_privileged_verified_v1(image,bytes,length,imports,count);
+}
+extern "C" int esp_elf_relocate_privileged_verified_v3(esp_elf_t* image,
+ const uint8_t* bytes,size_t length,const char* const* imports,size_t count) {
+ ++revision3Relocations;
+ return esp_elf_relocate_privileged_verified_v1(image,bytes,length,imports,count);
+}
 extern "C" void esp_elf_deinit(esp_elf_t*) {}
 
 static bool attempt(const uint8_t* image, size_t length, const uint8_t digest[32]) {
@@ -72,6 +84,23 @@ int main() {
   assert(!attempt(candidate, sizeof(candidate), declared_digest));
   assert(relocations == 1 && allocations == 1 && fallback_allocations == 0);
 
+  {
+   RuntimeProviders::ModuleV2 revision2;
+   assert(!revision2.loadVerifiedBytes(candidate,sizeof(candidate),declared_digest,
+      declared_imports,2,"fixture-snapshot","cap.generic",1,nullptr,0,2));
+   assert(revision2Relocations==1 && relocations==2);
+   RuntimeProviders::ModuleV2 unknown;
+   const auto before=allocations;
+   assert(!unknown.loadVerifiedBytes(candidate,sizeof(candidate),declared_digest,
+      declared_imports,2,"fixture-snapshot","cap.generic",1,nullptr,0,4));
+   assert(allocations==before && revision2Relocations==1 && relocations==2);
+   // Keep the existing v1 snapshot regression counters independent below.
+   RuntimeProviders::ModuleV2 revision3;
+   assert(!revision3.loadVerifiedBytes(candidate,sizeof(candidate),declared_digest,
+      declared_imports,2,"fixture-snapshot","cap.generic",1,nullptr,0,3));
+   assert(revision3Relocations==1 && relocations==3);
+   relocations-=2;allocations-=2;
+  }
   candidate[7] ^= 0x80;
   assert(!attempt(candidate, sizeof(candidate), declared_digest));
   assert(relocations == 1); /* Cold owned snapshot integrity rejects changed bytes. */

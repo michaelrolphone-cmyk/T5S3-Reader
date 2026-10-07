@@ -1,8 +1,9 @@
+#include <T5VideoApi.h>
 #include <assert.h>
 #include <string.h>
 #include "RiscDisplayOutputV1.h"
 #include "RiscProviderV2.h"
-#include "T5VideoApi.h"
+#include "T5DisplayProviderV1.h"
 
 static unsigned starts, stops, submits;
 static bool pending;
@@ -40,16 +41,17 @@ static bool try_stop_video(void) {
     stop_video();
     return true;
 }
-static t5_video_api_v1 video_api = {
+t5_video_api_v1 display_fast_dispatch = {
     .api_version = T5_VIDEO_API_VERSION, .struct_size = sizeof(t5_video_api_v1),
     .start = start_video, .backbuffer = buffer, .can_submit = can_submit,
     .submit = submit_video, .pending = is_pending, .frame_counter = frame_counter,
     .stop = stop_video, .start_format = start_format, .try_stop = try_stop_video
 };
-const t5_video_api_v1 *t5_video_get_api(uint32_t version) {
-    return version == T5_VIDEO_API_VERSION ? &video_api : NULL;
-}
+const t5_display_quality_api_v1 display_quality_dispatch={0};
+bool display_provider_start(const risc_provider_dependency_v1*deps,size_t count){(void)deps;return !count;}
+bool display_provider_quiesce(void){return true;}
 
+extern void display_output_fast_stopped(void);
 int main(void) {
     const risc_driver_v2 *driver = t5_driver_get(RISC_PROVIDER_DRIVER_ABI_V2);
     assert(driver && driver->start(NULL, 0) && starts == 0);
@@ -88,13 +90,24 @@ int main(void) {
     output->release(NULL, frame.frame);
     assert(driver->quiesce());
 
+    /* Host guard can stop the engine through the fast extension after a
+     * portable app returns. Old frame tokens must die and the next app starts. */
+    assert(driver->start(NULL,0));
+    assert(output->acquire(NULL,RISC_DISPLAY_FORMAT_MONO1,&frame));
+    risc_display_frame_v1 oldFrame=frame.frame;
+    display_output_fast_stopped();
+    assert(!output->submit(NULL,oldFrame,&dirty,1,NULL,&token));
+    assert(output->acquire(NULL,RISC_DISPLAY_FORMAT_MONO1,&frame));
+    assert(frame.frame!=oldFrame);
+    output->release(NULL,frame.frame);assert(driver->quiesce());
+
     /* Legacy void stop is never accepted as proof of safe release. */
     assert(driver->start(NULL, 0));
     unsigned before = starts;
-    video_api.struct_size = offsetof(t5_video_api_v1, try_stop);
+    display_fast_dispatch.struct_size = offsetof(t5_video_api_v1, try_stop);
     assert(!output->acquire(NULL, RISC_DISPLAY_FORMAT_MONO1, &frame));
     assert(starts == before && driver->quiesce());
-    video_api.struct_size = sizeof(video_api);
+    display_fast_dispatch.struct_size = sizeof(display_fast_dispatch);
 
     /* Failed format switch keeps the outgoing backend pinned; no second
      * start, stale surface submission or unsafe restart is permitted. */

@@ -1,6 +1,9 @@
 #include "Section.h"
 
 #include <HalStorage.h>
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+#include <HalReadBudget.h>
+#endif
 #include <Logging.h>
 #include <Serialization.h>
 
@@ -313,22 +316,33 @@ std::optional<uint16_t> Section::getPageForAnchor(const std::string& anchor) con
     return std::nullopt;
   }
 
+  // Keep scalar I/O and cache/error semantics; cooperate per operation rather
+  // than sleeping after every small map field. No retained or prefetched data.
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalReadBudget budget([]() { return static_cast<uint32_t>(millis()); }, []() { vTaskDelay(1); });
+  const auto readPod = [&](auto& value) { serialization::readPod(f, value, budget); };
+  const auto readString = [&](std::string& value) { serialization::readString(f, value, budget); };
+#else
+  const auto readPod = [&](auto& value) { serialization::readPod(f, value); };
+  const auto readString = [&](std::string& value) { serialization::readString(f, value); };
+#endif
+
   const uint32_t fileSize = f.size();
   f.seek(HEADER_SIZE - sizeof(uint32_t) * 2);
   uint32_t anchorMapOffset;
-  serialization::readPod(f, anchorMapOffset);
+  readPod(anchorMapOffset);
   if (anchorMapOffset == 0 || anchorMapOffset >= fileSize) {
     return std::nullopt;
   }
 
   f.seek(anchorMapOffset);
   uint16_t count;
-  serialization::readPod(f, count);
+  readPod(count);
   for (uint16_t i = 0; i < count; i++) {
     std::string key;
     uint16_t page;
-    serialization::readString(f, key);
-    serialization::readPod(f, page);
+    readString(key);
+    readPod(page);
     if (key == anchor) {
       return page;
     }

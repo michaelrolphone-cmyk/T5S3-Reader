@@ -1,6 +1,10 @@
 #pragma once
 
-#if defined(BOARD_LILYGO_EPD47_S3)
+#if defined(BOARD_XTEINK_X4_PRO)
+#include <BoardX4Pro.h>
+namespace Board = BoardX4Pro;
+namespace BoardPins = BoardX4ProPins;
+#elif defined(BOARD_LILYGO_EPD47_S3)
 #include <BoardEPD47.h>
 namespace Board = BoardEPD47;
 namespace BoardPins = BoardEPD47Pins;

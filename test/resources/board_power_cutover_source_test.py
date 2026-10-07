@@ -46,8 +46,14 @@ assert 'return Storage.ready();' in readiness
 # Pin the already-verified owner before Board::deinitForSleep drops SD_CS, or
 # the loader would have to access an unavailable package store after sleep.
 sleep = board.split('void deinitForSleep()', 1)[1].split('\n}', 1)[0]
-assert sleep.index('BoardPowerPort::prepareShutdown()') < sleep.index('pinMode(T5S3_SD_CS, INPUT)')
-assert 'Board::deinitForSleep();' in display.split('void HalDisplay::deepSleep()', 1)[1].split('\n}', 1)[0]
+assert 'BoardPowerPort::prepareShutdown()' not in sleep
+main = (root / 'src/main.cpp').read_text(encoding='utf-8')
+off = main.split('void enterPowerOffKeepingScreen(', 1)[1].split('// Set by activities', 1)[0]
+assert off.index('BoardPowerPort::prepareShutdown()') < off.index('if (!display.deepSleep())')
+assert 'BoardPowerPort::cancelShutdown()' in off
+assert 'enterDeepSleepKeepingScreen(false)' not in off
+assert 'if (!Board::prepareForSleep()) return false;' in display
+assert 'Board::deinitForSleep();' in display.split('bool HalDisplay::deepSleep()', 1)[1].split('\n}', 1)[0]
 for required in ('bool prepareShutdown();', 'bool shutdown();',
                  'bool readyForActivation();'):
     assert required in port_h, required

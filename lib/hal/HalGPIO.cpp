@@ -101,6 +101,7 @@ void HalGPIO::startDeepSleep(bool wakeOnTouch) {
     update();
   }
 
+  if (!Board::prepareForSleep()) { LOG_ERR("GPIO", "Storage power-down barrier refused sleep"); return; }
   Board::deinitForSleep();
   pinMode(BoardPins::PowerButton, INPUT_PULLUP);
   pinMode(BoardPins::TouchInterrupt, INPUT_PULLUP);

@@ -321,11 +321,28 @@ void Epub::parseCssFiles() const {
     return;
   }
 
+  // Reuse only requested metadata on the same open archive. The optimization
+  // has a bounded optional scan and falls back without changing CSS admission.
+  // Leave 16 KiB above the existing parser heap guard for optional metadata:
+  // at most 64 compact records plus 4096 name bytes, with non-throwing allocation.
+  ZipFile cssZip(filepath);
+  bool useSelectedStats = false;
+  if (!cssFiles.empty() && cssFiles.size() <= 64 && ESP.getFreeHeap() >= MIN_HEAP_FOR_CSS_PARSING + 16 * 1024) {
+    if (cssZip.open()) {
+      useSelectedStats = cssZip.cacheSelectedFileStats(cssFiles, FsHelpers::normalisePath);
+      if (!useSelectedStats) cssZip.close();
+    }
+  }
+
   // No cache yet - parse CSS files
   for (const auto& cssPath : cssFiles) {
     LOG_DBG("EBP", "Parsing CSS file: %s", cssPath.c_str());
 
     // Check heap before parsing - CSS parsing allocates heavily
+    if (useSelectedStats && ESP.getFreeHeap() < MIN_HEAP_FOR_CSS_PARSING) {
+      cssZip.close();
+      useSelectedStats = false;
+    }
     const uint32_t freeHeap = ESP.getFreeHeap();
     if (freeHeap < MIN_HEAP_FOR_CSS_PARSING) {
       LOG_ERR("EBP", "Insufficient heap for CSS parsing (%u bytes free, need %zu), skipping: %s", freeHeap,
@@ -335,7 +352,9 @@ void Epub::parseCssFiles() const {
 
     // Check CSS file size before decompressing - skip files that are too large
     size_t cssFileSize = 0;
-    if (getItemSize(cssPath, &cssFileSize)) {
+    const auto normalizedPath = useSelectedStats ? FsHelpers::normalisePath(cssPath) : std::string{};
+    if (useSelectedStats ? cssZip.getInflatedFileSize(normalizedPath.c_str(), &cssFileSize)
+                         : getItemSize(cssPath, &cssFileSize)) {
       if (cssFileSize > MAX_CSS_FILE_SIZE) {
         LOG_ERR("EBP", "CSS file too large (%zu bytes > %zu max), skipping: %s", cssFileSize, MAX_CSS_FILE_SIZE,
                 cssPath.c_str());
@@ -350,7 +369,8 @@ void Epub::parseCssFiles() const {
       LOG_ERR("EBP", "Could not create temp CSS file");
       continue;
     }
-    if (!readItemContentsToStream(cssPath, tempCssFile, 1024)) {
+    if (!(useSelectedStats ? cssZip.readFileToStream(normalizedPath.c_str(), tempCssFile, 1024)
+                           : readItemContentsToStream(cssPath, tempCssFile, 1024))) {
       LOG_ERR("EBP", "Could not read CSS file: %s", cssPath.c_str());
       // Explicitly close() file before calling Storage.remove()
       tempCssFile.close();
@@ -371,6 +391,8 @@ void Epub::parseCssFiles() const {
     tempCssFile.close();
     Storage.remove(tmpCssPath.c_str());
   }
+
+  cssZip.close();
 
   // Save to cache for next time
   if (!cssParser->saveToCache()) {

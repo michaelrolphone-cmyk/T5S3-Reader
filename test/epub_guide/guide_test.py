@@ -28,9 +28,11 @@ struct FsFile {
   std::shared_ptr<std::vector<uint8_t>> data;
   size_t pos = 0;
   explicit operator bool() const { return data != nullptr; }
-  void close() { data.reset(); pos = 0; }
+  bool close() { data.reset(); pos = 0; return true; }
+  size_t size() const { return data ? data->size() : 0; }
+  uint8_t getError() const { return 0; }
   size_t position() const { return pos; }
-  void seek(size_t value) { pos = value; }
+  bool seek(size_t value) { pos = value; return data && value <= data->size(); }
   bool available() const { return data && pos < data->size(); }
 };
 struct StorageFixture {

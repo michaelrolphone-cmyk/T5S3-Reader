@@ -33,17 +33,21 @@ class HalClock {
 
   enum class ChipVariant : uint8_t { Unknown = 0, Pcf85063, Pcf8563 };
 
-  bool probeVariant(ChipVariant variant);
   bool readDateTime(DateTime& dateTime) const;
+#if !defined(BOARD_XTEINK_X4_PRO)
+  bool probeVariant(ChipVariant variant);
   bool readDateTime(ChipVariant variant, DateTime& dateTime) const;
   bool readRegisters(uint8_t startReg, uint8_t* data, size_t len) const;
   bool writeRegisters(uint8_t startReg, const uint8_t* data, size_t len) const;
   static uint8_t timeStartRegister(ChipVariant variant);
   static bool decodeRegisters(ChipVariant variant, const uint8_t* data, DateTime& dateTime);
   static bool encodeRegisters(ChipVariant variant, const DateTime& dateTime, uint8_t* data, size_t len);
+#endif
   static ChipVariant chipVariantFromHint(uint8_t hint);
   static uint8_t chipVariantToHint(ChipVariant variant);
+#if !defined(BOARD_XTEINK_X4_PRO)
   static ChipVariant alternateVariant(ChipVariant variant);
+#endif
   static bool dateTimeMatches(const DateTime& expected, const DateTime& actual);
   static bool isSystemTimeUsable(time_t epoch);
   static bool isSystemTimeValid(time_t epoch);

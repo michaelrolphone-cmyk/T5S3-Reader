@@ -172,7 +172,11 @@ HalFile HalStorage::open(const char* path, oflag_t flags) {
 bool HalFile::isOpen() const { return onOwner() && !poisoned && impl && impl->opened; }
 HalFile::operator bool() const { return isOpen(); }
 bool HalFile::isDirectory() const { return isOpen() && impl->isDir; }
-uint8_t HalFile::getError() const { return impl ? static_cast<uint8_t>(impl->error) : 0; }
+uint8_t HalFile::getError() const {
+  if (!onOwner() || !impl) return FR_INVALID_PARAMETER;
+  if (impl->error != FR_OK) return static_cast<uint8_t>(impl->error);
+  return Storage.ready() ? FR_OK : FR_TIMEOUT;
+}
 uint64_t HalFile::fileSize64() { return isOpen() && !impl->isDir ? f_size(&impl->file) : 0; }
 size_t HalFile::size() { return static_cast<size_t>(std::min<uint64_t>(SIZE_MAX, fileSize64())); }
 size_t HalFile::fileSize() { return size(); }
@@ -269,6 +273,34 @@ void HalFile::rewindDirectory() {
   Operation op;
   impl->error = op.ok ? f_readdir(&impl->dir, nullptr) : FR_TIMEOUT;
   if (impl->error == FR_OK) impl->entries = 0;
+}
+bool HalFile::readDirectoryEntry(DirectoryEntry& result) {
+  result = {};
+  // Wrong-task callers cannot touch the cursor or mutate its owner state.
+  // getError() reports this refusal without accessing the card.
+  if (!onOwner() || !impl) return false;
+  if (impl->error != FR_OK) return false;
+  if (!Storage.ready() || !impl->opened || !impl->isDir) {
+    impl->error = FR_INVALID_PARAMETER;
+    return false;
+  }
+  Operation op;
+  if (!op.ok || impl->entries >= kDirectoryItems) { impl->error = FR_TIMEOUT; return false; }
+  FILINFO info{};
+  impl->error = f_readdir(&impl->dir, &info);
+  if (impl->error != FR_OK || !info.fname[0]) return false;
+  ++impl->entries;
+  const size_t length = strnlen(info.fname, sizeof(info.fname));
+  if (length >= sizeof(info.fname) || length >= sizeof(result.name) || std::strchr(info.fname, '/') ||
+      std::strchr(info.fname, '\\') || !std::strcmp(info.fname, ".") ||
+      !std::strcmp(info.fname, "..")) {
+    impl->error = FR_INVALID_NAME;
+    return false;
+  }
+  std::memcpy(result.name, info.fname, length + 1);
+  result.size = info.fsize;
+  result.isDirectory = (info.fattrib & AM_DIR) != 0;
+  return true;
 }
 HalFile HalFile::openNextFile() {
   if (!isDirectory()) return {};

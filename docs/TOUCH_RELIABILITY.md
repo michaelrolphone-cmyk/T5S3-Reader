@@ -6,6 +6,64 @@ trace has identified every missed tap on the owner's device. Firmware 1.3.38,
 three after release; a firmware-only update cannot replace installed driver code.
 The stable capability IDs and API-v1 layouts remain unchanged.
 
+## Delayed-consumer and surface boundaries (October 2026)
+
+The X4 report of taps replaying after 20–30 seconds had a software reproduction:
+production `NativeTouchInput` captured timestamps but stored only coordinates in
+its completed tap/swipe queues, and `ActivityManager` did not use the existing
+focus fence when replacing, pushing or popping a surface. Native launch-error
+and synchronous modal routes could also consume a preceding view's input.
+
+The same installed provider, subscription, fixed queue depths and neutral-snapshot
+recovery remain in use. Completed tap/swipe records now retain their capture
+completion time and expire after two seconds. Tap, swipe, contact and hold reads
+share a consumer timestamp; a gap longer than five seconds invalidates the whole
+pending coordinate tail once, including recent taps made near the end of a
+blocked operation. Provider/watchdog service alone cannot reset this clock.
+Continuous polling preserves legitimate long holds. A contact crossing a blocked
+consumer or a surface boundary must lift before becoming eligible again. Physical
+activity, Home escape, navigation and wake are independent of this coordinate
+policy. `TOUCH` diagnostics report expired gestures and consumer-stall fences.
+
+Activity replace/push/pop, synchronous `onEnter` frames, native app first frames,
+launch errors, error dismissal, and native Home-modal confirmation/restore routes
+use the existing focus epoch. Coordinate input stays closed through preparation
+and failed presentation. A successful frame from an older epoch cannot release a
+newer one. Activity renders acknowledge readiness only after their callback
+returns; loading/progress popups are explicitly noninteractive, including both
+Base and Lyra themes. Ordinary redraws do not flush input. The transform/flip
+boundary retains separate ownership and cannot be released by an activity.
+
+The internal `DisplaySurface` result query propagates the existing X4/provider
+completion status; T5 and EPD47 record the result of their synchronous calls.
+It changes neither the public installed-provider ABI nor touch driver packages.
+UI-video takeover uses its existing asynchronous completion contract instead:
+NativeVideoBridge records an accepted frame's owner, surface epoch and scan
+counter, then native input polling observes completion. A changed scan counter
+alone is insufficient because it advances at scan start. Pending flip/drive work
+must be finished, the engine must still accept submissions, and owner/epoch must
+still match. Start/restart/stop cancels prior evidence. Static Springboard frames
+therefore admit fresh touch without another submission or an ordinary renderer
+call while display takeover is active.
+
+Focused checks (also wired into the existing host-test/CI runners):
+
+```sh
+python3 test/hal/touch_capture_behavior_test.py
+python3 test/hal/native_app_focus_test.py
+python3 test/hal/activity_touch_focus_test.py
+python3 test/hal/native_video_touch_focus_test.py
+python3 test/display/x4_flip_bridge_test.py
+```
+
+They execute the production capture consumer, real GT911 provider, native
+launch/poll/error/retry methods, ActivityManager dispatch and renderer methods
+with deterministic physical I/O/clock/RTOS substitutes. Coverage includes 20–30s
+stalls, recent-tail rejection, fresh input, continuously serviced long holds,
+held-contact neutral gating, Home/snapshot races, popup aborts, display retries,
+render epochs, synchronous entry, physical Back/Power and X4/T5 lifetimes. These
+are software checks, not a claim of device-level touch or latency qualification.
+
 ## Why earlier fixes were insufficient
 
 The history separated fixes that actually depend on one another:
@@ -66,8 +124,8 @@ The history separated fixes that actually depend on one another:
    or SD write is introduced in the sampling task.
 
 The existing 16-tap queue remains bounded. It tolerates a temporarily busy UI;
-indefinite UI stalls or overflowing it are now observable, not silently treated
-as successful input. A bus timeout does not reset the shared bus, touch controller
+long UI stalls invalidate old coordinate input, and overflow remains observable
+rather than silently treated as successful delivery. A bus timeout does not reset the shared bus, touch controller
 or display, and does not unload a live provider.
 
 ## Executable protection

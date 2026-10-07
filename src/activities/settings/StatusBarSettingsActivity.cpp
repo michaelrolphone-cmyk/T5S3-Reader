@@ -17,6 +17,7 @@ void StatusBarSettingsActivity::onEnter() {
 
 void StatusBarSettingsActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/status_bar_settings.elf", renderer, mappedInput);
     if (result == ESP_OK) {

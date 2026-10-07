@@ -55,6 +55,7 @@ static char pending_delete_path[PATH_CAP];
 static bool pending_delete_usb;
 static uint32_t last_tap_ms;
 static int32_t last_tap_index = -1;
+static bool checked_listings;
 
 static char lower_ascii(char ch) {
     return ch >= 'A' && ch <= 'Z' ? (char)(ch + ('a' - 'A')) : ch;
@@ -100,6 +101,17 @@ static bool usb_api_valid(const risc_storage_volume_api_v1 *volume) {
 static bool refresh_usb(void) {
     return usb_volume && usb_volume->refresh(usb_volume->context) &&
            usb_volume->ready(usb_volume->context);
+}
+
+static const risc_storage_volume_api_v1_ext *checked_usb_api(void) {
+    if (!usb_volume || usb_volume->struct_size < sizeof(risc_storage_volume_api_v1_ext)) return NULL;
+    const risc_storage_volume_api_v1_ext *extended = (const risc_storage_volume_api_v1_ext *)usb_volume;
+    return extended->handle_error && extended->dir_close_checked ? extended : NULL;
+}
+
+static bool checked_listings_available(void) {
+    return app->struct_size >= offsetof(t5_app_api_v1, dir_close_checked) + sizeof(app->dir_close_checked) &&
+           app->dir_close_checked && (!usb_volume || checked_usb_api());
 }
 
 static void usb_error(const char *fallback) {
@@ -258,6 +270,12 @@ static bool load_usb_files(void) {
         entries[entry_count].usb_root = false;
         ++entry_count;
     }
+    if (checked_listings) {
+        const risc_storage_volume_api_v1_ext *extended = checked_usb_api();
+        const bool clean = extended->handle_error(usb_volume->context, directory, true) == 0;
+        const bool closed = extended->dir_close_checked(usb_volume->context, directory);
+        return clean && closed;
+    }
     usb_volume->dir_close(usb_volume->context, directory);
     return true;
 }
@@ -276,14 +294,14 @@ static bool load_sd_files(void) {
         entries[entry_count].usb_root = false;
         ++entry_count;
     }
-    app->dir_close();
+    const bool clean = checked_listings ? app->dir_close_checked() : (app->dir_close(), true);
     if (strcmp(base_path, "/") == 0 && entry_count < MAX_ENTRIES && refresh_usb()) {
         copy_text(entries[entry_count].name, sizeof(entries[entry_count].name), USB_ENTRY);
         entries[entry_count].is_directory = true;
         entries[entry_count].usb_root = true;
         ++entry_count;
     }
-    return true;
+    return clean;
 }
 
 static bool load_files(const char *preserve_name) {
@@ -312,17 +330,19 @@ static void save_session(void) {
     if (n > 0 && (size_t)n < sizeof(data)) storage->write_file_atomic(SESSION_PATH, data, (size_t)n);
 }
 
-static void load_session(void) {
+// Restore before the first listing: a resumed folder must not scan the root too.
+// Return whether a session was parsed, separately from its directory I/O result.
+static bool load_session(bool *listing_loaded) {
     size_t size = 0;
     char data[PATH_CAP * 2 + T5_APP_DIRENT_NAME_MAX + 16];
-    if (!storage->read_file(SESSION_PATH, data, sizeof(data) - 1, &size) || size == 0 || size >= sizeof(data)) return;
+    if (!storage->read_file(SESSION_PATH, data, sizeof(data) - 1, &size) || size == 0 || size >= sizeof(data)) return false;
     data[size] = 0;
     char *line1 = data;
     char *line2 = strchr(line1, '\n');
-    if (!line2) return;
+    if (!line2) return false;
     *line2++ = 0;
     char *line3 = strchr(line2, '\n');
-    if (!line3) return;
+    if (!line3) return false;
     *line3++ = 0;
     char *line4 = strchr(line3, '\n');
     pending_delete_usb = false;
@@ -334,8 +354,17 @@ static void load_session(void) {
     }
     if (line1[0] == '/') copy_text(base_path, sizeof(base_path), line1);
     copy_text(pending_delete_path, sizeof(pending_delete_path), line3);
-    load_files(line2);
+    // The former root listing refreshed USB discovery before a saved USB folder.
+    // Keep that bounded provider poll, without enumerating the unrelated SD root.
+    if (checked_listings && using_usb()) (void)refresh_usb();
+    *listing_loaded = load_files(line2);
+    // The former eager root scan gave root sessions two open attempts. Keep the
+    // same recovery opportunity before consuming a mutation result, only on failure.
+    if (checked_listings && !*listing_loaded && strcmp(base_path, "/") == 0) {
+        *listing_loaded = load_files(line2);
+    }
     selection_active = line2[0] != 0 && entry_count > 0;
+    return true;
 }
 
 static void clear_session(void) {
@@ -932,7 +961,7 @@ static bool file_actions(void) {
     }
 }
 
-static void consume_handoff_results(void) {
+static void consume_handoff_results(bool listing_loaded) {
     bool confirmed = false;
     uint64_t cookie = 0;
 
@@ -967,7 +996,7 @@ static void consume_handoff_results(void) {
                     copy_text(status_text, sizeof(status_text), "Rename failed");
                 } else {
                     snprintf(status_text, sizeof(status_text), "Renamed to %.96s", renamed);
-                    load_files(renamed);
+                    listing_loaded = load_files(renamed);
                 }
             }
             clear_session();
@@ -988,7 +1017,7 @@ static void consume_handoff_results(void) {
         }
         pending_delete_path[0] = 0;
         pending_delete_usb = false;
-        load_files(NULL);
+        listing_loaded = load_files(NULL);
         if (entry_count == 0) selected_index = 0;
         else if (old_index >= (int32_t)entry_count) selected_index = (int32_t)entry_count - 1;
         else selected_index = old_index;
@@ -1000,7 +1029,9 @@ static void consume_handoff_results(void) {
         selected_name(selected, sizeof(selected));
         if (open_error != 0) snprintf(status_text, sizeof(status_text), "File handler failed: %ld", (long)open_error);
         else status_text[0] = 0;
-        load_files(selected);
+        // Taking the result only copies/clears it; the initial listing is fresh.
+        // Keep the existing result-path retry when that listing could not open.
+        if (!checked_listings || !listing_loaded) listing_loaded = load_files(selected);
         clear_session();
     }
     int32_t launch_error = 0;
@@ -1009,7 +1040,7 @@ static void consume_handoff_results(void) {
         selected_name(selected, sizeof(selected));
         if (launch_error != 0) snprintf(status_text, sizeof(status_text), "Native app failed: %ld", (long)launch_error);
         else status_text[0] = 0;
-        load_files(selected);
+        if (!checked_listings || !listing_loaded) (void)load_files(selected);
         clear_session();
     }
 }
@@ -1060,9 +1091,11 @@ void app_main(void) {
     copy_text(base_path, sizeof(base_path), "/");
     acquire_usb();
 
-    load_files(NULL);
-    load_session();
-    consume_handoff_results();
+    checked_listings = checked_listings_available();
+    // Without checked EOF/close evidence keep the complete legacy scan/retry flow.
+    bool listing_loaded = checked_listings ? false : load_files(NULL);
+    if (!load_session(&listing_loaded) && checked_listings) listing_loaded = load_files(NULL);
+    consume_handoff_results(listing_loaded);
     browser->render(base_path, status_text, ui_entries, entry_count,
                         selection_active ? selected_index : -1);
 
