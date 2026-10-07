@@ -73,7 +73,7 @@ For release-oriented work, useful references include [Releasing](docs/RELEASING.
 
 ## App and PR recommendations
 
-For first-class apps, useful references are [Application Execution Context](docs/APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) and [Native Apps](docs/NATIVE_APPS.md). Prefer scoped trusted pickers/intents/private storage, additive bounded SDKs, and opaque handles. Sources normally live in `Apps/` with adjacent manifests; `ADDING_APPS.md` is legacy firmware activity.
+For first-class apps, useful references are [Application Execution Context](docs/APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md) and [Native Apps](docs/NATIVE_APPS.md). Prefer scoped pickers/intents/private storage, additive bounded SDKs, and opaque handles. Sources normally live in `Apps/` with adjacent manifests; `ADDING_APPS.md` is legacy firmware activity.
 
 For ordinary U1 continuation work, the preferred branch-maintenance pattern is to fetch master, check for relevant new commits, and periodically backmerge master into the open implementation branch while preserving the work and resolving conflicts before publishing. This is branch maintenance, not the same thing as merging the implementation PR into master.
 
