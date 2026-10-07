@@ -64,6 +64,7 @@ void InstalledAppActivity::loop() {
     return;
   }
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     launch();
     return;

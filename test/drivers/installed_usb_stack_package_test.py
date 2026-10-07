@@ -28,7 +28,7 @@ BASELINE = {
     'platform-clock-v1': ('platform.clock', []),
     'i2c-esp32s3-v2': ('i2c.bus', []),
     'gt911-touch': ('input.touch.raw', ['i2c.bus', 'platform.clock']),
-    'display-epd-video': ('display.output', []),
+    'display-epd-video': ('display.output', ['display.power', 'platform.clock']),
     't5s3-usb-power-profile': ('board.power.bq25896.profile', []),
     'board-power-t5s3-v2': ('board.power.vbus',
                              ['i2c.bus', 'platform.clock', 'board.power.bq25896.profile']),
@@ -143,7 +143,11 @@ def run(identities=None):
                 identity, requirement)
         entries = manifest['entries']
         names = {e['name'] for e in entries}
-        assert names == {'driver.elf', 'provider-abi.v1', 'privileged-imports.v1'}
+        expected_names = {'driver.elf', 'provider-abi.v1', 'privileged-imports.v1'}
+        if source.get('os_cpu_abi', 1) > 1:
+            expected_names.add('manifest.json')
+            assert json.loads((folder / 'manifest.json').read_text()) == source
+        assert names == expected_names
         assert {path.name for path in folder.iterdir()} == names | {'.package.json'}
         for item in entries:
             name = item['name']
@@ -180,13 +184,13 @@ def run(identities=None):
             assert mutation_rejected(elf, site, 0x70000000), identity
             assert mutation_rejected(elf, site, 0x60004010), identity
         profile = (folder / 'provider-abi.v1').read_text(encoding='ascii')
-        assert profile == f'os-cpu-abi=1\nprovides={cap}\napi={api}\n'
+        assert profile == f'os-cpu-abi={3 if identity == "display-epd-video" else 1}\nprovides={cap}\napi={api}\n'
         imports_bytes = (folder / 'privileged-imports.v1').read_bytes()
         imports = extract_imports(elf_path)
         assert imports_bytes == encode_imports(imports), identity
         assert imports == sorted(set(imports))
         assert (BRIDGE in imports) == (identity == 'i2c-esp32s3-v2'), identity
-        assert ('t5_video_get_api' in imports) == (identity == 'display-epd-video'), identity
+        assert 't5_video_get_api' not in imports, identity
         if identity == 'i2c-esp32s3-v2':
             assert not any(name.startswith(('i2c_', 'gpio_', 'periph_module_'))
                            for name in imports), imports

@@ -128,6 +128,7 @@ void begin() {
   prepareSdBus();
 }
 
+bool prepareForSleep() { return halStoragePrepareForSleep(); }
 void deinitForSleep() {
   risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
   halStorageMediaUnavailable(); // Existing SD bus shutdown invalidates retained metadata.

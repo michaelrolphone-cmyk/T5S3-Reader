@@ -14,6 +14,8 @@ struct Node {
   std::string bytes;
 };
 inline std::map<std::string, std::shared_ptr<Node>> nodes;
+// Optional on-card spelling, independent of the case-insensitive lookup key.
+inline std::map<std::string, std::string> entryNames;
 inline bool mountOkay = true;
 inline unsigned mounts = 0, closedWrites = 0, opens = 0, reads = 0;
 inline uint64_t bytesRead = 0;
@@ -124,6 +126,8 @@ class FsFile {
     FakeSd::locked();
     if (path_ == FakeSd::failName) { error_ = 1; return 0; }
     auto name = path_.substr(path_.find_last_of('/') + 1);
+    const auto spelling = FakeSd::entryNames.find(path_);
+    if (spelling != FakeSd::entryNames.end()) name = spelling->second;
     if (name.size() >= capacity) return capacity;
     std::memcpy(out, name.c_str(), name.size() + 1);
     return name.size();

@@ -11,7 +11,7 @@
 /* Temporary physical backends, never part of the generic OS/CPU inventory.
  * Provider admission restricts each import to its exact installed identity. */
 #include "RiscFirmwareI2cCompatV1.h"
-#include "T5VideoApi.h"
+#include "RiscFirmwareSpiCompatV1.h"
 #endif
 
 /* The firmware logger supplies generic printf/puts sinks for privileged
@@ -25,7 +25,7 @@ extern int risc_provider_diagnostic_puts(const char *message) __attribute__((wea
  * The table contains addresses, not forwarding hardware driver functions. */
 #define RISC_OS_CPU_SYMBOL(name) \
     extern const unsigned char risc_os_cpu_link_##name[] __asm__(#name);
-#include "private/privileged_os_cpu_symbols_v1.def"
+#include "private/privileged_os_cpu_symbols_v3.def"
 #undef RISC_OS_CPU_SYMBOL
 
 typedef struct {
@@ -39,6 +39,18 @@ static const risc_os_cpu_symbol_v1 s_privileged_symbols_v1[] = {
 #undef RISC_OS_CPU_SYMBOL
 };
 
+static const risc_os_cpu_symbol_v1 s_privileged_symbols_v2[] = {
+#define RISC_OS_CPU_SYMBOL(name) { #name, risc_os_cpu_link_##name },
+#include "private/privileged_os_cpu_symbols_v2.def"
+#undef RISC_OS_CPU_SYMBOL
+};
+
+static const risc_os_cpu_symbol_v1 s_privileged_symbols_v3[] = {
+#define RISC_OS_CPU_SYMBOL(name) { #name, risc_os_cpu_link_##name },
+#include "private/privileged_os_cpu_symbols_v3.def"
+#undef RISC_OS_CPU_SYMBOL
+};
+
 /* A private task-owned non-reentrant relocation scope. The module pointer is
  * a one-shot authorization: the normal esp_elf_relocate entry validates it
  * BEFORE mapping, including nested regular ELFs on the owner task. Other
@@ -47,10 +59,11 @@ static const risc_os_cpu_symbol_v1 s_privileged_symbols_v1[] = {
 static portMUX_TYPE s_scope_lock = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t s_scope_owner = NULL;
 static const void *s_scope_module = NULL;
+static uint32_t s_scope_revision = 0;
 static bool s_relocation_active = false;
 static bool s_relocation_consumed = false;
 
-bool esp_elf_privileged_os_cpu_begin_v1(void)
+static bool begin_revision(uint32_t revision)
 {
     TaskHandle_t caller = xTaskGetCurrentTaskHandle();
     if (caller == NULL) return false;
@@ -61,11 +74,16 @@ bool esp_elf_privileged_os_cpu_begin_v1(void)
         s_relocation_active = false;
         s_relocation_consumed = false;
         s_scope_owner = caller;
+        s_scope_revision = revision;
         acquired = true;
     }
     taskEXIT_CRITICAL(&s_scope_lock);
     return acquired;
 }
+
+bool esp_elf_privileged_os_cpu_begin_v1(void) { return begin_revision(1); }
+bool esp_elf_privileged_os_cpu_begin_v2(void) { return begin_revision(2); }
+bool esp_elf_privileged_os_cpu_begin_v3(void) { return begin_revision(3); }
 
 bool esp_elf_privileged_os_cpu_end_v1(void)
 {
@@ -76,6 +94,7 @@ bool esp_elf_privileged_os_cpu_end_v1(void)
         s_scope_module = NULL;
         s_relocation_consumed = false;
         s_scope_owner = NULL;
+        s_scope_revision = 0;
         released = true;
     }
     taskEXIT_CRITICAL(&s_scope_lock);
@@ -162,15 +181,27 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
 #ifdef BOARD_T5S3_PRO
     /* Scoped physical compatibility backends stay outside the generic
      * privileged_os_cpu_symbols_v1.def inventory. */
+    if (s_scope_revision == 1) {
     if (strcmp(symbol, "risc_fw_i2c_transact_v1") == 0)
         return (uintptr_t)&risc_fw_i2c_transact_v1;
-    if (strcmp(symbol, "t5_video_get_api") == 0)
-        return (uintptr_t)&t5_video_get_api;
+    if (strcmp(symbol, "risc_fw_spi_begin_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_begin_v1;
+    if (strcmp(symbol, "risc_fw_spi_select_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_select_v1;
+    if (strcmp(symbol, "risc_fw_spi_transfer_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_transfer_v1;
+    if (strcmp(symbol, "risc_fw_spi_end_v1") == 0)
+        return (uintptr_t)&risc_fw_spi_end_v1;
+    }
 #endif
-    for (size_t i = 0; i < sizeof(s_privileged_symbols_v1) /
-                           sizeof(s_privileged_symbols_v1[0]); ++i) {
-        if (strcmp(symbol, s_privileged_symbols_v1[i].name) == 0)
-            return (uintptr_t)s_privileged_symbols_v1[i].address;
+    const risc_os_cpu_symbol_v1 *symbols = s_scope_revision == 3 ? s_privileged_symbols_v3 : s_scope_revision == 2
+        ? s_privileged_symbols_v2 : s_privileged_symbols_v1;
+    const size_t count = s_scope_revision == 3 ? sizeof(s_privileged_symbols_v3)/sizeof(s_privileged_symbols_v3[0]) : s_scope_revision == 2
+        ? sizeof(s_privileged_symbols_v2)/sizeof(s_privileged_symbols_v2[0])
+        : sizeof(s_privileged_symbols_v1)/sizeof(s_privileged_symbols_v1[0]);
+    for (size_t i = 0; i < count; ++i) {
+        if (strcmp(symbol, symbols[i].name) == 0)
+            return (uintptr_t)symbols[i].address;
     }
     return 0;
 }
@@ -178,4 +209,12 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
 size_t esp_elf_privileged_os_cpu_symbol_count_v1(void)
 {
     return sizeof(s_privileged_symbols_v1) / sizeof(s_privileged_symbols_v1[0]);
+}
+
+size_t esp_elf_privileged_os_cpu_symbol_count_v2(void) {
+    return sizeof(s_privileged_symbols_v2)/sizeof(s_privileged_symbols_v2[0]);
+}
+
+size_t esp_elf_privileged_os_cpu_symbol_count_v3(void) {
+    return sizeof(s_privileged_symbols_v3)/sizeof(s_privileged_symbols_v3[0]);
 }

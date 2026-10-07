@@ -19,6 +19,7 @@ struct TreeSd {
 };
 inline TreeSd treeSd;
 class HalFile {
+  uint8_t metadataError_=0;
  public:
   HalFile()=default;
   explicit HalFile(std::string path):path_(path),open_(treeSd.nodes.count(path)) {
@@ -55,7 +56,18 @@ class HalFile {
   bool isOpen()const{return open_;}
   bool isDirectory()const{return open_&&treeSd.nodes[path_];}
   bool close(){if(!open_)return false;open_=false;--treeSd.handles;return path_!=treeSd.closeFailure;}
-  uint8_t getError()const{return path_==treeSd.readFailure?1:0;}
+  uint8_t getError()const{return metadataError_?metadataError_:path_==treeSd.readFailure?1:0;}
+  struct DirectoryEntry { char name[128]{}; uint64_t size=0; bool isDirectory=false; };
+  bool readDirectoryEntry(DirectoryEntry& result) {
+    result={}; auto child=openNextFile();
+    if(!child.isOpen()) return false;
+    const size_t n=child.getName(result.name,sizeof(result.name));
+    result.isDirectory=child.isDirectory();
+    result.size=result.isDirectory?0:child.fileSize64();
+    const bool closed=child.close();
+    if(!n||n>=sizeof(result.name)||!closed){metadataError_=1;return false;}
+    return true;
+  }
   HalFile openNextFile(){
     if(path_==treeSd.readFailure||at_==children_.size())return HalFile{};
     return HalFile(children_[at_++]);
@@ -96,5 +108,11 @@ struct TreeStorage {
     for(const auto& n:treeSd.nodes)if(!n.first.compare(0,prefix.size(),prefix))return false;
     treeSd.nodes.erase(path);treeSd.mutations.emplace_back(path);return true;
   }
+  bool openFileForRead(const char*, const char* path, HalFile& file) const {
+    if (file.isOpen() && !file.close()) return false;
+    file = const_cast<TreeStorage*>(this)->open(path, O_RDONLY);
+    return file.isOpen() && !file.isDirectory();
+  }
+
 };
 inline TreeStorage Storage;

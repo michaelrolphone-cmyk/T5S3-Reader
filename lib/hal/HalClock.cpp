@@ -1,20 +1,27 @@
 #include "HalClock.h"
 
+#if defined(BOARD_XTEINK_X4_PRO)
+#include "../../src/native/NativeRtcClock.h"
+#else
 #include <Board.h>
+#include <Wire.h>
+#endif
 #include <Logging.h>
 #include <TimeZoneCatalog.h>
-#include <Wire.h>
 #include <sys/time.h>
 #include <time.h>
 
 #include <cstdlib>
 
 namespace {
+#if !defined(BOARD_XTEINK_X4_PRO)
 constexpr uint8_t kRtcAddress = BoardPins::RtcAddress;
 constexpr uint8_t kRegisterCount = 7;
+#endif
 constexpr time_t kUsableSystemTimeEpoch = 946684800;   // 2000-01-01 00:00:00 UTC
 constexpr time_t kValidSystemTimeEpoch = 1704067200;  // 2024-01-01 00:00:00 UTC
 
+#if !defined(BOARD_XTEINK_X4_PRO)
 uint8_t bcdToDec(const uint8_t bcd) { return static_cast<uint8_t>(((bcd >> 4) * 10) + (bcd & 0x0F)); }
 
 uint8_t decToBcd(const uint8_t dec) { return static_cast<uint8_t>(((dec / 10) << 4) | (dec % 10)); }
@@ -49,6 +56,8 @@ uint8_t daysInMonth(const int year, const uint8_t month) {
   return kDaysPerMonth[month - 1];
 }
 
+#endif
+
 int64_t daysFromCivil(int year, const uint8_t month, const uint8_t day) {
   year -= month <= 2 ? 1 : 0;
   const int era = (year >= 0 ? year : year - 399) / 400;
@@ -67,6 +76,11 @@ void HalClock::begin() {
   available_ = false;
   variant_ = ChipVariant::Unknown;
 
+#if defined(BOARD_XTEINK_X4_PRO)
+  available_ = nativeRtcBegin();
+  variant_ = ChipVariant::Pcf8563; // Known board layout; never probe/write alternatives.
+  LOG_INF("CLK", "External RTC capability %s", available_ ? "available" : "unavailable");
+#else
   const bool hasPcf85063 = probeVariant(ChipVariant::Pcf85063);
   const bool hasPcf8563 = probeVariant(ChipVariant::Pcf8563);
 
@@ -82,6 +96,7 @@ void HalClock::begin() {
   } else {
     LOG_INF("CLK", "RTC not found at 0x51");
   }
+#endif
 }
 
 void HalClock::configure(const char* timeZoneId, const bool rtcStoresUtc, const uint8_t rtcVariantHint,
@@ -90,9 +105,13 @@ void HalClock::configure(const char* timeZoneId, const bool rtcStoresUtc, const 
   rtcStoresUtc_ = rtcStoresUtc;
   rtcReferenceEpoch_ = rtcReferenceEpoch;
   const ChipVariant hintedVariant = chipVariantFromHint(rtcVariantHint);
+#if defined(BOARD_XTEINK_X4_PRO)
+  (void)hintedVariant; // The hardware package, not a saved guess, selects the chip.
+#else
   if (hintedVariant != ChipVariant::Unknown && available_) {
     variant_ = hintedVariant;
   }
+#endif
   applyTimeZone();
 }
 
@@ -200,9 +219,11 @@ bool HalClock::syncSystemTimeFromRtc() {
 }
 
 bool HalClock::syncRtcFromSystemTime() {
+#if !defined(BOARD_XTEINK_X4_PRO)
   if (!available_) {
     return false;
   }
+#endif
 
   time_t now = 0;
   time(&now);
@@ -225,6 +246,19 @@ bool HalClock::syncRtcFromSystemTime() {
       .second = static_cast<uint8_t>(utcTime.tm_sec),
   };
 
+#if defined(BOARD_XTEINK_X4_PRO)
+  const risc_rtc_time_v2 value{expectedDateTime.year, expectedDateTime.month, expectedDateTime.day,
+      expectedDateTime.weekday, expectedDateTime.hour, expectedDateTime.minute, expectedDateTime.second};
+  if (!nativeRtcWrite(&value)) return false;
+  DateTime actualDateTime;
+  if (!readDateTime(actualDateTime) || !dateTimeMatches(expectedDateTime, actualDateTime)) {
+    LOG_ERR("CLK", "RTC write-back verification failed");
+    return false;
+  }
+  available_ = true;
+  variant_ = ChipVariant::Pcf8563;
+  return true;
+#else
   const auto tryWriteVariant = [this, &expectedDateTime](const ChipVariant variant) -> bool {
     if (variant == ChipVariant::Unknown) {
       return false;
@@ -263,22 +297,34 @@ bool HalClock::syncRtcFromSystemTime() {
   }
 
   return false;
+#endif
 }
 
+#if !defined(BOARD_XTEINK_X4_PRO)
 bool HalClock::probeVariant(const ChipVariant variant) {
   DateTime dateTime;
   uint8_t data[kRegisterCount] = {};
   return readRegisters(timeStartRegister(variant), data, sizeof(data)) && decodeRegisters(variant, data, dateTime);
 }
 
+#endif
+
 bool HalClock::readDateTime(DateTime& dateTime) const {
+#if defined(BOARD_XTEINK_X4_PRO)
+  risc_rtc_time_v2 value{};
+  if (!nativeRtcRead(&value)) return false;
+  dateTime = {value.year, value.month, value.day, value.weekday, value.hour, value.minute, value.second};
+  return true;
+#else
   if (!available_) {
     return false;
   }
 
   return readDateTime(variant_, dateTime);
+#endif
 }
 
+#if !defined(BOARD_XTEINK_X4_PRO)
 bool HalClock::readDateTime(const ChipVariant variant, DateTime& dateTime) const {
   if (!available_ || variant == ChipVariant::Unknown) {
     return false;
@@ -401,6 +447,8 @@ bool HalClock::encodeRegisters(const ChipVariant variant, const DateTime& dateTi
   return true;
 }
 
+#endif
+
 HalClock::ChipVariant HalClock::chipVariantFromHint(const uint8_t hint) {
   switch (hint) {
     case 1:
@@ -424,6 +472,7 @@ uint8_t HalClock::chipVariantToHint(const ChipVariant variant) {
   }
 }
 
+#if !defined(BOARD_XTEINK_X4_PRO)
 HalClock::ChipVariant HalClock::alternateVariant(const ChipVariant variant) {
   switch (variant) {
     case ChipVariant::Pcf85063:
@@ -435,6 +484,8 @@ HalClock::ChipVariant HalClock::alternateVariant(const ChipVariant variant) {
       return ChipVariant::Unknown;
   }
 }
+
+#endif
 
 bool HalClock::dateTimeMatches(const DateTime& expected, const DateTime& actual) {
   const int64_t delta =

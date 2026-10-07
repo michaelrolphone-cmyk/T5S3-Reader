@@ -19,6 +19,7 @@ void BatteryStatusActivity::onEnter() {
 
 void BatteryStatusActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
 
     std::string batteryPath;

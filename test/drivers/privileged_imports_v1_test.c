@@ -40,6 +40,21 @@ int main(void)
     symbols[2].info = ELF_ST_INFO(STB_GLOBAL, STT_FUNC);
 
     assert(esp_elf_privileged_imports_valid_v1(bytes, length));
+    strcpy(names+1,"risc_cpu_worker_start_v2");
+    assert(!esp_elf_privileged_imports_valid_v1(bytes,length));
+    assert(esp_elf_privileged_imports_valid_v2(bytes,length));
+    strcpy(names+1,"risc_cpu_dma_release_v3");
+    assert(!esp_elf_privileged_imports_valid_v1(bytes,length));
+    assert(!esp_elf_privileged_imports_valid_v2(bytes,length));
+    assert(esp_elf_privileged_imports_valid_v3(bytes,length));
+    strcpy(names+1,"t5_video_get_api");
+    assert(!esp_elf_privileged_imports_valid_v3(bytes,length));
+    assert(!esp_elf_privileged_imports_valid_v2(bytes,length));
+    strcpy(names+1,"risc_fw_spi_begin_v1");
+    assert(!esp_elf_privileged_imports_valid_v2(bytes,length));
+    strcpy(names+1,"risc_fw_i2c_transact_v1");
+    assert(!esp_elf_privileged_imports_valid_v2(bytes,length));
+    strcpy(names+1,"esp_intr_alloc");
     /* Shared ZIP primitives use these existing public libc exports. */
     strcpy(names + 1, "memcmp");
     assert(esp_elf_privileged_imports_valid_v1(bytes, length));

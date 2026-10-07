@@ -45,7 +45,7 @@ class ModuleV2 final {
                          const char* expectedId, const char* expectedCapability,
                          uint32_t expectedApi,
                          const risc_provider_dependency_v1* dependencies,
-                         size_t count);
+                         size_t count, uint32_t osCpuAbi = 1);
   bool setStreamHost(const StreamHostV1* host) {
     if (state_ != State::Absent || handle_) return false;
     streamHost_ = host; return true;
@@ -66,6 +66,7 @@ class ModuleV2 final {
   bool unload();
   const void* capability() const { return state_ == State::Active ? api_ : nullptr; }
   const char* lastError() const { return error_; }
+  bool copyProviderError(char* destination, size_t capacity) const;
   State state() const { return state_; }
   uint32_t consumers() const { return consumers_; }
  private:

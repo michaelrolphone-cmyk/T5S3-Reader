@@ -12,6 +12,6 @@ c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
   "$repo/test/hal/board_power_port_test.cpp" -o "$build/test"
 for scenario in transient-release failed-acquire invalid-interface \
                 uncertain-configure snapshot-failure shutdown-accepted \
-                shutdown-uncertain shutdown-rejected prepare-failure; do
+                shutdown-uncertain shutdown-rejected prepare-failure cancel-retry; do
   "$build/test" "$scenario"
 done

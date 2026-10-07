@@ -3,12 +3,16 @@
 #include <Board.h>
 #include <DisplaySurface.h>
 
+#if defined(BOARD_XTEINK_X4_PRO)
+class ProviderDisplaySurface;
+#endif
+
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
-class T5S3M5GfxDisplay;
+class T5DisplayClient;
+class T5DisplayCanvas;
 
 namespace lgfx {
 inline namespace v1 {
-class LGFX_Sprite;
 namespace epd_mode {
 enum epd_mode_t : uint8_t;
 }
@@ -49,6 +53,14 @@ class HalDisplay : public DisplaySurface {
   // retained clock wakes pass false to preserve the physical image until their
   // own bounded update. Recovery and ordinary callers keep the full clear.
   void begin(bool clearPanel = true);
+#if defined(BOARD_XTEINK_X4_PRO)
+  // The provider remains the sole owner of panel pins and refresh operations.
+  bool attachProvider(ProviderDisplaySurface& surface);
+  void detachProvider();
+  bool lastPresentSucceeded() const override;
+#else
+  bool lastPresentSucceeded() const override { return displayReady && presentSucceeded; }
+#endif
 
   // Exclusive native ELF display takeover. The host MUST hold RenderLock and
   // stop other display users for the entire interval. Physical refresh calls
@@ -90,6 +102,7 @@ class HalDisplay : public DisplaySurface {
   static_assert(validateDisplaySurfaceInfo(SURFACE_INFO) == DisplaySurfaceValidationError::None,
                 "HalDisplay surface metadata violates the generic display contract");
 
+#if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
   // The compiled-in compatibility backend is qualified only for the two
   // currently shipped 4.7-inch e-paper profiles. Do not make a new panel fit
   // by editing these numbers: new display hardware belongs behind display.output.
@@ -102,6 +115,10 @@ class HalDisplay : public DisplaySurface {
   static_assert(SAFE_INSETS.top == 9u && SAFE_INSETS.right == 3u &&
                     SAFE_INSETS.bottom == 9u && SAFE_INSETS.left == 3u,
                 "legacy e-paper safe insets changed unexpectedly");
+#elif defined(BOARD_XTEINK_X4_PRO)
+  static_assert(DISPLAY_WIDTH == 800u && DISPLAY_HEIGHT == 480u, "X4 Pro scan geometry changed");
+  static_assert(VISIBLE_WIDTH == 480u && VISIBLE_HEIGHT == 800u, "X4 Pro logical geometry changed");
+#endif
 
   // Frame buffer operations
   void clearScreen(uint8_t color = 0xFF) const override;
@@ -125,7 +142,7 @@ class HalDisplay : public DisplaySurface {
   void suppressInitialFullRefresh();
 
   // Power management
-  void deepSleep();
+  bool deepSleep();
   // Gate panel drive power between clock updates without deinitializing SD,
   // touch or the framebuffer, as deepSleep() does.
   void setIdlePowerSaving(bool enabled);
@@ -146,9 +163,13 @@ class HalDisplay : public DisplaySurface {
 
   void displayGrayBuffer(RefreshMode mode = HALF_REFRESH) override;
 
-  bool isReady() const override { return displayReady && frameBuffer != nullptr; }
+  bool isReady() const override { return displayReady && getFrameBuffer() != nullptr; }
 
+#if defined(BOARD_XTEINK_X4_PRO)
+  DisplaySurfaceInfo getSurfaceInfo() const override;
+#else
   DisplaySurfaceInfo getSurfaceInfo() const override { return SURFACE_INFO; }
+#endif
 
   // Last-resort boot diagnostic that deliberately bypasses GfxRenderer and
   // runtime surface metadata. A large X plus eight code boxes gives a visible
@@ -218,11 +239,13 @@ class HalDisplay : public DisplaySurface {
 
  private:
 #if defined(BOARD_T5S3_PRO) || defined(BOARD_T5S3)
-  T5S3M5GfxDisplay* gfx = nullptr;
-  lgfx::LGFX_Sprite* panelCanvas = nullptr;
+  T5DisplayClient* gfx = nullptr;
+  T5DisplayCanvas* panelCanvas = nullptr;
   bool externalOwner = false;
 #elif defined(BOARD_LILYGO_EPD47_S3)
   uint8_t* epdFrameBuffer = nullptr;
+#elif defined(BOARD_XTEINK_X4_PRO)
+  ProviderDisplaySurface* providerSurface = nullptr;
 #endif
   uint8_t* frameBuffer = nullptr;
   uint8_t* grayscaleLsbBuffer = nullptr;
@@ -230,7 +253,9 @@ class HalDisplay : public DisplaySurface {
   uint8_t* grayscaleBaseBuffer = nullptr;
   bool grayscaleBaseCaptured = false;
   bool displayReady = false;
+  bool presentSucceeded = false;
   bool flipOutput = false;
+  bool flipTouchBoundaryPending = false;
   bool forceFullRefresh = true;
   bool forcedRefreshPending = false;
   RefreshMode forcedRefreshMode = HALF_REFRESH;

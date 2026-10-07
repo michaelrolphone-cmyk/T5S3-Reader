@@ -25,10 +25,20 @@ MAIN = (ROOT / 'src/main.cpp').read_text(encoding='utf-8')
 
 class LiveInstallContract(unittest.TestCase):
     def test_canonical_launch_binds_owned_metadata_before_loader(self):
-        launch = HOST.split('esp_err_t runNativeApp(', 1)[1]
+        implementation = HOST.split('static esp_err_t runNativeAppImpl(', 1)[1]
+        # Reader entry has its own context and intentionally no drawing/stream
+        # session. Preserve the same owned-metadata ordering in both paths.
+        reader = implementation.split('if (readerEntry) {', 1)[1].split('const auto orientation =', 1)[0]
+        self.assertLess(reader.index('context.begin()'), reader.index('beginManagedAppAdmission('))
+        self.assertLess(reader.index('beginManagedAppAdmission('), reader.index('launch_elf_reader_entry(path)'))
+        self.assertLess(reader.index('launch_elf_reader_entry(path)'), reader.index('endManagedAppAdmission();'))
+        self.assertLess(reader.index('endManagedAppAdmission();'), reader.index('context.end();'))
+        self.assertNotIn('nativeStreamsBegin', reader)
+        launch = implementation.split('const auto orientation =', 1)[1]
         self.assertLess(launch.index('nativeStreamsBegin();'), launch.index('beginManagedAppAdmission('))
         self.assertLess(launch.index('beginManagedAppAdmission('), launch.index('launch_elf_app(path)'))
-        self.assertLess(launch.index('launch_elf_app(path)'), launch.index('endManagedAppAdmission();'))
+        self.assertLess(launch.index('launch_elf_app(path)'), launch.index('retainNativeAppSession();'))
+        self.assertLess(launch.index('retainNativeAppSession();'), launch.index('endManagedAppAdmission();'))
         self.assertLess(launch.index('endManagedAppAdmission();'), launch.index('nativeStreamsEnd();'))
         for filename in ('NativeCapabilityGate.cpp', 'NativeProviderCapabilityBridge.cpp'):
             bridge = (ROOT / 'src/native' / filename).read_text()
@@ -215,13 +225,13 @@ class LiveInstallContract(unittest.TestCase):
             legacy.index('Storage.exists(elf.c_str())'),
         )
         installed = HOST[HOST.index('bool installedRefresh()'):HOST.index('\nuint32_t installedCount()')]
-        self.assertLess(installed.index('recoverAppInventory()'),
+        self.assertLess(installed.index('recoverAppInventory(&noBackups)'),
                         installed.index('Storage.open("/Apps", O_RDONLY)'))
         self.assertIn('recoverAppPair(selectedName.c_str())', boot)
 
     def test_inventory_does_not_rename_open_directory_or_mapped_app(self):
-        self.assertIn('appRecoveryCandidate(name, elf)', INVENTORY)
-        self.assertLess(INVENTORY.index('directory.close();\n  if (!complete)'),
+        self.assertIn('appRecoveryCandidate(entry.name, elf)', INVENTORY)
+        self.assertLess(INVENTORY.index('if (!directory.close()'),
                         INVENTORY.index('recoverAppPair(elf.c_str())'))
         self.assertIn('native_app_current_path()', INVENTORY)
         self.assertIn('if (active && mapped == active && backedUp)', INVENTORY)

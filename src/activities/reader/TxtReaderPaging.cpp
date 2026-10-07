@@ -18,7 +18,7 @@
 #include "components/UITheme.h"
 
 namespace {
-constexpr size_t CHUNK_SIZE = 8 * 1024;
+constexpr size_t CHUNK_SIZE = Txt::ReadWindow::CAPACITY;
 
 bool isUtf8ContinuationByte(char c) { return (static_cast<uint8_t>(c) & 0xC0) == 0x80; }
 
@@ -35,7 +35,7 @@ size_t nextUtf8Boundary(const std::string& text, size_t pos) {
 }  // namespace
 
 bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vector<TxtDisplayLine>& outLines,
-                                        size_t& nextOffset, bool& fenceOpenAfter) {
+                                        size_t& nextOffset, bool& fenceOpenAfter, Txt::ReadWindow* window) {
   outLines.clear();
   fenceOpenAfter = fenceOpen;
   const size_t fileSize = txt->getFileSize();
@@ -45,17 +45,21 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
   }
 
   size_t chunkSize = std::min(CHUNK_SIZE, fileSize - offset);
-  auto* buffer = static_cast<uint8_t*>(malloc(chunkSize + 1));
+  // Indexing reuses its operation-local window. Independent page rendering
+  // retains its existing random-access allocation and read path.
+  auto* ownedBuffer = window ? nullptr : static_cast<uint8_t*>(malloc(chunkSize + 1));
+  const uint8_t* buffer = window ? window->read(offset, chunkSize) : ownedBuffer;
   if (!buffer) {
-    LOG_ERR("TRS", "Failed to allocate %zu bytes", chunkSize);
+    LOG_ERR("TRS", "Failed to read/allocate %zu bytes", chunkSize);
     return false;
   }
-
-  if (!txt->readContent(buffer, offset, chunkSize)) {
-    free(buffer);
-    return false;
+  if (!window) {
+    if (!txt->readContent(ownedBuffer, offset, chunkSize)) {
+      free(ownedBuffer);
+      return false;
+    }
+    ownedBuffer[chunkSize] = '\0';
   }
-  buffer[chunkSize] = '\0';
 
   if (renderer.isSdCardFont(cachedFontId)) {
     renderer.ensureSdCardFontReady(cachedFontId, reinterpret_cast<const char*>(buffer), 0x01);
@@ -84,23 +88,33 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
     return base;
   };
 
-  auto findWrapBreak = [&](const std::string& text, uint8_t headingLevel) -> size_t {
-    std::vector<size_t> utf8Boundaries;
-    utf8Boundaries.reserve(std::min<size_t>(text.size(), 512));
-    for (size_t p = 0; p < text.size();) {
-      p = nextUtf8Boundary(text, p);
-      utf8Boundaries.push_back(p);
+  auto findWrapBreak = [&](const std::string& text, uint8_t headingLevel, size_t consumed,
+                           std::vector<size_t>& utf8Boundaries) -> size_t {
+    // The remaining text is only shortened from the front. Build its boundary
+    // table once per parsed source line, lazily after the first overflow. It is
+    // bounded by the existing 8 KiB input chunk plus Markdown decoration and
+    // released at the line end. No text or font state survives this page call.
+    if (utf8Boundaries.empty()) {
+      utf8Boundaries.reserve(std::min<size_t>(text.size(), 512));
+      for (size_t p = 0; p < text.size();) {
+        p = nextUtf8Boundary(text, p);
+        utf8Boundaries.push_back(consumed + p);
+      }
     }
 
-    if (utf8Boundaries.empty()) {
+    // upper_bound also preserves the old grouping of malformed continuation
+    // bytes when a word-space was removed from the front of the suffix.
+    const auto first = std::upper_bound(utf8Boundaries.begin(), utf8Boundaries.end(), consumed);
+    const size_t boundaryCount = static_cast<size_t>(utf8Boundaries.end() - first);
+    if (boundaryCount == 0) {
       return 0;
     }
 
     size_t low = 0;
-    size_t high = utf8Boundaries.size();
+    size_t high = boundaryCount;
     while (low < high) {
       const size_t mid = (low + high + 1) / 2;
-      const size_t bytes = utf8Boundaries[mid - 1];
+      const size_t bytes = first[mid - 1] - consumed;
       if (textWidth(text.substr(0, bytes), headingLevel) <= viewportWidth) {
         low = mid;
       } else {
@@ -108,7 +122,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
       }
     }
 
-    const size_t maxFit = (low == 0) ? utf8Boundaries.front() : utf8Boundaries[low - 1];
+    const size_t maxFit = first[low == 0 ? 0 : low - 1] - consumed;
     if (maxFit < text.length()) {
       const size_t spacePos = text.rfind(' ', maxFit > 0 ? maxFit - 1 : 0);
       if (spacePos != std::string::npos && spacePos > 0) {
@@ -144,7 +158,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
     bool hasCR = (lineContentLen > 0 && buffer[pos + lineContentLen - 1] == '\r');
     size_t displayLen = hasCR ? lineContentLen - 1 : lineContentLen;
 
-    std::string source(reinterpret_cast<char*>(buffer + pos), displayLen);
+    std::string source(reinterpret_cast<const char*>(buffer + pos), displayLen);
     uint8_t headingLevel = 0;
     std::string line = source;
 
@@ -170,6 +184,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
     }
 
     size_t lineBytePos = 0;
+    std::vector<size_t> utf8Boundaries;
 
     if (line.empty()) {
       const int h = heightOf(headingLevel);
@@ -197,7 +212,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
         break;
       }
 
-      const size_t breakPos = findWrapBreak(line, headingLevel);
+      const size_t breakPos = findWrapBreak(line, headingLevel, lineBytePos, utf8Boundaries);
       if (breakPos == 0) break;
 
       outLines.push_back({line.substr(0, breakPos), headingLevel});
@@ -233,7 +248,7 @@ bool TxtReaderActivity::loadPageAtOffset(size_t offset, bool fenceOpen, std::vec
   }
   fenceOpenAfter = inFence;
 
-  free(buffer);
+  free(ownedBuffer);
   return !outLines.empty() || nextOffset > offset;
 }
 

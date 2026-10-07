@@ -1,12 +1,10 @@
 #include "RiscDisplayOutputV1.h"
 #include "RiscProviderV2.h"
-#include "T5VideoApi.h"
+#include "Dispatcher.h"
 /* The ELF host exports this bounded scheduler sleep from libc. */
 extern int usleep(unsigned int microseconds);
 
-/* Physical panel plumbing is private to the installable provider. This first
- * implementation borrows the board scan service, which may later be replaced
- * without changing the app-facing display.output ABI. */
+/* Physical engines and their shared mode dispatcher are linked into this ELF. */
 static const t5_video_api_v1 *video;
 static t5_video_surface_v1 scan;
 static bool started;
@@ -18,6 +16,11 @@ static bool has_pending_token;
 static uint64_t frame_serial;
 static uint64_t pending_token;
 static uint32_t pending_counter;
+
+void display_output_fast_stopped(void) {
+    started=false;needs_stop=false;teardown_failed=false;held=false;
+    video=NULL;scan=(t5_video_surface_v1){0};has_pending_token=false;
+}
 
 /* A failed start can also leave DMA/controller resources behind. Keep the
  * provider pinned until the backend explicitly confirms their release. */
@@ -66,7 +69,7 @@ static bool acquire(void *context, uint32_t format, risc_display_surface_v1 *out
         if (!stop_backend()) return false;
     }
     if (!started) {
-        video = t5_video_get_api(T5_VIDEO_API_VERSION);
+        video = &display_fast_dispatch;
         if (!video || video->api_version != T5_VIDEO_API_VERSION ||
             video->struct_size < sizeof(*video) || !video->start || !video->stop ||
             !video->backbuffer || !video->can_submit || !video->submit ||
@@ -159,26 +162,28 @@ static bool set_brightness(void *context, uint16_t level, uint16_t maximum) {
 }
 
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    (void)deps;
     /* Mandatory app dependency resolution happens before display handoff.
      * Defer hardware start until the owner calls acquire after takeover. */
-    if (count || started || held || active || needs_stop || teardown_failed) return false;
+    if (started || held || active || needs_stop || teardown_failed ||
+        !display_provider_start(deps,count)) return false;
     active = true;
     return true;
 }
 
 static bool quiesce(void) {
     if (held) return false;
-    if (!stop_backend()) return false;
+    if (!stop_backend() || !display_provider_quiesce()) return false;
     active = false;
     return true;
 }
 
 static void stop(void) { (void)quiesce(); }
 
-static const risc_display_output_api_v1 output_api = {
-    RISC_DISPLAY_OUTPUT_API_V1, sizeof(risc_display_output_api_v1), NULL,
-    get_info, acquire, release, submit, present_status, wait_present, set_brightness
+static const t5_display_provider_api_v1 output_api = {
+    {RISC_DISPLAY_OUTPUT_API_V1, sizeof(t5_display_provider_api_v1), NULL,
+     get_info, acquire, release, submit, present_status, wait_present, set_brightness},
+    T5_DISPLAY_EXTENSION_TAG, T5_DISPLAY_EXTENSION_VERSION,
+    &display_quality_dispatch, &display_fast_dispatch
 };
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),

@@ -1,4 +1,5 @@
 #include "Bitmap.h"
+#include <HalReadBudget.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -178,9 +179,11 @@ BmpReaderError Bitmap::parseHeaders() {
 }
 
 // packed 2bpp output, 0 = black, 1 = dark gray, 2 = light gray, 3 = white
-BmpReaderError Bitmap::readNextRow(uint8_t* data, uint8_t* rowBuffer) const {
+BmpReaderError Bitmap::readNextRow(uint8_t* data, uint8_t* rowBuffer, HalReadBudget* readBudget) const {
   // Note: rowBuffer should be pre-allocated by the caller to size 'rowBytes'
-  if (file.read(rowBuffer, rowBytes) != rowBytes) return BmpReaderError::ShortReadRow;
+  // Keep the exact row request and failure boundary; only opt-in scheduling differs.
+  const int read = readBudget ? file.readCooperatively(rowBuffer, rowBytes, *readBudget) : file.read(rowBuffer, rowBytes);
+  if (read != rowBytes) return BmpReaderError::ShortReadRow;
 
   prevRowY += 1;
 
@@ -278,6 +281,8 @@ BmpReaderError Bitmap::readNextRow(uint8_t* data, uint8_t* rowBuffer) const {
 
   // Flush remaining bits if width is not a multiple of 4
   if (bitShift != 6) *outPtr = currentOutByte;
+
+  if (readBudget) readBudget->afterRow();
 
   return BmpReaderError::Ok;
 }

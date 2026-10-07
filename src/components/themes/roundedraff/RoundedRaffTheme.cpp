@@ -47,7 +47,7 @@ void drawScrollBar(const GfxRenderer& renderer, Rect rect, int itemCount, int pa
   renderer.fillRect(barX, thumbY, barW, thumbH);
 }
 
-void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight, uint16_t percentage) {
+void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight, uint16_t percentage, bool available) {
   // Top line
   renderer.drawLine(x + 1, y, x + battWidth - 3, y);
   // Bottom line
@@ -60,6 +60,11 @@ void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, i
   renderer.drawPixel(x + battWidth - 1, y + rectHeight - 4);
   renderer.drawLine(x + battWidth - 0, y + 4, x + battWidth - 0, y + rectHeight - 5);
 
+  if (!available) {
+    BaseTheme::drawBatteryUnknown(renderer, x, y, battWidth, rectHeight);
+    return;
+  }
+
   // The +1 is to round up, so that we always fill at least one pixel.
   int filledWidth = percentage * (battWidth - 5) / 100 + 1;
   if (filledWidth > battWidth - 5) {
@@ -69,18 +74,18 @@ void drawBatteryIcon(const GfxRenderer& renderer, int x, int y, int battWidth, i
   renderer.fillRect(x + 2, y + 2, filledWidth, rectHeight - 4);
 }
 
-void drawBatteryRightStable(const GfxRenderer& renderer, Rect iconRect, uint16_t percentage, bool showPercentage) {
+void drawBatteryRightStable(const GfxRenderer& renderer, Rect iconRect, uint16_t percentage, bool batteryAvailable, bool showPercentage) {
   // Match BaseTheme::drawBatteryRight layout, but use a stable percentage value for this render.
   const int iconY = iconRect.y + 6;
 
   if (showPercentage) {
-    const auto percentageText = std::to_string(percentage) + "%";
+    const auto percentageText = batteryAvailable ? std::to_string(percentage) + "%" : std::string("--%");
     const int textWidth = renderer.getTextWidth(SMALL_FONT_ID, percentageText.c_str());
     renderer.drawText(SMALL_FONT_ID, iconRect.x - textWidth - batteryPercentSpacing, iconRect.y,
                       percentageText.c_str());
   }
 
-  drawBatteryIcon(renderer, iconRect.x, iconY, RoundedRaffMetrics::values.batteryWidth, iconRect.height, percentage);
+  drawBatteryIcon(renderer, iconRect.x, iconY, RoundedRaffMetrics::values.batteryWidth, iconRect.height, percentage, batteryAvailable);
 }
 
 std::string sanitizeButtonLabel(std::string label) {
@@ -112,11 +117,12 @@ void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const 
 
   const bool showBatteryPercentage =
       SETTINGS.hideBatteryPercentage != CrossPointSettings::HIDE_BATTERY_PERCENTAGE::HIDE_ALWAYS;
-  const uint16_t percentage = powerManager.getBatteryPercentage();
+  uint16_t percentage = 0;
+  const bool batteryAvailable = powerManager.readBatteryPercentage(&percentage);
   const int batteryIconX = rect.x + rect.width - sidePadding - RoundedRaffMetrics::values.batteryWidth;
   int batteryGroupLeftX = batteryIconX;
   if (showBatteryPercentage) {
-    const auto percentageText = std::to_string(percentage) + "%";
+    const auto percentageText = batteryAvailable ? std::to_string(percentage) + "%" : std::string("--%");
     batteryGroupLeftX -= renderer.getTextWidth(SMALL_FONT_ID, percentageText.c_str()) + batteryPercentSpacing;
 
     // Clear a fixed-width area for the battery percentage to avoid ghosting when digit count changes (e.g. 100% ->
@@ -142,7 +148,7 @@ void RoundedRaffTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const 
   drawBatteryRightStable(renderer,
                          Rect{batteryIconX, rect.y + 14, RoundedRaffMetrics::values.batteryWidth,
                               RoundedRaffMetrics::values.batteryHeight},
-                         percentage, showBatteryPercentage);
+                         percentage, batteryAvailable, showBatteryPercentage);
 }
 
 void RoundedRaffTheme::drawTabBar(const GfxRenderer& renderer, Rect rect, const std::vector<TabInfo>& tabs,

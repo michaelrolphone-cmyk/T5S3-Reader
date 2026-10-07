@@ -91,12 +91,22 @@ int main(int argc,char**) {
   std::puts("Opaque cursors reject successful/failed replacement snapshots PASS");
   // Exactly 64 root entries is complete; a 65th must never be cached as EOF.
   for(unsigned n=9;n<64;++n)write("/Drivers/ignored-"+std::to_string(n),"x");
-  cold();write("/Drivers/ignored-overflow","x");fault();
+  cold();
+  for(unsigned n=0;n<64;++n)write("/Drivers/._copy-"+std::to_string(n),"inert");
+  write("/Drivers/.DS_Store","inert");
+  FakeSd::entryNames["/drivers/.ds_store"]=".DS_Store";cold();
+  write("/Drivers/._copy-overflow","inert");fault();
+  assert(Storage.remove("/Drivers/._copy-overflow"));cold();
+  write("/Drivers/._not-canonical!","ordinary");fault();
+  assert(Storage.remove("/Drivers/._not-canonical!"));cold();
+  write("/Drivers/ignored-overflow","x");fault();
   assert(Storage.remove("/Drivers/ignored-overflow"));cold();
+  for(unsigned n=0;n<64;++n)assert(Storage.remove(("/Drivers/._copy-"+std::to_string(n)).c_str()));
+  assert(Storage.remove("/Drivers/.DS_Store"));cold();
   for(unsigned n=9;n<64;++n)assert(Storage.remove(("/Drivers/ignored-"+std::to_string(n)).c_str()));
-  for(unsigned n=9;n<17;++n)package("provider-"+std::to_string(n));
-  fault(); // More than the fixed 16 metadata candidates is not a partial success.
-  assert(Storage.removeDir("/Drivers/provider-16"));cold();
+  for(unsigned n=9;n<=kMaxProviders;++n)package("provider-"+std::to_string(n));
+  fault(); // More than the bounded metadata candidates is not a partial success.
+  assert(Storage.removeDir(("/Drivers/provider-"+std::to_string(kMaxProviders)).c_str()));cold();
   std::puts("Positive-cursor invalidation and exact directory/candidate bounds PASS");
   if(argc>1) {
     Storage.invalidateObservations();FakeSd::failClose="/drivers";fault();

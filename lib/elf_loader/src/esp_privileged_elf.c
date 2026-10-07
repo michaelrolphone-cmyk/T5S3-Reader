@@ -9,11 +9,11 @@
 
 extern bool esp_elf_validate_file(const uint8_t *image, size_t length);
 
-int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
+static int relocate_verified(esp_elf_t *module,
                                             const uint8_t *verified_bytes,
                                             size_t verified_length,
                                             const char *const *signed_imports,
-                                            size_t signed_import_count)
+                                            size_t signed_import_count, unsigned revision)
 {
     /* Zero imports is a real exact declaration. The matcher verifies that no
      * undefined symbol occurs in either ELF symbol table; nullptr still
@@ -21,12 +21,15 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
     if (!module || !verified_bytes || !signed_imports ||
         signed_import_count > 128 ||
         !esp_elf_validate_file(verified_bytes, verified_length) ||
-        !esp_elf_privileged_imports_valid_v1(verified_bytes, verified_length) ||
-        !esp_elf_privileged_manifest_imports_match_v1(
+        !(revision==3?esp_elf_privileged_imports_valid_v3(verified_bytes,verified_length):revision==2?esp_elf_privileged_imports_valid_v2(verified_bytes,verified_length):
+          esp_elf_privileged_imports_valid_v1(verified_bytes,verified_length)) ||
+        !(revision==3?esp_elf_privileged_manifest_imports_match_v3:revision==2?esp_elf_privileged_manifest_imports_match_v2:
+          esp_elf_privileged_manifest_imports_match_v1)(
             verified_bytes, verified_length, signed_imports, signed_import_count))
         return -EINVAL;
 
-    if (!esp_elf_privileged_os_cpu_begin_v1()) return -EBUSY;
+    if (!(revision==3?esp_elf_privileged_os_cpu_begin_v3:revision==2?esp_elf_privileged_os_cpu_begin_v2:
+          esp_elf_privileged_os_cpu_begin_v1)()) return -EBUSY;
     int result = esp_elf_init(module);
     if (result == 0) {
         if (!esp_elf_privileged_os_cpu_authorize_relocation_v1(module))
@@ -40,4 +43,19 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
         return -EIO;
     }
     return result;
+}
+
+int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
+ const uint8_t *bytes,size_t length,const char *const *imports,size_t count) {
+    return relocate_verified(module,bytes,length,imports,count,1);
+}
+
+int esp_elf_relocate_privileged_verified_v2(esp_elf_t *module,
+ const uint8_t *bytes,size_t length,const char *const *imports,size_t count) {
+    return relocate_verified(module,bytes,length,imports,count,2);
+}
+
+int esp_elf_relocate_privileged_verified_v3(esp_elf_t *module,
+ const uint8_t *bytes,size_t length,const char *const *imports,size_t count) {
+    return relocate_verified(module,bytes,length,imports,count,3);
 }

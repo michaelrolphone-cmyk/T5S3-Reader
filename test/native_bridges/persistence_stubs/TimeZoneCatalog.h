@@ -11,4 +11,3 @@ const char* regionDisplayName(TimeZoneRegion region);
 void formatDisplayName(const char* id, char* buffer, size_t capacity);
 void copyId(char* destination, size_t capacity, const char* id);
 }
-

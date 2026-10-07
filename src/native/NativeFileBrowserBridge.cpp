@@ -299,6 +299,7 @@ class NativeDeleteConfirmationActivity final : public Activity {
   void loop() override {
     if (resumeReturned) { finish(); return; }
     if (!childCompleted) return;
+    if (activityManager.deferNativeAppLoop(this)) return;
     childCompleted = false;
     if (resumePath.empty() || runNativeApp(resumePath.c_str(), renderer, mappedInput) != ESP_OK) {
       confirmationState = {}; finish(); return;
@@ -321,6 +322,7 @@ class NativeChildElfActivity final : public Activity {
         childPath(std::move(child)), cookie(requestCookie) {}
   void loop() override {
     if (resumeReturned) { finish(); return; }
+    if (activityManager.deferNativeAppLoop(this)) return;
     if (!ranChild) {
       ranChild = true;
       launchState.available = true;

@@ -6,3 +6,9 @@
 // context rather than deep inside the activity/render stack.
 // Implemented in main.cpp.
 void requestShutdown();
+
+// Existing idle policy, shared with synchronous native apps. Calls only request
+// cooperative exit; physical sleep runs later in main after app cleanup.
+bool serviceIdleSleep(bool userActivity);
+bool idleSleepRequested();
+void resumeIdleTimer();

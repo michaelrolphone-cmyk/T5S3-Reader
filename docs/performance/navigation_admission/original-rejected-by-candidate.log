@@ -1,0 +1,12 @@
+Verified 86 fixture files and 19 actual packages
+registration: /workspace/scratch/c744abbbbd60/reader-navigation-admission-perf/test/installed_provider_registration/regression.cpp:209: navigation(bool, bool)::<lambda()>: Assertion `serial.refresh() == (original ? InstalledSerialInventory::Result::Fault : InstalledSerialInventory::Result::Updated)' failed.
+Traceback (most recent call last):
+  File "/workspace/scratch/c744abbbbd60/reader-navigation-admission-perf/test/installed_provider_registration/run_test.py", line 144, in <module>
+    main()
+  File "/workspace/scratch/c744abbbbd60/reader-navigation-admission-perf/test/installed_provider_registration/run_test.py", line 138, in main
+    subprocess.run([str(binary), str(fixture), case,
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['/tmp/provider-admission-8643th10/registration', '/tmp/provider-admission-8643th10/fixture', 'navigation', 'candidate']' died with <Signals.SIGABRT: 6>.
+
+EXPECTED NEGATIVE CONTROL: original source reached and failed the candidate serial-enumeration assertion.

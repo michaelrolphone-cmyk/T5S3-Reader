@@ -160,6 +160,9 @@ class DisplaySurface {
   // asynchronous; this keeps existing firmware behavior during migration.
   virtual void displayBuffer(DisplayPresentMode mode = DisplayPresentMode::LowLatency,
                              bool turnOffScreen = false) = 0;
+  // Outcome of the latest synchronous presentation, never a prior frame.
+  // Surfaces without explicit completion evidence keep new input fail-closed.
+  virtual bool lastPresentSucceeded() const { return false; }
   virtual void requestNextRefresh(DisplayPresentMode mode = DisplayPresentMode::Quality) = 0;
   virtual void requestNextDisplayEffect(DisplayEffect effect = DisplayEffect::None) = 0;
 

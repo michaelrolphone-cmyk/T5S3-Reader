@@ -27,6 +27,16 @@ int esp_elf_relocate_privileged_verified_v1(esp_elf_t *module,
                                             size_t verified_length,
                                             const char *const *signed_imports,
                                             size_t signed_import_count);
+int esp_elf_relocate_privileged_verified_v2(esp_elf_t *module,
+                                            const uint8_t *verified_bytes,
+                                            size_t verified_length,
+                                            const char *const *signed_imports,
+                                            size_t signed_import_count);
+int esp_elf_relocate_privileged_verified_v3(esp_elf_t *module,
+                                            const uint8_t *verified_bytes,
+                                            size_t verified_length,
+                                            const char *const *signed_imports,
+                                            size_t signed_import_count);
 
 #ifdef __cplusplus
 }

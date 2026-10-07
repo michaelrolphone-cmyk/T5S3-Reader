@@ -6,7 +6,9 @@
 static uint32_t clock_ms;
 static t5_app_contact_t contact;
 static unsigned submits,allocations,stops;
-static bool ready=true, fail_copy=false;
+static bool ready=true, fail_copy=false, video_available=true, slow_geometry=false;
+static unsigned raster_presents;
+static void test_present(bool full){(void)full;++raster_presents;}
 static uint8_t back[960*540/4];
 static int32_t test_width(void){return 540;}
 static int32_t test_height(void){return 960;}
@@ -22,7 +24,7 @@ static uint32_t test_clock(void){return clock_ms;}
 static void* test_alloc(size_t size){++allocations;return malloc(size);}
 static void test_free(void* p){--allocations;free(p);}
 static bool test_copy(uint8_t* dest,size_t capacity,t5_app_frame_t* info){
- *info=(t5_app_frame_t){960,540,240,0,0};
+ *info=slow_geometry ? (t5_app_frame_t){800,480,200,0,0} : (t5_app_frame_t){960,540,240,0,0};
  if(fail_copy)return false;
  if(dest){assert(capacity==sizeof(back));memset(dest,(int)current_page(),capacity);}
  return true;
@@ -34,17 +36,25 @@ static bool test_submit(uint16_t y,uint16_t h){(void)y;(void)h;++submits;return 
 static void test_stop(void){++stops;}
 static const t5_video_api_v1 test_video={.struct_size=sizeof(test_video),.start_format=test_start,.backbuffer=test_back,.can_submit=test_ready,.submit=test_submit,.stop=test_stop};
 static const t5_app_api_v1 test_api={.struct_size=sizeof(test_api),.screen_width=test_width,.screen_height=test_height,
- .clear=nop,.draw_text=test_text,.fill_rect=test_rect,.draw_label=test_label,.draw_icon=test_icon,.fill_rounded_rect_tone=test_tone,
+ .present=test_present,.clear=nop,.draw_text=test_text,.fill_rect=test_rect,.draw_label=test_label,.draw_icon=test_icon,.fill_rounded_rect_tone=test_tone,
  .installed_apps_get=test_get,.millis=test_clock,.psram_alloc=test_alloc,.psram_free=test_free,.copy_ui_frame=test_copy,.touch_contact=test_contact};
 const t5_app_api_v1* t5_app_get_api(uint32_t v){(void)v;return &test_api;}
 const t5_storage_api_v1* t5_storage_get_api(uint32_t v){(void)v;return NULL;}
-const t5_video_api_v1* t5_video_get_api(uint32_t v){(void)v;return &test_video;}
+const t5_video_api_v1* t5_video_get_api(uint32_t v){(void)v;return video_available ? &test_video : NULL;}
 static bool step(uint32_t now,bool down,int x,int y,const t5_app_swipe_t* swipe){
  clock_ms=now;contact=(t5_app_contact_t){down,x,y};t5_app_input_t input={0};
  bool consumed=sv_input(&input,swipe!=NULL,swipe);sv_present();return consumed;
 }
 int main(void){
  api=&test_api;count=35;selected=0;layout();
+ // No fast provider or unsupported geometry must keep the normal display.
+ video_available=false;
+ assert(app_hardware_takeover()==0); assert(!sv_open() && !sv_fatal);
+ draw(NULL); assert(raster_presents==1 && allocations==0 && submits==0);
+ video_available=true; slow_geometry=true;
+ assert(app_hardware_takeover()==0); assert(!sv_open() && !sv_fatal);
+ draw(NULL); assert(raster_presents==2 && allocations==0 && submits==0);
+ slow_geometry=false;
  assert(app_hardware_takeover()==(T5_HARDWARE_TAKEOVER_DISPLAY|T5_HARDWARE_TAKEOVER_UI_VIDEO));
  assert(sv_open());sv_refresh(NULL);sv_present();assert(allocations==3 && submits==1);
  assert(!step(20,true,400,300,NULL));

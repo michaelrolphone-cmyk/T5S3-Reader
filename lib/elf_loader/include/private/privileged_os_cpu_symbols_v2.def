@@ -1,0 +1,13 @@
+/* ABI 2 extends the frozen 46 generic ABI 1 symbols. Temporary peripheral
+ * compatibility exceptions are deliberately NOT inherited. */
+#include "privileged_os_cpu_symbols_v1.def"
+RISC_OS_CPU_SYMBOL(esp_intr_alloc_intrstatus)
+RISC_OS_CPU_SYMBOL(xQueueReceiveFromISR)
+RISC_OS_CPU_SYMBOL(uxQueueSpacesAvailable)
+RISC_OS_CPU_SYMBOL(vPortYield)
+RISC_OS_CPU_SYMBOL(esp_timer_get_time)
+RISC_OS_CPU_SYMBOL(esp_rom_delay_us)
+RISC_OS_CPU_SYMBOL(risc_cpu_worker_start_v2)
+RISC_OS_CPU_SYMBOL(risc_cpu_worker_join_v2)
+RISC_OS_CPU_SYMBOL(risc_cpu_worker_release_v2)
+RISC_OS_CPU_SYMBOL(risc_cpu_cache_writeback_v2)

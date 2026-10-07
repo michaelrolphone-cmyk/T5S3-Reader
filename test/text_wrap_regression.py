@@ -34,6 +34,8 @@ struct GfxRenderer {
   bool sd = false;
   mutable int prepared = 0;
   bool isSdCardFont(int) const { return sd; }
+  // This metric-only fixture deliberately exercises the unchanged fallback.
+  bool getTruncationPrefix(int, const std::string&, int, size_t&, EpdFontFamily::Style) const { return false; }
   void ensureSdCardFontReady(int, const char*, uint8_t) const { ++prepared; }
   int getTextWidth(int, const char* s, EpdFontFamily::Style) const {
     int width = 0;
