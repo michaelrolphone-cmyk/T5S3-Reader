@@ -172,6 +172,59 @@ static void ht_city_backdrop(const ht_game *g) {
     if(ht_native_active){ht_city_backdrop_native(g);return;}
     ht_city_backdrop_low(g);
 }
+/* Novella II: a vanished neighboring house survives as a stain on the
+ * taller wall. The two exposed rooms belong behind the existing second roof;
+ * neither their beam holes nor the remnant ledge adds playable footing. */
+static void ht_city_vanished_house(const ht_game *g) {
+    if(g->level!=1)return;
+    int x=668-g->camera/256,cy=g->camera_y/256;
+    if(x+224< -ht_view_margin() || x>HT_W+ht_view_margin())return;
+    int roof=ht_level_land(1)[2].top-cy;
+    int top=roof-128,floor=roof-5;
+    /* The retaining party wall continues down behind the solid route. */
+    ht_rect(ht_scene,x,top,224,162,151);
+    ht_rect(ht_scene,x+208,top+7,16,155,176);
+    ht_limb(ht_scene,x,top,x+223,top+2,1,1,197);
+    /* Former pitched roof: the wall above it is weather-darkened. Only the
+     * old flashing/washed outline remains, with no intact new roof object. */
+    ht_limb(ht_scene,x+12,roof-73,x+109,roof-107,1,1,112);
+    ht_limb(ht_scene,x+109,roof-107,x+207,roof-72,1,1,112);
+    ht_limb(ht_scene,x+15,roof-72,x+109,roof-104,0,0,172);
+    ht_limb(ht_scene,x+109,roof-104,x+205,roof-70,0,0,172);
+    for(int room=0;room<2;++room) {
+        int left=x+17+room*98,width=87,ceiling=roof-65;
+        ht_rect(ht_scene,left,ceiling,width,floor-ceiling,room?87:100);
+        /* Missing partition leaves a rough margin, not a front window frame. */
+        ht_triangle(ht_scene,left,ceiling+31,left+4,ceiling+37,left,ceiling+49,151);
+        ht_triangle(ht_scene,left+width,ceiling+7,left+width-5,ceiling+12,left+width,ceiling+21,151);
+        ht_triangle(ht_scene,left+width,floor-17,left+width-3,floor-8,left+width,floor-5,151);
+        for(int patch=0;patch<3;++patch) {
+            int px=left+9+patch*24;
+            ht_limb(ht_scene,px,floor-2,px+2,floor-8-(patch%2)*6,0,0,122);
+        }
+        /* Wallpaper remains only in the rain shadow of a broken ledge.
+         * Restrained repeated stems identify paper without random wall noise. */
+        int paper_left=left+7,paper_width=room?53:68;
+        ht_rect(ht_scene,paper_left,ceiling+4,paper_width,22,room?120:117);
+        for(int strip=0;strip<4;++strip) {
+            int px=paper_left+5+strip*14;
+            if(px>=paper_left+paper_width-3)break;
+            ht_limb(ht_scene,px,ceiling+7,px,ceiling+23,0,0,155);
+            ht_limb(ht_scene,px,ceiling+11,px-3,ceiling+9,0,0,155);
+            ht_limb(ht_scene,px,ceiling+18,px+3,ceiling+16,0,0,155);
+        }
+        ht_triangle(ht_scene,paper_left+paper_width-9,ceiling+26,paper_left+paper_width,ceiling+21,paper_left+paper_width,ceiling+29,89);
+        ht_limb(ht_scene,left+3,ceiling+2,left+width-8,ceiling+2,2,1,175);
+        /* Empty beam pockets follow the former floor, not decorative windows. */
+        for(int beam=0;beam<5;++beam) {
+            int bx=left+5+beam*16;
+            ht_rect(ht_scene,bx,floor-2,7,4,203);
+            ht_limb(ht_scene,bx,floor+3,bx+7,floor+3,0,0,115);
+        }
+    }
+    ht_limb(ht_scene,x+108,roof-66,x+107,floor+3,1,0,143);
+    ht_checkpoint();
+}
 /* Roof furniture sits beyond the walkable front edge. Fire escapes are
  * attached to the actual ladder recesses; none masquerades as a jump target. */
 static void ht_city_roof_detail(const ht_game *g) {
@@ -317,3 +370,5 @@ static void ht_city_service_arrival(const ht_game *g) {
 #include "hollow_trail_schoolroom.inc"
 
 #include "hollow_trail_rain_tank.inc"
+
+#include "hollow_trail_signal_room.inc"

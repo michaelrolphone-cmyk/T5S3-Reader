@@ -101,12 +101,12 @@ static void ht_draw_chapter_gate(const ht_game *g,int top) {
             for(int i=0;i<4;++i) ht_disk(ht_scene,x-12+i*(9-lift/12),top-24-i*lift/4,2,50);
             ht_rect(ht_scene,x-22,top-65,10,20,245);ht_disk(ht_scene,x-17,top-60,3,100);
             ht_disk(ht_scene,x-17,top-50,3,0);
-        } else if(style==5 || style==6) {
+        } else if(style==5) {
             for(int i=0;i<5;++i) ht_rect(ht_scene,x-16+i*10,top-96,2,height,235);
             for(int y=top-94;y<top-open;y+=18) ht_rect(ht_scene,x-16,y,40,2,230);
-            if(style==5) ht_rect(ht_scene,x-16,top-open-5,40,5,255);
-            else for(int i=0;i<3;++i) if(height>i*24+24)
-                ht_limb(ht_scene,x-14,top-94+i*24,x+22,top-73+i*24,1,1,120);
+            ht_rect(ht_scene,x-16,top-open-5,40,5,255);
+        } else if(style==6) {
+            ht_partition_pane(g,top);
         } else {
             ht_rect(ht_scene,x-16,top-96,40,height,style==7?180:230);
             for(int i=0;i<5;++i) {

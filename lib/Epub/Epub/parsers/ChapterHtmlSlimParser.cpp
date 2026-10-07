@@ -48,12 +48,23 @@ const char* getAttribute(const XML_Char** atts, const char* attrName) {
 }
 
 bool isInternalEpubLink(const char* href) {
-  if (!href || href[0] == '\0') return false;
-  if (strncmp(href, "http://", 7) == 0 || strncmp(href, "https://", 8) == 0) return false;
-  if (strncmp(href, "mailto:", 7) == 0) return false;
-  if (strncmp(href, "ftp://", 6) == 0) return false;
-  if (strncmp(href, "tel:", 4) == 0) return false;
-  if (strncmp(href, "javascript:", 11) == 0) return false;
+  if (!href) return false;
+  while (isWhitespace(*href)) ++href;
+  if (*href == '\0') return false;
+  // Network-path references also point outside the EPUB, without a scheme.
+  if (href[0] == '/' && href[1] == '/') return false;
+
+  // RFC 3986 schemes are ASCII and case-insensitive: ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":".
+  // Stop at the first non-scheme character so colons in paths, queries and fragments stay internal.
+  const auto isAlpha = [](const char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+  if (!isAlpha(*href)) return true;
+  for (const char* cursor = href + 1; *cursor; ++cursor) {
+    if (*cursor == ':') return false;
+    if (!isAlpha(*cursor) && !(*cursor >= '0' && *cursor <= '9') && *cursor != '+' && *cursor != '-' &&
+        *cursor != '.') {
+      break;
+    }
+  }
   return true;
 }
 

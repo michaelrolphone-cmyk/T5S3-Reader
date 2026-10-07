@@ -9,9 +9,31 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 
+namespace {
+constexpr int lineHeight = 36;
+
+struct FootnoteViewport {
+  int top;
+  int rows;
+};
+
+FootnoteViewport footnoteViewport(const GfxRenderer& renderer) {
+  const auto orientation = renderer.getOrientation();
+  const int top = 60 + (orientation == GfxRenderer::Orientation::PortraitInverted ? 50 : 0);
+  // Portrait hints occupy the bottom; inverted hints are above the title,
+  // and landscape hints occupy a side gutter rather than list height.
+  const int bottom = renderer.getScreenHeight() -
+                     (orientation == GfxRenderer::Orientation::Portrait
+                          ? UITheme::getInstance().getMetrics().buttonHintsHeight
+                          : 0);
+  return {top, std::max(0, (bottom - top) / lineHeight)};
+}
+}  // namespace
+
 void EpubReaderFootnotesActivity::onEnter() {
   Activity::onEnter();
   selectedIndex = 0;
+  scrollOffset = 0;
   requestUpdate();
 }
 
@@ -54,22 +76,14 @@ bool EpubReaderFootnotesActivity::onTouchTap(int16_t, int16_t y) {
     return false;
   }
 
-  const auto orientation = renderer.getOrientation();
-  const bool isLandscapeCw = orientation == GfxRenderer::Orientation::LandscapeClockwise;
-  const bool isLandscapeCcw = orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
-  const bool isPortraitInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
-  const int hintGutterHeight = isPortraitInverted ? 50 : 0;
-  const int contentY = hintGutterHeight;
-  constexpr int lineHeight = 36;
-  const int visibleCount = std::max(1, (renderer.getScreenHeight() - contentY) / lineHeight);
-  const int listTop = 60 + contentY;
-  if (y < listTop) {
+  const auto viewport = footnoteViewport(renderer);
+  if (y < viewport.top) {
     return false;
   }
 
-  const int row = (y - listTop) / lineHeight;
+  const int row = (y - viewport.top) / lineHeight;
   const int touchedIndex = scrollOffset + row;
-  if (row < 0 || row >= visibleCount || touchedIndex < 0 || touchedIndex >= static_cast<int>(footnotes.size())) {
+  if (row >= viewport.rows || touchedIndex < 0 || touchedIndex >= static_cast<int>(footnotes.size())) {
     return false;
   }
 
@@ -109,16 +123,18 @@ void EpubReaderFootnotesActivity::render(RenderLock&&) {
     return;
   }
 
-  constexpr int lineHeight = 36;
   const int screenWidth = renderer.getScreenWidth();
   const int marginLeft = contentX + 20;
 
-  const int visibleCount = std::max(1, (renderer.getScreenHeight() - contentY) / lineHeight);
+  const auto viewport = footnoteViewport(renderer);
+  const int visibleCount = viewport.rows;
   if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
-  if (selectedIndex >= scrollOffset + visibleCount) scrollOffset = selectedIndex - visibleCount + 1;
+  if (visibleCount > 0 && selectedIndex >= scrollOffset + visibleCount) {
+    scrollOffset = selectedIndex - visibleCount + 1;
+  }
 
   for (int i = scrollOffset; i < static_cast<int>(footnotes.size()) && i < scrollOffset + visibleCount; i++) {
-    const int y = 60 + contentY + (i - scrollOffset) * lineHeight;
+    const int y = viewport.top + (i - scrollOffset) * lineHeight;
     const bool isSelected = (i == selectedIndex);
 
     if (isSelected) {

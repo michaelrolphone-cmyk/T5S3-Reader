@@ -72,7 +72,7 @@ void app_main(void) {
                    "Checking", "", "");
 
     const t5_ota_result_t check = ota->check_for_update();
-    if (check != T5_OTA_OK) {
+    if (check != T5_OTA_OK && check != T5_OTA_NO_UPDATE) {
         snprintf(status_text, sizeof(status_text), "Update check failed (%u)", (unsigned)check);
         render_message("Update check failed", "Could not check for firmware updates", status_text,
                        "Failed", "Back", "OK");
@@ -80,7 +80,7 @@ void app_main(void) {
         return;
     }
 
-    if (!ota->is_update_newer()) {
+    if (check == T5_OTA_NO_UPDATE || !ota->is_update_newer()) {
         render_message("No update available", "This device is already current", "No newer firmware was found",
                        "Up to date", "Back", "OK");
         wait_to_exit();

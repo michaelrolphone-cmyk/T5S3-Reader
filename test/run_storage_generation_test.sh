@@ -12,3 +12,9 @@ c++ "${flags[@]}" lib/hal/HalStorage.cpp src/runtime/packages/InstalledCapabilit
 python3 test/hal/storage_inventory_test.py
 python3 test/hal/storage_compat_import_test.py
 python3 test/hal/storage_file_lifetime_test.py
+
+# Retained provider metadata must not rescan on unchanged UI polling.
+python3 test/provider_enumeration/run_test.py --sanitize
+
+# Reuse the previously reviewed CDC negative-observation regression.
+python3 test/resources/cdc_prepare_performance_test.py --current-only

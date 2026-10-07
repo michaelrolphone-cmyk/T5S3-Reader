@@ -27,7 +27,7 @@ constexpr int kArrowHeight = 18;
 
 bool hasBacklight() { return Board::capabilities().hasBacklight; }
 
-bool modalShutdownConfirmed(GfxRenderer& renderer, MappedInputManager& input) {
+bool modalShutdownConfirmed(GlobalMenuActivity& menu, GfxRenderer& renderer, MappedInputManager& input) {
   constexpr int margin = 20;
   constexpr int spacing = 30;
   constexpr int fontId = UI_10_FONT_ID;
@@ -61,8 +61,12 @@ bool modalShutdownConfirmed(GfxRenderer& renderer, MappedInputManager& input) {
     if (input.wasReleased(MappedInputManager::Button::Right)) return true;
 
     MappedInputManager::TouchPoint point{};
-    if (input.wasTouchTapped(point, renderer))
-      return point.x >= renderer.getScreenWidth() / 2;
+    if (input.wasTouchTapped(point, renderer)) {
+      MappedInputManager::Button button;
+      if (!menu.resolveTouchButtonHint(point.x, point.y, button)) continue;
+      if (button == MappedInputManager::Button::Right) return true;
+      if (button == MappedInputManager::Button::Left || button == MappedInputManager::Button::Back) return false;
+    }
   }
 }
 }  // namespace
@@ -295,7 +299,7 @@ GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal(
     renderer.displayBuffer(DisplayPresentMode::Quality);
   };
   auto requestModalShutdown = [&]() -> bool {
-    if (SETTINGS.confirmShutdown && !modalShutdownConfirmed(renderer, mappedInput)) {
+    if (SETTINGS.confirmShutdown && !modalShutdownConfirmed(menu, renderer, mappedInput)) {
       redraw();
       return false;
     }

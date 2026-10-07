@@ -21,6 +21,15 @@ const char* resolveVisualText(const char* text, std::string& visualBuffer, int p
 uint8_t resolveSdCardStyle(const SdCardFont& font, const EpdFontFamily::Style style) {
   return font.resolveStyle(static_cast<uint8_t>(style));
 }
+// A populated advance cache is bounded, not a complete metrics table.
+// Preserve zero-width hits and the layout path's existing no-kerning policy.
+uint16_t sdCardAdvance(SdCardFont& font, uint32_t codepoint, uint8_t style) {
+  uint16_t advance = 0;
+  if (font.tryGetAdvance(codepoint, style, advance)) return advance;
+  const auto* epdFont = font.getEpdFont(style);
+  const auto* glyph = epdFont ? epdFont->getGlyph(codepoint) : nullptr;
+  return glyph ? glyph->advanceX : 0;
+}
 }  // namespace
 
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
@@ -1212,7 +1221,7 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
-    return fp4::toPixel(sdIt->second->getAdvance(' ', resolvedStyle));
+    return fp4::toPixel(sdCardAdvance(*sdIt->second, ' ', resolvedStyle));
   }
 
   const auto fontIt = fontMap.find(fontId);
@@ -1233,7 +1242,7 @@ int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const 
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
-    return fp4::toPixel(sdIt->second->getAdvance(' ', resolvedStyle));
+    return fp4::toPixel(sdCardAdvance(*sdIt->second, ' ', resolvedStyle));
   }
 
   const auto fontIt = fontMap.find(fontId);
@@ -1265,7 +1274,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
     int32_t widthFP = 0;
     const uint8_t styleIdx = resolveSdCardStyle(*sdIt->second, style);
     while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
-      widthFP += sdIt->second->getAdvance(cp, styleIdx);
+      widthFP += sdCardAdvance(*sdIt->second, cp, styleIdx);
     }
     return fp4::toPixel(widthFP);
   }

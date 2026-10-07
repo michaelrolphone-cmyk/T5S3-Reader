@@ -18,7 +18,10 @@ if [[ $# -gt 0 ]]; then
   timeout --kill-after=5s 60s "$binary" "$1"
   exit 0
 fi
+BOOKMARK_TEST_SANITIZERS=1 bash "$repo_dir/test/run_bookmark_summary_test.sh"
 python3 "$repo_dir/test/native_apps/elf_section_layout_test.py"
+WRAP_TEST_SANITIZE=1 python3 "$repo_dir/test/text_wrap_regression.py"
+python3 "$repo_dir/test/koreader_document_id/document_id_test.py" --sanitize
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
@@ -85,6 +88,126 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_schoolroom_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_signal_room_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_relay_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_mill_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_western_vista_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_mill_memory_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_shutter_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_window_entry_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_window_controls_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_stove_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_stove_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_station_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_station_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_distribution_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_distribution_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_waiting_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_waiting_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_pouch_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_pouch_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_sleep_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_sleep_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_warming_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_warming_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_isolator_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_isolator_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_first_house_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_first_house_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_cabinet_room_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_hoist_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_partition_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_partition_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_carriage_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_cabin_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_cabin_prose_test.py"
+python3 "$repo_dir/test/native_apps/hollow_trail_register_prose_test.py"
+python3 "$repo_dir/test/native_apps/hollow_trail_capture_source_test.py"
+python3 "$repo_dir/test/native_apps/hollow_trail_watch_memory_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_watch_memory_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_marked_tree_prose_test.py"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_vanished_house_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_sawn_roots_test.c" -o "$binary"
+"$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/hollow_trail_marked_tree_test.c" -o "$binary"
+"$binary"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/hollow_trail_renderer_test.c" -o "$binary"
@@ -121,6 +244,11 @@ cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/hollow_trail_ending_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-function -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/hollow_trail_final_door_test.c" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/native_apps/hollow_trail_final_door_prose_test.py"
 cc -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function \
   -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
   "$repo_dir/test/native_apps/hollow_trail_pipeline_test.c" -o "$binary"
@@ -186,6 +314,10 @@ python3 "$repo_dir/test/native_apps/timecard_clock_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_clock_failure_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -Wall -Wextra -Werror \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/native_apps/firmware_flasher_pagination_test.c" -o "$binary"
+(cd "$repo_dir" && "$binary")
 python3 "$repo_dir/test/native_apps/timecard_store_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_store_failure_test.c" -o "$binary"
@@ -222,6 +354,12 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$repo_dir/src/native" -I"$repo_dir/src" \
   "$repo_dir/test/native_storage_read_test.cpp" -o "$binary"
 "$binary"
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo_dir/test/native_apps/sd_firmware_bridge_stubs" \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/src/native" -I"$repo_dir/src" \
+  "$repo_dir/test/native_apps/native_sd_firmware_bridge_test.cpp" -o "$binary"
+"$binary"
+python3 "$repo_dir/test/firmware_flasher/segment_limit_test.py" --sanitize
 echo 'Native app launcher tests passed'
 
 bash "$repo_dir/test/run_panic_capture_test.sh"

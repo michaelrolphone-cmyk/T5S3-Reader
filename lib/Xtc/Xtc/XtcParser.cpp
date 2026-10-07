@@ -29,10 +29,8 @@ XtcParser::XtcParser()
 XtcParser::~XtcParser() { close(); }
 
 XtcError XtcParser::open(const char* filepath) {
-  // Close if already open
-  if (m_isOpen) {
-    close();
-  }
+  // Also discard partial metadata from any preceding failed open.
+  close();
 
   m_filepath = filepath;
 
@@ -46,38 +44,25 @@ XtcError XtcParser::open(const char* filepath) {
   m_lastError = readHeader();
   if (m_lastError != XtcError::OK) {
     LOG_DBG("XTC", "Failed to read header: %s", errorToString(m_lastError));
-    // Explicit close() required: member variable persists beyond function scope
-    m_file.close();
+    close();
     return m_lastError;
   }
 
-  // Read title & author if available
+  // Read title and author as one bounded operation; neither is published on failure.
   if (m_header.hasMetadata) {
-    m_lastError = readTitle();
+    m_lastError = readMetadata();
     if (m_lastError != XtcError::OK) {
-      LOG_DBG("XTC", "Failed to read title: %s", errorToString(m_lastError));
-      // Explicit close() required: member variable persists beyond function scope
-      m_file.close();
+      LOG_DBG("XTC", "Failed to read metadata: %s", errorToString(m_lastError));
+      close();
       return m_lastError;
     }
-    m_lastError = readAuthor();
-    if (m_lastError != XtcError::OK) {
-      LOG_DBG("XTC", "Failed to read author: %s", errorToString(m_lastError));
-      // Explicit close() required: member variable persists beyond function scope
-      m_file.close();
-      return m_lastError;
-    }
-    // Trim excess capacity from metadata strings
-    m_title.shrink_to_fit();
-    m_author.shrink_to_fit();
   }
 
   // Read first page info for default dimensions (no bulk page table allocation)
   m_lastError = readFirstPageInfo();
   if (m_lastError != XtcError::OK) {
     LOG_DBG("XTC", "Failed to read first page info: %s", errorToString(m_lastError));
-    // Explicit close() required: member variable persists beyond function scope
-    m_file.close();
+    close();
     return m_lastError;
   }
 
@@ -160,31 +145,32 @@ XtcError XtcParser::readHeader() {
   return XtcError::OK;
 }
 
-XtcError XtcParser::readTitle() {
-  constexpr auto titleOffset = 0x38;
-  if (!m_file.seek(titleOffset)) {
+XtcError XtcParser::readMetadata() {
+  // The fields consumed here occupy the first 192 bytes of the metadata block.
+  // Use subtraction before addition so corrupt 64-bit offsets cannot wrap.
+  constexpr size_t titleSize = 128;
+  constexpr size_t authorSize = 64;
+  constexpr uint64_t requiredSize = titleSize + authorSize;
+  const uint64_t offset = m_header.metadataOffset;
+  const uint64_t fileSize = m_file.fileSize64();
+  if (offset < XTC_LEGACY_HEADER_SIZE || offset > fileSize || requiredSize > fileSize - offset) {
+    return XtcError::CORRUPTED_HEADER;
+  }
+  if (!m_file.seek64(offset)) {
     return XtcError::READ_ERROR;
   }
 
-  char titleBuf[128] = {0};
-  m_file.read(titleBuf, sizeof(titleBuf) - 1);
+  // Extra terminators bound strings even when the on-disk fields have no NUL.
+  char titleBuf[titleSize + 1] = {0};
+  char authorBuf[authorSize + 1] = {0};
+  if (m_file.read(titleBuf, titleSize) != titleSize || m_file.read(authorBuf, authorSize) != authorSize) {
+    return XtcError::READ_ERROR;
+  }
   m_title = titleBuf;
-
-  LOG_DBG("XTC", "Title: %s", m_title.c_str());
-  return XtcError::OK;
-}
-
-XtcError XtcParser::readAuthor() {
-  // Read author as null-terminated UTF-8 string with max length 64, directly following title
-  constexpr auto authorOffset = 0xB8;
-  if (!m_file.seek(authorOffset)) {
-    return XtcError::READ_ERROR;
-  }
-
-  char authorBuf[64] = {0};
-  m_file.read(authorBuf, sizeof(authorBuf) - 1);
   m_author = authorBuf;
-
+  m_title.shrink_to_fit();
+  m_author.shrink_to_fit();
+  LOG_DBG("XTC", "Title: %s", m_title.c_str());
   LOG_DBG("XTC", "Author: %s", m_author.c_str());
   return XtcError::OK;
 }

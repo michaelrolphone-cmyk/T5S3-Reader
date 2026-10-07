@@ -1,0 +1,7 @@
+Folded into rollup #384 on 2026-10-03:
+- #390 Hollow Trail cab-step plant from 19aaa2b46d47e82a733c5cd5b9c3043132fa6c09
+- #391 BUG-67 OPDS relative URL resolution from f01da5c62b09324d0bc249e31762d95f0b513453
+- Fold commits: 39f720b1 (390), 375559ba (391)
+- Firmware: 1.3.96 (from #391; above prior 1.3.94)
+- Hollow Trail app: 1.1.47 (from #390)
+- BOOK_CACHE_VERSION: 11 (unchanged)
