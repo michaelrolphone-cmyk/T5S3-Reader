@@ -52,7 +52,7 @@ During collaborative qualification, **Release Qualification** is the preferred l
 
 A concise message usually includes changed code, real checks or blockers, and the next task, with one short truthful status label at the end when useful. This reporting convention is a default rather than a stop condition.
 
-For a verified GitHub rate limit, report the actual evidence and avoid wasteful repeated API calls until access recovers. Treat generic connection failures as their actual failure class, and treat tool cancellations or policy-layer rejections as execution-layer results.
+For a verified GitHub rate limit, report the actual evidence and avoid wasteful repeated API calls until access recovers. Treat generic connection failures as their actual failure class, and treat tool cancellations or service rejections as execution-layer results.
 
 ## Task-specific variation
 
