@@ -1,39 +1,72 @@
-# Recommended driver/provider guidance
+# Driver and provider engineering reference
 
-Read root [`AGENTS.md`](../AGENTS.md), [`docs/RISCRTE_PLATFORM_SPEC.md`](../docs/RISCRTE_PLATFORM_SPEC.md), [`docs/PACKAGE_IDENTITY_VERSION_POLICY.md`](../docs/PACKAGE_IDENTITY_VERSION_POLICY.md), [`docs/DRIVER_PLATFORM_REUSE_ACCEPTANCE.md`](../docs/DRIVER_PLATFORM_REUSE_ACCEPTANCE.md), and the current [U1 milestone](../docs/NEXT_HARDWARE_TEST_MILESTONE.md) as the normal context for changes under `Drivers/**`.
+Related references:
 
-This file records preferred driver/provider engineering practice. Use it as the default when the current task does not specify a different approach.
+- [RiscRTE Platform Specification](../docs/RISCRTE_PLATFORM_SPEC.md)
+- [Package Identity and Version Policy](../docs/PACKAGE_IDENTITY_VERSION_POLICY.md)
+- [Driver Platform Reuse](../docs/DRIVER_PLATFORM_REUSE_ACCEPTANCE.md)
+- [USB Host Startup and Detection](../docs/USB_HOST_STARTUP_AND_DETECTION.md)
+- [Bounded Cooperative Operations](../docs/COOPERATIVE_BOUNDED_OPERATIONS.md)
 
-## USB and device-lifecycle recommendations
+## Driver manifests
 
-Before ordinary USB controller, power, discovery, class, or input-driver work, [USB Host Startup and Detection](../docs/USB_HOST_STARTUP_AND_DETECTION.md) is the preferred reference.
+Driver and provider packages carry:
 
-The intended ordering is to configure host PHY/role/pull-downs before VBUS, prepare event handling before attachment is possible, and test ordering at the real power-provider call. Diagnose physical attachment separately from enumeration, class binding, and reports. Prefer retaining unsafe DMA/lease/dependency ownership through failed cleanup. Gamepads normally publish current state; keyboards normally retain ordered buffered events. Preserve the owner-confirmed 0.1.14 auto-connect behavior unless the current task intentionally changes it, and generally avoid app-specific USB resets or firmware hardware bridges.
+- package ID;
+- numeric package version;
+- driver ABI or architecture metadata;
+- required capabilities and API versions;
+- provided capabilities and API versions;
+- build and package metadata.
 
-## Version and identity recommendations
+Package metadata, catalog entries, release artifacts, and installed metadata use the same package identity and version.
 
-For a distributable driver/provider change, the normal release practice is to increment that package's manifest `version` in the same PR or change set. Prefer comparing against both the merge base and last actually published version, using numeric `MAJOR.MINOR.PATCH`, and recording `id old -> new`.
+## Package versions and IDs
 
-A firmware version, `driver_abi`, capability API, source directory, release tag, or ELF hash is not normally treated as the package's own version. One version increment per cumulative unreleased update is usually sufficient. Avoid changing unrelated package versions solely because firmware is released.
+The manifest `version` is the package product version.
 
-Package IDs are intended to represent stable upgrade lineages. The preferred practice is to keep the same manifest `id` across rewrites, ABI changes, profile updates, and normal releases while versioning the package and independently declaring/checking `driver_abi`, architecture, requirements, and provided capabilities. Avoid `-v2`/`-v3` IDs or duplicate rows merely to sidestep normal update logic. Truly separate concurrently installable products should have distinct documented functions and binding policy.
+Firmware version, capability API version, driver ABI, source directory names, release tags, and ELF hashes are separate metadata.
 
-A current task can intentionally use a different convention for a prototype, migration experiment, compatibility test, recovery action, or other task-local reason.
+Package IDs identify installable component lineages. Version changes represent successive revisions of the same package ID.
 
-## Preferred U1 CDC remediation
+## Capability interfaces
 
-The normal U1 direction is to reconcile:
-- `Drivers/usb_cdc`: `usb-cdc-acm@0.1.0`, ABI 1, firmware-proxy implementation.
-- `Drivers/usb_cdc_v2`: `usb-cdc-acm-v2@0.1.0`, ABI 2, functional class ELF.
+Drivers and providers expose versioned capability structs through the project SDK interfaces.
 
-The preferred end state is a strictly higher-version replacement using canonical ID `usb-cdc-acm`, with an audited legacy-install migration. The normal cleanup includes removing the old production proxy and forked catalog/release identity, updating references and asset paths, and adding automated version/identity regression coverage. Prefer preserving installed data rather than treating a file rename or deletion as a migration. The generic release builder should ideally avoid fixed `0.1.0` assumptions and hand-maintained driver lists.
+Consumers inspect API version and struct size when reading interface members.
 
-Before treating ordinary driver work as complete, compare source manifest, generated `.package.json`, provider metadata, generic catalog, release asset names, installed identity, and UI version. Prefer consistency, compatibility, no unintended same-version changed bytes, safe handling of in-use or failed-quiesce replacements, and preservation of old generations on failure. Report build-time guards as passing only when they actually exist and were exercised.
+Dependencies are declared by capability name and API version in package metadata.
 
-## Driver-loop recommendations
+## Board configuration
 
-Use [Bounded, Cooperative Long-Running Operations](../docs/COOPERATIVE_BOUNDED_OPERATIONS.md) as the preferred reference for enumeration, hotplug/reconnect, device I/O, retries, descriptor processing, polling, stream consumption, and provider shutdown.
+Board manifests contain chip identifiers, pins, buses, addresses, and setup data.
 
-Good defaults include bounded queues/memory/work/deadlines, avoiding unbounded recursion and repeated full scans, elapsed-time and work checkpoints, genuine scheduler cooperation, throttled observable progress/state changes, and explicit failure/quiescence recovery. Treat `esp_task_wdt_reset()` as watchdog service rather than scheduler yield. Prefer retaining pinned active or unsafe-to-unload providers and dependencies after failed cleanup.
+Reusable chip drivers consume board-provided configuration through the project interfaces.
 
-These recommendations describe normal code-completion quality rather than adding extra review checkpoints, CI gates, or compulsory intermediate hardware-test gates.
+## Bus interfaces
+
+The project uses shared transport interfaces for I²C, SPI, UART, USB, and related buses.
+
+Peripheral drivers use the established bus APIs and SDK headers for transport operations.
+
+USB CDC `serial.port` and physical UART interfaces are represented separately.
+
+## Lifecycle interfaces
+
+Driver/provider modules expose the lifecycle entry points defined by the runtime ABI, including initialization, start, quiesce, and stop behavior where present.
+
+Provider state and dependency references are represented through the runtime’s module and capability structures.
+
+## Build and package data
+
+Driver builders produce ELF binaries and package metadata.
+
+Useful package checks include:
+
+- manifest and package version agreement;
+- ABI and architecture fields;
+- imports and exports;
+- declared dependencies and provided capabilities;
+- catalog metadata;
+- artifact hashes and sizes;
+- host fixtures and target builds.
