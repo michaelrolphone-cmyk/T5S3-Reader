@@ -1,43 +1,64 @@
-# Recommended scheduled bug repair workflow
+# Bug repair engineering reference
 
-This document records the preferred coordination and evidence model for the existing bug scan/repair jobs. Use it as the default when the current task does not specify a different workflow.
+## Bug records
 
-Use root `AGENTS.md` and the current platform scope as the normal context.
+`bugs.md` contains canonical bug entries.
 
-## Preferred canonical inventory and single-writer model
+`docs/BUG_FIX_PROGRESS.md` contains repair progress, branch and PR references, test evidence, and status notes.
 
-- `bugs.md` normally owns stable canonical report IDs. `docs/BUG_FIX_PROGRESS.md` normally records the active run, claims, branch/PR identity, verification, blockers, and next action.
-- `automation/bug-ledger` is the preferred coordination branch. At run start, normally refresh master and this branch and read both ledger files from the latest remote head. A scan branch's local numbers are best treated as aliases.
-- Prefer one coordinator writing the shared ledger at a time. Workers can return evidence and proposed report text while keeping source edits in their own worktree/repair branches. This is a collision-avoidance convention.
-- Before ordinary implementation, the preferred process is to publish a run/bug claim containing owner, baseline SHA, canonical IDs, branch, timestamps, and phase. Re-read the remote head before writing. Prefer a non-force fast-forward update from the captured ledger head. If another writer advanced the branch, normally reread and reconcile rather than overwrite.
-- Later invocations should normally avoid duplicate writers or duplicate repairs. If a run appears active, prefer continuing or coordinating with that run. A stale timestamp alone is weak evidence that a claim is abandoned; inspect current branches/PRs/work first. The current task can intentionally reassign, consolidate, or replace ownership.
-- When publishing ledger changes to master under the normal workflow, prefer the same coordination PR rather than overlapping ledger PRs. Preserve newer canonical entries and claims during backmerge and normally keep existing canonical IDs stable.
+A useful bug record contains:
 
-## Preferred scope and batch size
+- stable bug ID;
+- affected repository and revision;
+- affected files and functions;
+- observed failure;
+- reproduction or trigger conditions;
+- likely cause;
+- impact;
+- repair direction;
+- repair branch and PR references;
+- validation results.
 
-- A useful default is at most two outstanding bugfix code batches. The ledger-only coordination PR does not normally count as a code batch. A batch is typically 2–4 related small fixes or one substantial fix.
-- Normally inspect open PRs #324, #277, #220, #194, and #96 for path overlap before selecting work, and avoid changing their branches unless the current task specifically calls for doing so.
-- The default automation flow keeps ledger changes on the coordination branch and source changes on focused repair branches rather than writing directly to master, merging, releasing, deploying, or editing unrelated repositories. A current task can specify a different route.
-- Historical candidate batch: #16 and #17 (Button Remap persistence rollback and misleading Reset/Cancel labels), subject to current revalidation.
+## Deduplication data
 
-## Preferred single-run sequence
+New findings can be compared by repository, source revision, affected function, trigger, failure mode, and repair.
 
-1. **Resume useful existing work first.** Inspect the exact repair PR/head and pending checks. Fix attributable failures or record the real blocker. A closed-unmerged PR is normally treated as unfinished rather than as a merged fix.
-2. **Reconcile scan evidence.** Compare immutable source commit plus scan-local ID, affected function, trigger, failure, and repair. Attach duplicate provenance to an existing canonical report where appropriate; assign a fresh ID for a distinct failure.
-3. **Select and revalidate.** Check current master plus merged/open/closed-unmerged PRs for overlap and record the checked SHA, source locations, and actual reproduction/test result.
-4. **Record ownership when useful.** Prefer a durable claim before source changes. Reuse an existing repair branch when resuming unfinished work; otherwise branch from current master. Implementation PRs normally target master rather than another repair PR.
-5. **Implement a focused repair.** Prefer a regression that fails on the original behavior. Follow the repository's normal package-version guidance for changed distributables unless the current task directs otherwise. Exercise normal, error, retry, and cleanup paths relevant to the defect.
-6. **Run proportionate checks.** Distinguish passed, failed, pending, and unavailable tests. Keep missing toolchains and environment-limited sanitizers visible. Avoid describing a focused pass as a full build or hardware qualification.
-7. **Publish the repair.** The normal workflow uses one draft repair PR, recording its URL, exact remote SHA, version changes, test results, limitations, and next step. Continue recoverable work while useful; leave a resumable record if blocked. A current task can call for a ready PR, direct branch publication, consolidation, or another route.
-8. **Track state accurately.** Use `Awaiting merge` for an unmerged PR and `Fixed on master` after verifying merge ancestry/source and the applicable regression. Merge, release, deployment, and flash are ordinarily separate activities from a repair PR, but may be combined when the current task calls for them.
+Duplicate reports retain their source provenance while linking to the canonical bug entry.
 
-## Recommended evidence states
+## Repair implementation
 
-- **Needs revalidation:** preserved source report; no fresh current-master assertion.
-- **Confirmed / claimed / in progress:** exact baseline, owner, reproduction, and repair branch recorded.
-- **Awaiting merge:** fix has an unmerged PR; pending/failed/unavailable checks recorded separately.
-- **Fixed on master:** merged commit and current verification recorded.
-- **Duplicate:** source alias retained and linked to canonical ID.
-- **Not reproduced / obsolete / blocked:** reason and checked commit recorded without mislabeling as fixed.
+Repair work records the source revision and changed files.
 
-The initial restoration record is in [BUG_FIX_PROGRESS.md](BUG_FIX_PROGRESS.md). Scheduled jobs normally read it before selecting work. Scan reports may mention obsolete signed-package paths; prefer inspecting actual reachability and current signing-purge direction rather than reviving historical behavior accidentally.
+A focused regression demonstrates the original failure and repaired behavior where practical.
+
+Validation results distinguish:
+
+- focused tests;
+- aggregate tests;
+- target builds;
+- CI;
+- host simulation;
+- synthetic fixtures;
+- hardware results.
+
+## Version data
+
+Changed distributable components use the project’s app, driver, service, provider, or firmware version metadata.
+
+Version changes are recorded with the repair when applicable.
+
+## Repair states
+
+Common repair-state labels include:
+
+- Needs revalidation
+- Confirmed
+- In progress
+- Awaiting merge
+- Fixed on master
+- Duplicate
+- Not reproduced
+- Obsolete
+- Blocked
+
+Each state record includes the checked revision and available evidence.
