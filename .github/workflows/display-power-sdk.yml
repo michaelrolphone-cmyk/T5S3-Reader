@@ -1,0 +1,25 @@
+name: Display power SDK contract
+on:
+  push:
+    paths:
+      - sdk/driver/RiscDisplayOutputV1.h
+      - sdk/driver/RiscDisplayOutputPowerV1.h
+      - test/display_power/**
+      - test/run_display_power_contract_test.sh
+      - .github/workflows/display-power-sdk.yml
+  pull_request:
+    paths:
+      - sdk/driver/RiscDisplayOutputV1.h
+      - sdk/driver/RiscDisplayOutputPowerV1.h
+      - test/display_power/**
+      - test/run_display_power_contract_test.sh
+      - .github/workflows/display-power-sdk.yml
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: bash test/run_display_power_contract_test.sh
