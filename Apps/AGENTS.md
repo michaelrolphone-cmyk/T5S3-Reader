@@ -1,11 +1,57 @@
-# Instructions for changes under `Apps/`
+# App engineering reference
 
-Read the repository root [`AGENTS.md`](../AGENTS.md), master [RiscRTE platform specification](../docs/RISCRTE_PLATFORM_SPEC.md), and mandatory [Application Version Policy](../docs/APP_VERSION_POLICY.md). These instructions apply to every app in this directory and supplement—not replace—the root instructions.
+Related references:
 
-**An app modification is not complete without its own version bump.** Before modifying `Apps/<name>.c` or other app source, distributed resource, app-specific build option or installed metadata, inspect the sibling `Apps/<name>.json`, the PR merge-base/target branch and most recently distributed version. Change that manifest's `version` to a **strictly higher `MAJOR.MINOR.PATCH`** within the same PR. A single bump per cumulative unreleased update is sufficient; bump again for the next independently published update. For changes to multiple apps, bump each affected app. Do not rely on a firmware version change, `min_firmware_version`, artifact SHA-256, release tag or catalog regeneration as the app's version. Update `min_firmware_version` only when a genuinely newer firmware API/behavior is required.
+- [RiscRTE Platform Specification](../docs/RISCRTE_PLATFORM_SPEC.md)
+- [Application Version Policy](../docs/APP_VERSION_POLICY.md)
+- [Application Execution Context](../docs/APPLICATION_EXECUTION_CONTEXT_ARCHITECTURE.md)
+- [Native Apps](../docs/NATIVE_APPS.md)
+- [Bounded Cooperative Operations](../docs/COOPERATIVE_BOUNDED_OPERATIONS.md)
 
-Before marking app work complete, record `app: old_version -> new_version` for every affected app, run `scripts/build_all_apps.py` or its app-specific builder where available, check output ELF/sidecar/catalog version agreement, and verify no changed published payload is reissued under an existing app identity/version. If CI has not finished, record it as pending rather than claiming success, and continue unrelated U1 work. A docs-only change or change that does not affect a distributable app does not require bumping unrelated apps. Do not silently postpone bumps to release workflows or the repository owner.
+## App manifests
 
-The build-time changed-app version guard is a specified enforcement requirement, not proof that it already exists. Until verified implemented, perform the comparison manually; missing version increase blocks declaring the app update complete.
+Distributable apps use sibling manifests such as `Apps/<name>.json`.
 
-**Mandatory long-operation code-completion rule:** Follow [Bounded, Cooperative Long-Running Operations](../docs/COOPERATIVE_BOUNDED_OPERATIONS.md) for app file browsing, download, hashing, ZIP/resource processing, installation and other potentially long loops. Every such state machine must bound memory/work/retries/deadline, avoid repeated full scans, checkpoint by both work and elapsed time, genuinely yield CPU (watchdog reset alone is NOT a yield), report throttled progress and preserve data/recovery state on termination. Treat missing mechanisms as unfinished implementation, not a reason to wait for owner hardware tests or build a comprehensive milestone-specific test harness.
+Common fields include:
+
+- display name;
+- file name;
+- component version;
+- minimum firmware version;
+- runtime profile;
+- required capabilities and API versions;
+- optional capabilities;
+- category;
+- icon.
+
+## App versions
+
+The manifest `version` is the app product version.
+
+Firmware version, `min_firmware_version`, artifact hashes, release tags, and catalog timestamps are separate metadata.
+
+Changed distributable apps generally use a higher `MAJOR.MINOR.PATCH` version than the previous published app version.
+
+`min_firmware_version` records the runtime version associated with the APIs or behavior used by the app.
+
+## Runtime APIs
+
+Apps use the existing RiscRTE and native-app SDK interfaces.
+
+Capability records expose an API version and struct size. Optional capabilities have a defined unavailable state.
+
+Display, navigation, touch, storage, alarm, radio, networking, clock, telemetry, and lifecycle functionality use the corresponding shared interfaces.
+
+## Persistence
+
+App data uses the project storage interfaces and the app’s established namespace or app-data location.
+
+Stored formats and keys remain documented alongside the app source where applicable.
+
+## Build outputs
+
+App builders produce ELF binaries and package metadata from app source and manifests.
+
+Version information is represented consistently in the app manifest, generated package metadata, catalogs, and installed metadata.
+
+Host fixtures, target builds, and hardware runs provide distinct types of validation evidence.
