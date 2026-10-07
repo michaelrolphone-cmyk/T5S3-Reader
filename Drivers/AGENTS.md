@@ -16,7 +16,7 @@ For a distributable driver/provider change, the normal release practice is to in
 
 A firmware version, `driver_abi`, capability API, source directory, release tag, or ELF hash is not normally treated as the package's own version. One version increment per cumulative unreleased update is usually sufficient. Avoid changing unrelated package versions solely because firmware is released.
 
-Package IDs are intended to represent stable upgrade lineages. The preferred practice is to keep the same manifest `id` across rewrites, ABI changes, profile updates, and normal releases while versioning the package and independently declaring/checking `driver_abi`, architecture, requirements, and provided capabilities. Avoid `-v2`/`-v3` IDs or duplicate rows merely to bypass normal update logic. Truly separate concurrently installable products should have distinct documented functions and binding policy.
+Package IDs are intended to represent stable upgrade lineages. The preferred practice is to keep the same manifest `id` across rewrites, ABI changes, profile updates, and normal releases while versioning the package and independently declaring/checking `driver_abi`, architecture, requirements, and provided capabilities. Avoid `-v2`/`-v3` IDs or duplicate rows merely to sidestep normal update logic. Truly separate concurrently installable products should have distinct documented functions and binding policy.
 
 A current task can intentionally use a different convention for a prototype, migration experiment, compatibility test, recovery action, or other task-local reason.
 
