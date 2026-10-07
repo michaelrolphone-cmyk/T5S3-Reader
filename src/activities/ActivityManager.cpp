@@ -12,6 +12,9 @@
 #include "browser/OpdsBookBrowserActivity.h"
 #include "home/CrashActivity.h"
 #include "home/HomeActivity.h"
+#if defined(BOARD_XTEINK_X4_PRO)
+#include "home/X4TxtActivity.h"
+#endif
 #include "home/RecentBooksActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "reader/ReaderActivity.h"
@@ -40,6 +43,11 @@ void ActivityManager::renderTaskLoop() {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     RenderLock lock;
     if (currentActivity) {
+#if defined(BOARD_XTEINK_X4_PRO)
+      // X4 first Home frame uses the already attached display provider. Its
+      // power module and T5S3 StartupScreen are not part of this bootstrap.
+      currentActivity->render(std::move(lock));
+#else
       HalPowerManager::Lock powerLock;
       // Readiness is the destination's first render after startup/onEnter.
       // Keep the loading worker alive throughout Home or reader preparation.
@@ -50,6 +58,7 @@ void ActivityManager::renderTaskLoop() {
       }
       currentActivity->render(std::move(lock));
       if (currentActivity->name != "Boot") StartupScreen::destinationReady();
+#endif
     }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&waitingTaskMux);
@@ -241,7 +250,11 @@ void ActivityManager::goToInstalledApp(std::string artifact, std::string display
 }
 
 void ActivityManager::goToRecentBooks() {
+#if defined(BOARD_XTEINK_X4_PRO)
+  replaceActivity(std::make_unique<X4TxtActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+#else
   replaceActivity(std::make_unique<RecentBooksActivity>(renderer, mappedInput), kUiPageTransitionRefreshMode);
+#endif
 }
 
 void ActivityManager::goToBrowser() {

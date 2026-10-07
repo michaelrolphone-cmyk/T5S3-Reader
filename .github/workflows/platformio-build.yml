@@ -90,6 +90,11 @@ jobs:
             firmware_name: riscrte-t5s3-pro.bin
             merged_firmware_name: riscrte-t5s3-pro-merged.bin
             elf_name: riscrte-t5s3-pro.elf
+          - environment: xteink-x4-pro
+            board_id: xteink-x4-pro
+            firmware_name: riscrte-xteink-x4-pro.bin
+            merged_firmware_name: riscrte-xteink-x4-pro-merged.bin
+            elf_name: riscrte-xteink-x4-pro.elf
           - environment: lilygo-epd47-s3
             board_id: lilygo-epd47-s3
             firmware_name: riscrte-lilygo-epd47-s3.bin
@@ -120,6 +125,34 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install platformio==6.1.19 pyelftools==0.32
 
+      - name: Rebuild X4 provider ELFs and embed them
+        run: |
+          pio pkg install -e xteink-x4-pro
+          export PATH="$HOME/.platformio/packages/toolchain-xtensa-esp32s3/bin:$PATH"
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_x4pro_drivers.py
+          python scripts/embed_x4pro_providers.py
+          cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
+          /tmp/x4gpio
+          cc -std=c11 -Wall -Wextra -Werror -I Drivers/x4pro_board \
+            test/x4pro_proto_test.c -o /tmp/x4proto
+          /tmp/x4proto
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_touch_fake -I Drivers/x4pro_board \
+            test/x4pro_gt911_state_test.c Drivers/x4pro_gt911/driver.c -o /tmp/x4touch
+          /tmp/x4touch
+          python3 test/x4pro_boot_isolation_test.py
+          python3 test/x4pro_panel_sequence_test.py
+          python3 test/x4pro_import_match_test.py
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_panel_fake -I Drivers/x4pro_board \
+            test/x4pro_panel_state_test.c Drivers/x4pro_panel/driver.c -o /tmp/x4panel
+          /tmp/x4panel
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_sd_fake -I Drivers/x4pro_board \
+            test/x4pro_sd_absent_test.c Drivers/x4pro_sd/driver.c -o /tmp/x4sd-absent
+          /tmp/x4sd-absent
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_sd_card_fake -I Drivers/x4pro_board \
+            test/x4pro_sd_sector_test.c Drivers/x4pro_sd/driver.c -o /tmp/x4sd-sector
+          /tmp/x4sd-sector
+
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
 
@@ -146,7 +179,7 @@ jobs:
       - name: Verify actual Arduino HTTP body-loop termination
         run: python3 test/runtime_network/http_client_body_budget_test.py "$HOME/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src/HTTPClient.cpp"
       - name: Record production serial and USB target references
-        run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
+        run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --profile "${{ matrix.board_id == 'xteink-x4-pro' && 'x4-diagnostic' || 'firmware' }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
       - name: Preserve compact target reference evidence
         uses: actions/upload-artifact@v4
         with:
@@ -196,6 +229,9 @@ jobs:
           cp ".pio/build/${{ matrix.environment }}/firmware.elf" "dist/${{ matrix.elf_name }}"
 
       - name: Upload RiscRTE firmware artifact
+        # Historical X4 compilation may run for regression coverage, but its
+        # embedded-driver image must never be offered as a deployment artifact.
+        if: matrix.board_id != 'xteink-x4-pro' || (hashFiles('src/platform/SdPackageBoot.cpp') != '' && hashFiles('scripts/stage_x4pro_packages.py') != '')
         uses: actions/upload-artifact@v4
         with:
           name: riscrte-firmware-${{ matrix.board_id }}
@@ -250,6 +286,19 @@ jobs:
       - name: Verify boot animation choreography
         run: python3 test/boot_animation_contract_test.py
 
+      - name: Verify X4 boot, panel and button contracts
+        run: |
+          python3 test/x4pro_boot_isolation_test.py
+          python3 test/x4pro_panel_sequence_test.py
+          cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
+          /tmp/x4gpio
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_buttons_fake -I Drivers/x4pro_board \
+            test/x4pro_buttons_state_test.c Drivers/x4pro_buttons/driver.c -o /tmp/x4buttons
+          /tmp/x4buttons
+          c++ -std=c++17 -Wall -Wextra -Werror -I src -I sdk/driver \
+            test/x4_txt_session_test.cpp -o /tmp/x4txtsession
+          /tmp/x4txtsession
+
       - name: Verify Home reading card rendering and cache behavior
         run: python3 test/home_reading_card_test.py
 
@@ -292,11 +341,14 @@ jobs:
       - name: Verify display abstraction contract
         run: python3 test/native_apps/display_abstraction_contract_test.py
 
-      - name: Exercise display surface metadata validation
+      - name: Exercise display surface and provider adapter contracts
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -Ilib/DisplaySurface \
             test/display/display_surface_validation_test.cpp -o /tmp/display-surface-validation
           /tmp/display-surface-validation
+          c++ -std=c++17 -Wall -Wextra -Werror -I. -Ilib/DisplaySurface -Isdk/driver \
+            test/display/provider_display_surface_test.cpp -o /tmp/provider-display-surface
+          /tmp/provider-display-surface
 
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh

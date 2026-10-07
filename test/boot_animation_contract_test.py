@@ -48,9 +48,11 @@ class BootAnimationContract(unittest.TestCase):
         if main.startswith("#if defined(RISCRTE_PROFILE_HEADLESS)\n"):
             main = main.split("#else\n", 1)[1]
         setup = main[main.index("void setup()") : main.index("void loop()")]
+        t5 = setup.split("#ifdef BOARD_XTEINK_X4_PRO", 1)[-1]
+        t5 = t5.split("#endif", 1)[-1]
         for work in ("sdFontSystem.begin(renderer)", "APP_STATE.loadFromFile()",
                      "logPlatformInputHealth()", "mappedInputManager.update()", "activityManager.goHome()"):
-            self.assertLess(setup.index("StartupScreen::boot(renderer)"), setup.index(work))
+            self.assertLess(t5.index("StartupScreen::boot(renderer)"), t5.index(work))
         start = SOURCE[SOURCE.index("bool bootWithVideo("):SOURCE.index("bool finishVideoBoot(")]
         self.assertNotIn("renderLayerReveal()", start)
         self.assertNotIn("kMinimumPulseMs", SOURCE)
@@ -59,10 +61,14 @@ class BootAnimationContract(unittest.TestCase):
         home = (ROOT / "src/activities/home/HomeActivity.cpp").read_text()
         self.assertIn("if (StartupScreen::isLoading() && !recentsLoaded) loadRecentCovers", home)
         self.assertIn("if (!bootLoading) GUI.fillPopupProgress", home)
-        self.assertLess(activity.index("currentActivity->render(std::move(lock))"),
-                        activity.index("StartupScreen::destinationReady()"))
-        self.assertLess(activity.index("StartupScreen::finishBoot(renderer)"),
-                        activity.index("currentActivity->render(std::move(lock))"))
+        render = activity[activity.index("void ActivityManager::renderTaskLoop()"):activity.index("void ActivityManager::loop()")]
+        # X4 has a provider-backed first frame and no T5S3 startup animation.
+        # Check the T5S3 render branch's ordering, not its preceding X4 branch.
+        t5_render = render.split("#else", 1)[1].split("#endif", 1)[0]
+        self.assertLess(t5_render.index("currentActivity->render(std::move(lock))"),
+                        t5_render.index("StartupScreen::destinationReady()"))
+        self.assertLess(t5_render.index("StartupScreen::finishBoot(renderer)"),
+                        t5_render.index("currentActivity->render(std::move(lock))"))
 
     def test_original_four_logo_layers_are_preserved(self):
         self.assertRegex(SOURCE, r"kLogoLayerCount\s*=\s*4\s*;")

@@ -29,6 +29,9 @@ class MappedInputManager {
   // Also service transport snapshots while an ELF owns the main activity
   // stack and its input polling temporarily blocks the outer firmware loop.
   void update() const;
+#if defined(BOARD_XTEINK_X4_PRO)
+  void updateBootstrapInput() const;
+#endif
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   bool isPressed(Button button) const;

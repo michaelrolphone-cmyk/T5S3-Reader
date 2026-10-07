@@ -49,6 +49,7 @@ void loop() { RuntimeBoot::loop(); }
 #include "components/StartupScreen.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
+#include "platform/X4DiagnosticBoot.h"
 #include "util/ScreenshotUtil.h"
 
 MappedInputManager mappedInputManager(gpio);
@@ -423,6 +424,15 @@ void logPlatformInputHealth() {
 }
 
 void setup() {
+#ifdef BOARD_XTEINK_X4_PRO
+#ifdef ENABLE_SERIAL_LOG
+  Serial.begin(115200);
+  const unsigned long x4SerialStart = millis();
+  while (!Serial && millis() - x4SerialStart < 500) delay(10);
+#endif
+  x4DiagnosticSetup();
+  return;
+#endif
   t1 = millis();
 
   // Keep large general-purpose allocations out of scarce internal RAM without
@@ -604,6 +614,10 @@ void setup() {
 }
 
 void loop() {
+#ifdef BOARD_XTEINK_X4_PRO
+  x4DiagnosticLoop();
+  return;
+#endif
   if (g_displayBootFailed) {
     // Do not touch ActivityManager/renderer after failed display bootstrap.
     // Leave the retained image or emergency failure pattern stable for diagnosis.

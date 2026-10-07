@@ -6,6 +6,16 @@
 #include <stdint.h>
 #include <time.h>
 #include <unistd.h>
+#include <stddef.h>
+
+/* The current firmware exports ESP-IDF 4/newlib's 32-bit time ABI.
+ * GCC 14 defaults to 64-bit time_t. A mismatched timespec can link cleanly
+ * yet fail startup after clock_gettime writes the smaller firmware layout. */
+#if defined(__XTENSA__)
+_Static_assert(sizeof(time_t) == 4, "platform.clock requires firmware time32 ABI");
+_Static_assert(sizeof(struct timespec) == 8 && offsetof(struct timespec, tv_nsec) == 4,
+               "platform.clock timespec ABI mismatch");
+#endif
 
 static bool running;
 

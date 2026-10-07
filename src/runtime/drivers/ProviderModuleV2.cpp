@@ -62,6 +62,19 @@ void ModuleV2::report(const char* id, const char* stage, int code) {
 #endif
 }
 
+bool ModuleV2::copyProviderError(char* destination, size_t capacity) const {
+  if (!destination || !capacity) return false;
+  destination[0] = 0;
+  if (driver_ && driver_->struct_size >= sizeof(risc_driver_diagnostics_v2)) {
+    const auto* diagnostics = reinterpret_cast<const risc_driver_diagnostics_v2*>(driver_);
+    if (diagnostics->last_error && diagnostics->last_error(destination, capacity) && destination[0])
+      return true;
+  }
+  if (!error_[0]) return false;
+  std::snprintf(destination, capacity, "%s", error_);
+  return destination[0] != 0;
+}
+
 bool ModuleV2::closeMapped() {
   risc_runtime_retention_guard();
   if (!handle_) return true;
