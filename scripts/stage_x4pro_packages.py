@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ['platform_clock_v1', 'x4pro_panel', 'x4pro_buttons', 'x4pro_frontlight',
            'x4pro_sd', 'x4pro_i2c', 'x4pro_gt911', 'x4pro_battery', 'x4pro_rtc']
 
-def stage(sources=SOURCES, board="xteink-x4-pro", output=None):
+def stage(sources=SOURCES, board="xteink-x4-pro", output=None, omitted=()):
     output = output or ROOT / "dist/x4-independent-packages"
     output.mkdir(parents=True, exist_ok=True)
     records = []
@@ -66,11 +66,11 @@ def stage(sources=SOURCES, board="xteink-x4-pro", output=None):
     for record in records:
         shutil.copytree(output/record['id'],sdcard/'Drivers'/record['id'])
         shutil.copyfile(output/record['file'],sdcard/'Packages/Inbox'/record['file'])
-        # The X4 board profile owns the complete physical driver set. Battery
-        # and RTC remain on-demand at activation time, but registering them at
-        # bootstrap keeps board telemetry independent of later generic lazy
-        # discovery changes.
-        selections.append({'manifest':f"Drivers/{record['id']}/manifest.json"})
+        # The X4 default selects its complete physical driver set. The optional
+        # omission hook remains for other board staging callers, but X4 passes
+        # none so battery/RTC cannot silently fall back to lazy discovery.
+        if record['id'] not in omitted:
+            selections.append({'manifest':f"Drivers/{record['id']}/manifest.json"})
     (sdcard/'System/Config/boot.json').write_text(json.dumps(dict(
         board='System/Config/board.json',drivers=selections),indent=2)+'\n')
     (sdcard/'System/Config/board.json').write_text(json.dumps(dict(
