@@ -116,6 +116,50 @@ static inline const risc_storage_volume_api_v1_power_commit *risc_storage_volume
            p->commit_power_down ? p : NULL;
 }
 
+/* Optional zero-handle sleep transaction. The entire terminal-commit prefix is
+ * unchanged. This suffix does NOT make legacy commit_power_down reversible.
+ * prepare_sleep rejects all open files/directories, syncs media, and freezes
+ * admission. commit_sleep unmounts before changing provider-owned rails/pins.
+ * resume_sleep cancels an uncommitted prepare, or checks rail/hold recovery and
+ * performs normal bounded media initialization after commit. No FIL/DIR object
+ * survives a power cycle; callers reopen normally and old tokens stay invalid.
+ *
+ * Keep the provider and dependencies mapped throughout. A false prepare/commit
+ * is not permission to unload or resume I/O: call resume_sleep to establish the
+ * checked outcome. READY means normal usable media; MEDIA_UNAVAILABLE means
+ * rails recovered but media is not usable (ready/I/O fail, refresh may retry).
+ * REFUSED means this invocation made no transition (busy, wrong owner, or a
+ * legacy transaction). RETAINED means uncertain cleanup/ownership: keep every
+ * remaining resource and do not admit I/O, unload, or claim recovery.
+ *
+ * Repeated prepare/commit is allowed in its same new transaction phase; repeated
+ * resume after recovery reports current readiness without cycling the card.
+ * Legacy and new transactions cannot be mixed. No callback may reset the handle
+ * generation counter. Real deep sleep resets and reacquires a fresh provider.
+ */
+#define RISC_STORAGE_SLEEP_TAG 0x53534c31u /* SSL1 */
+enum {
+    RISC_STORAGE_SLEEP_READY = 0,
+    RISC_STORAGE_SLEEP_MEDIA_UNAVAILABLE = 1,
+    RISC_STORAGE_SLEEP_REFUSED = -1,
+    RISC_STORAGE_SLEEP_RETAINED = -2
+};
+typedef struct {
+    risc_storage_volume_api_v1_power_commit terminal;
+    uint32_t sleep_tag, sleep_version;
+    bool (*prepare_sleep)(void *context);
+    bool (*commit_sleep)(void *context);
+    int32_t (*resume_sleep)(void *context);
+} risc_storage_volume_api_v1_sleep;
+static inline const risc_storage_volume_api_v1_sleep *risc_storage_volume_sleep(
+    const risc_storage_volume_api_v1 *api) {
+    if (!risc_storage_volume_power_commit(api) ||
+        api->struct_size < sizeof(risc_storage_volume_api_v1_sleep)) return NULL;
+    const risc_storage_volume_api_v1_sleep *p = (const risc_storage_volume_api_v1_sleep *)api;
+    return p->sleep_tag == RISC_STORAGE_SLEEP_TAG && p->sleep_version == 1u &&
+        p->prepare_sleep && p->commit_sleep && p->resume_sleep ? p : NULL;
+}
+
 static inline const risc_storage_volume_api_v1_power *risc_storage_volume_power(
     const risc_storage_volume_api_v1 *api) {
     return api && api->api_version == RISC_STORAGE_VOLUME_API_V1 &&

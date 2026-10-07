@@ -17,6 +17,12 @@
 #if defined(STORAGE_VOLUME_COMMIT_POWER_DOWN) || defined(STORAGE_VOLUME_TRY_COMMIT_POWER_DOWN)
 #define STORAGE_VOLUME_HAS_POWER_COMMIT
 #endif
+#ifdef STORAGE_VOLUME_TRY_RESUME_POWER_DOWN
+#if !defined(STORAGE_VOLUME_TRY_COMMIT_POWER_DOWN) || !defined(STORAGE_VOLUME_SLEEP_UNSAFE)
+#error "Sleep recovery requires checked commit, resume, and custody hooks"
+#endif
+#define STORAGE_VOLUME_HAS_SLEEP_RECOVERY
+#endif
 #if defined(STORAGE_VOLUME_EXTERNAL_GUARD)
 #define STORAGE_VOLUME_SET_PREPARED(value) (power_down_prepared = (value))
 #else
@@ -43,6 +49,10 @@ static bool operation_busy;
 static bool power_down_prepared;
 #ifdef STORAGE_VOLUME_HAS_POWER_COMMIT
 static bool power_down_committed;
+#endif
+#ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
+enum { SLEEP_ACTIVE, SLEEP_PREPARED, SLEEP_COMMITTED, SLEEP_RETAINED };
+static unsigned sleep_state;
 #endif
 static uint32_t next_generation = 1;
 typedef struct {
@@ -487,6 +497,9 @@ static bool last_error_api(void *context, char *out, size_t capacity) {
 static bool prepare_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
+    if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
+#endif
     if (power_down_prepared) { return leave(); }
     if (io_failed || !transport_idle()) { leave(); return false; }
     for (unsigned i = 0; i < FILE_SLOTS; ++i) {
@@ -503,6 +516,9 @@ static bool prepare_power_down(void *context) {
 static bool cancel_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
+    if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
+#endif
     const bool safe = !io_failed && transport_idle()
 #ifdef STORAGE_VOLUME_HAS_POWER_COMMIT
         && !power_down_committed
@@ -515,6 +531,9 @@ static bool cancel_power_down(void *context) {
 static bool commit_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
+    if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
+#endif
     const bool safe = power_down_prepared && !io_failed && transport_idle();
     if (safe && !power_down_committed) {
 #ifdef STORAGE_VOLUME_TRY_COMMIT_POWER_DOWN
@@ -529,7 +548,93 @@ static bool commit_power_down(void *context) {
     }
     return leave() && safe;
 }
+#ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
+/* This opt-in path never carries a live FatFs object across unmount/rail-off.
+ * The hook runs under the same owner-task operation guard as ordinary I/O.
+ * It must run normal init_card(), check GPIO/hold recovery, and leave mounted /
+ * card_ready accurate even when no card or filesystem is available. */
+static bool sleep_leave(void) {
+    if (leave()) return true;
+    sleep_state = SLEEP_RETAINED;
+    STORAGE_VOLUME_SET_PREPARED(true);
+    return false;
+}
+static bool prepare_sleep(void *context) {
+    (void)context;
+    if (!enter_lifecycle()) return false;
+    if (sleep_state == SLEEP_PREPARED) return sleep_leave();
+    if (sleep_state != SLEEP_ACTIVE || power_down_prepared || power_down_committed ||
+        !started || io_failed || !transport_idle() || has_handles()) {
+        (void)sleep_leave(); return false;
+    }
+    if (card_ready && !sync_card()) {
+        fail("sleep media sync failed");
+        sleep_state = SLEEP_RETAINED;
+        STORAGE_VOLUME_SET_PREPARED(true);
+        (void)sleep_leave(); return false;
+    }
+    sleep_state = SLEEP_PREPARED;
+    STORAGE_VOLUME_SET_PREPARED(true);
+    return sleep_leave();
+}
+static bool commit_sleep(void *context) {
+    (void)context;
+    if (!enter_lifecycle()) return false;
+    if (sleep_state == SLEEP_COMMITTED) return sleep_leave();
+    if (sleep_state != SLEEP_PREPARED || io_failed || !transport_idle() || has_handles()) {
+        (void)sleep_leave(); return false;
+    }
+    /* Mark retention before the first destructive transition. A partial rail
+     * failure must never fall through legacy cancel or normal refresh. */
+    sleep_state = SLEEP_RETAINED;
+    const FRESULT unmounted = f_mount(NULL, "", 0);
+    mounted = card_ready = false;
+    if (unmounted != FR_OK || !STORAGE_VOLUME_TRY_COMMIT_POWER_DOWN()) {
+        fail("sleep power down retained"); (void)sleep_leave(); return false;
+    }
+    sleep_state = SLEEP_COMMITTED;
+    return sleep_leave();
+}
+static int32_t resume_sleep(void *context) {
+    (void)context;
+    /* The custody hook must be safe even for rejected non-owner callers. Do
+     * not inspect transaction state without owning the operation guard. */
+    if (!enter_lifecycle())
+        return STORAGE_VOLUME_SLEEP_UNSAFE() ? RISC_STORAGE_SLEEP_RETAINED : RISC_STORAGE_SLEEP_REFUSED;
+    int32_t result;
+    if (sleep_state == SLEEP_RETAINED || STORAGE_VOLUME_SLEEP_UNSAFE()) {
+        sleep_state = SLEEP_RETAINED;
+        STORAGE_VOLUME_SET_PREPARED(true);
+        result = RISC_STORAGE_SLEEP_RETAINED;
+    } else if (!started || power_down_committed ||
+               (sleep_state == SLEEP_ACTIVE && power_down_prepared)) {
+        result = RISC_STORAGE_SLEEP_REFUSED;
+    } else {
+        if (sleep_state == SLEEP_COMMITTED) {
+            /* No stale filesystem state is reused. Transport initialization is
+             * checked separately from usable/absent media. */
+            mounted = card_ready = io_failed = false;
+            error[0] = 0;
+            if (!STORAGE_VOLUME_TRY_RESUME_POWER_DOWN() || io_failed ||
+                !transport_idle() || STORAGE_VOLUME_SLEEP_UNSAFE())
+                sleep_state = SLEEP_RETAINED;
+        }
+        if (sleep_state == SLEEP_RETAINED || io_failed || !transport_idle()) {
+            sleep_state = SLEEP_RETAINED;
+            STORAGE_VOLUME_SET_PREPARED(true);
+            result = RISC_STORAGE_SLEEP_RETAINED;
+        } else {
+            sleep_state = SLEEP_ACTIVE;
+            STORAGE_VOLUME_SET_PREPARED(false);
+            result = mounted && card_ready ? RISC_STORAGE_SLEEP_READY : RISC_STORAGE_SLEEP_MEDIA_UNAVAILABLE;
+        }
+    }
+    return sleep_leave() ? result : RISC_STORAGE_SLEEP_RETAINED;
+}
+static const risc_storage_volume_api_v1_sleep api = { { {
+#else
 static const risc_storage_volume_api_v1_power_commit api = { {
+#endif
 #else
 static const risc_storage_volume_api_v1_power api = {
 #endif
@@ -542,5 +647,8 @@ static const risc_storage_volume_api_v1_power api = {
   }, prepare_power_down, cancel_power_down
 #ifdef STORAGE_VOLUME_HAS_POWER_COMMIT
   }, RISC_STORAGE_POWER_COMMIT_TAG, 1u, commit_power_down
+#endif
+#ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
+  }, RISC_STORAGE_SLEEP_TAG, 1u, prepare_sleep, commit_sleep, resume_sleep
 #endif
 };

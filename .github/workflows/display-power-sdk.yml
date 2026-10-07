@@ -1,0 +1,24 @@
+name: Sleep lifecycle SDK contracts
+on:
+  push:
+    paths: ['sdk/driver/RiscDisplayOutput*.h', 'sdk/driver/RiscTouchPowerV1.h', 'sdk/driver/RiscStorageVolumeV1.h', 'Drivers/storage_fatfs/volume.c', 'test/display_power/**', 'test/touch_power/**', 'test/storage_volume/**', 'test/run_display_power_contract_test.sh', 'test/run_touch_power_test.sh', '.github/workflows/display-power-sdk.yml']
+  pull_request:
+    paths: ['sdk/driver/RiscDisplayOutput*.h', 'sdk/driver/RiscTouchPowerV1.h', 'sdk/driver/RiscStorageVolumeV1.h', 'Drivers/storage_fatfs/volume.c', 'test/display_power/**', 'test/touch_power/**', 'test/storage_volume/**', 'test/run_display_power_contract_test.sh', 'test/run_touch_power_test.sh', '.github/workflows/display-power-sdk.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Fetch exact legacy comparison source
+        run: git fetch --no-tags --depth=1 origin cccfa3fd9b606998c27adb03665722ea44d5358f
+      - name: Canonical display, touch and storage contracts
+        run: |
+          bash test/run_display_power_contract_test.sh
+          bash test/run_touch_power_test.sh
+          bash test/storage_volume/run_sleep_extension_test.sh
+          python3 test/storage_volume/sleep_legacy_parity_test.py
