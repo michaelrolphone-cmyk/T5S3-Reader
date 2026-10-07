@@ -8,7 +8,7 @@ This document describes the intended default execution and communication model. 
 
 The preferred default is to prioritize useful implementation and completion of a substantial integrated code block over continuous qualification.
 
-Work independently: inspect real code, decide how to implement the intended architecture, wire coherent production paths, commit useful work, and continue to the next substantive task. The owner may collaborate on qualification and patching when available. Routine workflows normally do not need repeated owner approval or micromanagement.
+Work independently: inspect real code, decide how to implement the intended architecture, wire coherent production paths, commit useful work, and continue to the next substantive task. The owner may collaborate on qualification and patching when available. Routine workflows normally proceed without repeated owner approval or micromanagement.
 
 Treat CI as nonblocking feedback where practical. Favor small relevant builds/smoke tests and checks for stable, material invariants or demonstrated defects over fragile exhaustive end-to-end suites for a rapidly changing milestone.
 
@@ -52,8 +52,8 @@ During collaborative qualification, **Release Qualification** is the preferred l
 
 A concise message usually includes changed code, real checks or blockers, and the next task, with one short truthful status label at the end when useful. This reporting convention is a default, not a reason to reject or cancel otherwise valid work.
 
-For a verified GitHub rate limit, report the actual evidence and avoid wasteful repeated API calls until access recovers. Do not infer rate limiting from generic connection failures, and do not infer that a tool cancellation or policy-layer rejection means the user withdrew the underlying task instruction.
+For a verified GitHub rate limit, report the actual evidence and avoid wasteful repeated API calls until access recovers. Treat generic connection failures as their actual failure class rather than presumed rate limiting, and treat tool cancellations or policy-layer rejections as execution-layer results rather than evidence that the user withdrew the underlying task instruction.
 
 ## Precedence
 
-Direct user instructions control the task at hand. Repository workflow documents provide defaults and recommendations. They do not determine whether the user is allowed to request an action or whether an authorized task may proceed.
+Direct user instructions control the task at hand. Repository workflow documents provide defaults and recommendations rather than deciding whether the user is allowed to request an action or whether an assigned task may proceed.
