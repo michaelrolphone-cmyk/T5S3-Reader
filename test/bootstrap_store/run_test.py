@@ -34,7 +34,16 @@ with tempfile.TemporaryDirectory(dir="/tmp") as t:
   p=subprocess.run([str(binary),str(fixture),'xteink-x4-pro'],capture_output=True,text=True,timeout=20)
   assert (p.returncode==0)==ok,p.stdout+p.stderr
   return p.stdout
- print(run(True).strip())
+ x4_output=run(True)
+ for required in (
+  'REGISTER platform-clock-v1 platform.clock',
+  'REGISTER x4pro-i2c i2c.bus',
+  'REGISTER x4pro-battery board.battery',
+  'REGISTER x4pro-rtc rtc.clock',
+  'RESULT 1 registrations=9',
+ ):
+  assert required in x4_output, x4_output
+ print(x4_output.strip())
  boot=fixture/'System/Config/boot.json'; original=boot.read_bytes(); config=json.loads(original)
  config['drivers'][0]['manifest']='../escape.json';boot.write_text(json.dumps(config));run(False);boot.write_bytes(original)
  driver=fixture/'Drivers/x4pro-sd/driver.elf'; data=driver.read_bytes();driver.write_bytes(data[:-1]+bytes([data[-1]^1]));run(False);driver.write_bytes(data)
