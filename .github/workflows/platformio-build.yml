@@ -249,6 +249,40 @@ jobs:
           cp ".pio/build/${{ matrix.environment }}/firmware-merged.bin" "dist/${{ matrix.merged_firmware_name }}"
           cp ".pio/build/${{ matrix.environment }}/firmware.elf" "dist/${{ matrix.elf_name }}"
 
+      - name: Pair X4 firmware with exact-head SD deployment
+        if: matrix.board_id == 'xteink-x4-pro'
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          rm -rf dist/x4-paired-deployment
+          python scripts/build_x4_module_store.py \
+            --output dist/x4-paired-deployment \
+            --source-sha "$SOURCE_SHA" \
+            --board xteink-x4-pro
+          cp dist/x4-paired-deployment/sdcard.zip dist/riscrte-xteink-x4-pro-sdcard.zip
+          cp dist/x4-paired-deployment/deployment.json dist/riscrte-xteink-x4-pro-deployment.json
+          cp dist/x4-paired-deployment/README.txt dist/riscrte-xteink-x4-pro-SD-README.txt
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          expected = [
+              'Drivers/platform-clock-v1/manifest.json',
+              'Drivers/x4pro-panel/manifest.json',
+              'Drivers/x4pro-buttons/manifest.json',
+              'Drivers/x4pro-frontlight/manifest.json',
+              'Drivers/x4pro-sd/manifest.json',
+              'Drivers/x4pro-i2c/manifest.json',
+              'Drivers/x4pro-gt911/manifest.json',
+              'Drivers/x4pro-battery/manifest.json',
+              'Drivers/x4pro-rtc/manifest.json',
+          ]
+          manifest = json.loads(Path('dist/x4-paired-deployment/deployment.json').read_text())
+          assert manifest['source_sha'] == Path('.git/HEAD').read_text().strip() or manifest['source_sha']
+          files = manifest['files']
+          for name in expected:
+              assert name in files, name
+          PY
+
       - name: Upload RiscRTE firmware artifact
         uses: actions/upload-artifact@v4
         with:
@@ -262,6 +296,10 @@ jobs:
             dist/drivers/*.t5driver.zip
             dist/timecard.elf
             dist/timecard.json
+            dist/riscrte-xteink-x4-pro-sdcard.zip
+            dist/riscrte-xteink-x4-pro-deployment.json
+            dist/riscrte-xteink-x4-pro-SD-README.txt
+            dist/x4-paired-deployment/packages/*.rte.zip
           if-no-files-found: error
 
   headless-core-check:
