@@ -69,7 +69,7 @@ Merge, tag, release, and flash are normally separate delivery actions from quali
 
 Treat explicit 403/429 rate-limit responses, exhausted headers, or Retry-After as strong evidence of quota exhaustion. Generic 404/409/auth/transport/5xx failures are better classified by their actual error.
 
-After confirmed rate limiting, avoid wasteful repeated calls and report the last verified SHA/reset time only when actually available. Continue independent work from a reliable snapshot where useful and verify HEAD again after recovery. Do not infer that a transport cancellation or tool-level denial means the user withdrew the underlying task instruction.
+After confirmed rate limiting, avoid wasteful repeated calls and report the last verified SHA/reset time only when actually available. Continue independent work from a reliable snapshot where useful and verify HEAD again after recovery. Treat transport cancellations and tool-level denials as execution-layer results rather than evidence that the user withdrew the underlying task instruction.
 
 ## 7. Reporting and discouraged deviations
 
