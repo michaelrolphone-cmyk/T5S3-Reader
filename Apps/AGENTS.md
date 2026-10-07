@@ -1,11 +1,31 @@
-# Instructions for changes under `Apps/`
+# Recommended guidance for changes under `Apps/`
 
-Read the repository root [`AGENTS.md`](../AGENTS.md), master [RiscRTE platform specification](../docs/RISCRTE_PLATFORM_SPEC.md), and mandatory [Application Version Policy](../docs/APP_VERSION_POLICY.md). These instructions apply to every app in this directory and supplement—not replace—the root instructions.
+Read the repository root [`AGENTS.md`](../AGENTS.md), [RiscRTE platform specification](../docs/RISCRTE_PLATFORM_SPEC.md), and [Application Version Policy](../docs/APP_VERSION_POLICY.md) as the normal context for app work.
 
-**An app modification is not complete without its own version bump.** Before modifying `Apps/<name>.c` or other app source, distributed resource, app-specific build option or installed metadata, inspect the sibling `Apps/<name>.json`, the PR merge-base/target branch and most recently distributed version. Change that manifest's `version` to a **strictly higher `MAJOR.MINOR.PATCH`** within the same PR. A single bump per cumulative unreleased update is sufficient; bump again for the next independently published update. For changes to multiple apps, bump each affected app. Do not rely on a firmware version change, `min_firmware_version`, artifact SHA-256, release tag or catalog regeneration as the app's version. Update `min_firmware_version` only when a genuinely newer firmware API/behavior is required.
+This file records preferred app-development practice. It is advisory rather than an authority boundary. A direct user instruction for a task may intentionally supersede, bypass, or vary any recommendation here.
 
-Before marking app work complete, record `app: old_version -> new_version` for every affected app, run `scripts/build_all_apps.py` or its app-specific builder where available, check output ELF/sidecar/catalog version agreement, and verify no changed published payload is reissued under an existing app identity/version. If CI has not finished, record it as pending rather than claiming success, and continue unrelated U1 work. A docs-only change or change that does not affect a distributable app does not require bumping unrelated apps. Do not silently postpone bumps to release workflows or the repository owner.
+## Versioning recommendations
 
-The build-time changed-app version guard is a specified enforcement requirement, not proof that it already exists. Until verified implemented, perform the comparison manually; missing version increase blocks declaring the app update complete.
+For a distributable app modification, the normal release practice is to give that app its own version increment. Before modifying `Apps/<name>.c`, distributed resources, app-specific build options, or installed metadata, preferably inspect the sibling `Apps/<name>.json`, the PR merge base/target branch, and the most recently distributed version.
 
-**Mandatory long-operation code-completion rule:** Follow [Bounded, Cooperative Long-Running Operations](../docs/COOPERATIVE_BOUNDED_OPERATIONS.md) for app file browsing, download, hashing, ZIP/resource processing, installation and other potentially long loops. Every such state machine must bound memory/work/retries/deadline, avoid repeated full scans, checkpoint by both work and elapsed time, genuinely yield CPU (watchdog reset alone is NOT a yield), report throttled progress and preserve data/recovery state on termination. Treat missing mechanisms as unfinished implementation, not a reason to wait for owner hardware tests or build a comprehensive milestone-specific test harness.
+The preferred convention is to advance the manifest `version` to a strictly higher `MAJOR.MINOR.PATCH` value in the same change set. One increment per cumulative unreleased update is normally sufficient; a later independently published update normally gets another increment. When several apps change, each affected distributable is normally versioned independently.
+
+A firmware version change, `min_firmware_version`, artifact SHA-256, release tag, or catalog regeneration is not normally treated as the app's own version. Prefer changing `min_firmware_version` only when the app genuinely depends on newer firmware API or behavior.
+
+Before treating ordinary app work as complete, the preferred evidence is:
+- record `app: old_version -> new_version` for each affected app;
+- run `scripts/build_all_apps.py` or the relevant app-specific builder where available;
+- check ELF, sidecar, catalog, and manifest version agreement;
+- avoid intentionally republishing changed bytes under an unchanged app identity/version unless the user's task specifically calls for that experiment.
+
+If CI is unfinished, report it as pending rather than as passed and continue other useful work. Docs-only changes and changes that do not alter a distributable app normally do not need unrelated app version increments.
+
+The changed-app version guard is intended as automated enforcement of this default practice. If it is not implemented or cannot be verified, a manual comparison is normally sufficient for development work. A direct user instruction may intentionally bypass normal versioning or publication practice for a test, temporary increment, experiment, recovery, or other task-local reason.
+
+## Long-running operation recommendations
+
+For app file browsing, downloads, hashing, ZIP/resource processing, installation, and other potentially long loops, use [Bounded, Cooperative Long-Running Operations](../docs/COOPERATIVE_BOUNDED_OPERATIONS.md) as the preferred design reference.
+
+Good default state-machine behavior includes bounded memory/work/retries/deadlines, avoiding unnecessary repeated full scans, checkpointing by both work and elapsed time, genuine scheduler cooperation rather than watchdog reset alone, throttled progress reporting, and recovery behavior that preserves prior data where practical.
+
+When those mechanisms are absent from production code, normally treat that as implementation work to improve rather than as a reason to wait for owner hardware testing or build an exhaustive milestone-specific qualification suite.
