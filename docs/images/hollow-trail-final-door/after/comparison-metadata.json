@@ -1,0 +1,277 @@
+{
+  "before": {
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "6c61a79dad9df7dfb184a69684be88c269714e9d7f7e462c2264a86e57c331aa",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "cfd9ee1f64c62804a8eedb2558ddfa18e580e844f37b4e966d9c5004819140e7",
+      "Apps/hollow_trail_city_draw.inc": "c29eef309b67c2cda2dfdfb61a94f3997aa26325ea315f4c51734274756f5747",
+      "Apps/hollow_trail_cutscene.inc": "feb3a7ad011d5c98b907bacf0e47b2c3171f79b7d1f3829d05a8f2765e16386e",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "ea60c6d458749da7400b77d5a1d857585d523447b9f36a54ba54aff0faa36c67",
+      "Apps/hollow_trail_evidence.inc": "a18ea2f5dfcf1799f3f77e44c8a5f0fd66ff262d59568881e9239ba2853b4fcc",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "23fc3ef282c8f23c994b542a4492c991d72a3f0510c19dd966d2acd3905c9779",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "ff680e3e183b1260fec9c7c565c562dc0a76b672855e1bb50360ca9abc6d79f3",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "e15276aa9015f2c74720294489b9bf221cf7e465d24cc7178dc4306c22db8b01",
+      "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+      "Apps/hollow_trail_traversal.inc": "dd162a9bc65dc615a5200bccf785c8dff7a00dc85b4bf43ccaf35bd5124cbe61",
+      "Apps/hollow_trail_traversal_draw.inc": "c5e597995dcd8949eb71845b4b07328ce346871b212a9363cd94de18fd8e6b47",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "captures": [
+      {
+        "view": "exit",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "6a413307cf2e382401d2a33561f99ca0bcbe81e1782443514126480a06072cb8",
+          "mono": "0dd844833b9dbfe4e14302fdc2eedd8d208b0bcbc63364048a019995c510252c"
+        }
+      }
+    ],
+    "fixture": "Identical reached tower exit, black choice, read testimony and all evidence. Then production device A/Right inputs, fixed-step holds and submitted compact notebook pages.",
+    "baseline": "The prior source returns to the forest after that tower exit. No Chapter XI scene existed.",
+    "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap.",
+    "source_commit": "eeafe0ffc7a5baf2c56e77d053d171f43a2b026e",
+    "source_snapshot_sha256": "fe884611c53205d5675daad167553c9c4f53226462e1627253653d0234594438"
+  },
+  "after": {
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "00f8fffbafd39bc65e211c35808d9fdcd9e9fb1b83de853d2655658f06138230",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "f6950ed9d90ffcea42d48edab338e7fcd6f5e4bd422fd7061317bd6a3b282872",
+      "Apps/hollow_trail_city_draw.inc": "c29eef309b67c2cda2dfdfb61a94f3997aa26325ea315f4c51734274756f5747",
+      "Apps/hollow_trail_cutscene.inc": "feb3a7ad011d5c98b907bacf0e47b2c3171f79b7d1f3829d05a8f2765e16386e",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "6e990db77643d500d1c73cc7db37a4883f6a6f99446a0de7cde7b44651cac2f8",
+      "Apps/hollow_trail_evidence.inc": "a18ea2f5dfcf1799f3f77e44c8a5f0fd66ff262d59568881e9239ba2853b4fcc",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_final_door.inc": "c936355bbd0b9dffa7fdd5a35f8039679b9a73d1a83c4a8fa828252e7536a431",
+      "Apps/hollow_trail_final_door_draw.inc": "b36493ff71302a954ede740956f431a09fa1b7003325fd16666fa97a55e4e528",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "23fc3ef282c8f23c994b542a4492c991d72a3f0510c19dd966d2acd3905c9779",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "64b98bb868d6aeee40f20598a065f64100760e591fdcc533017ff180bf77ba32",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "e15276aa9015f2c74720294489b9bf221cf7e465d24cc7178dc4306c22db8b01",
+      "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+      "Apps/hollow_trail_traversal.inc": "e9262720aa9fe7562c58c49bf4b95e0bc9cc3ba8eddc5bf928b5e2557b93ae5e",
+      "Apps/hollow_trail_traversal_draw.inc": "c5e597995dcd8949eb71845b4b07328ce346871b212a9363cd94de18fd8e6b47",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "captures": [
+      {
+        "view": "exit",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "a12823dc64f1a882076c90996af6b79c58ce06eee8c67ee2cc2ab5de5bb5f3fd",
+          "mono": "3aa5498919682513182de5fa0bcc0bdca7fd56fcd8fbe202ea18b59391936c75"
+        }
+      },
+      {
+        "view": "yard-rest",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "fe1e30f9245afbf5cc7bbfca7c3b504285fd4b7869b904ca9875355cc3b08dc3",
+          "mono": "a1f3748a06b3df77575893769b5ed853692b671175cd6fb0081f34133fc01b16"
+        }
+      },
+      {
+        "view": "unwired-street",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "1a568307530f02c6b36350bdda263edfe3c17e6ace955523f2ce5389cce5e09c",
+          "mono": "67cd44a909861cb4fb0f0f9aa28a90c9ec28fdd26fc70e86a057103ae9459e12"
+        }
+      },
+      {
+        "view": "shoes",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "f119e1fa3f4ae6d35ebaa4c8546e64339c8abd4342401e82c96b10c38dd042d4",
+          "mono": "c6711c20f97727d9fc02a7b997ded5aa015b65086bbd7d4f5d8907bde8556d5b"
+        }
+      },
+      {
+        "view": "notebook-first",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "8805c578218c9267371ac62565dce3b6a0c72d2c15dfaf9b0772d050ac9e87fd",
+          "mono": "6dcca523a6e6d209d8739baf7c1f425ab24d6859e79b4d4fc01e1b78d4978212"
+        }
+      },
+      {
+        "view": "notebook-last",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "888ccee4e322202dc512091c7ef83eb0d27fd3d76bc677c743256d91e55d5a57",
+          "mono": "e2bb1c89fb88a8087616bee5611351c1c52ef0df07d5f8c9ab14a1a22bba1921"
+        }
+      },
+      {
+        "view": "grief",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "0324f7bc5de98af5a8deadf039f9f3ec404505d6a3eca229d4a946a11d9602d2",
+          "mono": "d99258a103b074b0b148b50ae0d25d02b1b249abbd426adbc0b469efed41c88e"
+        }
+      },
+      {
+        "view": "upright-shoes",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "e7b1e8be56eb9e4af4501dcd813066187cb23fbce3c480cd9daf6e02c3d73e53",
+          "mono": "68565cc1b3831a1672e4fa98fd9df582800bf1e923cf29fe0d04b2d637df9bfb"
+        }
+      },
+      {
+        "view": "ordinary-knock",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "8f3b144b7cca32fd919cfa9e07032186f5fc4d3fccf944779926c1d4f62f7828",
+          "mono": "9511e63a25644f0bcbdf58b7243a018818bfeca8a6408f18d411642a348812b9"
+        }
+      },
+      {
+        "view": "waiting",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "171fb2f5dd510a4f0da4e373d0b2f383e439b3e8e010a06c77bb8a49bcb5c34a",
+          "mono": "87cc3a11d18989f951742e9fb1aa067770af6ad8ce8fa50e37fb4d0053b64fdd"
+        }
+      },
+      {
+        "view": "waiting-later",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "171fb2f5dd510a4f0da4e373d0b2f383e439b3e8e010a06c77bb8a49bcb5c34a",
+          "mono": "87cc3a11d18989f951742e9fb1aa067770af6ad8ce8fa50e37fb4d0053b64fdd"
+        }
+      }
+    ],
+    "fixture": "Identical reached tower exit, black choice, read testimony and all evidence. Then production device A/Right inputs, fixed-step holds and submitted compact notebook pages.",
+    "baseline": "The prior source returns to the forest after that tower exit. No Chapter XI scene existed.",
+    "notebook": "Reader service absent: actual built-in compact fallback, with packed 960x540 production bitmap.",
+    "source_commit": "8464abdf6fa513c274ae3b65ef67c90603851474",
+    "source_snapshot_sha256": "19ef51ce66262c1cbef23d3efdcf19491f37516aa9364fc515895070559c1e2e"
+  },
+  "comparisons": [
+    {
+      "format": "gray",
+      "left": "before exit",
+      "right": "after waiting",
+      "lossless_crop_check": true
+    },
+    {
+      "format": "mono",
+      "left": "before exit",
+      "right": "after waiting",
+      "lossless_crop_check": true
+    }
+  ],
+  "caption_verification": {
+    "method": "Only top caption strip changed; every pixel below it remains byte-identical.",
+    "images": [
+      {
+        "file": "after/ending-before-after-mono.png",
+        "unchanged_below_row": 30,
+        "raster_sha256": [
+          "a76b98dbfcee03442eec0f73411d4bffc81260da2a42c6063db07510441a89b4"
+        ]
+      },
+      {
+        "file": "after/ending-before-after.png",
+        "unchanged_below_row": 30,
+        "raster_sha256": [
+          "5a965225684e72fcb42a1caa6c48939e654cef6a03b34d4f4497ade035ab6efa"
+        ]
+      }
+    ]
+  }
+}
