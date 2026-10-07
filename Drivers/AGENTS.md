@@ -36,4 +36,4 @@ Use [Bounded, Cooperative Long-Running Operations](../docs/COOPERATIVE_BOUNDED_O
 
 Good defaults include bounded queues/memory/work/deadlines, avoiding unbounded recursion and repeated full scans, elapsed-time and work checkpoints, genuine scheduler cooperation, throttled observable progress/state changes, and explicit failure/quiescence recovery. Treat `esp_task_wdt_reset()` as watchdog service rather than scheduler yield. Prefer retaining pinned active or unsafe-to-unload providers and dependencies after failed cleanup.
 
-These recommendations describe normal code-completion quality; they are not additional user-approval gates, CI gates, or mandatory intermediate hardware-test gates.
+These recommendations describe normal code-completion quality rather than adding user-approval gates, CI gates, or compulsory intermediate hardware-test gates.
