@@ -20,8 +20,8 @@ ASSOCIATIONS = (ROOT / "src/native/FileAssociationRegistry.cpp").read_text(encod
 
 class ModelViewerContract(unittest.TestCase):
     def test_manifest_and_release_contract(self):
-        self.assertEqual(MANIFEST["version"], "1.2.4")
-        self.assertEqual(MANIFEST["min_firmware_version"], "1.3.29")
+        self.assertEqual(MANIFEST["version"], "1.2.8")
+        self.assertEqual(MANIFEST["min_firmware_version"], "1.3.49")
         self.assertEqual(MANIFEST["file_name"], "model_viewer.elf")
         self.assertEqual(MANIFEST["icon"], "solid:f1b2")
         self.assertEqual(set(MANIFEST["supported_file_types"]), {".obj", ".stl"})
@@ -38,8 +38,10 @@ class ModelViewerContract(unittest.TestCase):
     def test_viewer_requests_display_takeover_and_fast_video(self):
         self.assertIn("app_hardware_takeover", APP)
         self.assertIn("T5_HARDWARE_TAKEOVER_DISPLAY", APP)
-        self.assertIn("t5_video_get_api(T5_VIDEO_API_VERSION)", APP)
-        self.assertIn("T5_VIDEO_FLAG_ONE_IS_BLACK", APP)
+        self.assertIn("display_client_get_api()", APP)
+        self.assertNotIn("t5_video_get_api", APP)
+        self.assertIn({"capability": "display.output", "api": ">=1"}, MANIFEST["requires"])
+        self.assertIn("DISPLAY_CLIENT_ONE_IS_BLACK", APP)
         self.assertIn("g_video->submit(0, g_surface.height)", APP)
 
     def test_file_browser_opens_obj_and_stl_directly_into_viewer(self):

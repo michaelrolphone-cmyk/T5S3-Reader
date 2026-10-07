@@ -4,6 +4,12 @@
 #include <stdlib.h>
 #include "../../Apps/hollow_trail_engine.inc"
 #include "../../Apps/hollow_trail_fps.inc"
+static unsigned full_height_checkpoints,half_height_checkpoints;
+static void observe_production_raster(void) {
+ if(!ht_native_active)return;
+ if(ht_native_foreground_half_y)++half_height_checkpoints;
+ else ++full_height_checkpoints;
+}
 static void fps_tests(void){
  ht_fps_window w;ht_fps_reset(&w,0);
  for(unsigned t=100;t<=10000;t+=100)assert(ht_fps_push(&w,t)==100);
@@ -21,6 +27,56 @@ static void fps_tests(void){
 }
 
 static unsigned hash(const uint8_t *p,int n){unsigned h=2166136261u;while(n--)h=(h^*p++)*16777619u;return h;}
+static void cab_step_plant_tests(uint8_t *mem,uint8_t *bits){
+ /* Novella IV: three leaves on the locomotive's existing iron cab tread.
+  * Check each separate leaf tip in the actual geography pass, including the
+ * half-height native foreground. These regions are bare on the old source. */
+ static const int leaves[3][4]={{132,-27,137,-22},{144,-30,149,-25},{138,-34,143,-29}};
+ uint8_t *without_leaves=malloc(HT_NATIVE_PIXELS/8);assert(without_leaves);
+ for(unsigned mode=0;mode<3;++mode)for(int scale=256;scale<=384;scale+=128){
+  ht_bind(mem);ht_bind_native(mem);memset(&ht,0,sizeof(ht));ht.level=3;ht_spawn(true);
+  ht.camera=560*256;ht.camera_y=40*256;ht_world_scale=scale;
+  ht_native_active=mode!=0;ht_native_foreground_half_y=mode==2;
+  ht_scene=mode?ht_native_a:ht_scene_low;
+  int raster=mode?2:1,width=HT_W*raster;
+  size_t bytes=mode?HT_NATIVE_PIXELS:HT_PIXELS;
+  memset(ht_scene,0,bytes);ht_game retained=ht;ht_scene_geography(&ht);
+  assert(!memcmp(&ht,&retained,sizeof(ht)));
+  for(unsigned leaf=0;leaf<3;++leaf){
+   int left=ht_project_x(640-560+leaves[leaf][0])*raster;
+   int right=ht_project_x(640-560+leaves[leaf][2])*raster;
+   int top=ht_project_y(208-40+leaves[leaf][1])*raster;
+   int bottom=ht_project_y(208-40+leaves[leaf][3])*raster;
+   unsigned pixels=0;
+   for(int y=top;y<=bottom;++y)for(int x=left;x<=right;++x)
+    pixels+=ht_scene[y*width+x]==96;
+   assert(pixels>0);
+  }
+  /* The stem is grounded directly on the existing upper tread. */
+  int root_x=ht_project_x(640-560+139)*raster,root_y=ht_project_y(208-40-16)*raster;
+  assert(ht_scene[root_y*width+root_x]==116);
+  ht_native_foreground_half_y=false;
+  ht_pack_mono(bits,HT_NATIVE_W/8);
+  /* Replace only leaf fill with iron tone. Each separate tip must make a
+   * visible difference after the production 1-bit packer, not just in gray. */
+  for(size_t i=0;i<bytes;++i)if(ht_scene[i]==96)ht_scene[i]=175;
+  ht_pack_mono(without_leaves,HT_NATIVE_W/8);
+  for(unsigned leaf=0;leaf<3;++leaf){
+   int left=ht_project_x(640-560+leaves[leaf][0])*2;
+   int right=ht_project_x(640-560+leaves[leaf][2])*2;
+   int top=ht_project_y(208-40+leaves[leaf][1])*2;
+   int bottom=ht_project_y(208-40+leaves[leaf][3])*2;
+   unsigned changed=0;
+   for(int y=top;y<=bottom;++y)for(int x=left;x<=right;++x){
+    int at=y*(HT_NATIVE_W/8)+x/8;
+    changed+=((bits[at]^without_leaves[at])&(0x80u>>(x&7)))!=0;
+   }
+   assert(changed>0);
+  }
+ }
+ free(without_leaves);
+ ht_bind(mem);ht_bind_native(mem);
+}
 static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
  static const uint8_t rank[8][8]={
   {41,8,52,7,45,15,47,4},{18,35,27,60,28,55,19,57},
@@ -74,7 +130,9 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
  ht_bind(mem);ht_bind_native(mem);ht_camera_mode=HT_CAMERA_NATIVE;ht.level=0;ht_spawn(true);
  ht.camera=733*256;ht.x=(733+190)*256;ht.vista=256;ht.sway_phase=445;
  ht.rotation_phase=347u<<8;ht.camera_mood=256;
+ ht_service=observe_production_raster;
  ht_render_scene();assert(ht_native_active && !ht_native_foreground_half_y && ht_scene==ht_native_a);
+ assert(full_height_checkpoints && half_height_checkpoints);ht_service=NULL;
  ht_pack_mono(bits,HT_NATIVE_W/8);unsigned first=hash(bits,HT_NATIVE_PIXELS/8);
  ht_render_scene();ht_pack_mono(bits,HT_NATIVE_W/8);
  assert(first==hash(bits,HT_NATIVE_PIXELS/8));
@@ -83,40 +141,41 @@ static void native_resolution_tests(uint8_t *mem,uint8_t *bits){
 }
 
 static const unsigned golden[][2]={
-{2360543007,3475717195},
-{1495675126,1625345009},
-{2831815599,162065936},
-{2605582394,2687180476},
-{2732088604,839803533},
-{1584621681,644133032},
-{4117894193,2324489790},
+{3305791424,2424592664}, /* Reviewed marked tree and grounded sawn roots; other 29 views unchanged. */
+{694281688,980295134}, /* Reviewed physical shutter/sill and interior floor; other 29 pairs unchanged. */
+{2685907447,1969813067},
+{816840540,30581379},
+{3011208540,878481330},
+{1203433882,3648215422},
+{2620597804,2036500297},
 {1863941504,1514272394},
-{2204911086,4228726518},
-{582227583,1868809320},
-{2717753540,3090542688},
-{964370050,4253744583},
-{917024580,3038475468},
-{3474462071,171166433},
-{3002487258,4232295773},
-{3195120497,1780800341},
+{3644739766,32595887},
+{1846896691u,846753261u},
+{3241840614,1097779836},
+{1894069161u,2141184015u}, /* Corrected-map cabin at the existing rail evidence. */
+{2033607303,4272025260},
+{737287855,150225469},
+{2871873071,1039595674}, /* Reviewed waiting awning on the actual marsh bank. */
+{1684780377,2737385310},
 {1477351146,501319504},
-{763693562,1711941138},
-{2793196644,3099533486},
-{4132090450,3488569399},
-{2402901769,1756056000},
-{827783275,353382582},
+{3095071177,861699871},
+{3515373870,2854332469},
+{719806906,1462119617},
+{1326196981,2258384156},
+{1143499482,207677384},
 {3747272453,2052152225},
-{972977160,37785087},
-{2284954042,537261356},
+{512589384,2061789897},
+{413184930,1205470550},
 {1805041436,3386618820},
-{1456183895,3836738019},
-{3393378306,301689537},
+{3469364471,1119496009},
+{4124658611,3847112319},
 {297423422,3292122172},
-{2844184376,1258202743},
+{3021503600,3314516329},
 };
 int main(void){
  fps_tests();
  uint8_t *mem=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*bits=malloc(HT_PIXELS/2);assert(mem&&bits);
+ cab_step_plant_tests(mem,bits);
  for(unsigned ready=0;ready<=HT_OPT_SIMD_ALL;++ready)
   for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
    ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;

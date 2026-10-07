@@ -17,6 +17,7 @@ inline bool isMutableCatalog(const std::string& url) {
       "https://api.github.com/repos/michaelrolphone-cmyk/T5S3-Reader/releases/latest",
       "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/app-catalog.json",
       "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/driver-catalog.json",
+      "https://github.com/michaelrolphone-cmyk/T5S3-Reader/releases/latest/download/package-catalog.json",
   };
   for (const char* candidate : urls)
     if (url.compare(0, length, candidate) == 0) return true;

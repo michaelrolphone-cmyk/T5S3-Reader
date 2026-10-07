@@ -6,9 +6,15 @@ The direction is intended to preserve the story's environmental arc: **domestic 
 
 ## Intro cutscene and gameplay handoff
 
-Before the first player-controlled forest step, the engine plays a timeline-driven introduction using the game renderer rather than video. The cutscene system now has two camera grammars. **Profile** uses the normal side-scroller X/Z composition. **Forward-X** looks down the route's X axis: X is depth, Y is screen-left/right and Z is vertical. Forward-X objects receive integer perspective scaling, distance fog/ink falloff and far-to-near occlusion, allowing characters and scenery to exist in front of or behind one another instead of being flattened into the side view.
+The first cinematic should **linger**. Its current authored duration is about **73 seconds**, not a rapid montage. Text-bearing shots remain on screen for roughly five to seven seconds, and the two tall-grass memory shots each remain for more than seven seconds. The player should have time to read the two lines, stop reading, and still have several seconds left to study the environment and notice small motion.
 
-The authored sequence is: **Forward-X kitchen at the sink -> three distant flashes beyond the fogged window -> Forward-X tall-grass memory with the sister deeper in the grass -> warning variant with the distant upstairs window -> return to the empty kitchen -> packing -> Forward-X departure through the doorway with the protagonist walking away into receding orchard rows -> deliberate cut to profile orchard -> road becoming roots**. Front, back and three-quarter cutscene poses let the same character be staged facing the observer, facing away, or turning through the scene. The final profile cue converges on the live forest camera position and 1.5x intimacy scale before control transfers to the normal chapter-one spawn. All movement inputs remain neutral-gated across that boundary.
+The 1.1.36 increment adds the overnight chair wait and a close caught-thread insert, plus a separate mill-arrival tableau during Chapter I. See [actual implemented progress and remaining scene map](HOLLOW_TRAIL_NOVELLA_ALIGNMENT.md).
+
+The opening still uses **Forward-X** for the kitchen and memory: X is depth, Y is screen-left/right and Z is vertical. Those tableaus must read as finished scenes rather than visualization wireframes. Use filled perspective furniture/architecture, solid character silhouettes, substantial tree anatomy, irregular crown masses, surface wear, condensation, floor seams and botanical detail. Thin limbs are reserved for genuinely thin things such as grass stems, twigs, braids and small metal parts.
+
+After the return to the kitchen and packing, continuity switches directly to the normal **profile** grammar at the house exterior. The protagonist is first seen inside a dark open doorway and walks out through the door. The camera then accompanies her continuously through the garden wall, orchard, ditch and into the road where roots and much larger forest trunks gradually replace domestic scenery. The forest approach must be world-rendered before it reaches the viewport; no tree group or depth layer may be gated on the protagonist crossing an on-screen trigger.
+
+The final cue still converges on the live Chapter I spawn's x-position, camera placement and 1.5x intimacy scale before input is released, with neutral gating preventing held buttons from leaking through the handoff.
 
 ## Effect scale
 

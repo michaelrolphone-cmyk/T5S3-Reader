@@ -1,0 +1,20 @@
+name: Font catalog validation
+on:
+  pull_request:
+    paths:
+      - 'src/native/FontCatalogValidation.h'
+      - 'src/native/NativeFontBridge.cpp'
+      - 'test/native_apps/font_catalog_validation*'
+      - 'test/run_font_catalog_validation_test.sh'
+      - '.github/workflows/font-catalog-validation.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  catalog-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify staged font catalog validation and retry behavior
+        run: bash test/run_font_catalog_validation_test.sh

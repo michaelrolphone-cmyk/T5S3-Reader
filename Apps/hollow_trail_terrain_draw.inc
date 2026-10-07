@@ -61,9 +61,20 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
         }
         return;
     }
+    if(g->level==0 && i==3) {
+        /* The mill's worn floor coats the existing contour. This is material,
+         * not a second contact surface: the legs, feet and scrape use this
+         * same actual ground height. Grass stays outside the broken wall. */
+        for(int wx=ht_max(begin,HT_MILL_SHUTTER_LEFT);wx<ht_min(end,1212);++wx) {
+            int y=ht_surface_at(g,i,wx)-cy;
+            ht_rect(ht_scene,wx-cx,y,1,3,141);
+            if(wx%19==0)ht_rect(ht_scene,wx-cx,y,1,3,191);
+        }
+    }
     /* Unequal tufts and silt/ballast, never the same decorated shelf repeated. */
     for(int at=ht_floor_div(begin-8,5)*5;at<end;at+=5) {
         if(at<l+3 || at>=r-3) continue;
+        if(g->level==0 && i==3 && at>=HT_MILL_SHUTTER_LEFT && at<1212)continue;
         unsigned h=ht_hash((unsigned)at+g->level*137u);
         int top=part==2?flat:ht_surface_at(g,i,at),x=at-cx,y=top-cy;
         if(kind==HT_EARTH || kind==HT_MUD || kind==HT_GARDEN) {
@@ -108,9 +119,14 @@ static void ht_draw_land(const ht_game *g,int i,int part,int l,int r,int flat) {
             if(at<l+12 || at+23>=r || bottom<top+60) continue;
             int x=at-cx,y=top+23-cy;
             if(kind==HT_ROOF || kind==HT_TOWER) {
-                ht_rect(ht_scene,x,y,19,33,200);
-                ht_rect(ht_scene,x+3,y+3,13,25,232);
-                ht_rect(ht_scene,x+8,y+3,2,25,255);
+                /* Novella II: the actual relay's heater return lights the
+                 * lower windows. Only this building changes, only on a real
+                 * solved circuit; the other roofs keep their original ink. */
+                bool restored=g->level==1 && i==9 && g->puzzle.solved;
+                ht_rect(ht_scene,x,y,19,33,restored?149:200);
+                ht_rect(ht_scene,x+3,y+3,13,25,restored?24:232);
+                ht_rect(ht_scene,x+8,y+3,2,25,restored?203:255);
+                if(restored)ht_rect(ht_scene,x+1,y+31,17,2,84);
             } else {
                 ht_limb(ht_scene,x,y,x+35,y+1,0,0,210);
                 ht_limb(ht_scene,x+16,y+1,x+16,y+13,0,0,210);

@@ -1,6 +1,7 @@
 #include "NativeVideoBridge.h"
 #include "NativeVideoGray.h"
 #include "NativeVideoIdle.h"
+#include "NativeVideoStrip.h"
 #include "NativeVideoProfile.h"
 #include "NativeVideoMono.h"
 #include "NativeVideoBootScrub.h"
@@ -187,6 +188,9 @@ size_t g_backbuffer_bytes = kBackbufferBytes;
 size_t g_state_row_bytes = kStateRowBytes;
 size_t g_state_buffer_bytes = kStateBufferBytes;
 uint8_t g_row_active[t5s3_epd::kActiveHeight] = {0};
+NativeVideoBlackStrip<t5s3_epd::kActiveHeight> g_black_strip; // scan-thread owned
+bool g_strip_request=false; // request fields protected by g_buffer_lock
+uint16_t g_strip_y=0,g_strip_height=0;uint8_t g_strip_passes=0;
 
 volatile bool g_running = false;
 volatile bool g_dma_done = true;
@@ -623,8 +627,9 @@ uint8_t *prepare_scan_row(
     return row;
   }
   const bool active = g_row_active[active_row] != 0U;
-  const bool cleanup = !target_changed && nativeVideoIdleRowSelected(active_row, cleanup_phase);
-  if (!active && !cleanup) return g_blank_row;
+  const bool strip = g_black_strip.active(active_row);
+  const bool cleanup = !strip && !target_changed && nativeVideoIdleRowSelected(active_row, cleanup_phase);
+  if (!active && !cleanup && !strip) return g_blank_row;
 
   uint8_t *row = g_dma_buf[dma_index];
   if (active) {
@@ -632,6 +637,13 @@ uint8_t *prepare_scan_row(
     if (build_active_row(frame, active_row, row, target_changed)) ++continuing_rows;
   } else {
     memset(row + kActiveLeftPadBytes, 0, kActiveRowBytes);
+  }
+  if(strip) {
+    const size_t count=g_black_strip.row(active_row,
+        frame+static_cast<size_t>(active_row)*g_source_row_bytes,
+        g_state_buffer+static_cast<size_t>(active_row)*g_state_row_bytes,
+        row+kActiveLeftPadBytes,t5s3_epd::kActiveWidth,g_row_active[active_row]!=0);
+    if(!active) {if(!count)return g_blank_row;++processed_rows;}
   }
   if (cleanup && !target_changed) {
     const size_t count = nativeVideoReinforceIdleRow(
@@ -694,11 +706,14 @@ void scan_task(void *unused) {
     uint32_t submitted_frames = 0;
     uint16_t dirty_start = 0;
     uint16_t dirty_end = 0;
-    bool applied_flip = false;
+    bool applied_flip = false,strip_request=false;
+    uint16_t strip_y=0,strip_height=0;uint8_t strip_passes=0;
     int scrub_step;
 
     portENTER_CRITICAL(&g_buffer_lock);
     scrub_step = g_boot_scrub_step;
+    strip_request=g_strip_request;strip_y=g_strip_y;strip_height=g_strip_height;strip_passes=g_strip_passes;
+    g_strip_request=false;
     ++g_vsync_count;
     if (g_flip_req) {
       g_front_index ^= 1U;
@@ -714,6 +729,8 @@ void scan_task(void *unused) {
     submitted_frames = g_submit_count;
     portEXIT_CRITICAL(&g_buffer_lock);
 
+    g_black_strip.finishScan();
+    if(strip_request)g_black_strip.request(strip_y,strip_height,strip_passes);
     if (applied_flip) {
       mark_rows_active(dirty_start, dirty_end);
     }
@@ -887,6 +904,7 @@ bool epd_video_power_on() {
   memset(g_dma_buf[1], 0x00, kDmaRowBytes);
   memset(g_blank_row, 0x00, kDmaRowBytes);
   memset(g_row_active, 0x00, sizeof(g_row_active));
+  g_black_strip.reset();g_strip_request=false;
   g_drive_pending = false;
   configure_idle_levels();
 
@@ -927,6 +945,7 @@ bool epd_video_start() {
   g_dma_done = true;
   g_running = true;
   memset(g_row_active, 0x00, sizeof(g_row_active));
+  g_black_strip.reset();g_strip_request=false;
   g_drive_pending = false;
 
   const BaseType_t rc = xTaskCreatePinnedToCore(
@@ -1226,6 +1245,17 @@ bool video_scan_stats(t5_video_scan_stats_v1 *out) {
   return out->samples!=0;
 }
 
+bool video_reinforce_black(uint16_t y,uint16_t height,uint8_t passes) {
+  if(passes>2 || (passes && (!height || height>64 || y>=t5s3_epd::kActiveHeight || height>t5s3_epd::kActiveHeight-y)))return false;
+  bool accepted=false;
+  portENTER_CRITICAL(&g_buffer_lock);
+  if(s_video_started && g_running && g_pixel_format==T5_VIDEO_PIXEL_MONO_1BPP_MSB) {
+    g_strip_y=y;g_strip_height=height;g_strip_passes=passes;g_strip_request=true;accepted=true;
+  }
+  portEXIT_CRITICAL(&g_buffer_lock);
+  return accepted;
+}
+
 const t5_video_api_v1 s_api = {
     T5_VIDEO_API_VERSION,
     sizeof(t5_video_api_v1),
@@ -1238,6 +1268,8 @@ const t5_video_api_v1 s_api = {
     video_stop,
     video_start_format,
     video_scan_stats,
+    video_reinforce_black,
+    nativeVideoForceStop,
 };
 }  // namespace
 

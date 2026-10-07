@@ -113,5 +113,5 @@ void RequiredAppActivity::render(RenderLock&&) {
       ? mappedInput.mapLabels("", "", "", "")
       : mappedInput.mapLabels("Back", confirmLabel, "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Balanced);
 }

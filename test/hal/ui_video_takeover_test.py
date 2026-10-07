@@ -17,11 +17,11 @@ using esp_err_t=int;
 static bool s_display_borrowed=false,s_touch_borrowed=false,stop_ok=true;
 static unsigned suspends,resumes,reclaims,restores;
 static struct {int backlightLevel=4;} SETTINGS;
-struct HalDisplay {enum {FULL_REFRESH};};
+enum class DisplayPresentMode { Clean };
 struct Display {
  bool suspendForExternalOwner(){return true;}
  bool resumeFromExternalOwner(){++restores;return true;}
- void requestNextRefresh(int){}
+ void requestNextRefresh(DisplayPresentMode){}
 } display;
 namespace Board {void restoreBacklightLevel(int){}}
 bool nativeTouchAvailable(){return true;}

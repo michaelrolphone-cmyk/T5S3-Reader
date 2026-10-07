@@ -110,9 +110,12 @@ assert "nativeTouchTakeHomePress" in MAPPED
 for old in ("gpio.getTouchTap", "gpio.getTouchHold", "gpio.getTouchSwipe",
             "gpio.wasTouchHomeButtonPressed"):
     assert old not in MAPPED
-setup_start = MAIN.index("void setup()")
-loop_start = MAIN.index("void loop()", setup_start)
-setup = MAIN[setup_start:loop_start]
+# This assertion constrains graphical boot; do not accidentally inspect the
+# separate headless setup and weaken the no-touch-startup contract.
+graphical_main = MAIN.split("#else\n", 1)[1] if MAIN.startswith("#if defined(RISCRTE_PROFILE_HEADLESS)\n") else MAIN
+setup_start = graphical_main.index("void setup()")
+loop_start = graphical_main.index("void loop()", setup_start)
+setup = graphical_main[setup_start:loop_start]
 assert "(void)nativeTouchResume();" not in setup
 update_start = MAPPED.index("void MappedInputManager::update() const")
 update_end = MAPPED.index("bool MappedInputManager::wasAnyPressed()", update_start)

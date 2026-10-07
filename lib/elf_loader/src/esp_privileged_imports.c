@@ -12,8 +12,8 @@
  * Keep this snapshot synchronized with g_esp_libc_elfsyms and strict audits.
  */
 static const char *const s_public_libc[] = {
-    "strerror", "memset", "memcpy", "strlen", "strtod", "strrchr",
-    "strchr", "strcmp", "strtol", "strcspn", "strncat",
+    "strerror", "memset", "memcpy", "memcmp", "strlen", "strtod", "strrchr",
+    "strchr", "strcmp", "strncmp", "strtol", "strcspn", "strncat",
     "puts", "putchar", "fputc", "fputs", "printf", "vfprintf",
     "fprintf", "fwrite", "usleep", "sleep", "exit", "close",
     "malloc", "calloc", "realloc", "free", "clock_gettime", "strftime",
@@ -38,9 +38,10 @@ static bool within(size_t length, uint32_t start, uint32_t size)
 static bool permitted(const char *name)
 {
 #ifdef BOARD_T5S3_PRO
-    /* Single temporary peripheral exception. The manager independently
-     * checks that ONLY i2c-esp32s3-v2 may declare this exact import. */
+    /* Temporary physical backends are scoped by the manager to their exact
+     * installed provider identities before relocation. */
     if (strcmp(name, "risc_fw_i2c_transact_v1") == 0) return true;
+    if (strcmp(name, "t5_video_get_api") == 0) return true;
 #endif
     for (size_t i = 0; i < sizeof(s_public_libc) / sizeof(s_public_libc[0]); ++i)
         if (strcmp(name, s_public_libc[i]) == 0) return true;

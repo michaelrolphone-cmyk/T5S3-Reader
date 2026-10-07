@@ -22,20 +22,28 @@ end = source.index("int GfxRenderer::getSpaceWidth(", begin)
 cleanup += source[begin:end]
 with tempfile.TemporaryDirectory() as temporary:
     root = pathlib.Path(temporary)
-    (root / 'HalDisplay.h').write_text('''#pragma once
-class HalDisplay {
-public:
- static constexpr int DISPLAY_WIDTH=960, DISPLAY_HEIGHT=540,
- VISIBLE_WIDTH=960, VISIBLE_HEIGHT=540, DISPLAY_WIDTH_BYTES=120, BUFFER_SIZE=64800;
- enum RefreshMode { FAST_REFRESH, HALF_REFRESH };
- enum DisplayEffect { NONE };
- bool grayscaleBuffersReady() const { return false; }
-};
-''')
     (root / 'HalStorage.h').write_text('#pragma once\nclass FsFile {};\n')
     (root / 'test.cpp').write_text('''#include <cassert>
 #include <cstdlib>
 #include <GfxRenderer.h>
+class TestSurface final : public DisplaySurface {
+public:
+ bool isReady() const override { assert(false); return false; }
+ DisplaySurfaceInfo getSurfaceInfo() const override { assert(false); return {}; }
+ uint8_t* getFrameBuffer() const override { assert(false); return nullptr; }
+ void clearScreen(uint8_t) const override { assert(false); }
+ void drawImage(const uint8_t*,uint16_t,uint16_t,uint16_t,uint16_t,bool) const override { assert(false); }
+ void drawImageTransparent(const uint8_t*,uint16_t,uint16_t,uint16_t,uint16_t,bool) const override { assert(false); }
+ void displayBuffer(DisplayPresentMode,bool) override { assert(false); }
+ void requestNextRefresh(DisplayPresentMode) override { assert(false); }
+ void requestNextDisplayEffect(DisplayEffect) override { assert(false); }
+ void copyGrayscaleLsbBuffers(const uint8_t*) override { assert(false); }
+ void copyGrayscaleMsbBuffers(const uint8_t*) override { assert(false); }
+ bool captureGrayscaleBaseBuffer(const uint8_t*) override { assert(false); return false; }
+ bool grayscaleBuffersReady() const override { assert(false); return false; }
+ void cleanupGrayscaleBuffers(const uint8_t*) override { assert(false); }
+ void displayGrayBuffer(DisplayPresentMode) override { assert(false); }
+};
 #define LOG_ERR(...) ((void)0)
 static unsigned decompressions=0;
 static const uint8_t ink[]={0x81,0x42};
@@ -58,12 +66,15 @@ public:
 };
 ''' + resolve + cleanup + '''
 int main() {
- HalDisplay display;
+ TestSurface display;
  GfxRenderer host(display);
  FontCacheManager cache;
  host.setFontCacheManager(&cache);
  uint8_t target[64800]={};
  GfxRenderer page(host,target,960,540);
+ assert(page.isInitialized());
+ GfxRenderer invalid(host,target,959,540);
+ assert(!invalid.isInitialized());
  assert(page.getScreenWidth()==960 && page.getScreenHeight()==540);
  assert(page.getFontCacheManager()==nullptr); // Never inherit scan-only mode.
  EpdGlyph glyph{};
@@ -85,7 +96,7 @@ int main() {
     binary = root / 'test'
     subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                     '-fsanitize=address,undefined', '-I'+str(root),
-                    '-I'+str(repo/'lib/GfxRenderer'), '-I'+str(repo/'lib/EpdFont'),
+                    '-I'+str(repo/'lib/GfxRenderer'), '-I'+str(repo/'lib/DisplaySurface'), '-I'+str(repo/'lib/EpdFont'),
                     str(root/'test.cpp'), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], env={**os.environ, 'ASAN_OPTIONS':'detect_leaks=0'}, check=True)
 print('Detached reader: compressed, plain and SD glyph resolution; no scan-mode inheritance PASS')

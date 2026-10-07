@@ -39,14 +39,16 @@ int main(int argc, char** argv) {
   request.requiredOsCpuAbi = 1;
   request.verifiedElfBytes = candidate;
   request.verifiedElfLength = sizeof(candidate);
-  request.signedImports = names;
-  request.signedImportCount = 2;
-  request.authenticatedElfSha256[0] = 0xab;
+  request.declaredImports = names;
+  request.declaredImportCount = 2;
+  request.contentSha256[0] = 0xab;
+  request.packageManifestSha256[0] = 0xcd;
+  request.packageSourceStamp = {3,4,true};
   OwnedNodeV2 owned;
   assert(owned.snapshot(request));
   assert(owned.spec.id != request.id && owned.spec.provides != request.provides);
   assert(owned.spec.requirements != request.requirements);
-  assert(owned.spec.signedImports != request.signedImports);
+  assert(owned.spec.declaredImports != request.declaredImports);
   assert(owned.spec.verifiedElfBytes != request.verifiedElfBytes);
   std::strcpy(privilegedId, "forged");
   std::strcpy(privilegedCap, "cap.forged");
@@ -54,14 +56,18 @@ int main(int argc, char** argv) {
   std::strcpy(firstImport, "faked_import");
   std::strcpy(secondImport, "other_import");
   candidate[0] = 0;
-  request.authenticatedElfSha256[0] = 0;
+  request.contentSha256[0] = 0;
+  request.packageManifestSha256[0] = 0;
+  request.packageSourceStamp = {};
   assert(std::strcmp(owned.spec.id, "physical-provider") == 0);
   assert(std::strcmp(owned.spec.provides, "cap.physical") == 0);
   assert(std::strcmp(owned.spec.requirements[0].capability, "cap.clock") == 0);
-  assert(std::strcmp(owned.spec.signedImports[0], "esp_intr_alloc") == 0);
-  assert(std::strcmp(owned.spec.signedImports[1], "malloc") == 0);
+  assert(std::strcmp(owned.spec.declaredImports[0], "esp_intr_alloc") == 0);
+  assert(std::strcmp(owned.spec.declaredImports[1], "malloc") == 0);
   assert(owned.spec.verifiedElfBytes[0] == 0x7f);
-  assert(owned.spec.authenticatedElfSha256[0] == 0xab);
+  assert(owned.spec.contentSha256[0] == 0xab);
+  assert(owned.spec.packageManifestSha256[0] == 0xcd);
+  assert(owned.spec.packageSourceStamp.mount == 3 && owned.spec.packageSourceStamp.mutation == 4 && owned.spec.packageSourceStamp.quiescent);
 
   // Reject overlong identifiers, paths, imports, and empty/malformed shapes.
   char overlongPath[513]{};
@@ -78,8 +84,8 @@ int main(int argc, char** argv) {
   oversizedPriv.requiredOsCpuAbi = 1;
   oversizedPriv.verifiedElfBytes = candidate;
   oversizedPriv.verifiedElfLength = sizeof(candidate);
-  oversizedPriv.signedImports = oversizedNames;
-  oversizedPriv.signedImportCount = 1;
+  oversizedPriv.declaredImports = oversizedNames;
+  oversizedPriv.declaredImportCount = 1;
   OwnedNodeV2 rejectedImport;
   assert(!rejectedImport.snapshot(oversizedPriv));
   std::puts("Provider ownership: copied ordinary identities and privileged imports, dependencies, digest and ELF snapshot PASS");

@@ -31,7 +31,7 @@ def migrate(source: str) -> str:
     source = section(source, '\nbool installedAppVersionGet(', '\nbool appCatalogDownload(', '''
 namespace {
 constexpr RuntimePackages::PackageRuntimePolicy kCanonicalAppPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
 bool verifiedManagedApp(const char* id, RuntimePackages::Identity& identity,
                         t5_app_manifest_t* manifest = nullptr) {

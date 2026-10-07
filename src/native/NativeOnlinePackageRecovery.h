@@ -3,6 +3,7 @@
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinaryTransaction.h"
+#include "runtime/packages/PackageOrdinarySdTree.h"
 #include <HalStorage.h>
 #include <cstring>
 #include <memory>
@@ -96,6 +97,18 @@ inline bool discardMatchingStage(const std::string& sourceRoot,
       !samePackage(plan.identity, verified) ||
       std::strcmp(plan.identity.version, verified.version) ||
       std::strcmp(plan.identity.artifact, verified.artifact)) return false;
+  if (Storage.exists((std::string(paths.stage) + "/" + kPackageReceiptName).c_str())) {
+    // Receipts are local commit metadata and never compared to source bytes.
+    // Before recognizing one on a prior stage, verify its retained payload and
+    // exact source manifest binding; malformed receipt bytes grant no authority.
+    Identity staged{};
+    if (!verifyOrdinarySdDirectory(paths.stage, policy, resolver, staged) ||
+        !samePackage(plan.identity, staged) || std::strcmp(plan.identity.version, staged.version) ||
+        std::strcmp(plan.identity.artifact, staged.artifact) || plan.identity.payload != staged.payload ||
+        !stagePrefixMatches(sourceRoot + "/" + kOrdinaryManifestName,
+            std::string(paths.stage) + "/" + kOrdinaryManifestName, 4096)) return false;
+    return purgeManagedOrdinarySdDirectory(paths.stage, staged.kind, staged.id);
+  }
   HalFile directory = Storage.open(paths.stage, O_RDONLY);
   if (!directory.isOpen() || !directory.isDirectory()) {
     if (directory.isOpen()) (void)directory.close();
@@ -185,7 +198,7 @@ inline bool discardOwnedInbox(const std::string& root,
 
 // The canonical package stage is also scratch owned by the package manager.
 // Do not compare it to a previous attempt or try to resume it. If it contains
-// only files named by the current plan (plus .package.json), remove it and
+// only files named by the current plan (plus exact manager metadata names), remove it and
 // rebuild the stage from the freshly downloaded source. Any unknown entry
 // leaves the directory untouched and aborts the install.
 inline bool discardOwnedStage(const RuntimePackages::OrdinaryPackagePlan& plan) {
@@ -194,48 +207,8 @@ inline bool discardOwnedStage(const RuntimePackages::OrdinaryPackagePlan& plan) 
   if (!ordinaryTransactionPaths(plan.identity.kind, plan.identity.id, paths)) return false;
   if (!Storage.exists(paths.stage)) return true;
 
-  HalFile directory = Storage.open(paths.stage, O_RDONLY);
-  if (!directory.isOpen() || !directory.isDirectory()) {
-    if (directory.isOpen()) (void)directory.close();
-    return false;
-  }
-
-  bool seen[kMaxPackageEntries]{};
-  bool manifestSeen = false;
-  bool valid = true;
-  for (;;) {
-    HalFile entry = directory.openNextFile();
-    if (!entry.isOpen()) break;
-    char name[128]{};
-    const size_t n = entry.getName(name, sizeof(name));
-    const bool regular = n && n < sizeof(name) && !entry.isDirectory();
-    (void)entry.close();
-    if (!regular) { valid = false; break; }
-
-    if (!std::strcmp(name, kOrdinaryManifestName)) {
-      if (manifestSeen) { valid = false; break; }
-      manifestSeen = true;
-      continue;
-    }
-
-    size_t i = 0;
-    while (i < plan.entryCount && std::strcmp(plan.entries[i].name, name)) ++i;
-    if (i == plan.entryCount || seen[i]) { valid = false; break; }
-    seen[i] = true;
-  }
-
-  const bool closed = directory.close();
-  if (!valid || !closed) return false;
-
-  for (size_t i = 0; i < plan.entryCount; ++i) {
-    if (seen[i] &&
-        !Storage.remove((std::string(paths.stage) + "/" + plan.entries[i].name).c_str()))
-      return false;
-  }
-  if (manifestSeen &&
-      !Storage.remove((std::string(paths.stage) + "/" + kOrdinaryManifestName).c_str()))
-    return false;
-  return Storage.rmdir(paths.stage);
+  OrdinarySdTreeOps ops(paths.stage);
+  return purgeOrdinaryTree(plan, ops, true, true);
 }
 
 } // namespace Recovery

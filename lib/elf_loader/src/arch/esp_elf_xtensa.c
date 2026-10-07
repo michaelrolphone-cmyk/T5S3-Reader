@@ -104,7 +104,7 @@ int esp_elf_arch_relocate(esp_elf_t *elf, const elf32_rela_t *rela,
     ESP_LOGD(TAG, "type: %d, where=%p addr=0x%x offset=0x%x\n",
              ELF_R_TYPE(rela->info), where, (int)addr, (int)rela->offset);
 
-    if (!where) return -EINVAL;
+    if (!where || ((uintptr_t)where & 3u)) return -EINVAL;
 
     switch (ELF_R_TYPE(rela->info)) {
     case R_XTENSA_RELATIVE:

@@ -4,6 +4,7 @@
 #include <Board.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <esp_app_format.h>
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 #include <esp_spi_flash.h>
@@ -167,6 +168,12 @@ Result validateImageFile(const char* sdPath, size_t partitionSize) {
     return Result::BAD_MAGIC;
   }
   const uint8_t segCount = header[1];
+  if (segCount > ESP_IMAGE_MAX_SEGMENTS) {
+    LOG_ERR("FLASH", "validate: segment count %u exceeds %u", static_cast<unsigned>(segCount),
+            static_cast<unsigned>(ESP_IMAGE_MAX_SEGMENTS));
+    file.close();
+    return Result::BAD_SEGMENTS;
+  }
   const bool hashAppended = header[23] != 0;
 
   auto buf = std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[CHUNK]);

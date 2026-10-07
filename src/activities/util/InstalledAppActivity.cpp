@@ -104,5 +104,5 @@ void InstalledAppActivity::render(RenderLock&&) {
   } else {
     renderer.drawCenteredText(UI_10_FONT_ID, y, ("Opening " + displayName + "...").c_str());
   }
-  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Balanced);
 }

@@ -58,7 +58,8 @@ static uint32_t mv_pad_decode(const risc_usb_gamepad_state_v1 *pad, bool xinput)
     /* XInput normalizes B/A to bits 0/1. The tested HID SNES pad exposes
      * A/B as Button 1/2. A is exclusively a held precision modifier here,
      * not a camera-reset action (including when pressed before a direction). */
-    if (pad->buttons & (xinput ? 1u : 2u)) held |= MV_PAD_BACK;
+    /* X backs out; adjacent A/B presses must never exit the viewer. */
+    if (pad->buttons & (xinput ? 8u : 4u)) held |= MV_PAD_BACK;
     if (pad->buttons & (xinput ? 2u : 1u)) held |= MV_PAD_FINE;
     if (pad->buttons & (1u << 4)) held |= MV_PAD_LB;
     if (pad->buttons & (1u << 5)) held |= MV_PAD_RB;

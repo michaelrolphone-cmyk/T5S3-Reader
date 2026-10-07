@@ -65,7 +65,7 @@ t5_sd_firmware_result_t validateSelected() {
   const esp_partition_t* dest = esp_ota_get_next_update_partition(nullptr);
   if (!dest) return T5_SD_FIRMWARE_INVALID;
   if (selectedSize > dest->size) return T5_SD_FIRMWARE_TOO_LARGE;
-  return mapResult(firmware_flash::validateImageFile(selectedPath.c_str(), dest->size));
+  return mapResult(firmware_flash::validateImageFile(path.c_str(), dest->size));
 }
 
 struct ProgressContext {

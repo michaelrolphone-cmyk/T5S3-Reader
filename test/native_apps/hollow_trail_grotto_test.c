@@ -86,8 +86,8 @@ int main(void) {
             }
     /* Original full-frame captures include traversal, water, hull, character,
      * camera transform and vignette. They detect over-aggressive occlusion. */
-    /* 1.1.30 articulated character; the 300 independent grotto rasters above remain exact. */
-    const uint32_t golden[]={0xc8761d8,0xf3c8182b,0xb6eeae83,0x9df0992c,0xf22b40a3,0xa15df06c,0xdad73bb6,0x2a576f8e,0xf6a82f1f,0x9309dd75,};
+    /* 1.1.38 rounded traveler silhouette; the 300 independent grotto rasters above remain exact. */
+    const uint32_t golden[]={0x4193b59b,0xe670fd00,0x9cf989ec,0x80863351,0xaf38cd7d,0xaa4df9eb,0xad3cdfa4,0x6fd7fa3f,0x4acbae46,0xacf8b733,};
     for(unsigned n=0;n<sizeof(cameras)/sizeof(cameras[0]);++n) {
         ht.level=4;ht_spawn(true);ht.camera=cameras[n]*256;ht.camera_y=40*256;
         ht.x=(cameras[n]+190)*256;ht.vista=n%2?256:0;

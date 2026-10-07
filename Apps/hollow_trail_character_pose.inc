@@ -29,6 +29,7 @@ static int ht_person_rung(int world,int top,int offset,int side) {
 static int ht_person_ground(const ht_game *g,int x,int feet) {
     if(!g->grounded || g->traversal.support)return feet;
     int world=x+g->camera/256;
+    if(g->door_stage)return ht_door_ground(world)-g->camera_y/256;
     for(int i=0;i<HT_PLATFORMS;++i)for(int part=0;part<3;++part) {
         int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top))break;
         if(world<l || world>=r)continue;
@@ -47,13 +48,29 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
         p.knee[i]=-f;p.elbow[i]=f;
     }
     const ht_traversal *t=&g->traversal;
+    if(t->mode==HT_FREE && t->push_hint && g->grounded) {
+        /* Render the real contact pose, then halve every displacement from
+         * relaxed stance. A copy keeps this visual hint out of game physics. */
+        ht_game contact=*g;contact.traversal.mode=t->push_hint;
+        contact.traversal.push_hint=0;
+        contact.traversal.forest_push=HT_FOREST_PUSH_STEPS/2;
+        ht_person_pose effort=ht_person_pose_at(x,feet,&contact);
+        p.hip.x+=(effort.hip.x-p.hip.x)/2;p.hip.y+=(effort.hip.y-p.hip.y)/2;
+        p.shoulder.x+=(effort.shoulder.x-p.shoulder.x)/2;p.shoulder.y+=(effort.shoulder.y-p.shoulder.y)/2;
+        for(int i=0;i<2;++i) {
+            p.hand[i].x+=(effort.hand[i].x-p.hand[i].x)/2;p.hand[i].y+=(effort.hand[i].y-p.hand[i].y)/2;
+            p.foot[i].x+=(effort.foot[i].x-p.foot[i].x)/2;p.foot[i].y+=(effort.foot[i].y-p.foot[i].y)/2;
+            p.knee[i]=effort.knee[i];p.elbow[i]=effort.elbow[i];
+        }
+        p.facing=effort.facing;return p;
+    }
     if(t->mode==HT_FREE && !t->forest_push_release) {
         int run=ht_character_run_blend(g),phase=(g->stride/256)%32;
         bool moving=g->grounded && ht_abs(g->vx)>20;
         int compression=g->landing_ticks?ht_min(3,(int)g->landing_ticks*g->landing_strength/20):0;
         int flight=moving?ht_max(0,2-ht_abs(phase%16-8))*run/256:0;
         p.hip.y+=compression-flight;p.shoulder.y+=compression-flight;
-        p.shoulder.x+=f*(1+3*run/256);
+        p.shoulder.x+=f*(2*run/256);
         for(int i=0;i<2;++i) {
             int q=(phase+i*16)%32;
             /* Stance foot travels backward exactly with world displacement.
@@ -74,6 +91,54 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
             p.hand[0]=ht_joint_at(x+f*7,feet-21-rise/2+fall);
             p.hand[1]=ht_joint_at(x-f*6,feet-18-rise/2+fall);
         }
+    } else if(t->mode==HT_WINDOW) {
+        int phase=t->window_phase,q=phase-32,cx=g->camera/256,cy=g->camera_y/256;
+        int contact=ht_max(t->window_touch?t->window_touch+1:0,ht_min(ht_clamp(phase*256/16,0,256),ht_clamp((144-phase)*256/8,0,256)));
+        for(int i=0;i<2;++i) {
+            /* A hand grips a real jamb only while reachable. In the middle
+             * both hands relax while alternating feet stand on the sill;
+             * never slide an imaginary grip through the open aperture. */
+            int shoulder=p.shoulder.x+cx,left=HT_SIGNAL_WINDOW_LEFT+5,right=HT_SIGNAL_WINDOW_RIGHT-5;
+            int jamb=ht_abs(shoulder-left)<ht_abs(shoulder-right)?left:right;
+            int reach=ht_clamp((13-ht_abs(shoulder-jamb))*64,0,256)*contact/256;
+            int hx=jamb-cx,hy=g->y/256-22+i*3-cy;
+            p.hand[i].x+=(hx-p.hand[i].x)*reach/256;
+            p.hand[i].y+=(hy-p.hand[i].y)*reach/256;p.elbow[i]=1;
+            int start=t->window_entry_left/256+(i?2:-2),end=t->window_entry_right/256+(i?2:-2),wx,wy;
+            if(q<40) {
+                wx=ht_shutter_lerp(start,HT_SIGNAL_WINDOW_LEFT+12+i*2,q,i?22:28,i?36:40);
+                wy=ht_shutter_lerp(ht_signal_window_floor(),ht_signal_window_sill(),q,i?10:16,i?22:28);
+            } else if(q<=72) {
+                static const int8_t offset[8]={2,1,1,0,0,-1,0,1};
+                int gait=(q-40+i*4)&7;
+                wx=g->x/256+(i?2:-2)+offset[gait];
+                wy=ht_signal_window_sill()-(gait>=5?(gait==6?2:1):0);
+            } else {
+                wx=ht_shutter_lerp(HT_SIGNAL_WINDOW_RIGHT-12+i*2,end,q,i?80:88,i?96:104);
+                wy=ht_shutter_lerp(ht_signal_window_sill(),ht_signal_window_floor(),q,i?92:104,i?104:112);
+            }
+            p.foot[i]=ht_joint_at(wx-cx,wy-cy);p.knee[i]=-1;
+        }
+    } else if(t->mode==HT_SHUTTER) {
+        int q=t->mill_entry_phase,cx=g->camera/256,cy=g->camera_y/256;
+        int contact=ht_min(ht_clamp(q*256/16,0,256),ht_clamp((96-q)*256/8,0,256));
+        /* Knees lift onto the drawn sill. The hands change jambs only while
+         * crossing, then release onto the original interior floor. */
+        p.hip.y+=3*contact/256;p.shoulder.y+=3*contact/256;
+        for(int i=0;i<2;++i) {
+            int hx=ht_shutter_lerp(HT_MILL_SHUTTER_LEFT+1,HT_MILL_SHUTTER_RIGHT,q,32+i*8,52+i*8)-cx;
+            int hy=HT_MILL_SHUTTER_SILL-11+i*2-cy;
+            p.hand[i].x+=(hx-p.hand[i].x)*contact/256;
+            p.hand[i].y+=(hy-p.hand[i].y)*contact/256;
+            int begin=t->mill_entry_left/256+(i?2:-2),end=t->mill_entry_right/256+(i?2:-2);
+            int sill=HT_MILL_SHUTTER_LEFT+3+i*5;
+            int wx=q<48?ht_shutter_lerp(begin,sill,q,i?26:32,i?38:40):
+                ht_shutter_lerp(sill,end,q,i?72:64,i?82:74);
+            int start=ht_land_height(0,3,begin),finish=ht_land_height(0,3,end);
+            int wy=q<48?ht_shutter_lerp(start,HT_MILL_SHUTTER_SILL,q,i?16:24,i?26:32):
+                ht_shutter_lerp(HT_MILL_SHUTTER_SILL,finish,q,i?82:74,i?88:82);
+            p.foot[i]=ht_joint_at(wx-cx,wy-cy);p.knee[i]=-1;p.elbow[i]=1;
+        }
     } else if(t->mode==HT_PUSH || t->forest_push_release) {
         int load=t->forest_push,release=t->forest_push_release;
         int pulse=load?(int)(g->ticks%20):0;if(pulse>10)pulse=20-pulse;
@@ -91,7 +156,7 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
         int lean=pulling?-side:side,step=ht_abs(v)>24?(g->stride/256)%16:8;
         step=step<8?step-4:12-step;
         int hand=object/256-g->camera/256-side*(t->mode==HT_ROLL?HT_BALL_RADIUS-2:HT_CRATE_HALF);
-        int hy=t->mode==HT_ROLL?t->ball_y/256-g->camera_y/256-4:t->crate_y/256-g->camera_y/256-HT_CRATE_HEIGHT+8;
+        int hy=t->mode==HT_ROLL?t->ball_y/256-g->camera_y/256-4:t->crate_y/256-g->camera_y/256-ht_crate_height(g->level)+(g->level==0?1:8);
         p.facing=side;p.hip=ht_joint_at(x-lean*2,feet-12);
         p.shoulder=ht_joint_at(x+lean*(pulling?5:4),feet-20);
         for(int i=0;i<2;++i) {
@@ -171,21 +236,16 @@ static void ht_person_draw(const ht_person_pose *p) {
     int sx=p->shoulder.x,sy=p->shoulder.y,hx=p->hip.x,hy=p->hip.y,f=p->facing;
     ht_person_leg(p->hip,p->foot[0],p->knee[0],f,235);
     ht_person_arm(p->shoulder,p->hand[0],p->elbow[0],235);
-    /* Shaped jacket: shoulder, chest, waist and slightly uneven hem. */
-    const int ox[8]={-3,1,3,2,3,0,-3,-2};
-    int vx[8],vy[8];
-    const int oy[8]={0,-1,1,4,8,9,8,4};
-    for(int i=0;i<8;++i) {
-        int u=ht_clamp(oy[i],0,8);vx[i]=sx+(hx-sx)*u/8+f*ox[i];vy[i]=sy+(hy-sy)*u/8;
-        if(i==5)++vy[i];
-    }
-    for(int i=1;i<7;++i)ht_triangle(ht_scene,vx[0],vy[0],vx[i],vy[i],vx[i+1],vy[i+1],255);
-    ht_limb(ht_scene,sx,sy,sx+f,sy-3,1,1,255);
-    /* Small profiled head: crown, brow, nose, chin and nape, no glowing eyes. */
-    const int head_x[11]={-2,-1,1,2,2,3,2,1,-1,-2,-2};
-    const int head_y[11]={-5,-7,-7,-6,-5,-4,-4,-2,-2,-3,-5};
-    for(int i=1;i<10;++i)ht_triangle(ht_scene,sx+f*head_x[0],sy+head_y[0],
-        sx+f*head_x[i],sy+head_y[i],sx+f*head_x[i+1],sy+head_y[i+1],255);
+    /* Ordinary coat over a upright torso, with a soft shoulder/hem rather
+     * than pointed lapels. The novella supplies a coat and a carried bag. */
+    ht_limb(ht_scene,sx,sy+1,hx,hy-1,3,3,255);
+    ht_limb(ht_scene,hx-2,hy,hx+2,hy,1,1,255);
+    ht_limb(ht_scene,sx,sy-1,sx,sy-3,1,1,255);
+    /* Rounded crown/nape and a restrained profile. No hat-like point,
+     * jutting beak or glowing face details at this small physical scale. */
+    ht_disk(ht_scene,sx,sy-5,3,255);
+    ht_limb(ht_scene,sx+f*2,sy-5,sx+f*3,sy-4,0,0,255);
+    ht_limb(ht_scene,sx,sy-3,sx+f,sy-2,1,1,255);
     ht_person_leg(p->hip,p->foot[1],p->knee[1],f,255);
     ht_person_arm(p->shoulder,p->hand[1],p->elbow[1],255);
     /* A few subdued clothing seams survive close framing without stippling. */
@@ -196,6 +256,13 @@ static void ht_person_draw(const ht_person_pose *p) {
 }
 static void ht_character_walk(int x,int feet,const ht_game *g) {
     ht_person_pose p=ht_person_pose_at(x,feet,g);ht_person_draw(&p);
+    if(g->traversal.mode==HT_WINDOW && g->traversal.window_touch) {
+        for(int i=0;i<4;++i) {
+            int length=3+i%3,release=255-g->traversal.window_touch-i*42;
+            length-=ht_clamp(release/12,0,length);
+            if(length)ht_limb(ht_scene,p.hand[0].x+i,p.hand[0].y,p.hand[0].x+i,p.hand[0].y-length,0,0,235);
+        }
+    }
 }
 static bool ht_character_instrument(int x,int feet,const ht_game *g) {
     if(g->traversal.mode==HT_FREE)return false;
