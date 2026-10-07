@@ -1,3 +1,4 @@
+#include "runtime/packages/ProviderAbiProfile.h"
 #include "ManagedAppAdmission.h"
 #include <T5ProviderCapabilityApi.h>
 #include <T5AppApi.h>
@@ -111,11 +112,6 @@ bool declaredCapability(const char* capability, uint32_t version) {
 // Refuse ambiguous matches rather than choosing an arbitrary implementation.
 bool findProvider(const char* capability, uint32_t version, char (&id)[64]) {
     id[0] = 0;
-    char expected[120]{};
-    const int n = std::snprintf(expected, sizeof(expected),
-                                "os-cpu-abi=1\nprovides=%s\napi=%lu\n",
-                                capability, static_cast<unsigned long>(version));
-    if (n <= 0 || static_cast<size_t>(n) >= sizeof(expected)) return false;
     const char* roots[] = {"/Drivers", "/Providers", "/Services"};
     for (const char* root : roots) {
         HalFile dir = Storage.open(root, O_RDONLY);
@@ -143,9 +139,11 @@ bool findProvider(const char* capability, uint32_t version, char (&id)[64]) {
             }
             const uint64_t bytes = profile.fileSize64();
             char data[120]{};
-            const bool matching = bytes == static_cast<uint64_t>(n) &&
-                profile.read(data, static_cast<size_t>(bytes)) == n &&
-                std::memcmp(data, expected, static_cast<size_t>(n)) == 0;
+            char declared[64]{};uint32_t revision=0,api=0;
+            const bool matching = bytes>0 && bytes<sizeof(data) &&
+                profile.read(data, static_cast<size_t>(bytes)) == static_cast<int>(bytes) &&
+                RuntimePackages::parseProviderAbiProfile(data,static_cast<size_t>(bytes),revision,declared,api) &&
+                api==version && !std::strcmp(declared,capability);
             (void)profile.close();
             if (!matching) continue;
             if (id[0]) {

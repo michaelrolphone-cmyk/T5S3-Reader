@@ -29,6 +29,10 @@ CONTROLLER_NAMES = ('t5_driver_get', 'start', 'stop', 'quiesce', 'quiesce_host',
 LEGACY_NAMES = ('usbAcquirePort', 'UsbSerialProjection', 'NativeUsbDevices',
                 'nativeUsbDirectStreamClaim', 'nativeUsbProviderAttach', 'nativeUsbClassRead',
                 'nativeUsbClassWrite', 'usb_host_install', 'hcd_port_init')
+X4_DIAGNOSTIC_NAMES = ('x4DiagnosticSetup', 'x4DiagnosticLoop')
+REQUIRED_ENTRYPOINTS = {'controller': 't5_driver_get',
+                        'x4-diagnostic': 'x4DiagnosticSetup(bool)',
+                        'firmware': 't5_serial_port_get_api'}
 
 
 def references(disassembly, read_virtual, objects, functions):
@@ -66,8 +70,9 @@ def references(disassembly, read_virtual, objects, functions):
 
 
 def report(path, objdump, source_head, profile="firmware"):
-    roots = CONTROLLER_NAMES if profile == "controller" else ROOT_NAMES
-    required = "t5_driver_get" if profile == "controller" else "t5_serial_port_get_api"
+    roots = (CONTROLLER_NAMES if profile == "controller" else
+             X4_DIAGNOSTIC_NAMES if profile == "x4-diagnostic" else ROOT_NAMES)
+    required = REQUIRED_ENTRYPOINTS[profile]
     from elftools.elf.elffile import ELFFile
     deadline = time.monotonic() + 120
     if not path.is_file() or not 52 <= path.stat().st_size <= 256 * 1024 * 1024:
@@ -140,6 +145,10 @@ def report(path, objdump, source_head, profile="firmware"):
         source_files = ['Drivers/usb_controller_esp32s3/' + name for name in
                         ('driver.cpp', 'driver_base.cpp', 'HostStartup.h', 'PhyRoute.h',
                          'RoleSwitch.h', 'ClaimReleasePolicy.h', 'manifest.json')]
+    elif profile == 'x4-diagnostic':
+        source_files = ['platformio.ini', 'src/main.cpp', 'src/platform/X4DiagnosticBoot.cpp',
+                        'Drivers/x4pro_panel/driver.c', 'Drivers/x4pro_panel/manifest.json',
+                        'Drivers/x4pro_board/x4pro_mmio.h']
     source_files.append('scripts/report_u1_target_references.py')
     sources = {name: hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in source_files}
     return {'schema': 1, 'profile': profile, 'compiled_checkout': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
@@ -153,7 +162,7 @@ if __name__ == '__main__':
     parser.add_argument('--elf', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--source-head', required=True)
-    parser.add_argument('--profile', choices=('firmware', 'controller'), default='firmware')
+    parser.add_argument('--profile', choices=('firmware', 'controller', 'x4-diagnostic'), default='firmware')
     parser.add_argument('--objdump', type=Path, default=Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home()/'.platformio')) /
                         'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-objdump')
     args = parser.parse_args()

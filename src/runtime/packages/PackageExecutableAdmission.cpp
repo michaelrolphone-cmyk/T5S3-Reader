@@ -127,7 +127,13 @@ bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* e
   std::unique_ptr<char[]> metadata(new (std::nothrow) char[4096]);
   std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
   if (!metadata || !plan) return false;
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalFile file;
+  if (!Storage.openFileForRead("PKG", (std::string(paths.target) + "/" + kOrdinaryManifestName).c_str(), file))
+    return false;
+#else
   HalFile file = Storage.open((std::string(paths.target) + "/" + kOrdinaryManifestName).c_str(), O_RDONLY);
+#endif
   if (!file.isOpen()) return false;
   const uint64_t size = !file.isDirectory() ? file.fileSize64() : 0;
   const bool read =

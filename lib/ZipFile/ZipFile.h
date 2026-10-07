@@ -2,8 +2,10 @@
 #include <HalStorage.h>
 
 #include <deque>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class ZipFile {
  public:
@@ -43,6 +45,31 @@ class ZipFile {
   ZipDetails zipDetails = {0, 0, false};
   std::unordered_map<std::string, FileStatSlim> fileStatSlimCache;
 
+  // Selective metadata is valid only while its original archive handle stays open.
+  struct SelectedFileStat {
+    FileStatSlim stat;
+    uint16_t nameOffset;
+    bool found;
+  };
+  std::unique_ptr<SelectedFileStat[]> selectedFileStats;
+  std::unique_ptr<char[]> selectedFileNames;
+  size_t selectedFileCount = 0;
+
+  // Optional offsets, never an archive-wide name/stat cache. Valid only for
+  // this open handle; exact names and size fields are reread before each hit.
+  struct SizeLookupOffset {
+    uint64_t hash;
+    uint32_t offset;
+    uint32_t next;
+  };
+  std::unique_ptr<SizeLookupOffset[]> sizeLookupOffsets;
+  uint16_t sizeLookupCount = 0;
+  bool sizeLookupEnabled = false;
+  bool sizeLookupWrapped = false;
+  bool sizeLookupAttempted = false;
+  bool prepareSizeLookupOffsets();
+  bool getIndexedInflatedFileSize(const char* filename, size_t* size);
+
   // Cursor for sequential central-dir scanning optimization
   uint32_t lastCentralDirPos = 0;
   bool lastCentralDirPosValid = false;
@@ -60,6 +87,13 @@ class ZipFile {
   bool open();
   bool close();
   bool loadAllFileStatSlims();
+  // Cost-free opt-in: prepare at most once, only after an ordinary lookup wraps.
+  // Sequential-prefix books never allocate or scan unrelated tail members.
+  void enableSizeLookupOffsets() { sizeLookupEnabled = isOpen(); }
+  // Optional, bounded exact-name cache for one explicitly opened archive operation.
+  // Failure leaves ordinary lookup available; close() discards every selected stat.
+  bool cacheSelectedFileStats(const std::vector<std::string>& filenames,
+                             std::string (*normalize)(const std::string&) = nullptr);
   bool getInflatedFileSize(const char* filename, size_t* size);
   bool findFirstBySuffix(const char* suffix, char* filename, size_t capacity, size_t* size);
   // Batch lookup: scan ZIP central dir once and fill sizes for matching targets.

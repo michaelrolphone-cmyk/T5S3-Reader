@@ -10,7 +10,8 @@ namespace DeskClockSleep {
 void run(GfxRenderer& renderer, HalGPIO& input);
 
 // Called before normal firmware/SD/UI initialization. On a retained clock timer
-// wake, initializes only the board, clock and display, paints and sleeps again.
+// wake, initializes only the board, clock and display (using the isolated SD boot
+// reader where providers are external), paints and sleeps again.
 // Returns false for ordinary boots and if timer-resume fails, allowing normal
 // firmware startup. A successful timer-resume never returns.
 bool resumeAfterTimerWake();

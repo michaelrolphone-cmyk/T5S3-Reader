@@ -12,5 +12,7 @@ bool externalPower(bool* connected);
 // Pin the verified ELF before display.deepSleep() deinitializes SD pins.
 // Only use this for the one-way transition into sleep or hard power-off.
 bool prepareShutdown();
+// Cancel only before any pin/rail or BATFET change; retains failures for retry.
+bool cancelShutdown();
 bool shutdown();
 }

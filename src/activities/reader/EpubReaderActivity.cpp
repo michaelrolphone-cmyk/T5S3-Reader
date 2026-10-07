@@ -1300,17 +1300,6 @@ void EpubReaderActivity::addBookmark() {
 
   LOG_DBG("ERS", "Toggle bookmark at spine %d, page %d", currentSpineIndex, currentPage);
 
-  CrossPointPosition position = {currentSpineIndex, currentPage, pageCount};
-  if (currentPage >= 0 && currentPage < pageCount) {
-    const uint16_t paragraphPage =
-        currentPage > 0 ? static_cast<uint16_t>(currentPage - 1) : static_cast<uint16_t>(currentPage);
-    if (const auto pIdx = section->getParagraphIndexForPage(paragraphPage)) {
-      position.paragraphIndex = *pIdx;
-      position.hasParagraphIndex = true;
-    }
-  }
-
-  KOReaderPosition progress = ProgressMapper::toKOReader(epub, position);
   const ProgressRange pageRange = getPageProgressRange(epub, currentSpineIndex, currentPage, pageCount);
 
   const size_t bookmarkCountBeforeToggle = cachedBookmarks.size();
@@ -1324,6 +1313,20 @@ void EpubReaderActivity::addBookmark() {
   if (cachedBookmarks.size() != bookmarkCountBeforeToggle) {
     bookmarkRemoved = true;
   } else {
+    // Removing an existing bookmark needs only its cached identity/range.
+    // Resolve the chapter XPath only when constructing a new bookmark.
+    CrossPointPosition position = {currentSpineIndex, currentPage, pageCount};
+    if (currentPage >= 0 && currentPage < pageCount) {
+      const uint16_t paragraphPage =
+          currentPage > 0 ? static_cast<uint16_t>(currentPage - 1) : static_cast<uint16_t>(currentPage);
+      if (const auto pIdx = section->getParagraphIndexForPage(paragraphPage)) {
+        position.paragraphIndex = *pIdx;
+        position.hasParagraphIndex = true;
+      }
+    }
+
+    KOReaderPosition progress = ProgressMapper::toKOReader(epub, position);
+
     std::string pageText;
     if (currentPage >= 0 && currentPage < pageCount) {
       auto page = section->loadPageFromSectionFile();

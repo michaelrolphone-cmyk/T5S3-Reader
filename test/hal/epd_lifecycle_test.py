@@ -3,7 +3,7 @@ from pathlib import Path
 import sys, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
-from patch_m5gfx_lifecycle import patch_sources
+from patch_m5gfx_lifecycle import patch_sources, patch_power_failure
 fixture=ROOT/'test/fixtures/m5gfx-0.2.20'
 h=(fixture/'Panel_EPD.hpp').read_text(); c=(fixture/'Panel_EPD.cpp').read_text()
 h,c=patch_sources(h,c)
@@ -15,6 +15,9 @@ except RuntimeError:
     pass
 shutdown=c[c.index('  bool Panel_EPD::shutdown('):c.index('  color_depth_t Panel_EPD::setColorDepth')]
 initialize=c[c.index('  bool Panel_EPD::init_intenal('):c.index('  void Panel_EPD::beginTransaction')]
+c=patch_power_failure(c)
+assert patch_power_failure(c)==c
+assert "if (!bus->powerControl(true)) break;" in c
 worker=c[c.index('  void Panel_EPD::task_update'):]
 assert worker.index('bus->endTransaction()') < worker.index('_worker_done.store(true')
 assert worker.index('_worker_done.store(true') < worker.index('vTaskDelete(nullptr)')

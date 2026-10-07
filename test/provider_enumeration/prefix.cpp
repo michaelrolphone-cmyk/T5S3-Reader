@@ -15,7 +15,9 @@
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageCdcSdMigration.h"
 #include "runtime/packages/PackageOrdinaryStage.h"
+#include "runtime/packages/ProviderAbiProfile.h"
 #include "runtime/packages/PackageIdentity.h"
+#include "runtime/packages/InstalledProviderRootScan.h"
 namespace RuntimePackages {
 unsigned inspections = 0;
 bool cdcMigrationPendingOnSd() { return false; } // No CDC lineage in fixture.

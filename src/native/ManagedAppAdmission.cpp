@@ -37,7 +37,12 @@ std::shared_ptr<Admission> current;
 std::mutex admissionMutex;
 bool readMetadata(const std::string& path, size_t maximum, std::string& out, bool& uncertain) {
   out.clear();
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  HalFile file;
+  if (!Storage.openFileForRead("APP", path.c_str(), file)) return false;
+#else
   HalFile file = Storage.open(path.c_str(), O_RDONLY);
+#endif
   if (!file.isOpen()) return false;
   const uint64_t size = !file.isDirectory() ? file.fileSize64() : 0;
   std::unique_ptr<char[]> bytes(size && size <= maximum ? new (std::nothrow) char[static_cast<size_t>(size)] : nullptr);

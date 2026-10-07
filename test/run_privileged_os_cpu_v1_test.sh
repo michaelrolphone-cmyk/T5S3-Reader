@@ -43,3 +43,6 @@ trap 'rm -f "$exe"' EXIT
 python3 test/drivers/privileged_resolver_v1_test.py
 # Exercise the actual production public relocation entry with nested app loads.
 python3 test/drivers/privileged_relocation_entry_v1_test.py
+
+# ABI 2 preserves all v1 tests above and exercises resident worker/cache lifetimes.
+bash test/run_cpu_abi_v2_test.sh

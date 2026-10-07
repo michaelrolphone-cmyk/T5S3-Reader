@@ -191,6 +191,7 @@ class BaseTheme {
   static void drawCenteredTextForRole(const GfxRenderer& renderer, int systemFontId, TextRole role, int y,
                                       const char* text, bool black = true,
                                       EpdFontFamily::Style style = EpdFontFamily::REGULAR);
+  static void drawBatteryUnknown(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight);
   static void drawBatteryOutline(const GfxRenderer& renderer, int x, int y, int battWidth, int rectHeight);
   static void drawBatteryLightningBolt(const GfxRenderer& renderer, int boltX, int boltY);
 };

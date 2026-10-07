@@ -3,6 +3,8 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Utf8.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <algorithm>
 #include <climits>
@@ -42,24 +44,43 @@ inline uint16_t readU16(const uint8_t* p) { return p[0] | (p[1] << 8); }
 inline int16_t readI16(const uint8_t* p) { return static_cast<int16_t>(p[0] | (p[1] << 8)); }
 inline uint32_t readU32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24); }
 
-// Walks a null-terminated UTF-8 string and appends each unique codepoint to
-// codepoints[0..cpCount-1] via O(n²) dedup.  Returns true if the buffer
-// reached maxCount (cap hit), false if all codepoints fit.
-bool collectUniqueCodepoints(const char* text, uint32_t* codepoints, uint32_t& cpCount, uint32_t maxCount) {
+struct CodepointScanProgress {
+  unsigned items = 0;
+  unsigned long lastYieldMs = millis();
+  // Check time after bounded decoded/shifted work; fast warm calls do not
+  // incur a fixed sleep cadence. A single insertion shifts at most4096 words.
+  void step(unsigned work = 1) {
+    items += work;
+    if (items >= 1024) {
+      items = 0;
+      if (millis() - lastYieldMs >= 20) {
+        vTaskDelay(1);
+        lastYieldMs = millis();
+      }
+    }
+  }
+};
+
+// Keep the existing bounded scratch buffer sorted during collection. Repeated
+// characters need logarithmic membership work; only a new distinct codepoint
+// shifts entries (at most maxCount). Admission still stops at the first new
+// codepoint beyond the cap, preserving the same first-seen set.
+bool collectUniqueCodepoints(const char* text, uint32_t* codepoints, uint32_t& cpCount, uint32_t maxCount,
+                             CodepointScanProgress& progress) {
   const unsigned char* p = reinterpret_cast<const unsigned char*>(text);
   while (*p) {
     uint32_t cp = utf8NextCodepoint(&p);
     if (cp == 0) break;
-    bool found = false;
-    for (uint32_t i = 0; i < cpCount; i++) {
-      if (codepoints[i] == cp) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
+    auto* end = codepoints + cpCount;
+    auto* found = std::lower_bound(codepoints, end, cp);
+    if (found == end || *found != cp) {
       if (cpCount >= maxCount) return true;
-      codepoints[cpCount++] = cp;
+      std::move_backward(found, end, end + 1);
+      *found = cp;
+      ++cpCount;
+      progress.step(1 + static_cast<unsigned>(end - found));
+    } else {
+      progress.step();
     }
   }
   return false;
@@ -1259,9 +1280,10 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   }
   uint32_t cpCount = 0;
   bool hitCap = false;
+  CodepointScanProgress progress;
 
   for (auto it = begin; it != end && !hitCap; ++it) {
-    hitCap = collectUniqueCodepoints(asCStr(*it), codepoints, cpCount, MAX_UNIQUE_CODEPOINTS);
+    hitCap = collectUniqueCodepoints(asCStr(*it), codepoints, cpCount, MAX_UNIQUE_CODEPOINTS, progress);
   }
 
   if (includeSpace && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == ' '; }))

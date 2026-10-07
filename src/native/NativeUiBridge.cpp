@@ -2,6 +2,9 @@
 #include <T5UiApi.h>
 
 #include <GfxRenderer.h>
+#include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <algorithm>
 #include <functional>
@@ -10,7 +13,10 @@
 #include <vector>
 
 #include "MappedInputManager.h"
+#include "CrossPointSettings.h"
 #include "NativeAppHost.h"
+#include "NativeTextLayoutCache.h"
+#include "NativeUiBridge.h"
 #include "activities/ActivityManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -28,6 +34,38 @@ struct HitLayout {
 
 HitLayout hitLayout;
 std::unique_ptr<ButtonNavigator> navigator;
+NativeTextLayoutCache textViewCache;
+
+NativeTextLayoutCache::Key textLayoutKey(const GfxRenderer& renderer, int width) {
+  // Resolving a selected SD family may load/retry storage, even when it falls
+  // back to a built-in ID. Never add resolver calls or retain that fallback.
+  if (SETTINGS.sdFontFamilyName[0] != '\0') return {};
+  const int fontId = BaseTheme::resolveTextFontId(UI_10_FONT_ID, TextRole::UserContent);
+  if (renderer.isSdCardFont(fontId)) return {};
+  const auto font = renderer.getFontMap().find(fontId);
+  if (font == renderer.getFontMap().end()) return {};
+  const auto* data = font->second.getData(EpdFontFamily::REGULAR);
+  // SD/lazy fonts can change as glyphs are loaded or storage is remounted.
+  // Their original preparation/measurement/retry path remains authoritative.
+  if (!data || data->glyphMissHandler) return {};
+  return {&renderer, data, renderer.getFontLayoutGeneration(), fontId, width};
+}
+
+struct TextLayoutCopyBudget {
+  uint32_t started = millis(), checkpointAt = started;
+  size_t bytes = 0, items = 0;
+  bool operator()(size_t added) {
+    const uint32_t now = millis();
+    if (static_cast<uint32_t>(now - started) >= 100) return false;
+    bytes += added;
+    if (++items >= 64 || bytes >= 4096 || static_cast<uint32_t>(now - checkpointAt) >= 8) {
+      vTaskDelay(1);
+      checkpointAt = millis();
+      bytes = items = 0;
+    }
+    return static_cast<uint32_t>(millis() - started) < 100;
+  }
+};
 
 const char* safe(const char* value) { return value ? value : ""; }
 
@@ -147,6 +185,7 @@ void renderList(const t5_ui_chrome_t* chrome, const t5_ui_list_row_t* rows, uint
   auto* in = input();
   if (!r || !in || (rowCount && !rows)) return;
 
+  textViewCache.clear();
   r->clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto layout = layoutFor(*r, chrome);
@@ -201,6 +240,7 @@ void renderTable(const t5_ui_chrome_t* chrome, const t5_ui_table_column_t* colum
   auto* in = input();
   if (!r || !in || !columns || columnCount == 0 || columnCount > T5_UI_MAX_COLUMNS || (rowCount && !rows)) return;
 
+  textViewCache.clear();
   r->clearScreen();
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto layout = layoutFor(*r, chrome);
@@ -283,33 +323,41 @@ void renderTextView(const t5_ui_chrome_t* chrome, const char* text, int32_t scro
   const int lineHeight = std::max(1, BaseTheme::getLineHeightForRole(*r, UI_10_FONT_ID, TextRole::UserContent));
   const int visibleLines = std::max(1, (layout.contentBottom - layout.contentTop) / lineHeight);
 
+  const auto key = textLayoutKey(*r, maxWidth);
+  const bool reused = textViewCache.matches(key, safe(text));
   std::vector<std::string> lines;
-  const std::string source = safe(text);
-  size_t start = 0;
-  while (start <= source.size()) {
-    const size_t end = source.find('\n', start);
-    const std::string paragraph = source.substr(start, end == std::string::npos ? std::string::npos : end - start);
-    if (paragraph.empty()) {
-      lines.emplace_back();
-    } else {
-      auto wrapped = BaseTheme::wrappedTextForRole(*r, UI_10_FONT_ID, TextRole::UserContent,
-                                                   paragraph.c_str(), maxWidth, 96);
-      if (wrapped.empty()) lines.push_back(paragraph);
-      else lines.insert(lines.end(), wrapped.begin(), wrapped.end());
+  std::string source;
+  if (!reused) {
+    textViewCache.clear();
+    source = safe(text);
+    size_t start = 0;
+    while (start <= source.size()) {
+      const size_t end = source.find('\n', start);
+      const std::string paragraph = source.substr(start, end == std::string::npos ? std::string::npos : end - start);
+      if (paragraph.empty()) {
+        lines.emplace_back();
+      } else {
+        auto wrapped = BaseTheme::wrappedTextForRole(*r, UI_10_FONT_ID, TextRole::UserContent,
+                                                     paragraph.c_str(), maxWidth, 96);
+        if (wrapped.empty()) lines.push_back(paragraph);
+        else lines.insert(lines.end(), wrapped.begin(), wrapped.end());
+      }
+      if (end == std::string::npos) break;
+      start = end + 1;
     }
-    if (end == std::string::npos) break;
-    start = end + 1;
+    if (source.empty()) lines.clear();
   }
-  if (source.empty()) lines.clear();
 
-  const int maxScroll = std::max(0, static_cast<int>(lines.size()) - visibleLines);
+  const size_t lineCount = reused ? textViewCache.lineCount() : lines.size();
+  const int maxScroll = std::max(0, static_cast<int>(lineCount) - visibleLines);
   const int scroll = std::clamp(scrollFromBottom, 0, maxScroll);
   const int first = maxScroll - scroll;
   int y = layout.contentTop;
-  for (int i = first; i < static_cast<int>(lines.size()) && i < first + visibleLines; ++i) {
-    if (!lines[i].empty()) {
+  for (int i = first; i < static_cast<int>(lineCount) && i < first + visibleLines; ++i) {
+    const char* line = reused ? textViewCache.line(i) : lines[i].c_str();
+    if (line[0]) {
       BaseTheme::drawTextForRole(*r, UI_10_FONT_ID, TextRole::UserContent, layout.safeLeft + layout.padding, y,
-                                 lines[i].c_str());
+                                 line);
     }
     y += lineHeight;
   }
@@ -320,14 +368,19 @@ void renderTextView(const t5_ui_chrome_t* chrome, const char* text, int32_t scro
   hitLayout.rowHeight = lineHeight;
   hitLayout.pageItems = visibleLines;
   hitLayout.pageStart = first;
-  hitLayout.rowCount = static_cast<int>(lines.size());
+  hitLayout.rowCount = static_cast<int>(lineCount);
 
   if (result) {
     result->max_scroll_lines = maxScroll;
-    result->total_lines = static_cast<uint32_t>(lines.size());
+    result->total_lines = static_cast<uint32_t>(lineCount);
     result->visible_lines = static_cast<uint32_t>(visibleLines);
   }
   (void)presentNativeAppUiFrame();
+  // Admit only after the original frame and chrome have been presented, so
+  // optional allocation failure cannot change their existing behavior.
+  if (!reused && key.fontGeneration && key == textLayoutKey(*r, maxWidth)) {
+    (void)textViewCache.store(key, source, lines, TextLayoutCopyBudget{});
+  }
 }
 
 int32_t hitTest(int16_t x, int16_t y) {
@@ -440,8 +493,11 @@ const t5_ui_api_v1 api = {T5_UI_API_VERSION, sizeof(t5_ui_api_v1), renderList, r
                           hitTest, pollEvent, nextIndex, previousIndex, renderTextView, getViewport};
 }  // namespace
 
+void nativeUiResetTextLayout() { textViewCache.clear(); }
+
 extern "C" const t5_ui_api_v1* t5_ui_get_api(uint32_t apiVersion) {
   if (apiVersion != T5_UI_API_VERSION || !active()) return nullptr;
+  nativeUiResetTextLayout();
   auto& in = activityManager.nativeAppInput();
   ButtonNavigator::setMappedInputManager(in);
   navigator = std::make_unique<ButtonNavigator>();

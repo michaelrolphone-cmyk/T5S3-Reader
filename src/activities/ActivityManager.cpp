@@ -7,6 +7,8 @@
 #include "OpdsServerStore.h"
 #include "components/StartupScreen.h"
 #include "native/NativeSerialPortBridge.h"
+#include "native/NativeTouchInput.h"
+#include "native/NativeReaderEntry.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -41,6 +43,7 @@ void ActivityManager::renderTaskLoop() {
     RenderLock lock;
     if (currentActivity) {
       HalPowerManager::Lock powerLock;
+#if !defined(BOARD_XTEINK_X4_PRO)
       // Readiness is the destination's first render after startup/onEnter.
       // Keep the loading worker alive throughout Home or reader preparation.
       if (currentActivity->name != "Boot" && !StartupScreen::finishBoot(renderer)) {
@@ -48,8 +51,13 @@ void ActivityManager::renderTaskLoop() {
         delay(1);
         continue;
       }
+#endif
+      const uint32_t touchEpoch = nativeTouchPresentationEpoch();
       currentActivity->render(std::move(lock));
+      nativeTouchCompleteSurfaceTransition(touchEpoch);
+#if !defined(BOARD_XTEINK_X4_PRO)
       if (currentActivity->name != "Boot") StartupScreen::destinationReady();
+#endif
     }
     TaskHandle_t waiter = nullptr;
     taskENTER_CRITICAL(&waitingTaskMux);
@@ -67,7 +75,10 @@ void ActivityManager::loop() {
   // service immediately before this loop. Do not repeat provider/device work
   // before dispatching captured input.
   bool injectedTouchButtonTap = false;
-  if (currentActivity && !StartupScreen::isLoading()) {
+  // Apply an already-queued transition before dispatching the outgoing
+  // activity again. In particular its finish()/child launch must not replace
+  // a firmware-requested Sleep transition after cooperative ELF unwind.
+  if (pendingAction == PendingAction::None && currentActivity && !StartupScreen::isLoading()) {
     bool activityHandled = false;
     const bool globalMenuAllowed = currentActivity->supportsGlobalMenu();
 
@@ -83,6 +94,7 @@ void ActivityManager::loop() {
       }
     }
 
+    activityHandled = activityHandled || pendingAction != PendingAction::None;
     const auto doSingleHome = [this] {
       if (currentActivity && currentActivity->supportsTouchHomeButton() && currentActivity->name != "Home") {
         currentActivity->onGoHome();
@@ -134,7 +146,37 @@ void ActivityManager::loop() {
     mappedInput.clearInjectedButtonTap();
   }
 
+  // A deferred launch still owns currentActivity. Do not destroy it, replay
+  // input, or apply its pending transitions until the entry ELF is unmapped.
+  if (NativeReaderEntry::pending()) return;
+  finishLoop();
+}
+
+bool ActivityManager::deferNativeAppLoop(Activity* activity) {
+  if (activity != currentActivity.get() || pendingAction != PendingAction::None ||
+      !NativeReaderEntry::deferActivity(activity)) return false;
+  deferredActivity = activity;
+  deferredGeneration = activityGeneration;
+  return true;
+}
+
+bool ActivityManager::resumeNativeAppLoop(Activity* activity) {
+  const bool valid = !NativeReaderEntry::mapped() && activity &&
+      activity == currentActivity.get() && activity == deferredActivity &&
+      activityGeneration == deferredGeneration && pendingAction == PendingAction::None;
+  deferredActivity = nullptr;
+  deferredGeneration = 0;
+  if (!valid) return false;
+  currentActivity->loop();
+  finishLoop();
+  return true;
+}
+
+void ActivityManager::finishLoop() {
   while (pendingAction != PendingAction::None) {
+    ++activityGeneration;
+    deferredActivity = nullptr;
+    deferredGeneration = 0;
     if (pendingAction == PendingAction::Pop) {
       RenderLock lock;
 
@@ -144,8 +186,10 @@ void ActivityManager::loop() {
         continue;
       }
 
+      pendingHomeSingle = false;
       ActivityResult pendingResult = std::move(currentActivity->result);
       exitActivity(lock);
+      nativeTouchBeginSurfaceTransition(true);
       pendingAction = PendingAction::None;
 
       if (stackActivities.empty()) {
@@ -162,8 +206,10 @@ void ActivityManager::loop() {
           LOG_DBG("ACT", "Handling result for popped activity");
           auto handler = std::move(currentActivity->resultHandler);
           currentActivity->resultHandler = nullptr;
+          const uint32_t touchEpoch = nativeTouchPresentationEpoch();
           lock.unlock();
           handler(pendingResult);
+          nativeTouchCompleteSurfaceTransition(touchEpoch);
         }
         if (pendingAction == PendingAction::None) {
           requestUpdate();
@@ -172,6 +218,7 @@ void ActivityManager::loop() {
       }
     } else if (pendingActivity) {
       RenderLock lock;
+      pendingHomeSingle = false;
       if (pendingAction == PendingAction::Replace) {
         exitActivity(lock);
         while (!stackActivities.empty()) {
@@ -186,11 +233,14 @@ void ActivityManager::loop() {
       const auto replaceRefreshMode = pendingReplaceRefreshMode;
       pendingAction = PendingAction::None;
       pendingReplaceRefreshMode = DisplayPresentMode::Clean;
+      nativeTouchBeginSurfaceTransition(true);
       currentActivity = std::move(pendingActivity);
       renderer.requestNextRefresh(transitionAction == PendingAction::Replace ? replaceRefreshMode
                                                                              : DisplayPresentMode::Quality);
+      const uint32_t touchEpoch = nativeTouchPresentationEpoch();
       lock.unlock();
       currentActivity->onEnter();
+      nativeTouchCompleteSurfaceTransition(touchEpoch);
       continue;
     }
   }
@@ -221,8 +271,12 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity,
     pendingActivity = std::move(newActivity);
     pendingAction = PendingAction::Replace;
   } else {
+    nativeTouchBeginSurfaceTransition(true);
+    pendingHomeSingle = false;
     currentActivity = std::move(newActivity);
+    const uint32_t touchEpoch = nativeTouchPresentationEpoch();
     currentActivity->onEnter();
+    nativeTouchCompleteSurfaceTransition(touchEpoch);
   }
 }
 

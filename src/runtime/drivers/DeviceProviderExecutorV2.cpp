@@ -40,7 +40,7 @@ bool DeviceProviderExecutorV2::registerManagerValidated(
     RuntimeProviders::GraphV2& graph, const ManagerProviderCandidateV2& input, bool verifyContents) {
   // A nonnull declaration with count zero denotes an intentionally empty
   // exact import set. The private ELF matcher must find no undefined symbols.
-  if (input.requiredOsCpuAbi != 1 || !input.driverId || !input.provides ||
+  if ((input.requiredOsCpuAbi != 1 && input.requiredOsCpuAbi != 2 && input.requiredOsCpuAbi != 3) || !input.driverId || !input.provides ||
       !input.providesApi || !input.importedSymbols ||
       input.importedSymbolCount > 128 ||
       input.requirementCount > RuntimeProviders::GraphV2::kMaxModules ||
@@ -57,7 +57,7 @@ bool DeviceProviderExecutorV2::registerManagerValidated(
 
   RuntimeProviders::SpecV2 spec{input.driverId, nullptr, input.provides,
       input.providesApi, input.requirements, input.requirementCount};
-  spec.requiredOsCpuAbi = 1;
+  spec.requiredOsCpuAbi = input.requiredOsCpuAbi;
   spec.resourceIdentity = input.resourceIdentity;
   if (input.packageManifestSha256) std::memcpy(spec.packageManifestSha256,input.packageManifestSha256,32);
   spec.packageSourceStamp = input.packageSourceStamp;

@@ -304,6 +304,7 @@ class NativeImageViewerActivity final : public Activity {
         sourcePath(std::move(source)), cookie(requestCookie) {}
   void loop() override {
     if (resumeReturned) { finish(); return; }
+    if (activityManager.deferNativeAppLoop(this)) return;
     if (!ranViewer) {
       ranViewer = true;
       activeSourcePath = sourcePath;

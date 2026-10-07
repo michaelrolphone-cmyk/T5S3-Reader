@@ -62,6 +62,22 @@ void ModuleV2::report(const char* id, const char* stage, int code) {
 #endif
 }
 
+bool ModuleV2::copyProviderError(char* destination, size_t capacity) const {
+  if (!destination || !capacity) return false;
+  destination[0] = 0;
+  if (driver_ && driver_->struct_size >= sizeof(risc_driver_diagnostics_v2)) {
+    const auto* diagnostics = reinterpret_cast<const risc_driver_diagnostics_v2*>(driver_);
+    if (diagnostics->last_error) {
+      const bool copied = diagnostics->last_error(destination, capacity);
+      destination[capacity - 1] = 0;
+      if (copied && destination[0]) return true;
+    }
+  }
+  if (!error_[0]) return false;
+  std::snprintf(destination, capacity, "%s", error_);
+  return destination[0] != 0;
+}
+
 bool ModuleV2::closeMapped() {
   risc_runtime_retention_guard();
   if (!handle_) return true;
@@ -127,7 +143,14 @@ bool ModuleV2::activateMapped(risc_driver_get_v2_fn get, const char* expectedId,
     char detail[112]{};
     if (diagnostics->last_error && diagnostics->last_error(detail, sizeof(detail))) {
       detail[sizeof(detail) - 1] = 0;
-      if (detail[0]) std::snprintf(error_, sizeof(error_), "%s: %s", expectedId, detail);
+      if (detail[0]) {
+        std::snprintf(error_, sizeof(error_), "%s: %s", expectedId, detail);
+        // The driver already supplied this reason; do not perform another
+        // probe/read or replace it with the generic start-rejected message.
+#ifdef ESP_PLATFORM
+        LOG_ERR("PROV", "PROVREF id=%s failure=%s", expectedId, detail);
+#endif
+      }
     }
   }
   if (!error_[0]) report(expectedId, "start rejected; update driver for diagnostics");
@@ -176,12 +199,12 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
                                  const char* expectedCapability,
                                  uint32_t expectedApi,
                                  const risc_provider_dependency_v1* deps,
-                                 size_t count) {
+                                 size_t count, uint32_t osCpuAbi) {
   if (!handle_) error_[0] = 0;
 #ifdef ESP_PLATFORM
   // Nonnull import metadata and an exact zero count is valid for a truly
   // self-contained ELF. The private matcher checks both symbol tables.
-  if (handle_ || !candidateBytes || !contentSha256 || !length ||
+  if ((osCpuAbi != 1 && osCpuAbi != 2 && osCpuAbi != 3) || handle_ || !candidateBytes || !contentSha256 || !length ||
       !declaredImports || declaredImportCount > 128 ||
       length > 8u * 1024u * 1024u ||
       !validRequest(expectedId, expectedCapability, expectedApi, deps, count)) {
@@ -195,6 +218,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   // never import the firmware transport themselves. This runs before mapping.
   bool importsFirmwareI2c = false;
   bool importsFirmwareDisplay = false;
+  unsigned importsFirmwareSpi = 0;
   for (size_t i = 0; i < declaredImportCount; ++i) {
     if (!declaredImports[i]) {
       report(expectedId, "invalid-provider-import");
@@ -204,6 +228,11 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
       importsFirmwareI2c = true;
     if (std::strcmp(declaredImports[i], "t5_video_get_api") == 0)
       importsFirmwareDisplay = true;
+    if (std::strcmp(declaredImports[i], "risc_fw_spi_begin_v1") == 0 ||
+        std::strcmp(declaredImports[i], "risc_fw_spi_select_v1") == 0 ||
+        std::strcmp(declaredImports[i], "risc_fw_spi_transfer_v1") == 0 ||
+        std::strcmp(declaredImports[i], "risc_fw_spi_end_v1") == 0)
+      ++importsFirmwareSpi;
   }
   const bool isFirmwareI2cAdapter =
       std::strcmp(expectedId, "i2c-esp32s3-v2") == 0 &&
@@ -212,10 +241,13 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     report(expectedId, "i2c-firmware-compat-import-policy");
     return false;
   }
-  const bool isDisplayAdapter =
-      std::strcmp(expectedId, "display-epd-video") == 0 &&
-      std::strcmp(expectedCapability, "display.output") == 0 && expectedApi == 1;
-  if (importsFirmwareDisplay != isDisplayAdapter) {
+  const bool isSpiAdapter = std::strcmp(expectedId, "spi-esp32s3-v1") == 0 &&
+      std::strcmp(expectedCapability, "spi.bus") == 0 && expectedApi == 1;
+  if (isSpiAdapter ? importsFirmwareSpi != 4 : importsFirmwareSpi != 0) {
+    report(expectedId, "spi-firmware-compat-import-policy");
+    return false;
+  }
+  if (importsFirmwareDisplay) {
     report(expectedId, "display-firmware-compat-import-policy");
     return false;
   }
@@ -268,7 +300,8 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
     report(expectedId, "elf-handle-oom");
     return false;
   }
-  const int result = esp_elf_relocate_privileged_verified_v1(
+  const int result = (osCpuAbi == 3 ? esp_elf_relocate_privileged_verified_v3 : osCpuAbi == 2 ? esp_elf_relocate_privileged_verified_v2 :
+                      esp_elf_relocate_privileged_verified_v1)(
       image, snapshot, length, declaredImports, declaredImportCount);
   heap_caps_free(snapshot);
   if (result != 0) {
@@ -297,7 +330,7 @@ bool ModuleV2::loadVerifiedBytes(const uint8_t* candidateBytes, size_t length,
   (void)candidateBytes; (void)length; (void)contentSha256;
   (void)declaredImports; (void)declaredImportCount;
   (void)expectedId; (void)expectedCapability; (void)expectedApi;
-  (void)deps; (void)count;
+  (void)deps; (void)count; (void)osCpuAbi;
   return false;
 #endif
 }

@@ -32,3 +32,15 @@ with tempfile.TemporaryDirectory() as temporary:
                     "-o", str(build / "test")], cwd=ROOT, check=True, timeout=60)
     for extra in ([], ["close-failure"]):
         subprocess.run([str(build / "test"), *extra], check=True, timeout=30)
+
+    # Exercise the changed production registration traversal separately from
+    # executable admission, with the same actual HAL failure/ownership model.
+    start = source.index("bool registerCapability(", source.index("bool registerOne("))
+    registration = source[start:source.index("\nbool registerNamedProvider(", start)]
+    cases = (ROOT / "test/provider_enumeration/registration_cases.cpp").read_text()
+    registration_harness = (ROOT / "test/provider_enumeration/prefix.cpp").read_text() + helpers
+    registration_harness += cases.replace("// REGISTRATION_FUNCTION", registration)
+    (build / "registration.cpp").write_text(registration_harness)
+    subprocess.run(["c++", *flags, "-Wno-unused-variable", "lib/hal/HalStorage.cpp", str(build / "registration.cpp"),
+                    "-o", str(build / "registration")], cwd=ROOT, check=True, timeout=60)
+    subprocess.run([str(build / "registration")], check=True, timeout=30)

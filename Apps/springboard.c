@@ -367,9 +367,15 @@ static bool launch(void) {
 __attribute__((visibility("default"))) uint32_t app_hardware_takeover(void) {
     const t5_app_api_v1* host=t5_app_get_api(T5_APP_ABI_VERSION);
     t5_app_frame_t frame={0};
-    return host && host->struct_size>=offsetof(t5_app_api_v1,touch_contact)+sizeof(host->touch_contact) &&
-        host->copy_ui_frame && host->touch_contact && host->copy_ui_frame(NULL,0,&frame)
-        ? T5_HARDWARE_TAKEOVER_DISPLAY|T5_HARDWARE_TAKEOVER_UI_VIDEO : 0;
+    const t5_video_api_v1* video=t5_video_get_api(T5_VIDEO_API_VERSION);
+    // Select animation only when both geometry and the fast provider exist.
+    // Without them retain ordinary display ownership and render static pages.
+    sv_requested = host && host->struct_size>=offsetof(t5_app_api_v1,touch_contact)+sizeof(host->touch_contact) &&
+        host->copy_ui_frame && host->touch_contact && host->copy_ui_frame(NULL,0,&frame) &&
+        frame.width==960 && frame.height==540 && frame.stride_bytes==240 && frame.orientation<=3 &&
+        video && video->struct_size>=offsetof(t5_video_api_v1,start_format)+sizeof(video->start_format) &&
+        video->start_format && video->backbuffer && video->can_submit && video->submit && video->stop;
+    return sv_requested ? T5_HARDWARE_TAKEOVER_DISPLAY|T5_HARDWARE_TAKEOVER_UI_VIDEO : 0;
 }
 
 __attribute__((visibility("default"))) void app_main(void) {

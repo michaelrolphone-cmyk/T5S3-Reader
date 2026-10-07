@@ -43,14 +43,8 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
-  const bool prev = tiltPrev || (usePress ? (input.wasPressed(MappedInputManager::Button::PageBack) ||
-                                             input.wasPressed(MappedInputManager::Button::Left))
-                                          : (input.wasReleased(MappedInputManager::Button::PageBack) ||
-                                             input.wasReleased(MappedInputManager::Button::Left)));
-  const bool next = tiltNext || (usePress ? (input.wasPressed(MappedInputManager::Button::PageForward) ||
-                                             input.wasPressed(MappedInputManager::Button::Right))
-                                          : (input.wasReleased(MappedInputManager::Button::PageForward) ||
-                                             input.wasReleased(MappedInputManager::Button::Right)));
+  const bool prev = tiltPrev || input.wasPageTurnRequested(false, usePress);
+  const bool next = tiltNext || input.wasPageTurnRequested(true, usePress);
   return {prev, next, tiltPrev || tiltNext};
 }
 

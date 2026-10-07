@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 host = (ROOT/'src/native/NativeAppHost.cpp').read_text()
 menu = (ROOT/'src/activities/GlobalMenuActivity.cpp').read_text()
 poll = host[host.index('bool pollInput('):host.index('\nbool poll(t5_app_input_t*')]
-current = host[host.index('Session* current()'):host.index('void beginAppInput(')]
+current = host[host.index('Session* current()'):host.index('int32_t width()')]
 modal = menu[menu.index('GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal('):menu.index('\nvoid GlobalMenuActivity::render(RenderLock&&)')]
 confirm = menu[menu.index('bool modalShutdownConfirmed('):menu.index('\n}  // namespace')]
 prefix = r'''
@@ -67,6 +67,8 @@ struct MappedInputManager {
  void update() { frame={}; if(!script.empty()){frame=script.front();script.pop_front();} }
  bool wasReleased(Button b) {return frame.release==int(b);}
  bool isPressed(Button b) {return b==Button::Power&&power;}
+ bool wasAnyPressed(){return power || frame.home || frame.tap;}
+ bool wasAnyReleased(){return frame.release>=0;}
  bool wasTouchTapped(TouchPoint& p,GfxRenderer&) {p={frame.x,frame.y};return frame.tap;}
  bool wasTouchHomeButtonPressed() {bool h=frame.home;frame.home=false;return h;}
  bool takeTouchHomeButtonPress(unsigned long& t) {if(homes.empty())return false;t=homes.front();homes.pop_front();return true;}
@@ -98,12 +100,17 @@ struct GlobalMenuActivity {
 };
 struct t5_app_input_t {unsigned buttons=0;bool tapped=false;int touch_x=0,touch_y=0;bool exit_requested=false;};
 static int xTaskGetCurrentTaskHandle(){return 1;}
-struct Session {int owner=1;MappedInputManager input;GfxRenderer renderer;bool backExitsApp=false,exiting=false,presenting=false,pendingHomeSingle=false;unsigned long lastHomeEventMs=0;};
+struct Session {std::string launchPath;int owner=1;MappedInputManager input;GfxRenderer renderer;bool backExitsApp=false,exiting=false,presenting=false,pendingHomeSingle=false;unsigned long lastHomeEventMs=0;};
 Session* session; bool homeRequested=false;
 constexpr unsigned long kNativeHomeDoubleClickWindowMs=400;
 
-void beginAppInput(Session&) {}
+void nativeTouchBeginSurfaceTransition(bool=false){}
+void nativeVideoServiceTouchPresentation(){}
 void nativeProviderOwnerTick() {}
+bool serviceIdleSleep(bool){return false;} // These cases cover Home/modal routing; idle has a separate actual-host fixture.
+struct {unsigned buttons=0;} navigationFrame;
+auto& nativeNavigationFrame(){return navigationFrame;}
+bool nativeTouchHadActivity(){return false;}
 '''
 tests = r'''
 using B=MappedInputManager::Button;

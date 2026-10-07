@@ -32,6 +32,9 @@ class MappedInputManager {
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   bool isPressed(Button button) const;
+  // Reader-only direction policy. Provider physical page keys honor the saved
+  // side layout/flip; synthetic taps and semantic navigation are already mapped.
+  bool wasPageTurnRequested(bool forward, bool onPress) const;
   bool wasAnyPressed() const;
   bool wasAnyReleased() const;
   unsigned long getHeldTime() const;

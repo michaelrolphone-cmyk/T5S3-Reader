@@ -58,6 +58,9 @@ jobs:
           python3 test/native_apps/global_home_overlay_behavior_test.py
           python3 test/hal/touch_interrupt_capture_test.py
           python3 test/hal/touch_capture_behavior_test.py
+          python3 test/hal/native_app_focus_test.py
+          python3 test/hal/activity_touch_focus_test.py
+          python3 test/hal/native_video_touch_focus_test.py
 
   package-source-versions:
     if: github.event_name == 'pull_request'
@@ -90,6 +93,11 @@ jobs:
             firmware_name: riscrte-t5s3-pro.bin
             merged_firmware_name: riscrte-t5s3-pro-merged.bin
             elf_name: riscrte-t5s3-pro.elf
+          - environment: xteink-x4-pro
+            board_id: xteink-x4-pro
+            firmware_name: riscrte-xteink-x4-pro.bin
+            merged_firmware_name: riscrte-xteink-x4-pro-merged.bin
+            elf_name: riscrte-xteink-x4-pro.elf
           - environment: lilygo-epd47-s3
             board_id: lilygo-epd47-s3
             firmware_name: riscrte-lilygo-epd47-s3.bin
@@ -120,8 +128,45 @@ jobs:
       - name: Install PlatformIO
         run: python -m pip install platformio==6.1.19 pyelftools==0.32
 
+      - name: Build independent X4 provider packages
+        run: |
+          pio pkg install -e xteink-x4-pro
+          bash scripts/install_x4_provider_toolchain.sh
+          export NATIVE_DRIVER_CC="$RUNNER_TEMP/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc"
+          export RISCRTE_X4_LINK_PROFILE=esp14-no-relax
+          python scripts/build_platform_clock_v1.py
+          python scripts/build_x4pro_drivers.py
+          python scripts/stage_x4pro_packages.py
+          python3 test/bootstrap_store/run_test.py
+          c++ -std=c++17 -Wall -Wextra -Werror -Itest/bootstrap_store/stubs -Ilib/Board -Ilib/Board_X4Pro -Isdk/driver test/bootstrap_store/frontlight_test.cpp lib/Board_X4Pro/BoardX4Pro.cpp -o /tmp/x4-frontlight
+          /tmp/x4-frontlight
+          python3 test/x4pro_provider_link_test.py
+          cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
+          /tmp/x4gpio
+          cc -std=c11 -Wall -Wextra -Werror -I Drivers/x4pro_board \
+            test/x4pro_proto_test.c -o /tmp/x4proto
+          /tmp/x4proto
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_touch_fake -I Drivers/x4pro_board \
+            test/x4pro_gt911_state_test.c Drivers/x4pro_gt911/driver.c -o /tmp/x4touch
+          /tmp/x4touch
+          python3 test/x4pro_boot_isolation_test.py
+          python3 test/x4pro_panel_sequence_test.py
+          python3 test/x4pro_import_match_test.py
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_panel_fake -I Drivers/x4pro_board \
+            test/x4pro_panel_state_test.c Drivers/x4pro_panel/driver.c -o /tmp/x4panel
+          /tmp/x4panel
+          bash test/storage_volume/run_gate_test.sh
+          python3 test/storage_volume/run_test.py
+
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
+
+      - name: Verify provider filesystem through the real app manifest reader
+        run: python3 test/storage_volume/run_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
+
+      - name: Verify app traversal through actual SD and manifest validation
+        if: matrix.board_id == 'xteink-x4-pro'
+        run: python3 test/storage_volume/app_inventory_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
 
       - name: Preserve bounded SDK source-drift diagnostic on build failure
         if: failure()
@@ -137,6 +182,10 @@ jobs:
       - name: Verify actual runtime sidecar parser and owned app admission
         run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
 
+      - name: Verify font catalog scheduler and failure parity on both SD providers
+        if: matrix.board_id == 'xteink-x4-pro'
+        run: python3 test/native_apps/font_catalog_cooperation_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitizers address,undefined
+
       - name: Verify OPDS reload failure and recovery with actual ArduinoJson
         run: python3 test/opds_reload/reload_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitize
 
@@ -146,7 +195,7 @@ jobs:
       - name: Verify actual Arduino HTTP body-loop termination
         run: python3 test/runtime_network/http_client_body_budget_test.py "$HOME/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src/HTTPClient.cpp"
       - name: Record production serial and USB target references
-        run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
+        run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --profile "${{ matrix.board_id == 'xteink-x4-pro' && 'x4-diagnostic' || 'firmware' }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
       - name: Preserve compact target reference evidence
         uses: actions/upload-artifact@v4
         with:
@@ -244,11 +293,30 @@ jobs:
       - name: Verify storage generations and retained inventory
         run: bash test/run_storage_generation_test.sh
 
+      - name: Verify full provider inventory through actual SD and package inspection
+        run: |
+          python3 test/storage_volume/inventory_test.py
+          python3 test/storage_volume/copy_metadata_test.py
+
       - name: Verify lab target and partition guards
         run: python3 -B test/lab/test_esp32_lab.py
 
       - name: Verify boot animation choreography
         run: python3 test/boot_animation_contract_test.py
+
+      - name: Verify X4 boot, panel and button contracts
+        run: |
+          python3 test/x4pro_boot_isolation_test.py
+          python3 test/x4pro_panel_sequence_test.py
+          cc -std=c11 -Wall -Wextra -Werror -Wno-int-to-pointer-cast -I Drivers/x4pro_board -o /tmp/x4gpio test/x4pro_gpio_test.c
+          /tmp/x4gpio
+          cc -std=c11 -Wall -Wextra -Werror -I sdk/driver -I test/x4pro_buttons_fake -I Drivers/x4pro_board \
+            test/x4pro_buttons_state_test.c Drivers/x4pro_buttons/driver.c -o /tmp/x4buttons
+          /tmp/x4buttons
+          python3 test/shared_home_dispatch_test.py
+
+      - name: Verify X4 fine frontlight and provider mutex lifecycle
+        run: bash test/run_x4pro_frontlight_test.sh
 
       - name: Verify Home reading card rendering and cache behavior
         run: python3 test/home_reading_card_test.py
@@ -268,6 +336,9 @@ jobs:
       - name: Run desk clock minute alignment tests
         run: bash test/run_desk_clock_test.sh
 
+      - name: Verify X4 RTC capability and preserved T5 clocks
+        run: bash test/run_x4pro_rtc_test.sh
+
       - name: Run clock sync RTC retry regression
         run: bash test/run_clock_sync_retry_test.sh
 
@@ -286,17 +357,21 @@ jobs:
           bash test/run_wifi_credential_store_fault_test.sh
 
       - name: Run native app launcher tests
-        timeout-minutes: 10
+        # Keep a bounded budget for the combined performance and application suites.
+        timeout-minutes: 20
         run: bash test/run_native_app_test.sh
 
       - name: Verify display abstraction contract
         run: python3 test/native_apps/display_abstraction_contract_test.py
 
-      - name: Exercise display surface metadata validation
+      - name: Exercise display surface and provider adapter contracts
         run: |
           c++ -std=c++17 -Wall -Wextra -Werror -Ilib/DisplaySurface \
             test/display/display_surface_validation_test.cpp -o /tmp/display-surface-validation
           /tmp/display-surface-validation
+          c++ -std=c++17 -Wall -Wextra -Werror -I. -Ilib/DisplaySurface -Isdk/driver \
+            test/display/provider_display_surface_test.cpp -o /tmp/provider-display-surface
+          /tmp/provider-display-surface
 
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh

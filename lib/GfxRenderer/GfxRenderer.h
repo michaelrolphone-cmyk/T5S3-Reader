@@ -47,6 +47,9 @@ class GfxRenderer {
   DisplaySafeInsets safeInsets{};
   std::vector<uint8_t*> bwBufferChunks;
   std::map<int, EpdFontFamily> fontMap;
+  // Zero permanently disables reuse after generation exhaustion.
+  uint64_t fontLayoutGeneration_ = 1;
+  void invalidateFontLayout() { if (fontLayoutGeneration_) ++fontLayoutGeneration_; }
   // Mutable because ensureSdCardFontReady() is const (called from layout code
   // that holds a const GfxRenderer&) but triggers SD card reads and heap
   // allocation inside the SdCardFont objects. Same pragmatic compromise as
@@ -97,15 +100,17 @@ class GfxRenderer {
   // Coupled to avoid dangling SdCardFont* in sdCardFonts_ when callers free
   // the underlying SdCardFont and forget the SD-side unregister.
   void removeFont(int fontId) {
+    invalidateFontLayout();
     fontMap.erase(fontId);
     sdCardFonts_.erase(fontId);
   }
   void setFontCacheManager(FontCacheManager* m) { fontCacheManager_ = m; }
   FontCacheManager* getFontCacheManager() const { return fontCacheManager_; }
   const std::map<int, EpdFontFamily>& getFontMap() const { return fontMap; }
-  void registerSdCardFont(int fontId, SdCardFont* font) { sdCardFonts_[fontId] = font; }
+  uint64_t getFontLayoutGeneration() const { return fontLayoutGeneration_; }
+  void registerSdCardFont(int fontId, SdCardFont* font) { invalidateFontLayout(); sdCardFonts_[fontId] = font; }
   void unregisterSdCardFont(int fontId) { removeFont(fontId); }
-  void clearSdCardFonts() { sdCardFonts_.clear(); }
+  void clearSdCardFonts() { invalidateFontLayout(); sdCardFonts_.clear(); }
   const std::map<int, SdCardFont*>& getSdCardFonts() const { return sdCardFonts_; }
   bool isSdCardFont(int fontId) const { return sdCardFonts_.count(fontId) > 0; }
   // Ensure SD card font glyph data is loaded for the given text. Called from layout code
@@ -125,7 +130,9 @@ class GfxRenderer {
   // Screen ops
   int getScreenWidth() const;
   int getScreenHeight() const;
-  void displayBuffer(DisplayPresentMode refreshMode = DisplayPresentMode::LowLatency) const;
+  // Temporary loading/progress frames cannot admit input to the destination.
+  void displayBuffer(DisplayPresentMode refreshMode = DisplayPresentMode::LowLatency,
+                     bool interactive = true) const;
   void requestNextRefresh(DisplayPresentMode refreshMode = DisplayPresentMode::Quality) const;
   void requestNextDisplayEffect(DisplayEffect effect) const;
   void requestNextPageTurnEffect(bool isForwardTurn) const;
@@ -171,9 +178,30 @@ class GfxRenderer {
   int getSpaceAdvance(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
   /// Returns the kerning adjustment between two adjacent codepoints.
   int getKerning(int fontId, uint32_t leftCp, uint32_t rightCp, EpdFontFamily::Style style) const;
+  // Operation-local EPUB token metrics. Only UTF-8 codepoint boundaries are populated.
+  // False means the caller must retain ordinary measurement (oversized/invalid input,
+  // lazy glyphs or missing SD advances). No font/renderer state is retained or mutated.
+  struct TextPrefixMetrics {
+    static constexpr size_t MAX_BYTES = 200;
+    uint16_t plain[MAX_BYTES + 1];
+    uint16_t hyphenated[MAX_BYTES + 1];
+  };
+  bool getTextPrefixMetrics(int fontId, const std::string& text, TextPrefixMetrics& metrics,
+                            EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
+
   int getTextAdvanceX(int fontId, const char* text, EpdFontFamily::Style style) const;
+  // Optional operation-local fitting for keyboard lines. Evaluates every prefix,
+  // including nonmonotonic kerning/ligatures, without retaining font/text state.
+  // False leaves prefixBytes unchanged: keep the ordinary measurement path for
+  // non-ASCII/oversized input, SD/lazy fonts, timeout, or no nonempty fitting prefix.
+  bool getTextFittingPrefix(int fontId, const char* text, size_t length, int maxWidth,
+                            size_t& prefixBytes, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getFontAscenderSize(int fontId) const;
   int getLineHeight(int fontId) const;
+  // Exact bounded RAM-font prefix for the existing strict-fit ellipsis policy.
+  // False leaves prefixBytes untouched; caller retains its ordinary fallback.
+  bool getTruncationPrefix(int fontId, const std::string& text, int maxWidth, size_t& prefixBytes,
+                           EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   std::string truncatedText(int fontId, const char* text, int maxWidth,
                             EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   /// Word-wrap \p text into at most \p maxLines lines, each no wider than

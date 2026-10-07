@@ -4,6 +4,10 @@
 #include <cstring>
 
 namespace RuntimePackages {
+// Read-only inspection of an installed tree validates declared members only.
+// Unrelated entries are neither trusted nor traversed. Source/stage verification
+// and deletion keep exact ownership.
+enum class OrdinaryCopyMetadata { Strict, InspectInstalled };
 // Store directory prefixes as references into the immutable plan, not a
 // recursive filesystem walk or a 14 KiB path array. At most 16*7 parents.
 struct OrdinaryTreeLayout {
@@ -42,24 +46,31 @@ inline void ordinaryTreeDirectory(const OrdinaryPackagePlan& plan,
 // visit(directory, callback) MUST distinguish read failure from clean EOF,
 // bound enumeration and yield/check deadlines. No unknown directory is entered.
 template<class Ops>
-bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full, bool managedMetadata = false) {
+bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full, bool managedMetadata = false,
+                           OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict) {
   OrdinaryTreeLayout tree{};
   if (!ordinaryTreeLayout(plan, tree)) return false;
   bool files[kMaxPackageEntries]{}, directories[kMaxPackageEntries * (kPackageResourceDepth - 1)]{};
   bool manifest = false, receipt = false;
+  const bool inspectInstalled = full && copyMetadata == OrdinaryCopyMetadata::InspectInstalled;
   size_t items = 0;
   for (size_t scan = 0; scan <= tree.count; ++scan) {
     char parent[128]{};
     if (scan) ordinaryTreeDirectory(plan, tree.directories[scan - 1], parent);
     if (scan && !ops.exists(parent)) { if (full) return false; else continue; }
     if (!ops.visit(parent, [&](const char* basename, bool isDirectory) {
-      if (++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u) || !basename ||
-          std::strchr(basename, '/')) return false;
+      if (!basename || std::strchr(basename, '/') || std::strchr(basename, '\\')) return false;
+      // Installed runtime admission is plan-driven: only declared paths and
+      // manager metadata matter. Extra entries are ignored without opening,
+      // hashing, executing or traversing them. Strict source/stage verification
+      // below still requires an exact tree.
       char path[128]{};
-      const size_t p = std::strlen(parent), n = std::strlen(basename);
-      if (!n || p + (p ? 1 : 0) + n >= sizeof(path)) return false;
+      const size_t p = std::strlen(parent), n = strnlen(basename, sizeof(path));
+      if (!n || p + (p ? 1 : 0) + n >= sizeof(path)) return inspectInstalled;
       if (p) { std::memcpy(path, parent, p); path[p] = '/'; }
       std::memcpy(path + p + (p ? 1 : 0), basename, n + 1);
+      if (!inspectInstalled &&
+          ++items > plan.entryCount + tree.count + (managedMetadata ? 2u : 1u)) return false;
       if (!std::strcmp(path, kOrdinaryManifestName)) {
         if (isDirectory || manifest) return false;
         manifest = true;
@@ -70,7 +81,7 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
         receipt = true;
         return true;
       }
-      if (!safePackageResourcePath(path)) return false;
+      if (!safePackageResourcePath(path)) return inspectInstalled;
       if (isDirectory) {
         for (size_t d = 0; d < tree.count; ++d) {
           const auto& directory = tree.directories[d];
@@ -88,7 +99,7 @@ bool ordinaryTreeInventory(const OrdinaryPackagePlan& plan, Ops& ops, bool full,
           return true;
         }
       }
-      return false;
+      return inspectInstalled;
     })) return false;
   }
   if (!full) return true;

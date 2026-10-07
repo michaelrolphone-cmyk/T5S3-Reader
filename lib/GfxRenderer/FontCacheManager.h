@@ -51,8 +51,8 @@ class FontCacheManager {
 
  private:
   struct RecordedTextEntry {
-    std::string text;
-    uint32_t styleCounts[4] = {};
+    std::string textByStyle[4];
+    uint32_t styleCounts[4] = {};  // Preserve SD-font style-mask collection.
   };
 
   const std::map<int, EpdFontFamily>& fontMap_;

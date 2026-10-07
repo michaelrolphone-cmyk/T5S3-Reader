@@ -108,6 +108,7 @@ class NativeKeyboardActivity final : public Activity {
       return;
     }
     if (!childCompleted) return;
+    if (activityManager.deferNativeAppLoop(this)) return;
     childCompleted = false;
 
     if (resumePath.empty()) {
@@ -166,6 +167,7 @@ class NativeWifiActivity final : public Activity {
       return;
     }
     if (!childCompleted) return;
+    if (activityManager.deferNativeAppLoop(this)) return;
     childCompleted = false;
 
     if (resumePath.empty()) {

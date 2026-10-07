@@ -73,6 +73,26 @@ repeated SD inventory scans each frame. A USB power/connection change, return
 from an app/installer, or wake permits another attempt. Active providers keep
 polling for hotplug. An unsafe/quarantined generation is not silently restarted.
 
+## Optional physical page-key trait
+
+The input.navigation v1 callback prefix is unchanged. A provider may append
+risc_input_navigation_traits_v1 with the NAT1 tag and traits version 1. The
+consumer checks the full suffix size, tag and version before reading the
+physical-page-pair flag. Missing/older/invalid suffixes retain semantic input.
+
+x4pro-buttons 0.1.5 declares LEFT/RIGHT as its physical page-key pair. The
+reader-only query composes Side Button Layout with Flip UI using the existing
+T5 XOR policy. Direct PAGE/UP/DOWN events, synthetic touch/button taps and
+ordinary app/menu LEFT/RIGHT queries are unchanged. Traits follow the currently
+live selected provider; replacement with a semantic controller does not inherit
+an X4 board flag. Disabled or revoked providers expose no physical trait.
+
+This behavior needs firmware 1.3.136 and the matching x4pro-buttons 0.1.5 package.
+Older button packages continue to work with their prior semantic directions;
+new packages keep their original callback prefix and work on older firmware.
+Use the existing safe inactive/offline package-update workflow; no active boot
+provider is force-replaced and no automatic installer is introduced.
+
 ## Ownership and handoff
 
 The firmware consumes transport-neutral

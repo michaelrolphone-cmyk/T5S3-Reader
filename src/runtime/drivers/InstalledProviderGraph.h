@@ -6,6 +6,7 @@
 // Generic firmware-only bridge. No hardware-specific provider interfaces,
 // controller knowledge, or direct peripheral operations belong in this layer.
 // All methods execute on the serialized invocation-owner task.
+namespace RuntimePackages { struct ManagerProviderCandidateV2; }
 namespace RuntimeInstalledProviders {
 struct Lease {
     RuntimeProviders::GrantV2 grant{};
@@ -16,13 +17,18 @@ struct Lease {
 // Exact provider/dependency chains are admitted lazily by acquire().
 // Installs alone do not call this function and do not grant privileges.
 bool prepare();
+// Trusted read-only module-store admission; no runtime hardware starts here.
+bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate,
+                              const char* packageRoot = nullptr);
+// Called only after the isolated SD bootstrap confirms controller release.
+bool finishBootstrapHandoff();
 // Generic owner-loop work; never scans storage or loads a provider.
 void poll();
 // Enumerate verified candidates for one semantic capability and API version.
 // The cursor is opaque: zero starts enumeration; SIZE_MAX reports failure.
 // Rebuilding the metadata snapshot invalidates earlier cursors, including
 // interleaved calls on this same owner task. Restart with zero after failure.
-// Enumeration never activates hardware.
+// The cursor advances across inspected slots and never activates hardware.
 // The identity is copied into caller storage: no graph-owned pointer escapes.
 // The legacy bool conflates exhaustion with invalid/unverified inventory.
 bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
@@ -49,6 +55,9 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
 // Metadata/dependencies use the same ordinary package admission as named apps.
 bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out);
 bool release(Lease* lease);
+// Copied provider diagnostic; serialized owner only, before releasing the
+// live lease. Does not enumerate storage, reacquire, or retry an operation.
+bool copyProviderError(const Lease& lease, char* destination, size_t capacity);
 // Attach only a live exact capability lease to the authenticated app context.
 // Registry rights are revoked when this lease or either context terminates.
 bool attachStream(const Lease&, uint32_t endpoint, uint32_t rights);
@@ -62,4 +71,5 @@ const char* lastError();
 // Refuses destruction while any provider is still granted or not quiescent.
 // An unsuccessful shutdown deliberately retains every ELF and package pin.
 bool shutdown();
+bool drainExcept(const Lease* retained, size_t count);
 }

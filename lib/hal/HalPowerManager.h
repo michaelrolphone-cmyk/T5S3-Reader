@@ -49,6 +49,9 @@ class HalPowerManager {
 
   // Get battery percentage (range 0-100)
   uint16_t getBatteryPercentage() const;
+  // Validity-aware UI access. X4 reads a copied owner-task snapshot only.
+  bool readBatteryPercentage(uint16_t* percentage) const;
+  bool isBatteryCharging() const;
 
   // RAII helper class to manage power saving locks
   // Usage: create an instance of Lock in a scope to disable power saving, for example when running a task that needs

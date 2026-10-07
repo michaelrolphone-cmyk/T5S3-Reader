@@ -37,3 +37,60 @@ Privileged providers must implement `quiesce()`. Failed start/teardown may leave
 Earlier [experimental CI run 35269424152](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/35269424152) passed private resolver tests, USB/I²C PIC ELF builds and audits. [Firmware run 35269424045](https://github.com/michaelrolphone-cmyk/T5S3-Reader/actions/runs/35269424045) passed host tests and LilyGO build while T5S3-Pro post-job cleanup was pending at that check. Later graph, ELF audit and ABI tests must be judged at their own exact current commit; tests/builds do not establish physical acceptance.
 
 Still required: working ordinary manager-to-private-executor handoff without mandatory signatures; valid, bounded ABI/import metadata and exact ELF-byte lifetime; permission/import/ownership mismatch tests; real physical USB/I²C ELF relocation, start/stop and legacy-owner exclusive cutover; VBUS/backfeed/current/role/rail, hubs/replug/duplex and ISR/DMA fault teardown. The removed provider-profile signing experiment supplies no runtime authority or acceptance requirement. Physical ELFs remain diagnostic, unpublished and noninstallable until functional, safety and on-board acceptance is established. Shipping USB/Serial Monitor, `Wire` and charger paths are unchanged.
+
+## ABI 2: independently selected display-worker primitives
+
+ABI 1 retains its frozen 46-symbol generic inventory. Scoped temporary exceptions are separately controlled; the old display proxy exception is retired by the M3 cutover. ABI 2 selects `privileged_os_cpu_symbols_v2.def`: the same 46 generic symbols plus `esp_intr_alloc_intrstatus`, `xQueueReceiveFromISR`, `uxQueueSpacesAvailable`, `vPortYield`, `esp_timer_get_time`, `esp_rom_delay_us`, three `risc_cpu_worker_*_v2` functions and `risc_cpu_cache_writeback_v2` (56 total). It does **not** inherit temporary I2C, SPI or video firmware-backend exceptions. Neither revision is an ordinary application export. Direct SDK function addresses do not enforce provider ownership after relocation; their use remains an audited obligation of independently admitted trusted native code.
+
+A source manifest selects integer `os_cpu_abi: 2`, with exact `os-cpu-abi=2` in its digest-bound `provider-abi.v1` file. Historical missing manifest fields select only revision 1. Booleans, strings, null, unsupported revisions and manifest/profile mismatches are rejected. An absent legacy source manifest cannot select revision 2. Discovery accepts known revisions but grants no execution authority; the installed/bootstrap admission paths match metadata and the manager copies the selected revision into the owned graph specification. `ModuleV2` selects the corresponding private verified relocation entry. The common private scope records that selection; an ABI 1 scope never resolves ABI 2 names. Both revisions retain the same bounded exact import set across `.dynsym` and `.symtab`, immutable verified snapshot, independent manager admission, task-owned scope and one-shot module authorization. No customer or other-ELF fallback is added.
+
+The worker API is a resident trampoline, not raw task-create/self-delete exports. Four generation-tagged descriptors may be live. Only the creating task can join/release; ISR and self-join are rejected. Start fully initializes a descriptor before the task becomes runnable; failed creation leaves a zero output and no future entry invocation. Early completion before start returns is supported. An entry must return normally and must not install provider-code TLS/deletion callbacks, throw through the trampoline, longjmp out or self-delete. Its final release-store is the worker's last descriptor access. Once join observes completion, provider entry and argument are never accessed again; self-deletion and deferred RTOS cleanup execute resident code. Zero timeout polls, 1–2000 ms waits cooperatively, larger values are rejected, and timeout retains ownership. Successful release consumes only the descriptor generation. It neither frees a TCB nor proves DMA/IRQ shutdown. IDF idle tasks separately reclaim task memory, so four descriptors is not a four-TCB aggregate-memory bound.
+
+The cache primitive checks task/ISR context, nonempty length up to 1 MiB, overflow-safe exclusive PSRAM bounds, 4 KiB chunks and a 100 ms total deadline. A failed lock attempt yields rather than spinning with interrupts masked; byte and elapsed-time checkpoints yield during longer writes. It preserves the SDK CACHE-126 workaround and propagates ROM errors. The caller must own a live allocated buffer and keep it stable across yields and through subsequent DMA completion. Address checks prove the PSRAM interval, **not heap allocation ownership or lifetime**; native providers share the address space. This data-only writeback does not invalidate executable aliases or replace the loader's existing code-publication writeback/I-cache invalidation.
+
+A display provider must disable its interrupt source, synchronize in-flight handlers on the allocated IRQ core, check IRQ/DMA deletion results and retain failed handles before freeing queues, buffers or mapped code. ISR callbacks and every reachable instruction/data object need a post-relocation placement audit; section annotations alone prove nothing. `vPortYield` is task-only; interrupt wakeups use `vPortEvaluateYieldFromISR`. Worker completion does not substitute for this IRQ/DMA proof. The existing display engines have not yet been cut over to ABI 2 in this checkpoint.
+
+Software checks compile the actual worker and cache implementations. The worker race test unloads a native fixture and unmaps its argument after completion publication, reuses that descriptor for blocked work, then resumes the old resident cleanup. It also covers early completion, stale handles, wrong-task/ISR access, capacity, failed start and bounded joins. Import, scope, relocation, graph, manager and profile tests cover revision selection and rejection without widening ABI 1. These checks do not establish physical display acceptance.
+
+## ABI 3: shared DMA channel reservation
+
+ABI 3 adds `risc_cpu_dma_reserve_tx_v3` and `risc_cpu_dma_release_v3` to the
+frozen ABI 2 inventory (58 symbols total). Exact integer manifest/profile
+selection, preflight, import equality, manager admission and relocation scope
+remain mandatory. ABI 1/2 never resolve these names; ABI 3 does not inherit
+transitional bus or video exceptions. Ordinary applications cannot import them.
+
+The ESP32-S3 CPU port uses the real resident SDK `gdma_new_channel`, channel-ID,
+trigger connection and deletion APIs. SPI pairs and crypto channels therefore
+share one occupancy table, trigger mask and controller clock reference count.
+The reservation admits one TX direction, never its RX sibling. It stores no
+provider callback, installs no IRQ, and performs no descriptors or transfers.
+Only the returned group-0 channel may be programmed. Providers must not touch
+global DMA reset/clock state or other channels. The audited S3 TX selector range
+is 0–9 excluding RX-only selector 8; memory-to-memory is not admitted.
+
+Five creator-task-owned, generation-tagged slots are bounded by the hardware
+inventory. Failed allocation may return a nonzero retained token; the caller
+must release it before unloading. A release requires task context, matching
+creator and live generation, checks hardware TX idle, then disconnects/deletes
+through the same SDK. It never stops an active transfer for the caller. Failure
+retains ownership and clock lifetime; retries skip completed cleanup steps.
+Provider IRQ removal and descriptor lifetime remain the provider's obligation.
+These are trusted native-code obligations, not memory isolation.
+
+Host fixtures compile the real CPU wrapper and provider TX helper, covering
+shared SPI/crypto occupancy, exhaustion, cross-task/ISR/stale rejection, invalid
+SDK IDs, busy/partial release, bounded stop, and retained failed-start tokens.
+They do not replace physical DMA, cache or concurrency validation.
+
+### Retired display proxy compatibility
+
+The historical ABI-1 `display-epd-video@0.1.4` proxy imported the private
+`t5_video_get_api` exception. That exception is now rejected at provider
+admission and privileged relocation; it was never part of the frozen 46-symbol
+inventory. Install the ordinary `display-epd-video@0.1.5` ABI-3 package together
+with this firmware's independently built module store. The old proxy package
+cannot run against this firmware. This is an intentional compatibility break,
+not a claim that every old ABI-1 package retains its behavior. Legacy *application*
+`t5_video_get_api` remains a consumer of the external capability, guarded by the
+existing display takeover policy. No firmware display engine fallback remains.

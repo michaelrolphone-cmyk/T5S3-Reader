@@ -17,6 +17,7 @@ void TimeZoneSelectActivity::onEnter() {
 
 void TimeZoneSelectActivity::loop() {
   if (!launchAttempted) {
+    if (activityManager.deferNativeAppLoop(this)) return;
     launchAttempted = true;
     const esp_err_t result = runNativeApp("/sd/Apps/time_zone.elf", renderer, mappedInput);
     if (result == ESP_OK) {

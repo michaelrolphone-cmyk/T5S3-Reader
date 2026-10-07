@@ -17,12 +17,19 @@ snapshot = resolver.split('bool snapshotCandidates(', 1)[1].split('uint32_t reso
 graph = resolver.split('uint32_t resolveSnapshot(', 1)[1]
 assert snapshot.count('inspectInstalledOrdinarySdDirectory(') == 1
 assert 'verifyOrdinarySdDirectory(' not in resolver
-assert 'UINT32_MAX' in snapshot and 'parseOrdinaryManifest(' in snapshot
+assert 'UINT32_MAX' in snapshot and 'installed, plan.get()' in snapshot
+assert 'parseOrdinaryManifest(' not in snapshot  # inspector returns the checked plan
+adapter = (repo / 'src/runtime/packages/PackageOrdinarySdAdapter.cpp').read_text()
+inspection = adapter.split('if (inspection) {', 1)[1].split('return verifyCanonicalOrdinaryDirectory', 1)[0]
+assert 'directory.readManifest(' in inspection
+assert 'parseOrdinaryManifest(text.get(), length, *inspection)' in inspection
+assert 'verifyOrdinaryDirectory(*inspection' in inspection
+assert 'observed = inspection->identity;' in inspection
 assert 'plan->requirements + plan->requirementCount' in snapshot
 assert 'depth >= kMaxDepth' in graph and 'ancestry[depth] = index;' in graph
 assert 'inspectInstalledOrdinarySdDirectory(' not in graph
 assert 'Storage.open(' not in graph
-assert 'snapshotCandidates(*candidates, reusable)' in resolver
+assert 'snapshotCandidates(*candidates, reusable, stats)' in resolver
 assert 'before.matches(retainedGeneration)' in resolver
 assert 'if (!before.quiescent) return snapshot.release();' in resolver
 assert 'if (!Storage.unchanged(before)) return nullptr;' in resolver

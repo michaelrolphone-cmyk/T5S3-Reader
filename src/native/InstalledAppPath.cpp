@@ -3,6 +3,7 @@
 #include <AppManifestRules.h>
 #include <Arduino.h>
 #include <HalStorage.h>
+#include <Logging.h>
 #include <esp_task_wdt.h>
 
 #include <cstring>
@@ -18,6 +19,7 @@
 
 namespace {
 constexpr size_t kMaxDirectoryEntries = 512;
+constexpr uint32_t kResolveBudgetMs = 30000;
 constexpr RuntimePackages::PackageRuntimePolicy kAppPolicy{
     "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 
@@ -55,36 +57,43 @@ bool resolveInstalledAppPath(const char* artifact, std::string& sdPath,
   std::string managedPath;
   t5_app_manifest_t managedManifest{};
   bool reachedEnd = false;
-  for (size_t index = 0; index < kMaxDirectoryEntries; ++index) {
-    HalFile entry = dir.openNextFile();
-    if (!entry.isOpen()) {
-      reachedEnd = true;
+  const uint32_t began = millis();
+  uint32_t yielded = began, reported = began;
+  size_t entries = 0;
+  for (;;) {
+    const uint32_t now = millis();
+    if (now - began >= kResolveBudgetMs) break;
+    if ((entries && (entries & 15u) == 0) || now - yielded >= 8u) {
+      esp_task_wdt_reset();
+      delay(1);
+      yielded = millis();
+    }
+    HalFile::DirectoryEntry entry{};
+    if (!dir.readDirectoryEntry(entry)) {
+      reachedEnd = dir.getError() == 0;
       break;
     }
-    char name[128]{};
-    entry.getName(name, sizeof(name));
-    const bool isDirectory = entry.isDirectory();
-    entry.close();
-    if (isDirectory && RuntimePackages::safeId(name)) {
+    if (++entries > kMaxDirectoryEntries) break;
+    if (entry.isDirectory && RuntimePackages::safeId(entry.name)) {
       t5_app_manifest_t candidate{};
-      if (validManagedCandidate(name, artifact, candidate)) {
+      if (validManagedCandidate(entry.name, artifact, candidate)) {
         // Ambiguous ELF basenames must not silently select an arbitrary
         // installed package; pin records still use this legacy basename.
         if (!managedPath.empty()) {
           dir.close();
           return false;
         }
-        managedPath = std::string("/sd/Apps/") + name + "/" + artifact;
+        managedPath = std::string("/sd/Apps/") + entry.name + "/" + artifact;
         managedManifest = candidate;
       }
     }
-    if ((index & 15u) == 15u) {
-      esp_task_wdt_reset();
-      delay(1);
+    if (millis() - reported >= 1000u) {
+      LOG_DBG("APP", "Resolve %s entries=%u", artifact, (unsigned)entries);
+      reported = millis();
     }
   }
-  dir.close();
-  if (!reachedEnd) return false;  // Unbounded inventories must fail closed.
+  const bool closed = dir.close();
+  if (!reachedEnd || !closed || millis() - began >= kResolveBudgetMs) return false;
   if (!managedPath.empty()) {
     sdPath = std::move(managedPath);
     if (manifest) *manifest = managedManifest;
