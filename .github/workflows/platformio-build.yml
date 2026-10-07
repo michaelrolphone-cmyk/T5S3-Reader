@@ -137,6 +137,7 @@ jobs:
           python scripts/build_platform_clock_v1.py
           python scripts/build_x4pro_drivers.py
           python scripts/stage_x4pro_packages.py
+          python3 test/x4pro_boot_profile_test.py
           python3 test/bootstrap_store/run_test.py
           c++ -std=c++17 -Wall -Wextra -Werror -Itest/bootstrap_store/stubs -Ilib/Board -Ilib/Board_X4Pro -Isdk/driver test/bootstrap_store/frontlight_test.cpp lib/Board_X4Pro/BoardX4Pro.cpp -o /tmp/x4-frontlight
           /tmp/x4-frontlight
