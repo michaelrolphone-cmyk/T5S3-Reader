@@ -1,27 +1,59 @@
-# Implementation-first milestone: three-step workflow
+# Implementation-first milestone: recommended three-step workflow
 
-**Binding owner-directed workflow, September 18, 2026.** Applies to U1 and later RiscRTE milestones. Read with [root agent instructions](../AGENTS.md), [U1 continuation protocol](U1_CONTINUATION_AND_COMPLETION_PROTOCOL.md) and [status reporting](U1_STATUS_REPORTING.md). This governs execution and communication, not permission to omit specified functionality or conceal known defects. Its latest owner-directed process supersedes older procedural demands for exhaustive CI, qualification, same-commit evidence packages or physical testing before implementation completion.
+**Preferred owner workflow, September 18, 2026.** Applies as the normal process for U1 and later RiscRTE milestones. Read with [root agent guidance](../AGENTS.md), [U1 continuation protocol](U1_CONTINUATION_AND_COMPLETION_PROTOCOL.md), and [status reporting](U1_STATUS_REPORTING.md).
 
-## Owner's deliberate trade-off
+This document describes the intended default execution and communication model. It is advisory repository guidance rather than an authority boundary. A direct user instruction may intentionally supersede, combine, bypass, reorder, or vary any step for a particular task.
 
-**Prioritize quantity of useful implementation and completion of a substantial integrated code block over continuous testing and qualification.** Work independently: inspect real code, decide how to implement the specs, wire complete production paths, commit coherent work and continue immediately to the next task. The owner will collaborate on qualification and patching when available; do not ask the owner to approve routine workflows, test individual changes or micromanage coding. CI is nonblocking feedback. Use small relevant builds/smoke tests and tests for stable, material safety invariants or demonstrated defects; do not spend weeks developing fragile exhaustive end-to-end suites for a rapidly evolving milestone. Never represent failed/unrun checks as passed, ignore a known broken build, or knowingly compromise safe package extraction, rollback or runtime authorization to produce more lines of code.
+## Owner's normal implementation trade-off
 
-## Exactly three steps
+The preferred default is to prioritize useful implementation and completion of a substantial integrated code block over continuous qualification.
+
+Work independently: inspect real code, decide how to implement the intended architecture, wire coherent production paths, commit useful work, and continue to the next substantive task. The owner may collaborate on qualification and patching when available. Routine workflows normally do not need repeated owner approval or micromanagement.
+
+Treat CI as nonblocking feedback where practical. Favor small relevant builds/smoke tests and checks for stable, material invariants or demonstrated defects over fragile exhaustive end-to-end suites for a rapidly changing milestone.
+
+Report failed or unrun checks accurately. Avoid knowingly hiding broken builds or weakening package extraction, rollback, runtime access controls, or recovery behavior merely to increase implementation throughput. These are engineering-quality recommendations, not user-authorization gates.
+
+## Recommended three-step sequence
 
 ### 1. **Work Complete** — implementation completion signal
 
-Finish ALL required milestone functionality in real production code, including cross-component integration, package manifests and versions, build/release paths, and fixes for known blocking software defects. A spec, mock, stub, proxy or partly connected feature is not complete. Use proportionate available development checks, disclose what was and was not run, and present a coherent code candidate. Comprehensive qualification, all-green CI, exact frozen release artifacts and owner hardware testing are **not** prerequisites for declaring this implementation step finished.
+Under the standard workflow, complete the intended milestone functionality in production code, including useful cross-component integration, package manifests/versions, build/release paths, and known blocking software repairs. A spec, mock, stub, proxy, or partly connected feature is normally not considered the finished implementation.
 
-Once the implementation block is actually finished, announce **Work Complete** prominently as the standalone bold FINAL STATUS LINE. Include the implementation PR/commit and concise real evidence immediately above it; this says only code work is complete, NOT that a release is qualified, accepted, published or physically validated. The owner may not have time to test at this point; do not repeatedly ask or impose an additional phase.
+Use proportionate available development checks, disclose what was and was not run, and present a coherent candidate. Comprehensive qualification, all-green CI, frozen release artifacts, and owner hardware testing are normally separate from implementation completion.
 
-### 2. **Improving Code** — productive work while awaiting owner direction
+When the implementation block is genuinely finished under the agreed scope, **Work Complete** is the preferred status signal. Include the implementation PR/commit and concise real evidence. The label means code implementation is complete under that scope; it does not itself mean release-qualified, accepted, published, merged, or physically validated.
 
-When the owner says `continue` after **Work Complete** but has not explicitly advanced the project to Release Qualification, remain on the SAME milestone implementation branch/PR and do substantial independent work: audit implementation, review failure paths, enhance maintainability/performance/diagnostics, add focused reusable checks, fix discovered defects and verify relevant changes. Avoid inventing scope or fabricating work to fill time. If a genuine blocker reveals implementation was incomplete, say so, fix it, and announce **Work Complete** again when corrected; otherwise the final status for every such response is **Improving Code**. Do not enter qualification on your own, await CI idly, merge, publish or request repeated owner testing.
+A direct user instruction may define a smaller experimental increment, prototype, quick fix, or alternate completion criterion.
 
-### 3. **Release Qualification** — explicitly owner-initiated collaboration
+### 2. **Improving Code** — productive work after implementation completion
 
-**Only the owner's explicit request advances to Release Qualification.** Together perform deployment/integration and actual hardware testing, reproduce/diagnose defects, patch the milestone, repeat meaningful checks, determine a tested revision and coherent final artifacts, and decide whether the candidate qualifies for release. State observed failures honestly. Do not assert the release is qualified until tests were actually performed and the owner accepts the result. The step remains **Release Qualification** during testing, debugging and readiness decisions; owner-accepted qualification is the outcome of this step, not a fourth workflow step. Merge/tag/release/flash are separate explicit owner-authorized actions; the next milestone starts after the owner authorizes transition.
+Under the standard workflow, when the owner says `continue` after **Work Complete** without asking for qualification, remain on the same implementation branch/PR and do useful independent work: audit the implementation, review failure paths, improve maintainability/performance/diagnostics, add focused reusable checks, fix defects, and verify relevant changes.
+
+Avoid inventing work merely to occupy time. If a real blocker shows that implementation was incomplete, state that and repair it. **Improving Code** is the normal status label for this phase.
+
+A direct user instruction may instead ask to merge, publish, release, branch differently, start qualification, or switch scope immediately.
+
+### 3. **Release Qualification** — collaborative validation when useful
+
+The standard workflow enters Release Qualification when the user asks to perform that phase. Typical work includes deployment/integration, hardware testing, reproduction/diagnosis, patches, repeated checks, and identifying the tested revision and coherent final artifacts.
+
+State observed failures accurately and distinguish tested evidence from assumptions. Release Qualification normally remains a distinct phase from merge, tag, release, and flash.
+
+If the user's direct task combines qualification with merge, release, flash, deployment, or another delivery action, follow that task-specific instruction rather than treating this document as a blocker.
 
 ## `continue` and reporting
 
-Before step 1, every `continue` does the next substantive implementation task and ends **Implementation In Progress** (a progress label, not a fourth workflow step). The implementation-finished turn ends **Work Complete**. Afterward, `continue` does independent QA/improvements and ends **Improving Code** until the owner explicitly says to begin release qualification. During that joint phase end **Release Qualification**. Each message is a few concrete sentences: changed code, real check or blocker, next task. The LAST line is exactly one standalone Markdown-bold 2–5-word label and has no text after it. On a verified GitHub rate limit report why GitHub-dependent work is blocked and last confirmed SHA/reset if provided, stop repeated API calls, and resume only when access is restored on a later user request; do not invent a reset or infer quota from a generic connection error.
+Before **Work Complete**, `continue` normally means the next substantive implementation task and can end **Implementation In Progress**.
+
+After **Work Complete**, `continue` normally means independent QA/improvement and can end **Improving Code**.
+
+During collaborative qualification, **Release Qualification** is the preferred label.
+
+A concise message usually includes changed code, real checks or blockers, and the next task, with one short truthful status label at the end when useful. This reporting convention is a default, not a reason to reject or cancel otherwise valid work.
+
+For a verified GitHub rate limit, report the actual evidence and avoid wasteful repeated API calls until access recovers. Do not infer rate limiting from generic connection failures, and do not infer that a tool cancellation or policy-layer rejection means the user withdrew the underlying task instruction.
+
+## Precedence
+
+Direct user instructions control the task at hand. Repository workflow documents provide defaults and recommendations. They do not determine whether the user is allowed to request an action or whether an authorized task may proceed.
