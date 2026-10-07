@@ -1,0 +1,395 @@
+{
+  "before": {
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "cc35c239d6fbdbe50094541f9087c044f8fe55437481c53bab6f30000d0dbd86",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "f6950ed9d90ffcea42d48edab338e7fcd6f5e4bd422fd7061317bd6a3b282872",
+      "Apps/hollow_trail_city_draw.inc": "079ea6077921a66fba0b70b584a017a41559ba9e7188909ce1322ef42c111be7",
+      "Apps/hollow_trail_cutscene.inc": "177a43d01bb38e8ca8e5f954732e88f3fe4633c0d90e917faac73a5833b222c2",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "821f24d74f09a4f58039188e08191c01c90dab0f763ece621267cde6a5764073",
+      "Apps/hollow_trail_evidence.inc": "1355f5bbedeb6a31ce90647a0bf9f44830146da0fc3fb2ac0204bb5a9cf8b6eb",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_final_door.inc": "c936355bbd0b9dffa7fdd5a35f8039679b9a73d1a83c4a8fa828252e7536a431",
+      "Apps/hollow_trail_final_door_draw.inc": "b36493ff71302a954ede740956f431a09fa1b7003325fd16666fa97a55e4e528",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "33f473c80162339b24d9b977594963888e13e2123160718e42771e4b4b869760",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "4ee5ec3e822926864d93e8f528f4108ab57529fe0f0cf2370b1ae98c7ffe0a08",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "b026d8274a15a816560eb45872fa247983cfda00d9e761812ad8a6bdd0feee04",
+      "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+      "Apps/hollow_trail_traversal.inc": "e9262720aa9fe7562c58c49bf4b95e0bc9cc3ba8eddc5bf928b5e2557b93ae5e",
+      "Apps/hollow_trail_traversal_draw.inc": "bd50019f2c9b541626278300916a88026813705feab2881b39a0303dbc3ef63c",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_watch_memory.inc": "ff458f6f2e00eef834ebccc7bd7502ed015dadf2b1195dac142384132c7ad978",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "captures": [
+      {
+        "view": "approach",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "a40c86fbbde402f5ed35936d787511744c8f0d533e70eb76d9a6be0736fce1d4",
+          "mono": "b482449331fd04fd028ce7a8673f5e4bee74c9ed5e643c7b0f5f225d16880fac"
+        },
+        "actor": {
+          "x_q8": 530487,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "handprint",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "f503623a51ceebe88c16419c44759a1d28fb06ec48231a36b17944839c698045",
+          "mono": "ac342c0730c61791f388a9b3f0578f7805d45b80802d0cb73685306f3a9a4c47"
+        },
+        "actor": {
+          "x_q8": 535255,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "dark-glass",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "0cc8a76e75cf830eba4c17ba246a024de2a768ce83435539d01e14fe79894d20",
+          "mono": "968ed1aeab1b2ac9e14dff32a8034c464e9b5a0b3084a75f8722083eb9db136b"
+        },
+        "actor": {
+          "x_q8": 535255,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "open",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "a40c86fbbde402f5ed35936d787511744c8f0d533e70eb76d9a6be0736fce1d4",
+          "mono": "b482449331fd04fd028ce7a8673f5e4bee74c9ed5e643c7b0f5f225d16880fac"
+        },
+        "actor": {
+          "x_q8": 530487,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "sill",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "d51202c8d318dda32236fddbdbfbfb7cd9783feb21cb074349b542fb60248812",
+          "mono": "5992bd09d9142adbc9f55b26e39b2ff2f76d1dcfca07ffde9fb96fc63ce09b03"
+        },
+        "actor": {
+          "x_q8": 538247,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "inside",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "fedc90ba2a4fe4f4e10ff2c42af175658ebc225b7d392b2401f0cc29f2269925",
+          "mono": "9061253cb36424947cfeb9abad7506de7d69f61bcdf18d8930281872239f7af8"
+        },
+        "actor": {
+          "x_q8": 543959,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      }
+    ],
+    "fixture": {
+      "camera": [
+        1870,
+        -250
+      ],
+      "intimacy": 256,
+      "ticks": 8,
+      "start_x": 2040,
+      "after": "Actual Right approach, A attachment, then production 48/96/144 steps; handprint uses original signal timeline at ticks10/70",
+      "before": "Actual ordinary walk to comparable world position; original signal timeline has no handprint",
+      "baseline_source": "3ad3ff07"
+    },
+    "source_commit": "3ad3ff07d69df67dad38d2d43add324634da13eb",
+    "source_snapshot_sha256": "5be6bee9e826a94a17ed8f4c76a44f1272dc6c256c5e2957299573cb4e25c20b"
+  },
+  "after": {
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "cc35c239d6fbdbe50094541f9087c044f8fe55437481c53bab6f30000d0dbd86",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "84d8af7d3976236ab102299532951baf543102ce0a96dea4802e2067b2d9d758",
+      "Apps/hollow_trail_city_draw.inc": "079ea6077921a66fba0b70b584a017a41559ba9e7188909ce1322ef42c111be7",
+      "Apps/hollow_trail_cutscene.inc": "709e0b7c21875ebde49b60e7d719d7242e4523c6dd9aa090c581a852df03ebb6",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "8667c7036fe2692f1d18fd62072ed9c4ff5a2b3878d312a4d15403cca3b06d3d",
+      "Apps/hollow_trail_evidence.inc": "1355f5bbedeb6a31ce90647a0bf9f44830146da0fc3fb2ac0204bb5a9cf8b6eb",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_final_door.inc": "c936355bbd0b9dffa7fdd5a35f8039679b9a73d1a83c4a8fa828252e7536a431",
+      "Apps/hollow_trail_final_door_draw.inc": "b36493ff71302a954ede740956f431a09fa1b7003325fd16666fa97a55e4e528",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "33f473c80162339b24d9b977594963888e13e2123160718e42771e4b4b869760",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "4ee5ec3e822926864d93e8f528f4108ab57529fe0f0cf2370b1ae98c7ffe0a08",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "b026d8274a15a816560eb45872fa247983cfda00d9e761812ad8a6bdd0feee04",
+      "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "536b31378408797e71ed6003e77c4a0335554f58e840b2572506db2209359db0",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+      "Apps/hollow_trail_traversal.inc": "7536205d8e8d30ff27bd0d9cc2edd710bfe4f89247ccd38961be2ea41ffa8708",
+      "Apps/hollow_trail_traversal_draw.inc": "8f2ed26db6f2539b886f58ac8e82cbdaddf89aa62c44f3c893da9fe597f9f55c",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_watch_memory.inc": "ff458f6f2e00eef834ebccc7bd7502ed015dadf2b1195dac142384132c7ad978",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "captures": [
+      {
+        "view": "approach",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "2908be38b4e0068226e2ef1591957e1665036868c80beff4b35c615c0e815474",
+          "mono": "72d89fdb1ec423f560c844dbb861bde68843dcf06ecc9c0d4d76882b0b6bcfda"
+        },
+        "actor": {
+          "x_q8": 530432,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      },
+      {
+        "view": "handprint",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "5107f63d88b70a34160a0606dce2a8cc20e197f3934ea1f73d4c692f10c695e8",
+          "mono": "a4a99b9db8e9ffbec285e0d005f42caee1ae75b4250b019b65e04586d2fd6d20"
+        },
+        "actor": {
+          "x_q8": 530432,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 11,
+          "grounded": true
+        }
+      },
+      {
+        "view": "dark-glass",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "d65bb6f6d1238e8ef8da5cf27e1b85a5cf766159de6c28426b77ab5eba27011e",
+          "mono": "f23149a386386712e876f56e1913935cfcacdc5431575b01c54865a346aa2bae"
+        },
+        "actor": {
+          "x_q8": 530432,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 11,
+          "grounded": true
+        }
+      },
+      {
+        "view": "open",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "97c92d6be8a39e3890dbdb829455049db081dfd8e4faa5e3158b72b460d2f40e",
+          "mono": "c2d3f83c3b90d3835130eb541afe01c6182a61f6fedea5443bc99d821ddf8c99"
+        },
+        "actor": {
+          "x_q8": 530432,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 11,
+          "grounded": true
+        }
+      },
+      {
+        "view": "sill",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "56b3a5b185f646bf88ceb1438bc82b5be19c6e9c308364a90bef48e250f44463",
+          "mono": "3571cc7916e02021918bf0d2e688484301ec293a08986e1ef20326f23399e6cc"
+        },
+        "actor": {
+          "x_q8": 538240,
+          "feet_q8": -29696,
+          "ground": -100,
+          "mode": 11,
+          "grounded": false
+        }
+      },
+      {
+        "view": "inside",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "5e96c2312f21bd19b6e75a8148cbf022c0afbd2b0718d936e43efa5be46b9919",
+          "mono": "8705ce6a1b2ac849dec137c0a502cc8bd4c4e2c1346d16f8dbfb67b1fd76917e"
+        },
+        "actor": {
+          "x_q8": 543744,
+          "feet_q8": -25600,
+          "ground": -100,
+          "mode": 0,
+          "grounded": true
+        }
+      }
+    ],
+    "fixture": {
+      "camera": [
+        1870,
+        -250
+      ],
+      "intimacy": 256,
+      "ticks": 8,
+      "start_x": 2040,
+      "after": "Actual Right approach, A attachment, then production 48/96/144 steps; handprint uses original signal timeline at ticks10/70",
+      "before": "Actual ordinary walk to comparable world position; original signal timeline has no handprint",
+      "baseline_source": "3ad3ff07"
+    },
+    "source_commit": "2fd319ce582dff860b22a44cb71cc4a0a431d387",
+    "source_snapshot_sha256": "380c0eb18ef578b350d7ebaac9820d81bc4cf31871e50d0c85e4a56e2d655f86"
+  },
+  "comparisons": [
+    {
+      "view": "approach",
+      "changed_pixels": {
+        "gray": 11812,
+        "mono": 3673
+      }
+    },
+    {
+      "view": "handprint",
+      "changed_pixels": {
+        "gray": 18372,
+        "mono": 3791
+      }
+    },
+    {
+      "view": "dark-glass",
+      "changed_pixels": {
+        "gray": 17530,
+        "mono": 2188
+      }
+    },
+    {
+      "view": "open",
+      "changed_pixels": {
+        "gray": 25580,
+        "mono": 6077
+      }
+    },
+    {
+      "view": "sill",
+      "changed_pixels": {
+        "gray": 49584,
+        "mono": 17933
+      }
+    },
+    {
+      "view": "inside",
+      "changed_pixels": {
+        "gray": 28276,
+        "mono": 5212
+      }
+    }
+  ],
+  "canvas_check": "Original raster regions verified byte-for-byte."
+}

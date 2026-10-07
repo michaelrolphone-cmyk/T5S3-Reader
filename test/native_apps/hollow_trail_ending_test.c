@@ -84,7 +84,8 @@ int main(void) {
         for(int tick=0;tick<48;++tick) ht_step(0,false,false);
         ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.grounded=true; ht.vy=0;
         ht_step(0,false,false);
-        assert(ht.level==0 && !ht.verdict && !ht.verdict_read && ht.last_verdict==choice);
+        assert(ht.level==HT_LEVELS-1 && ht.door_stage==HT_DOOR_YARD && !ht.laps);
+        assert(ht.verdict==choice && ht.verdict_read && ht.last_verdict==choice);
         assert(ht.endings==(choice==1?1:3));
         ht.laps=0;
     }
