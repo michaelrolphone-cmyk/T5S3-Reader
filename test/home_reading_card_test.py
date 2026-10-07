@@ -37,9 +37,22 @@ class ReadingCardTests(unittest.TestCase):
 #include <vector>
 #define private public
 #include "GfxRenderer.h"
+#include "HalDisplay.h"
 #undef private
 HalDisplay::HalDisplay() = default;
 HalDisplay::~HalDisplay() = default;
+uint8_t* HalDisplay::getFrameBuffer() const { return nullptr; }
+void HalDisplay::clearScreen(uint8_t) const {}
+void HalDisplay::drawImage(const uint8_t*, uint16_t, uint16_t, uint16_t, uint16_t, bool) const {}
+void HalDisplay::drawImageTransparent(const uint8_t*, uint16_t, uint16_t, uint16_t, uint16_t, bool) const {}
+void HalDisplay::displayBuffer(RefreshMode, bool) {}
+void HalDisplay::requestNextRefresh(RefreshMode) {}
+void HalDisplay::requestNextDisplayEffect(DisplayEffect) {}
+void HalDisplay::copyGrayscaleLsbBuffers(const uint8_t*) {}
+void HalDisplay::copyGrayscaleMsbBuffers(const uint8_t*) {}
+bool HalDisplay::captureGrayscaleBaseBuffer(const uint8_t*) { return false; }
+void HalDisplay::cleanupGrayscaleBuffers(const uint8_t*) {}
+void HalDisplay::displayGrayBuffer(RefreshMode) {}
 void GfxRenderer::freeBwBufferChunks() {}
 int main() {
   HalDisplay display;
@@ -59,7 +72,8 @@ int main() {
                 executable = work / board
                 subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17", "-Wall", "-Wextra", "-Werror",
                                 "-D" + board, "-I" + str(work), "-I" + str(ROOT / "lib/GfxRenderer"),
-                                "-I" + str(ROOT / "lib/hal"), str(work / "test.cpp"), "-o", str(executable)], check=True)
+                                "-I" + str(ROOT / "lib/hal"), "-I" + str(ROOT / "lib/DisplaySurface"),
+                                str(work / "test.cpp"), "-o", str(executable)], check=True)
                 subprocess.run([str(executable)], check=True)
 
     def test_geometry_and_complete_presentation(self):

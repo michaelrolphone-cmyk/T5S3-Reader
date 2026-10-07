@@ -8,6 +8,8 @@
 // Make the Arduino libraries actual firmware link dependencies: relying only
 // on assembly symbol aliases would leave PlatformIO's library discovery blind.
 #include <Arduino.h>
+#include <HalStorage.h>
+#include "NativeStorageImportPolicy.h"
 #include <FS.h>
 #include <SD.h>
 #include <SPI.h>
@@ -36,17 +38,34 @@ static const struct esp_elfsym native_hardware_compat_symbols[] = {
     ESP_ELFSYM_END
 };
 
-extern "C" int native_hardware_compat_register(void)
-{
-    return esp_elf_register_symbol(native_hardware_compat_symbols);
+// Registration/relocation/teardown use NativeAppLauncher's serialized owner
+// task, as required by the existing global symbol-table API itself.
+static bool compat_registered = false;
+static bool raw_storage_imported = false;
+extern "C" void esp_elf_registered_symbol_used(const void* table, const char* name, uintptr_t address) {
+    if (address && compat_registered && table == native_hardware_compat_symbols &&
+        !raw_storage_imported && nativeRawStorageImport(name)) {
+        Storage.externalStorageBegin();
+        raw_storage_imported = true;
+    }
 }
-
-extern "C" void native_hardware_compat_unregister(void)
-{
-    (void)esp_elf_unregister_symbol(native_hardware_compat_symbols);
+extern "C" int native_hardware_compat_register(void) {
+    const int result = esp_elf_register_symbol(native_hardware_compat_symbols);
+    if (!result) { compat_registered = true; raw_storage_imported = false; }
+    return result;
+}
+extern "C" void native_hardware_compat_storage_uncertain(void) {
+    if (raw_storage_imported) Storage.externalStorageUncertain();
+}
+extern "C" void native_hardware_compat_unregister(void) {
+    const int result = esp_elf_unregister_symbol(native_hardware_compat_symbols);
+    if (raw_storage_imported) Storage.externalStorageEnd(result == 0);
+    raw_storage_imported = false;
+    if (!result) compat_registered = false;
 }
 #else
 // No ESP32-S3/T5S3 direct hardware ABI exists on other board variants.
 extern "C" int native_hardware_compat_register(void) { return 0; }
 extern "C" void native_hardware_compat_unregister(void) {}
+extern "C" void native_hardware_compat_storage_uncertain(void) {}
 #endif

@@ -1,4 +1,5 @@
 #include "T5StreamApi.h"
+#include "T5PackageResourceApi.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -39,6 +40,7 @@
 #include "T5VideoApi.h"
 #include "T5MathApi.h"
 
+extern int test_compat_storage_uncertain;
 extern int test_capability_gate_allowed;
 extern int test_capability_bind_allowed;
 extern int test_capability_bind_calls;
@@ -158,7 +160,9 @@ int main(void)
         for (mode = 0; mode < 6; ++mode) {
             opens = closes = calls = 0;
             pending = "stale error";
+            const int uncertain_before = test_compat_storage_uncertain;
             int rc = launch_elf_app("/sd/apps/game.elf");
+            assert(test_compat_storage_uncertain == uncertain_before + (mode == 4));
             assert(native_app_current_path() == NULL);
             assert(opens == 1);
             assert(closes == (mode == 1 ? 0 : 1));
@@ -247,8 +251,10 @@ int main(void)
     assert(calls == 1 && closes == 1 && takeover_begins == 0 && takeover_ends == 0);
     reset_takeover(); takeover_exported=true; takeover_request=T5_HARDWARE_TAKEOVER_DISPLAY;
     restore_failed=true; retain_hardware=true;
+    const int uncertain_before = test_compat_storage_uncertain;
     assert(launch_elf_app("/sd/apps/game.elf")==ESP_FAIL);
     assert(memory_live && closes==0);
+    assert(test_compat_storage_uncertain == uncertain_before + 1);
     assert(launch_elf_app("/sd/apps/game.elf")==ESP_ERR_INVALID_STATE);
     return 0;
 }
@@ -306,6 +312,7 @@ const t5_usb_api_v1 *t5_usb_get_api(uint32_t version) { (void)version; return NU
 const t5_web_server_api_v1 *t5_web_server_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_video_api_v1 *t5_video_get_api(uint32_t version) { (void)version; return NULL; }
 const t5_stream_api_v1 *t5_stream_get_api(uint32_t version) { (void)version; return NULL; }
+const t5_package_resource_api_v1 *t5_package_resource_get_api(uint32_t version) { (void)version; return NULL; }
 
 const t5_math_api_v1 *t5_math_get_api(uint32_t version) { (void)version; return NULL; }
 

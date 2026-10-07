@@ -24,6 +24,316 @@ static void press(unsigned source,uint32_t mask) {
     reports[source][0].buttons=0; ht_input(1);
     reports[source][0].buttons=mask; ht_input(1);
 }
+static void schoolroom_controls(void) {
+    const unsigned a[2]={1,2},x[2]={8,4},y[2]={4,8},start[2]={512,128};
+    healthy=true;host_exit=false;app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=HT_SCHOOL_MAP_X*256;ht.y=ht_surface_at(&ht,1,HT_SCHOOL_MAP_X)*256;
+        ht.grounded=true;ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=mapped=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);press(source,a[source]);
+        assert(ht_schoolroom_studying && !reading && ht_schoolroom_focus==0);
+        assert(ht_evidence_found(&ht,3));ht_game frozen=ht;
+        for(unsigned i=0;i<20;++i){ht_advance(now+=HT_STEP_MS);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        press(source,y[source]);ht_advance(now+=HT_STEP_MS);
+        assert(ht_schoolroom_studying && !ht_motion_emphasis && !memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].buttons=0;ht_input(1);
+        reports[source][0].hat=2;ht_input(1);assert(ht_schoolroom_focus==1);
+        ht_input(1);assert(ht_schoolroom_focus==1); /* Held direction never repeats. */
+        reports[source][0].hat=8;ht_input(1);reports[source][0].hat=2;ht_input(1);
+        assert(ht_schoolroom_focus==2);
+        reports[source][0].hat=8;ht_input(1);reports[source][0].hat=2;ht_input(1);
+        assert(ht_schoolroom_focus==0);reports[source][0].hat=8;ht_input(1);
+        reports[source][0].hat=6;ht_input(1);assert(ht_schoolroom_focus==2);
+        reports[source][0].hat=8;ht_input(1);
+        press(source,x[source]);assert(!ht_schoolroom_studying && !reading && !quitting && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].hat=2;ht_input(1);assert(!held && ht_input_rearm);
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);assert(!ht_input_rearm);
+        press(source,a[source]);assert(ht_schoolroom_studying);
+        ht_input(1);assert(ht_schoolroom_studying && !reading); /* Entry A is not read-note A. */
+        press(source,a[source]);assert(reading && journal_page==3 && !ht_schoolroom_studying);
+        press(source,x[source]);assert(ht_journal_index && reading);
+        press(source,x[source]);assert(!reading && !quitting);
+        press(source,a[source]);assert(ht_schoolroom_studying);
+        press(source,start[source]);assert(reading && !ht_schoolroom_studying && journal_page==3);
+        reading=false;reports[source][0].buttons=0;ht_input(1);
+        press(source,a[source]);assert(ht_schoolroom_studying);
+        host_exit=true;ht_input(1);assert(quitting);host_exit=false;
+        ht_schoolroom_studying=false;
+    }
+}
+static void signal_room_controls(void) {
+    const unsigned a[2]={1,2},x[2]={8,4},y[2]={4,8},start[2]={512,128};
+    healthy=true;host_exit=false;app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=HT_SIGNAL_LOG_X*256;ht.y=ht_surface_at(&ht,7,HT_SIGNAL_LOG_X)*256;
+        ht.grounded=true;ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_signal_room_studying=false;held=previous=mapped=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);press(source,a[source]);
+        assert(ht_signal_room_studying && !reading && ht_signal_room_focus==0);
+        assert(ht_evidence_found(&ht,5));ht_game frozen=ht;
+        unsigned start_tick=ht_signal_room_ticks;
+        for(unsigned i=0;i<20;++i){ht_advance(now+=HT_STEP_MS);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(ht_signal_room_ticks>start_tick);
+        press(source,y[source]);ht_advance(now+=HT_STEP_MS);
+        assert(ht_signal_room_studying && !ht_motion_emphasis && !memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].buttons=0;ht_input(1);
+        reports[source][0].hat=2;ht_input(1);assert(ht_signal_room_focus==1);
+        ht_input(1);assert(ht_signal_room_focus==1); /* Held direction never repeats. */
+        reports[source][0].hat=8;ht_input(1);reports[source][0].hat=2;ht_input(1);
+        assert(ht_signal_room_focus==2);
+        reports[source][0].hat=8;ht_input(1);reports[source][0].hat=2;ht_input(1);
+        assert(ht_signal_room_focus==0);reports[source][0].hat=8;ht_input(1);
+        reports[source][0].hat=6;ht_input(1);assert(ht_signal_room_focus==2);
+        reports[source][0].hat=8;ht_input(1);
+        press(source,x[source]);assert(!ht_signal_room_studying && !reading && !quitting && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].hat=2;ht_input(1);assert(!held && ht_input_rearm);
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);assert(!ht_input_rearm);
+        press(source,a[source]);assert(ht_signal_room_studying);
+        ht_input(1);assert(ht_signal_room_studying && !reading); /* Entry A is not read-note A. */
+        press(source,a[source]);assert(reading && journal_page==5 && !ht_signal_room_studying);
+        press(source,x[source]);assert(ht_journal_index && reading);
+        press(source,x[source]);assert(!reading && !quitting);
+        press(source,a[source]);assert(ht_signal_room_studying);
+        press(source,start[source]);assert(reading && !ht_signal_room_studying && journal_page==5);
+        reading=false;reports[source][0].buttons=0;ht_input(1);
+        press(source,a[source]);assert(ht_signal_room_studying);
+        host_exit=true;ht_input(1);assert(quitting);host_exit=false;
+        ht_signal_room_studying=false;
+    }
+}
+/* Drive the real provider mapping and scheduler, not the emphasis helper. */
+static void motion_emphasis_controls(void) {
+    const unsigned x[2]={8,4},y[2]={4,8};
+    healthy=true;host_exit=false;app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        int velocity[3];
+        for(unsigned button=0;button<3;++button) {
+            memset(reports,0,sizeof(reports));
+            reports[source][0].connected=1;reports[source][0].device=source+1;
+            reports[source][0].hat=8;
+            memset(&ht,0,sizeof(ht));ht_spawn(true);ht_geometry_level=0;
+            ht_cutscene.active=false;ht_cutscene_seen=0;
+            reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+            held=previous=mapped=0;ht_pad_owned=ht_input_rearm=false;
+            ht_pad_source=-1;simulation_started=false;
+            ht_input(1); /* Neutral owns/rearms this receiver. */
+            reports[source][0].hat=2;
+            reports[source][0].buttons=button==1?x[source]:button==2?y[source]:0;
+            ht_input(1);ht_advance(now);ht_advance(now+=HT_STEP_MS);
+            velocity[button]=ht.vx;
+            assert(ht_motion_emphasis==(button==2));
+            assert(!reading && !paused && !jump_down && !quitting);
+            assert(((held&HT_BACK)!=0)==(button==1));
+            assert(((held&HT_EMPHASIS)!=0)==(button==2));
+            if(button==2) {
+                reports[source][0].buttons=0;ht_input(1);ht_advance(now+=HT_STEP_MS);
+                assert(!ht_motion_emphasis && !(held&HT_EMPHASIS));
+                reports[source][0].buttons=y[source];ht_input(1);ht_advance(now+=HT_STEP_MS);
+                assert(ht_motion_emphasis);
+                paused=true;ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+                paused=false;reading=true;ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+                reading=false;ht_cutscene_begin(HT_CUTSCENE_INTRO);
+                ht_advance(now+=HT_STEP_MS);assert(!ht_motion_emphasis);
+            }
+        }
+        assert(velocity[0]==48 && velocity[1]==velocity[0] && velocity[2]==53);
+    }
+}
+static void rain_controls(void) {
+    const unsigned a[2]={1,2},b[2]={2,1},y[2]={4,8};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=(HT_RAIN_TANK_X-1)*256;ht.y=ht_rain_tank_floor()*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);reports[source][0].hat=2;
+        for(unsigned i=0;i<12 && !ht_cutscene.active;++i)ht_input(32);
+        assert(ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_RAIN);
+        ht_game frozen=ht;
+        reports[source][0].buttons=a[source]|b[source]|y[source];
+        for(unsigned i=0;i<30;++i){ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(!ht_motion_emphasis && !reading && !paused && !jump_down);
+        /* Provider failure may rearm ownership, but cannot mutate the scene. */
+        healthy=false;for(unsigned i=0;i<9;++i)ht_input(32);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));healthy=true;
+        while(ht_cutscene.active)ht_input(32);
+        assert(ht_input_rearm && !memcmp(&ht,&frozen,sizeof(ht)));
+        ht_input(32);assert(!held && !jump_down && ht_input_rearm);
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
+        assert(!ht_input_rearm);reports[source][0].hat=2;ht_input(32);
+        assert(held&HT_RIGHT);
+        ht_game before=ht;before.x=(HT_RAIN_TANK_X-1)*256;
+        assert(!ht_cutscene_rain_arrival(&before,&ht)); /* Once per session. */
+        ht_cutscene_begin(HT_CUTSCENE_RAIN);host_exit=true;ht_input(1);
+        assert(quitting);host_exit=false;ht_cutscene.active=false;
+    }
+}
+static void signal_arrival_controls(void) {
+    const unsigned a[2]={1,2},b[2]={2,1},y[2]={4,8};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=(HT_SIGNAL_WINDOW_LEFT-5)*256;ht.y=ht_level_land(1)[7].top*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);press(source,a[source]);assert(ht.traversal.mode==HT_WINDOW);
+        reports[source][0].hat=2;
+        for(unsigned i=0;i<12 && !ht_cutscene.active;++i)ht_input(32);
+        assert(ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_SIGNAL);
+        ht_game frozen=ht;
+        reports[source][0].buttons=a[source]|b[source]|y[source];
+        for(unsigned i=0;i<30;++i){ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(!ht_motion_emphasis && !reading && !paused && !jump_down);
+        /* Provider failure may rearm ownership, but cannot mutate the scene. */
+        healthy=false;for(unsigned i=0;i<9;++i)ht_input(32);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));healthy=true;
+        while(ht_cutscene.active)ht_input(32);
+        assert(ht_input_rearm && !memcmp(&ht,&frozen,sizeof(ht)));
+        ht_input(32);assert(!held && !jump_down && ht_input_rearm);
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
+        assert(!ht_input_rearm);reports[source][0].hat=2;ht_input(32);
+        assert(held&HT_RIGHT);
+        ht_game before=ht;before.x=(2090-1)*256;
+        assert(!ht_cutscene_signal_arrival(&before,&ht)); /* Once per session. */
+        ht_cutscene_begin(HT_CUTSCENE_SIGNAL);host_exit=true;ht_input(1);
+        assert(quitting);host_exit=false;ht_cutscene.active=false;
+    }
+}
+
+static void relay_controls(void) {
+    const unsigned a[2]={1,2};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+        ht.x=(HT_PUZZLE_FIRST+3*HT_PUZZLE_SPACING)*256;ht.y=200*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=0;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;
+        ht_input(1);ht.puzzle.value[0]=1;press(source,a[source]);
+        assert(!ht.puzzle.solved && !ht_cutscene.active && ht.puzzle.feedback==HT_CROSSOVER_SHORT);
+        ht.puzzle.value[0]=2;ht.puzzle.value[1]=1;ht.puzzle.value[2]=2;
+        press(source,a[source]);
+        assert(ht.puzzle.solved && ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_RELAY);
+        assert(!held && !jump_down && !pause_down);ht_game frozen=ht;
+        reports[source][0].hat=2;
+        while(ht_cutscene.active) {ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(ht_input_rearm && !held && !reading && !quitting);
+        ht_input(32);assert(ht_input_rearm && !held && ht.x==frozen.x && ht.y==frozen.y);
+        assert(ht.evidence==frozen.evidence && ht.puzzle.solved);
+        assert(!memcmp(ht.puzzle.value,frozen.puzzle.value,sizeof(ht.puzzle.value)));
+        /* Normal gate-opening animation resumes; held A/Right cannot act. */
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
+        assert(!ht_input_rearm);press(source,a[source]);assert(!ht_cutscene.active && ht.puzzle.solved);
+    }
+    /* Simultaneous device Confirm/Back must not lose the real exit request
+     * when the just-restored relay begins its reaction on that same poll. */
+    pad=hid_pad=NULL;memset(reports,0,sizeof(reports));mapped=0;
+    ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;
+    memset(&ht,0,sizeof(ht));ht.level=1;ht_select_level(1);ht_spawn(true);
+    ht.x=(HT_PUZZLE_FIRST+3*HT_PUZZLE_SPACING)*256;ht.y=200*256;ht.grounded=true;
+    ht.puzzle.value[0]=2;ht.puzzle.value[1]=1;ht.puzzle.value[2]=2;
+    ht_cutscene.active=false;ht_cutscene_seen=0;simulation_started=false;
+    reading=paused=quitting=loading=debug_jump=false;held=previous=0;
+    ht_input(1);mapped=T5_APP_BUTTON_CONFIRM|T5_APP_BUTTON_BACK;ht_input(1);
+    assert(quitting && ht.puzzle.solved && ht_cutscene.active);
+}
+
+
+static void mill_desk_controls(void) {
+    const unsigned a[2]={1,2},x[2]={8,4},start[2]={512,128};
+    app=&fake_app;pad=&xapi;hid_pad=&hapi;
+    for(unsigned source=0;source<2;++source) {
+        memset(reports,0,sizeof(reports));reports[source][0].connected=1;
+        reports[source][0].device=source+1;reports[source][0].hat=8;
+        healthy=true;host_exit=false;mapped=0;
+        memset(&ht,0,sizeof(ht));ht.level=0;ht_select_level(0);ht_spawn(true);
+        ht.traversal.forest_log_phase=ht.traversal.bridge_open=32;
+        ht.x=1074*256;ht.y=ht_land_height(0,3,ht.x/256)*256;ht.grounded=true;
+        ht_cutscene.active=false;ht_cutscene_seen=1;
+        reading=paused=quitting=loading=debug_jump=jump_down=pause_down=false;
+        ht_schoolroom_studying=ht_signal_room_studying=false;held=previous=0;
+        ht_pad_owned=ht_input_rearm=false;ht_pad_source=-1;simulation_started=false;simulation_accumulator=0;
+        ht_input(1);reports[source][0].hat=2;
+        for(unsigned i=0;i<40;++i)ht_input(32);
+        assert(ht.x==1088*256 && ht.grounded && !ht.checkpoint);
+        reports[source][0].hat=8;press(source,a[source]);
+        assert(ht.traversal.mode==HT_SHUTTER && !reading && !ht_cutscene.active);
+        reports[source][0].buttons=0;reports[source][0].hat=2;
+        for(unsigned i=0;i<50 && ht.traversal.mill_entry_phase<48;++i)ht_input(32);
+        assert(ht.traversal.mill_entry_phase>=48 && ht.traversal.mill_entry_phase<=49);
+        unsigned held_phase=ht.traversal.mill_entry_phase;
+        reports[source][0].hat=8;ht_input(1);int held_x=ht.x,held_y=ht.y;
+        for(unsigned i=0;i<20;++i)ht_input(32);
+        assert(ht.x==held_x && ht.y==held_y && ht.traversal.mill_entry_phase==held_phase);
+        reports[source][0].hat=2;
+        for(unsigned i=0;i<50 && ht.traversal.mode==HT_SHUTTER;++i)ht_input(32);
+        assert(ht.x==1111*256 && ht.grounded && ht.traversal.mode==HT_FREE && ht.checkpoint==3);
+        reports[source][0].hat=8;press(source,a[source]);
+        assert(ht.traversal.mode==HT_CRATE && !reading && !ht_evidence_found(&ht,1));
+        reports[source][0].buttons=0;reports[source][0].hat=2;
+        unsigned count=0;while(!ht_mill_register_lit(&ht) && count++<180)ht_input(32);
+        assert(count<180 && ht.traversal.mode==HT_CRATE);
+        reports[source][0].hat=8;press(source,a[source]);
+        assert(!reading && ht_cutscene.active && ht_cutscene.id==HT_CUTSCENE_REGISTER);
+        assert(ht.traversal.mode==HT_FREE && !ht.traversal.crate_vx && !held && !previous);
+        ht_game frozen=ht;
+        /* Every input during the memory leaves the world/desk/evidence alone.
+         * Held entry A never skips it or advances the following journal. */
+        reports[source][0].hat=2;reports[source][0].buttons=a[source];
+        while(ht_cutscene.active) {ht_input(32);assert(!memcmp(&ht,&frozen,sizeof(ht)));}
+        assert(reading && journal_page==1 && !ht_journal_index && ht_input_rearm);
+        ht_input(32);assert(reading && !ht_journal_index && !memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].hat=8;reports[source][0].buttons=0;ht_input(1);
+        press(source,x[source]);press(source,x[source]);
+        assert(!reading && !quitting && ht.traversal.mode==HT_FREE);
+        press(source,a[source]);assert(ht_cutscene.active && !reading && !ht.traversal.mode);
+        frozen=ht;press(source,x[source]);
+        assert(reading && journal_page==1 && !ht_cutscene.active && !quitting && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        /* Archive navigation reads the already earned page without replay. */
+        reports[source][0].buttons=0;ht_input(1);press(source,x[source]);
+        assert(ht_journal_index);press(source,a[source]);
+        assert(reading && journal_page==1 && !ht_cutscene.active);
+        press(source,x[source]);press(source,x[source]);press(source,a[source]);
+        assert(ht_cutscene.active);frozen=ht;press(source,start[source]);
+        assert(reading && !ht_journal_index && !ht_cutscene.active && ht_input_rearm);
+        assert(!memcmp(&ht,&frozen,sizeof(ht)));
+        reports[source][0].buttons=0;ht_input(1);
+        press(source,x[source]);press(source,x[source]);press(source,a[source]);
+        assert(ht_cutscene.active);host_exit=true;ht_input(1);assert(quitting);
+        host_exit=false;ht_cutscene.active=false;
+        reading=false;reports[source][0].buttons=0;ht_input(1);
+    }
+}
+
 int main(void) {
     app=&fake_app; pad=&xapi; hid_pad=&hapi;
     /* Receiver face-label correction reported on hardware for 1.0.15. */
@@ -199,5 +509,12 @@ int main(void) {
      * a second handoff or consume input as a gameplay action. */
     ht_cutscene_begin(HT_CUTSCENE_INTRO);ht_cutscene.tick=2140;
     host_exit=true;ht_input(1);assert(quitting && ht_cutscene.active);
+    schoolroom_controls();
+    signal_room_controls();
+    motion_emphasis_controls();
+    rain_controls();
+    signal_arrival_controls();
+    relay_controls();
+    mill_desk_controls();
     puts("Hollow Trail controls: receiver HID/XInput face labels, dedicated Start, A inspect, B jump, X back, arbitration and fault recovery PASS");
 }

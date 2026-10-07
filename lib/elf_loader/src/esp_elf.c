@@ -23,6 +23,7 @@
 #endif
 
 #include "private/elf_platform.h"
+#include "private/esp_elf_data_layout.h"
 #include "private/esp_privileged_os_cpu.h"
 
 #define stype(_s, _t)               ((_s)->type == (_t))
@@ -61,10 +62,18 @@ static portMUX_TYPE resolver_mux = portMUX_INITIALIZER_UNLOCKED;
  * @note The actual file path will be constructed as "FS_PATH/name"
  * @note Allocates memory for file content using esp_elf_malloc()
  */
+// Core supplies a scoped canonical-app validator. Standalone ports retain
+// loose-file loading, but must not silently bypass managed /Apps/id admission.
+__attribute__((weak)) bool esp_elf_admit_managed_app(const char *path, const uint8_t *bytes, size_t size)
+{
+    (void)bytes; (void)size;
+    return path && !(strncmp(path, "/sd/Apps/", 9) == 0 && strchr(path + 9, '/'));
+}
+
 int esp_elf_open(elf_file_t *file, const char *name)
 {
     ssize_t ret;
-    int fd;
+    int fd = -1;
     char *file_path;
     off_t size;
     uint8_t *pbuf;
@@ -100,16 +109,48 @@ int esp_elf_open(elf_file_t *file, const char *name)
         goto errout_lseek_end;
     }
 
+    /* Keep the reader bounded even for ports other than the SD VFS. */
+    if (size < 52 || size > 8 * 1024 * 1024) {
+        errno = EFBIG;
+        goto errout_lseek_end;
+    }
     pbuf = esp_elf_malloc(size, false);
     if (!pbuf) {
         ESP_LOGE(TAG, "Failed to malloc %" PRId64 " bytes", (int64_t)size);
         goto errout_lseek_end;
     }
 
-    ret = read(fd, pbuf, size);
-    if (ret != (ssize_t)size) {
-        ESP_LOGE(TAG, "Failed to read ret=%zd", ret);
-        goto errout_read_fs;
+    /* A synchronous media call still needs its own driver timeout; these
+     * checkpoints bound repeated work and yield between bounded read requests. */
+    const TickType_t read_started = xTaskGetTickCount();
+    const TickType_t read_budget = pdMS_TO_TICKS(30000);
+    size_t offset = 0, reported_offset = 0;
+    TickType_t reported_at = read_started;
+    while (offset < (size_t)size) {
+        if ((TickType_t)(xTaskGetTickCount() - read_started) >= read_budget) {
+            errno = ETIMEDOUT;
+            goto errout_read_fs;
+        }
+        const size_t remaining = (size_t)size - offset;
+        const size_t chunk = remaining < 4096 ? remaining : 4096;
+        ret = read(fd, pbuf + offset, chunk);
+        if (ret != (ssize_t)chunk) {
+            ESP_LOGE(TAG, "Failed to read ret=%zd", ret);
+            goto errout_read_fs;
+        }
+        offset += chunk;
+        const TickType_t now = xTaskGetTickCount();
+        if (offset == (size_t)size || offset - reported_offset >= 256 * 1024 ||
+                (TickType_t)(now - reported_at) >= pdMS_TO_TICKS(500)) {
+            ESP_LOGD(TAG, "ELF read %u/%u bytes", (unsigned)offset, (unsigned)size);
+            reported_offset = offset;
+            reported_at = now;
+        }
+        vTaskDelay(1);
+        if ((TickType_t)(xTaskGetTickCount() - read_started) >= read_budget) {
+            errno = ETIMEDOUT;
+            goto errout_read_fs;
+        }
     }
 
     extern bool esp_elf_validate_file(const uint8_t *, size_t);
@@ -117,8 +158,13 @@ int esp_elf_open(elf_file_t *file, const char *name)
         ESP_LOGE(TAG, "Unsupported or malformed native application");
         goto errout_read_fs;
     }
+    const int closed = close(fd);
+    fd = -1;
+    if (closed != 0 || !esp_elf_admit_managed_app(file_path, pbuf, size)) {
+        ESP_LOGE(TAG, "Managed application snapshot admission or close failed");
+        goto errout_read_fs;
+    }
     free(file_path);
-    close(fd);
     file->payload = pbuf;
     file->size = size;
 
@@ -127,7 +173,7 @@ int esp_elf_open(elf_file_t *file, const char *name)
 errout_read_fs:
     esp_elf_free(pbuf);
 errout_lseek_end:
-    close(fd);
+    if (fd >= 0) close(fd);
 errout_open_file:
     free(file_path);
     return -1;
@@ -196,7 +242,12 @@ uintptr_t elf_find_sym(const char *sym_name)
 static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 {
     uint32_t entry;
-    uint32_t size;
+    uint32_t size = 0;
+    uint32_t alignments[ELF_SECS] = {0};
+    uint32_t offsets[ELF_SECS] = {0};
+    bool seen[ELF_SECS] = {false};
+    const unsigned data_sections[] = {ELF_SEC_DATA, ELF_SEC_RODATA, ELF_SEC_DRLRO, ELF_SEC_BSS};
+    int failure = -EINVAL;
 
     const elf32_hdr_t *ehdr = (const elf32_hdr_t *)pbuf;
     const elf32_shdr_t *shdr = (const elf32_shdr_t *)(pbuf + ehdr->shoff);
@@ -217,6 +268,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                  * or a following unaligned .rodata address aliases into .text. */
                 elf->sec[ELF_SEC_TEXT].size    = shdr[i].size;
                 elf->sec[ELF_SEC_TEXT].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_TEXT]) return -EINVAL;
+                seen[ELF_SEC_TEXT] = true;
+                alignments[ELF_SEC_TEXT] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".text   offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_TEXT].offset,
@@ -228,6 +282,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_DATA].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_DATA].size    = shdr[i].size;
                 elf->sec[ELF_SEC_DATA].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_DATA]) return -EINVAL;
+                seen[ELF_SEC_DATA] = true;
+                alignments[ELF_SEC_DATA] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".data   offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_DATA].offset,
@@ -239,6 +296,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_RODATA].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_RODATA].size    = shdr[i].size;
                 elf->sec[ELF_SEC_RODATA].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_RODATA]) return -EINVAL;
+                seen[ELF_SEC_RODATA] = true;
+                alignments[ELF_SEC_RODATA] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".rodata offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_RODATA].offset,
@@ -250,6 +310,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
                 elf->sec[ELF_SEC_DRLRO].v_addr  = shdr[i].addr;
                 elf->sec[ELF_SEC_DRLRO].size    = shdr[i].size;
                 elf->sec[ELF_SEC_DRLRO].offset  = shdr[i].offset;
+                if (seen[ELF_SEC_DRLRO]) return -EINVAL;
+                seen[ELF_SEC_DRLRO] = true;
+                alignments[ELF_SEC_DRLRO] = shdr[i].addralign;
 
                 ESP_LOGD(TAG, ".data.rel.ro offset is 0x%lx size is 0x%x",
                          elf->sec[ELF_SEC_DRLRO].offset,
@@ -264,6 +327,9 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
             elf->sec[ELF_SEC_BSS].v_addr  = shdr[i].addr;
             elf->sec[ELF_SEC_BSS].size    = shdr[i].size;
             elf->sec[ELF_SEC_BSS].offset  = shdr[i].offset;
+            if (seen[ELF_SEC_BSS]) return -EINVAL;
+            seen[ELF_SEC_BSS] = true;
+            alignments[ELF_SEC_BSS] = shdr[i].addralign;
 
             ESP_LOGD(TAG, ".bss    offset is 0x%lx size is 0x%x",
                      elf->sec[ELF_SEC_BSS].offset,
@@ -277,24 +343,44 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
         return -EINVAL;
     }
 
+    for (unsigned i = 0; i < ELF_SECS; ++i) {
+        if (!elf->sec[i].size) continue;
+        if (elf->sec[i].size > UINT32_MAX - elf->sec[i].v_addr) return -EINVAL;
+        for (unsigned j = 0; j < i; ++j) {
+            if (elf->sec[j].size && elf->sec[i].v_addr < elf->sec[j].v_addr + elf->sec[j].size &&
+                elf->sec[j].v_addr < elf->sec[i].v_addr + elf->sec[i].size) return -EINVAL;
+        }
+    }
+    for (unsigned i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+        const unsigned section = data_sections[i];
+        if (elf->sec[section].size &&
+            !esp_elf_data_reserve(elf->sec[section].size, alignments[section],
+                                  elf->sec[section].v_addr, &size)) return -EINVAL;
+    }
+    if (elf->sec[ELF_SEC_TEXT].size > ESP_ELF_MAX_IMAGE_BYTES ||
+        size > ESP_ELF_MAX_IMAGE_BYTES - elf->sec[ELF_SEC_TEXT].size) return -EINVAL;
     elf->ptext = esp_elf_malloc(elf->sec[ELF_SEC_TEXT].size, true);
     if (!elf->ptext) {
         ESP_LOGE(TAG, "Failed to malloc %"PRIu32" bytes for text section",
                  (uint32_t)elf->sec[ELF_SEC_TEXT].size);
         return -ENOMEM;
     }
-
-    size = elf->sec[ELF_SEC_DATA].size +
-           elf->sec[ELF_SEC_RODATA].size +
-           elf->sec[ELF_SEC_BSS].size +
-           elf->sec[ELF_SEC_DRLRO].size;
     if (size) {
         elf->pdata = esp_elf_malloc(size, false);
         if (!elf->pdata) {
             ESP_LOGE(TAG, "Failed to malloc %"PRIu32" bytes for data section", size);
-            esp_elf_free(elf->ptext);
-            elf->ptext = NULL;
-            return -ENOMEM;
+            failure = -ENOMEM;
+            goto layout_failed;
+        }
+        uint32_t cursor = 0;
+        for (unsigned i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+            const unsigned section = data_sections[i];
+            if (!elf->sec[section].size) continue;
+            if (!esp_elf_data_place((uintptr_t)elf->pdata, cursor, size,
+                                    elf->sec[section].size, alignments[section],
+                                    elf->sec[section].v_addr, &offsets[section])) goto layout_failed;
+            elf->sec[section].addr = (uintptr_t)elf->pdata + offsets[section];
+            cursor = offsets[section] + elf->sec[section].size;
         }
     }
 
@@ -306,9 +392,8 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 
 #ifdef CONFIG_ELF_LOADER_SET_MMU
     if (esp_elf_arch_init_mmu(elf)) {
-        esp_elf_free(elf->ptext);
-        esp_elf_free(elf->pdata);
-        return -EIO;
+        failure = -EIO;
+        goto layout_failed;
     }
 #endif
 
@@ -318,40 +403,12 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
      * Todo: Dump ".rodata" to rodata section by MMU/MPU.
      */
 
-    if (size) {
-        uint8_t *pdata = elf->pdata;
-
-        if (elf->sec[ELF_SEC_DATA].size) {
-            elf->sec[ELF_SEC_DATA].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_DATA].offset,
-                   elf->sec[ELF_SEC_DATA].size);
-
-            pdata += elf->sec[ELF_SEC_DATA].size;
-        }
-
-        if (elf->sec[ELF_SEC_RODATA].size) {
-            elf->sec[ELF_SEC_RODATA].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_RODATA].offset,
-                   elf->sec[ELF_SEC_RODATA].size);
-
-            pdata += elf->sec[ELF_SEC_RODATA].size;
-        }
-
-        if (elf->sec[ELF_SEC_DRLRO].size) {
-            elf->sec[ELF_SEC_DRLRO].addr = (uint32_t)pdata;
-
-            memcpy(pdata, pbuf + elf->sec[ELF_SEC_DRLRO].offset,
-                   elf->sec[ELF_SEC_DRLRO].size);
-
-            pdata += elf->sec[ELF_SEC_DRLRO].size;
-        }
-
-        if (elf->sec[ELF_SEC_BSS].size) {
-            elf->sec[ELF_SEC_BSS].addr = (uint32_t)pdata;
-            memset(pdata, 0, elf->sec[ELF_SEC_BSS].size);
-        }
+    for (unsigned i = 0; i < sizeof(data_sections) / sizeof(data_sections[0]); ++i) {
+        const unsigned section = data_sections[i];
+        if (!elf->sec[section].size) continue;
+        uint8_t *destination = elf->pdata + offsets[section];
+        if (section == ELF_SEC_BSS) memset(destination, 0, elf->sec[section].size);
+        else memcpy(destination, pbuf + elf->sec[section].offset, elf->sec[section].size);
     }
 
     /* Set ELF entry */
@@ -366,6 +423,15 @@ static int esp_elf_load_section(esp_elf_t *elf, const uint8_t *pbuf)
 #endif
 
     return 0;
+
+layout_failed:
+    esp_elf_free(elf->pdata);
+    esp_elf_free(elf->ptext);
+    elf->pdata = NULL;
+    elf->ptext = NULL;
+    elf->entry = NULL;
+    for (unsigned i = 0; i < ELF_SECS; ++i) elf->sec[i].addr = 0;
+    return failure;
 }
 
 #else
@@ -1018,6 +1084,11 @@ int esp_elf_unregister_symbol(esp_elf_symbol_table_t *symbol_table)
  * @return Symbol address if found, 0 if not found.
  * @note Search order is registration order (earliest registered first).
  */
+// Optional host notification of an actually resolved registered import. The
+// privileged resolver never reaches this path; this grants no new symbols.
+extern void esp_elf_registered_symbol_used(const void *table, const char *name,
+                                           uintptr_t address) __attribute__((weak));
+
 uintptr_t esp_elf_find_symbol(const char *sym_name)
 {
     if (!sym_name) {
@@ -1030,6 +1101,8 @@ uintptr_t esp_elf_find_symbol(const char *sym_name)
             syms = g_symbol_tables[i];
             while (syms->name) {
                 if (!strcmp(syms->name, sym_name)) {
+                    if (esp_elf_registered_symbol_used)
+                        esp_elf_registered_symbol_used(g_symbol_tables[i], sym_name, (uintptr_t)syms->sym);
                     return (uintptr_t)syms->sym;
                 }
 

@@ -9,6 +9,8 @@ on:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
       - "Drivers/**"
+      - "Services/**"
+      - "Providers/**"
       - "sdk/**"
       - "SD_fonts/FAClassic*/**"
       - "src/**"
@@ -24,6 +26,8 @@ on:
       - ".github/workflows/platformio-build.yml"
       - "Apps/**"
       - "Drivers/**"
+      - "Services/**"
+      - "Providers/**"
       - "sdk/**"
       - "SD_fonts/FAClassic*/**"
       - "src/**"
@@ -41,6 +45,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  global-home-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify captured Home timing and paused ELF overlay behavior
+        run: |
+          python3 test/native_apps/global_home_overlay_contract_test.py
+          python3 test/native_apps/global_home_overlay_behavior_test.py
+          python3 test/hal/touch_interrupt_capture_test.py
+          python3 test/hal/touch_capture_behavior_test.py
+
+  package-source-versions:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject changed package sources with unchanged versions
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [ "$HEAD_REF" = "impl/u1-riscrte" ]; then
+            python3 scripts/check_changed_package_versions.py --base "$BASE_SHA" --zip-transition
+          else
+            python3 scripts/check_changed_package_versions.py --base "$BASE_SHA"
+          fi
+
   build:
     name: Build RiscRTE ${{ matrix.environment }}
     runs-on: ubuntu-latest
@@ -82,10 +118,41 @@ jobs:
             ${{ runner.os }}-platformio-
 
       - name: Install PlatformIO
-        run: python -m pip install platformio==6.1.19
+        run: python -m pip install platformio==6.1.19 pyelftools==0.32
 
       - name: Build RiscRTE firmware
         run: pio run -e ${{ matrix.environment }}
+
+      - name: Preserve bounded SDK source-drift diagnostic on build failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-sdk-source-drift-${{ matrix.board_id }}
+          path: dist/u1-sdk-source-drift.json
+          if-no-files-found: ignore
+
+      - name: Verify the actual pinned SD SPI port fault patch
+        run: python3 test/hal/sd_spi_patch_test.py "$HOME/.platformio/packages/framework-arduinoespressif32" ".pio/build/${{ matrix.environment }}/u1-sdk-sources"
+
+      - name: Verify actual runtime sidecar parser and owned app admission
+        run: bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src"
+
+      - name: Verify OPDS reload failure and recovery with actual ArduinoJson
+        run: python3 test/opds_reload/reload_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitize
+
+      - name: Verify OPDS JSON separators with actual ArduinoJson
+        run: python3 test/opds_response/response_test.py ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" --sanitize
+
+      - name: Verify actual Arduino HTTP body-loop termination
+        run: python3 test/runtime_network/http_client_body_budget_test.py "$HOME/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src/HTTPClient.cpp"
+      - name: Record production serial and USB target references
+        run: python scripts/report_u1_target_references.py --elf ".pio/build/${{ matrix.environment }}/firmware.elf" --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output "dist/u1-target-references-${{ matrix.board_id }}.json"
+      - name: Preserve compact target reference evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-target-references-${{ matrix.board_id }}
+          path: dist/u1-target-references-${{ matrix.board_id }}.json
+          if-no-files-found: error
 
       - name: Build and validate native ELFs
         run: |
@@ -101,13 +168,24 @@ jobs:
 
       - name: Build and validate installable USB CDC driver
         run: |
-          python scripts/build_usb_cdc_driver.py
-          bash test/run_native_app_test.sh dist/drivers/usb-cdc-acm/driver.elf
+          python scripts/build_usb_cdc_v2.py
+          bash test/run_native_app_test.sh dist/experimental/usb-cdc-acm/driver.elf
 
       - name: Build and validate all released apps and manifests
         run: |
-          python scripts/build_all_apps.py
+          python scripts/build_all_apps.py --export-bundles
           python test/native_apps/risc_strike_release_test.py
+
+      - name: Measure verification work on actual built app pairs
+        run: |
+          bash test/run_app_manifest_test.sh ".pio/libdeps/${{ matrix.environment }}/ArduinoJson/src" dist/apps "dist/u1-app-verification-work-${{ matrix.board_id }}.json"
+          python3 scripts/stamp_u1_app_work_report.py "dist/u1-app-verification-work-${{ matrix.board_id }}.json" dist/apps "${{ github.event.pull_request.head.sha || github.sha }}"
+      - name: Preserve compact app verification work evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: u1-app-verification-work-${{ matrix.board_id }}
+          path: dist/u1-app-verification-work-${{ matrix.board_id }}.json
+          if-no-files-found: error
 
       - name: Stage board-qualified RiscRTE firmware
         run: |
@@ -126,6 +204,7 @@ jobs:
             dist/${{ matrix.merged_firmware_name }}
             dist/${{ matrix.elf_name }}
             dist/apps/*
+            dist/release-app-packages/*
             dist/drivers/*.t5driver.zip
             dist/timecard.elf
             dist/timecard.json
@@ -156,6 +235,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Verify target reference report decoding
+        run: python3 test/resources/target_reference_report_test.py
+
+      - name: Verify approved SD SPI retained-fault behavior
+        run: bash test/run_sd_spi_fault_test.sh
+
+      - name: Verify storage generations and retained inventory
+        run: bash test/run_storage_generation_test.sh
+
       - name: Verify lab target and partition guards
         run: python3 -B test/lab/test_esp32_lab.py
 
@@ -180,6 +268,9 @@ jobs:
       - name: Run desk clock minute alignment tests
         run: bash test/run_desk_clock_test.sh
 
+      - name: Run clock sync RTC retry regression
+        run: bash test/run_clock_sync_retry_test.sh
+
       - name: Run driver module and package tests
         run: bash test/run_driver_test.sh
 
@@ -189,9 +280,23 @@ jobs:
       - name: Run runtime network provider tests
         run: bash test/run_runtime_network_test.sh
 
+      - name: Verify Wi-Fi credential persistence failure handling
+        run: |
+          python3 test/native_apps/wifi_credential_persistence_test.py
+          bash test/run_wifi_credential_store_fault_test.sh
+
       - name: Run native app launcher tests
         timeout-minutes: 10
         run: bash test/run_native_app_test.sh
+
+      - name: Verify display abstraction contract
+        run: python3 test/native_apps/display_abstraction_contract_test.py
+
+      - name: Exercise display surface metadata validation
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -Ilib/DisplaySurface \
+            test/display/display_surface_validation_test.cpp -o /tmp/display-surface-validation
+          /tmp/display-surface-validation
 
       - name: Run app manifest and springboard tests
         run: bash test/run_springboard_test.sh
@@ -202,6 +307,8 @@ jobs:
       - name: Run release index and GameBoy provider tests
         run: |
           python3 test/release_index_test.py
+          python3 test/product_release_test.py
+          python3 test/release_plan_verification_test.py
           python3 test/bulk_release_test.py
           python3 test/release_workflow_trigger_test.py
           python3 test/sync_gameboy_app_test.py

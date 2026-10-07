@@ -1,11 +1,17 @@
+#include "runtime/packages/PackageCdcSdMigration.h"
+#include "runtime/packages/PackageMutationGate.h"
 #include "InstalledProviderGraph.h"
+#include "native/NativeStreamBridge.h"
 #include "DeviceProviderExecutorV2.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinaryStage.h"
 #include "runtime/packages/PackageUseGate.h"
+#include "runtime/packages/PackageExecutableAdmission.h"
+#include "runtime/packages/PackageVerificationReceipt.h"
 #include <HalStorage.h>
+#include <Arduino.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,7 +33,7 @@ namespace RuntimeInstalledProviders {
 namespace {
 using namespace RuntimePackages;
 constexpr PackageRuntimePolicy kPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr size_t kMaxProviders = RuntimeProviders::GraphV2::kMaxModules;
 RuntimeProviders::GraphV2* graph = nullptr;
 char pinned[kMaxProviders][96]{};
@@ -53,6 +59,9 @@ struct RegistrationFrame {
     RuntimeProviders::RequirementV2 needs[kMaxPackageRequirements]{};
     const char* symbols[128]{};
     ManagerProviderCandidateV2 candidate{};
+    uint8_t packageManifestSha256[32]{};
+    uint8_t executableDigest[32]{};
+    StorageGenerationStamp packageSourceStamp{};
 };
 
 struct ProviderAncestry {
@@ -194,6 +203,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
     if (n <= 0 || static_cast<size_t>(n) >= sizeof(target) ||
         !systemPackageUseGate().pin(target)) return false;
     bool accepted = false;
+    auto& packageSourceStamp = frame.packageSourceStamp;
+    packageSourceStamp = Storage.generation();
     do {
         auto& identity = frame.identity;
         identity = {};
@@ -202,7 +213,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         // below, exactly once per startup rather than by rehashing every ELF.
         if (!inspectInstalledOrdinarySdDirectory(target, kPolicy,
                 [](const char*) -> uint32_t { return UINT32_MAX; }, identity) ||
-            identity.kind != kind || std::strcmp(identity.id, id) ||
+            resourceOnly(identity) || identity.kind != kind || std::strcmp(identity.id, id) ||
             std::strcmp(identity.artifact, "driver.elf")) break;
         auto& name = frame.name;
         if (!pathFor(name, root, id, ".package.json")) break;
@@ -212,18 +223,21 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         // A multi-kilobyte manifest plan must not live on loopTask's stack
         // during ELF read, SHA-256 and downstream graph registration.
         std::unique_ptr<OrdinaryPackagePlan> plan(new (std::nothrow) OrdinaryPackagePlan{});
-        const bool parsed = plan && parseOrdinaryManifest(
-            reinterpret_cast<const char*>(json), jsonSize, *plan);
+        auto& packageManifestSha256 = frame.packageManifestSha256;
+        const bool parsed = plan && packageSnapshotDigest(json,jsonSize,packageManifestSha256) &&
+            parseOrdinaryManifest(reinterpret_cast<const char*>(json), jsonSize, *plan);
         std::free(json);
-        if (!parsed || plan->identity.kind != kind ||
-            std::strcmp(plan->identity.id, id)) break;
+        if (!parsed || resourceOnly(plan->identity) || plan->identity.kind != kind ||
+            std::strcmp(plan->identity.id, id) ||
+            !preflightCapturedPackage(*plan,kPolicy)) break;
         bool hasProfile = false, hasImports = false, hasExecutable = false;
+        auto& executableDigest = frame.executableDigest;
         for (size_t i = 0; i < plan->entryCount; ++i) {
             const auto& entry = plan->entries[i];
             if (!std::strcmp(entry.name, "provider-abi.v1")) hasProfile = true;
             if (!std::strcmp(entry.name, "privileged-imports.v1")) hasImports = true;
             if (!std::strcmp(entry.name, "driver.elf") && entry.executable)
-                hasExecutable = true;
+                hasExecutable = receiptDigest(entry.sha256, executableDigest);
         }
         if (!hasProfile || !hasImports || !hasExecutable) break;
         if (!pathFor(name, root, id, "provider-abi.v1")) break;
@@ -232,8 +246,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         if (!profileBytes) break;
         auto& capability = frame.capability;
         uint32_t api = 0;
-        const bool goodProfile = profile(reinterpret_cast<const char*>(profileBytes),
-                                         profileSize, capability, api);
+        const bool goodProfile = declaredPackageSnapshot(*plan,"provider-abi.v1",profileBytes,profileSize) &&
+            profile(reinterpret_cast<const char*>(profileBytes), profileSize, capability, api);
         std::free(profileBytes);
         if (!goodProfile || std::strcmp(capability, expectedCapability) ||
             api != expectedApi) break;
@@ -259,7 +273,8 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         if (!imports) break;
         auto& symbols = frame.symbols;
         size_t symbolCount = 0;
-        const bool goodImports = parseExactImports(imports, importsSize, symbols, symbolCount);
+        const bool goodImports = declaredPackageSnapshot(*plan,"privileged-imports.v1",imports,importsSize) &&
+            parseExactImports(imports, importsSize, symbols, symbolCount);
         if (!goodImports) { std::free(imports); break; }
         if (!pathFor(name, root, id, "driver.elf")) {
             std::free(imports);
@@ -280,6 +295,10 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         candidate.importedSymbols = symbols;
         candidate.importedSymbolCount = symbolCount;
         candidate.requiredOsCpuAbi = 1;
+        candidate.resourceIdentity = plan->identity;
+        candidate.declaredSha256 = executableDigest;
+        candidate.packageManifestSha256 = packageManifestSha256;
+        candidate.packageSourceStamp = packageSourceStamp;
         accepted = DeviceProviderExecutorV2::registerManagerValidated(destination, candidate, false);
         std::free(elf);
         std::free(imports);
@@ -388,9 +407,18 @@ void undoPins() {
 } // namespace
 
 bool prepare() {
+    if (RuntimePackages::cdcMigrationPendingOnSd()) {
+        RuntimePackages::ScopedPackageMutation mutation;
+        RuntimePackages::Identity recovered{};
+        if (mutation) (void)RuntimePackages::reconcileCdcMigrationFromSd(kPolicy,
+            [](const char*) -> uint32_t { return UINT32_MAX; }, recovered);
+        // Uncertain CDC state blocks only its two roots. Independent software
+        // and unrelated hardware providers remain usable during repair.
+    }
     if (graph) return true;
     if (!Storage.ready()) return false;
-    graph = new (std::nothrow) RuntimeProviders::GraphV2();
+    graph = new (std::nothrow) RuntimeProviders::GraphV2(nativeProviderStreamHost());
+    if (graph) nativeProviderSetOwnerPoll(poll);
     return graph != nullptr;
 }
 
@@ -398,6 +426,129 @@ const char* lastError() {
     if (loadError[0]) return loadError;
     if (graph && graph->lastError()[0]) return graph->lastError();
     return "Provider inventory verification failed";
+}
+
+bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
+                  char* providerId, size_t capacity) {
+    // Metadata-only enumeration remains separate from lazy ELF admission.
+    // Called on the serialized provider owner task. Reuse a complete bounded
+    // snapshot only while storage is quiescent in the same observed generation.
+    // Input polling starts a new cursor on every tick, not a new installation.
+    // Activation still independently validates and pins the selected ELF.
+    struct Candidate { char id[64]; char capability[64]; uint32_t api; };
+    static Candidate candidates[kMaxProviders]{};
+    static size_t count = 0;
+    static StorageGenerationStamp snapshotGeneration{};
+    static bool retained = false;
+    constexpr unsigned kCursorBits = 5;
+    constexpr size_t kCursorMask = (size_t{1} << kCursorBits) - 1;
+    constexpr size_t kCursorSerialLimit = (SIZE_MAX >> kCursorBits) - 1;
+    static_assert(kMaxProviders <= kCursorMask, "Provider cursor position must fit");
+    static size_t snapshotSerial = 0;
+    static bool cursorExhausted = false;
+    if (providerId && capacity) providerId[0] = 0;
+    if (!capability || !version || !cursor || !providerId || capacity < 2 ||
+        cursorExhausted || !prepare() || !Storage.ready()) {
+        if (cursor) *cursor = SIZE_MAX;
+        return false;
+    }
+    // No filesystem or generation calls occur under an additional mutex.
+    // Existing HalStorage locks continue to serialize individual media calls.
+    const auto observed = Storage.generation();
+    size_t position = *cursor & kCursorMask;
+    if (*cursor && ((*cursor >> kCursorBits) != snapshotSerial || position > count ||
+                    observed.mount != snapshotGeneration.mount ||
+                    observed.mutation != snapshotGeneration.mutation)) {
+        *cursor = SIZE_MAX;
+        return false;
+    }
+    if (*cursor == 0 && (!retained || !observed.matches(snapshotGeneration))) {
+        retained = false;
+        count = 0;
+        // Invalidate older cursors before even an unsuccessful rebuild. An
+        // interleaved cursor must never consume a replacement global snapshot.
+        if (snapshotSerial == kCursorSerialLimit) {
+            cursorExhausted = true; *cursor = SIZE_MAX; return false;
+        }
+        ++snapshotSerial;
+        std::unique_ptr<RegistrationFrame> frame(new (std::nothrow) RegistrationFrame{});
+        if (!frame) { *cursor = SIZE_MAX; return false; }
+        for (const Root& root : kRoots) {
+            HalFile directory = Storage.open(root.path, O_RDONLY);
+            if (!directory.isOpen()) {
+                if (Storage.exists(root.path) || !Storage.ready()) {
+                    *cursor = SIZE_MAX; count = 0; return false;
+                }
+                continue;
+            }
+            if (!directory.isDirectory()) {
+                (void)directory.close(); *cursor = SIZE_MAX; count = 0; return false;
+            }
+            // One extra probe distinguishes the exact bound from truncation.
+            bool complete = false;
+            for (size_t visited = 0; visited <= 64; ++visited) {
+                ordinaryCooperativeYield(1, 1);
+                HalFile item = directory.openNextFile();
+                if (!item.isOpen()) {
+                    complete = directory.getError() == 0;
+                    break;
+                }
+                if (visited == 64) {
+                    (void)item.close(); break;
+                }
+                const size_t length = item.getName(frame->id, sizeof(frame->id));
+                const bool valid = item.isDirectory() && length &&
+                    length < sizeof(frame->id) && safeId(frame->id);
+                if (!item.close()) { *cursor = SIZE_MAX; break; }
+                if (!valid) continue;
+                if (RuntimePackages::cdcLineage(root.kind, frame->id) &&
+                    RuntimePackages::cdcMigrationPendingOnSd()) continue;
+                if (count == kMaxProviders ||
+                    !pathFor(frame->name, root.path, frame->id, "provider-abi.v1")) {
+                    *cursor = SIZE_MAX; break;
+                }
+                size_t size = 0;
+                uint8_t* bytes = readFile(frame->name, 191, size);
+                uint32_t api = 0;
+                const bool parsed = bytes && profile(reinterpret_cast<char*>(bytes),
+                    size, frame->capability, api);
+                std::free(bytes);
+                std::snprintf(frame->target, sizeof(frame->target), "%s/%s", root.path, frame->id);
+                if (!parsed || !inspectInstalledOrdinarySdDirectory(frame->target, kPolicy,
+                        [](const char*) -> uint32_t { return UINT32_MAX; }, frame->identity) ||
+                    frame->identity.kind != root.kind || std::strcmp(frame->identity.id, frame->id)) {
+                    *cursor = SIZE_MAX; break;
+                }
+                auto& entry = candidates[count++];
+                std::strcpy(entry.id, frame->id);
+                std::strcpy(entry.capability, frame->capability);
+                entry.api = api;
+            }
+            const bool closed = directory.close();
+            if (*cursor == SIZE_MAX || !complete || !closed) {
+                *cursor = SIZE_MAX; count = 0; return false;
+            }
+        }
+        const auto after = Storage.generation();
+        if (observed.mount != after.mount || observed.mutation != after.mutation) {
+            *cursor = SIZE_MAX; count = 0; return false;
+        }
+        snapshotGeneration = after;
+        // Active writers/raw access retain operation-local behavior, but may
+        // never turn a transient omission into a reusable negative result.
+        retained = observed.matches(after);
+    }
+    while (position < count) {
+        const auto& entry = candidates[position++];
+        if (entry.api != version || std::strcmp(entry.capability, capability)) continue;
+        const size_t length = std::strlen(entry.id);
+        if (length >= capacity) { *cursor = SIZE_MAX; return false; }
+        std::memcpy(providerId, entry.id, length + 1);
+        *cursor = (snapshotSerial << kCursorBits) | position;
+        return true;
+    }
+    *cursor = (snapshotSerial << kCursorBits) | position;
+    return false;
 }
 
 bool acquire(const char* providerId, const char* capability, uint32_t version,
@@ -418,19 +569,47 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
             return false;
     }
     const auto grant = graph->acquireFrom(providerId, capability, version);
+    if (!grant.slot) return false;
     const void* interface = graph->interfaceFor(grant);
     if (!interface) {
-        if (grant.slot) (void)graph->release(grant);
+        // A mapped ELF may be quiescence-uncertain even though its interface
+        // cannot be used. Preserve the EXACT grant for checked retry rather
+        // than orphaning an occupied slot and losing physical cleanup.
+        if (!graph->release(grant)) *out = {grant, nullptr};
         return false;
     }
     *out = {grant, interface};
     return true;
+}
+void poll() {
+    if (!graph) return;
+    graph->poll([]() -> uint32_t { return millis(); }, []() {
+#if defined(ESP_PLATFORM)
+        vTaskDelay(1);
+#else
+        delay(1);
+#endif
+    });
+}
+bool attachStream(const Lease& lease, uint32_t endpoint, uint32_t rights) {
+    const uint32_t consumer = nativeProviderStreamConsumer();
+    return graph && consumer && lease.interface &&
+        graph->interfaceFor(lease.grant) == lease.interface &&
+        graph->grantStream(lease.grant, consumer, endpoint, rights);
 }
 bool release(Lease* lease) {
     if (!lease || !lease->grant.slot || !graph) return false;
     const bool okay = graph->release(lease->grant);
     if (okay) *lease = {};
     return okay;
+}
+bool recoverFailedProvider(const char* providerId, const char* capability,
+                           uint32_t version) {
+    // A grantless failed start can retain the mapped provider and its exact
+    // dependency interface pointers. Recover only that node; global shutdown
+    // would disrupt other services and can discard still-live hardware.
+    return graph && providerId && capability && version &&
+           graph->recoverFailedFrom(providerId, capability, version);
 }
 bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out) {
     if (out) *out = {};
@@ -445,7 +624,7 @@ bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* o
     const auto grant = graph->acquire(capability, selected);
     const void* interface = graph->interfaceFor(grant);
     if (!interface) {
-        if (grant.slot) (void)graph->release(grant);
+        if (grant.slot && !graph->release(grant)) *out = {grant, nullptr};
         return false;
     }
     *out = {grant, interface};

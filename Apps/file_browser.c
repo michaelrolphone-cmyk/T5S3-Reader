@@ -404,6 +404,12 @@ static int32_t run_menu(const char *title, const char *subtitle,
     }
 }
 
+static bool picker_can_append(uint32_t count, uint32_t offset) {
+    return count >= offset &&
+           count < sizeof(picker_rows) / sizeof(picker_rows[0]) &&
+           count - offset < sizeof(picker_names) / sizeof(picker_names[0]);
+}
+
 static uint32_t list_picker_directories(bool usb, const char *path, uint32_t offset) {
     uint32_t count = offset;
     const bool show_hidden = browser->show_hidden_files();
@@ -412,7 +418,8 @@ static uint32_t list_picker_directories(bool usb, const char *path, uint32_t off
         risc_storage_dir_t directory = usb_volume->dir_open(usb_volume->context, path);
         if (!directory) return count;
         risc_storage_dirent_v1 item;
-        while (count < PICKER_ENTRIES + 2u && usb_volume->dir_next(usb_volume->context, directory, &item)) {
+        while (picker_can_append(count, offset) &&
+               usb_volume->dir_next(usb_volume->context, directory, &item)) {
             if (!item.is_directory || (!show_hidden && item.name[0] == '.') ||
                 strcmp(item.name, "System Volume Information") == 0) continue;
             copy_text(picker_names[count - offset], sizeof(picker_names[0]), item.name);
@@ -425,7 +432,7 @@ static uint32_t list_picker_directories(bool usb, const char *path, uint32_t off
         make_sd_vfs_dir(path, vfs, sizeof(vfs));
         if (!app->dir_open(vfs)) return count;
         t5_app_dirent_t item;
-        while (count < PICKER_ENTRIES + 2u && app->dir_next(&item)) {
+        while (picker_can_append(count, offset) && app->dir_next(&item)) {
             if (!item.is_directory || (!show_hidden && item.name[0] == '.') ||
                 strcmp(item.name, "System Volume Information") == 0) continue;
             copy_text(picker_names[count - offset], sizeof(picker_names[0]), item.name);
@@ -630,23 +637,71 @@ static bool copy_selected(void) {
     return true;
 }
 
-#define MAX_OPEN_HANDLERS 8u
-static int32_t choose_handler(const char *vfs_path, t5_file_handler_t *handlers, uint32_t *count_out) {
-    t5_ui_list_row_t rows[MAX_OPEN_HANDLERS];
-    char subtitles[MAX_OPEN_HANDLERS][40];
+#define OPEN_HANDLERS_PER_PAGE 8u
+#define OPEN_HANDLERS_MAX 128u
+static bool choose_handler(const char *vfs_path, t5_file_handler_t *selected_handler,
+                           uint32_t *count_out) {
+    t5_file_handler_t handlers[OPEN_HANDLERS_PER_PAGE];
+    t5_ui_list_row_t rows[OPEN_HANDLERS_PER_PAGE];
+    char subtitles[OPEN_HANDLERS_PER_PAGE][40];
     uint32_t count = file_open->handler_count(vfs_path);
-    if (count > MAX_OPEN_HANDLERS) count = MAX_OPEN_HANDLERS;
+    if (count > OPEN_HANDLERS_MAX) count = OPEN_HANDLERS_MAX;
     if (count_out) *count_out = count;
-    if (!count) return -1;
-    for (uint32_t i = 0; i < count; ++i) {
-        memset(&handlers[i], 0, sizeof(handlers[i]));
-        if (!file_open->handler_get(vfs_path, i, &handlers[i])) return -1;
-        snprintf(subtitles[i], sizeof(subtitles[i]), "%s",
-                 handlers[i].kind == T5_FILE_HANDLER_SYSTEM_READER ? "System" : "App");
-        rows[i] = (t5_ui_list_row_t){handlers[i].display_name, subtitles[i], handlers[i].app_id, 0};
+    if (!count || !selected_handler) return false;
+    if (count == 1) return file_open->handler_get(vfs_path, 0, selected_handler);
+
+    uint32_t offset = 0;
+    int32_t selected = 0;
+    for (;;) {
+        uint32_t page_count = count - offset;
+        if (page_count > OPEN_HANDLERS_PER_PAGE) page_count = OPEN_HANDLERS_PER_PAGE;
+        for (uint32_t i = offset; i < offset + page_count; ++i) {
+            const uint32_t slot = i - offset;
+            memset(&handlers[slot], 0, sizeof(handlers[slot]));
+            if (!file_open->handler_get(vfs_path, i, &handlers[slot])) return false;
+            snprintf(subtitles[slot], sizeof(subtitles[slot]), "%s",
+                     handlers[slot].kind == T5_FILE_HANDLER_SYSTEM_READER ? "System" : "App");
+            rows[slot] = (t5_ui_list_row_t){handlers[slot].display_name, subtitles[slot], handlers[slot].app_id, 0};
+        }
+        char page_subtitle[64];
+        snprintf(page_subtitle, sizeof(page_subtitle), "Handlers %u-%u of %u",
+                 offset + 1u, offset + page_count, count);
+        const t5_ui_chrome_t chrome = {
+            .title = "Open with", .subtitle = page_subtitle, .status = "", .back_label = "Cancel",
+            .confirm_label = "Select", .previous_label = offset ? "Prev page" : "Up",
+            .next_label = offset + page_count < count ? "Next page" : "Down",
+        };
+        ui->render_list(&chrome, rows, page_count, selected);
+        for (;;) {
+            t5_ui_event_t event = {0};
+            if (!ui->poll_event(&event, 20) || event.type == T5_UI_EVENT_BACK ||
+                event.type == T5_UI_EVENT_EXIT) return false;
+            if (event.type == T5_UI_EVENT_PREVIOUS) {
+                if (selected > 0) --selected;
+                else if (offset > 0) {
+                    offset -= OPEN_HANDLERS_PER_PAGE;
+                    selected = (int32_t)OPEN_HANDLERS_PER_PAGE - 1;
+                    break;
+                } else selected = ui->previous_index(selected, page_count);
+            } else if (event.type == T5_UI_EVENT_NEXT) {
+                if (selected + 1 < (int32_t)page_count) ++selected;
+                else if (offset + page_count < count) {
+                    offset += page_count;
+                    selected = 0;
+                    break;
+                } else selected = ui->next_index(selected, page_count);
+            } else if (event.type == T5_UI_EVENT_TAP) {
+                const int32_t hit = ui->hit_test(event.touch_x, event.touch_y);
+                if (hit < 0 || hit >= (int32_t)page_count) continue;
+                *selected_handler = handlers[hit];
+                return true;
+            } else if (event.type == T5_UI_EVENT_CONFIRM) {
+                *selected_handler = handlers[selected];
+                return true;
+            } else continue;
+            ui->render_list(&chrome, rows, page_count, selected);
+        }
     }
-    if (count == 1) return 0;
-    return run_menu("Open with", "Choose an app for this file", rows, count);
 }
 
 static bool open_with_handler(const char *name, const t5_file_handler_t *handler) {
@@ -706,18 +761,18 @@ static bool open_selected(void) {
     }
     char vfs_path[PATH_CAP + 4];
     make_vfs_path(entry->name, vfs_path, sizeof(vfs_path));
-    t5_file_handler_t handlers[MAX_OPEN_HANDLERS];
+    t5_file_handler_t handler;
     uint32_t handler_count = 0;
-    const int32_t choice = choose_handler(vfs_path, handlers, &handler_count);
+    const bool chosen = choose_handler(vfs_path, &handler, &handler_count);
     if (!handler_count) {
         copy_text(status_text, sizeof(status_text), "No registered app for this file type");
         return false;
     }
-    if (choice < 0 || choice >= (int32_t)handler_count) {
+    if (!chosen) {
         copy_text(status_text, sizeof(status_text), "Open cancelled");
         return false;
     }
-    return open_with_handler(entry->name, &handlers[choice]);
+    return open_with_handler(entry->name, &handler);
 }
 
 static bool storage_rename_available(void) {

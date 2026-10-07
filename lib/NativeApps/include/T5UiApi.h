@@ -34,6 +34,31 @@ typedef struct {
     int16_t touch_y;
 } t5_ui_event_t;
 
+typedef enum {
+    T5_UI_ORIENTATION_PORTRAIT = 0,
+    T5_UI_ORIENTATION_LANDSCAPE = 1,
+} t5_ui_orientation_t;
+
+typedef enum {
+    T5_UI_SIZE_COMPACT = 0,
+    T5_UI_SIZE_REGULAR = 1,
+    T5_UI_SIZE_EXPANDED = 2,
+} t5_ui_size_class_t;
+
+typedef struct {
+    int32_t width;
+    int32_t height;
+    int16_t safe_top;
+    int16_t safe_right;
+    int16_t safe_bottom;
+    int16_t safe_left;
+    uint16_t content_padding;
+    uint16_t vertical_spacing;
+    uint8_t orientation;
+    uint8_t size_class;
+    uint16_t reserved;
+} t5_ui_viewport_t;
+
 typedef struct {
     const char *title;
     const char *subtitle;
@@ -104,6 +129,9 @@ typedef struct {
                              const char *text,
                              int32_t scroll_from_bottom,
                              t5_ui_text_view_result_t *result);
+
+    // Append-only runtime viewport/layout metrics. Apps must size-check before use.
+    bool (*get_viewport)(t5_ui_viewport_t *viewport);
 } t5_ui_api_v1;
 
 const t5_ui_api_v1 *t5_ui_get_api(uint32_t api_version);

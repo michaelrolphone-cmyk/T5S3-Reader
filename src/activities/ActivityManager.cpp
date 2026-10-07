@@ -21,7 +21,7 @@
 #include "util/InstalledAppActivity.h"
 
 namespace {
-constexpr HalDisplay::RefreshMode kUiPageTransitionRefreshMode = HalDisplay::HALF_REFRESH;
+constexpr DisplayPresentMode kUiPageTransitionRefreshMode = DisplayPresentMode::Quality;
 }  // namespace
 
 void ActivityManager::begin() {
@@ -157,7 +157,7 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
-        renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+        renderer.requestNextRefresh(DisplayPresentMode::Quality);
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
           auto handler = std::move(currentActivity->resultHandler);
@@ -185,10 +185,10 @@ void ActivityManager::loop() {
       const auto transitionAction = pendingAction;
       const auto replaceRefreshMode = pendingReplaceRefreshMode;
       pendingAction = PendingAction::None;
-      pendingReplaceRefreshMode = HalDisplay::FULL_REFRESH;
+      pendingReplaceRefreshMode = DisplayPresentMode::Clean;
       currentActivity = std::move(pendingActivity);
       renderer.requestNextRefresh(transitionAction == PendingAction::Replace ? replaceRefreshMode
-                                                                             : HalDisplay::HALF_REFRESH);
+                                                                             : DisplayPresentMode::Quality);
       lock.unlock();
       currentActivity->onEnter();
       continue;
@@ -211,11 +211,11 @@ void ActivityManager::exitActivity(const RenderLock& lock) {
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
-  replaceActivity(std::move(newActivity), HalDisplay::FULL_REFRESH);
+  replaceActivity(std::move(newActivity), DisplayPresentMode::Clean);
 }
 
 void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity,
-                                      const HalDisplay::RefreshMode replaceRefreshMode) {
+                                      const DisplayPresentMode replaceRefreshMode) {
   pendingReplaceRefreshMode = replaceRefreshMode;
   if (currentActivity) {
     pendingActivity = std::move(newActivity);
@@ -253,7 +253,7 @@ void ActivityManager::goToBrowser() {
   }
 }
 
-void ActivityManager::goToReader(std::string path, const HalDisplay::RefreshMode replaceRefreshMode) {
+void ActivityManager::goToReader(std::string path, const DisplayPresentMode replaceRefreshMode) {
   replaceActivity(std::make_unique<ReaderActivity>(renderer, mappedInput, std::move(path), replaceRefreshMode),
                   replaceRefreshMode);
 }

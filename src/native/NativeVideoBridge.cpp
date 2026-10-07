@@ -1269,6 +1269,7 @@ const t5_video_api_v1 s_api = {
     video_start_format,
     video_scan_stats,
     video_reinforce_black,
+    nativeVideoForceStop,
 };
 }  // namespace
 

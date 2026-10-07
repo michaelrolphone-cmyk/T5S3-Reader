@@ -12,15 +12,15 @@ void app_main(void);
 static int polls;
 static int activations;
 static int renders;
+static uint32_t activated_indices[4];
 
 static bool app_poll(t5_app_input_t *input, uint32_t wait_ms) {
     assert(input && wait_ms == 50);
     memset(input, 0, sizeof(*input));
     ++polls;
-    if (polls == 1) input->buttons = T5_APP_BUTTON_CONFIRM;
-    else if (polls == 2) input->buttons = T5_APP_BUTTON_DOWN;
-    else if (polls == 3) input->buttons = T5_APP_BUTTON_CONFIRM;
-    else input->buttons = T5_APP_BUTTON_BACK;
+    if (polls == 1 || polls == 2 || polls == 5 || polls == 6) input->buttons = T5_APP_BUTTON_CONFIRM;
+    else if (polls == 4) input->buttons = T5_APP_BUTTON_DOWN;
+    else if (polls == 8) input->buttons = T5_APP_BUTTON_BACK;
     return true;
 }
 
@@ -44,6 +44,8 @@ static bool item_get(uint32_t index, t5_status_bar_item_t *out) {
 }
 static bool item_activate(uint32_t index) {
     assert(index < 7);
+    assert(activations < (int)(sizeof(activated_indices) / sizeof(activated_indices[0])));
+    activated_indices[activations] = index;
     ++activations;
     return true;
 }
@@ -82,8 +84,10 @@ const t5_ui_api_v1 *t5_ui_get_api(uint32_t version) {
 
 int main(void) {
     app_main();
-    assert(polls == 4);
+    assert(polls == 8);
     assert(activations == 2);
+    assert(activated_indices[0] == 0);
+    assert(activated_indices[1] == 1);
     assert(renders == 4);
     return 0;
 }

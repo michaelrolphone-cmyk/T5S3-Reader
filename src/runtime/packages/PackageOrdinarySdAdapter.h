@@ -27,6 +27,14 @@ bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed);
 
+// Shared legacy-upgrade adapter. Legacy ABI-1 is accepted only at the exact
+// managed target/backup; ordinary stage/source verification stays independent.
+bool verifyManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id,
+    const PackageRuntimePolicy& policy, uint32_t (*resolver)(const char*),
+    Identity& observed, bool verifyContents = true);
+bool inspectManagedOrdinarySdTree(const char* path, Kind kind, const char* id);
+bool purgeManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id);
+
 // Canonical packages only; legacy files stay under their original managers.
 // Uninstall acquires the ordinary package's exclusive mapping lease, commits
 // removal by renaming to a tombstone and selectively deletes only declared

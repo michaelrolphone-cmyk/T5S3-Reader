@@ -34,8 +34,9 @@ bool shouldSync(const bool force) {
 }
 
 bool waitForSync(const uint32_t timeoutMs) {
-  const unsigned long startMs = millis();
-  while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED && (millis() - startMs) < timeoutMs) {
+  const uint32_t startMs = millis();
+  while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED &&
+         static_cast<uint32_t>(millis() - startMs) < timeoutMs) {
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 
@@ -57,13 +58,15 @@ bool commitCurrentSystemTime(const char* sourceTag) {
     return false;
   }
 
-  hasNetworkSync = true;
-  lastNetworkSyncEpoch = now;
-
   if (!halClock.syncRtcFromSystemTime()) {
     LOG_ERR("CLK", "%s time commit failed: RTC write-back failed", sourceTag != nullptr ? sourceTag : "System");
     return false;
   }
+
+  // Only throttle future network syncs after the RTC accepted this time.
+  // Otherwise a failed write can suppress the retry for the full resync interval.
+  hasNetworkSync = true;
+  lastNetworkSyncEpoch = now;
 
   bool needsSave = false;
   if (SETTINGS.rtcStoresUtc == 0) {
@@ -96,19 +99,20 @@ bool syncWithNtp(const uint32_t timeoutMs, const bool force) {
     return true;
   }
 
-  const unsigned long syncStartMs = millis();
-  const unsigned long deadlineMs = syncStartMs + timeoutMs;
+  const uint32_t syncStartMs = millis();
   const char* syncedServer = nullptr;
   bool synced = false;
 
   for (size_t i = 0; i < (sizeof(kNtpServers) / sizeof(kNtpServers[0])); ++i) {
-    const unsigned long nowMs = millis();
-    if (nowMs >= deadlineMs) {
+    // millis() is a wrapping 32-bit counter; compare elapsed time, not an
+    // absolute deadline that may wrap before the current timestamp.
+    const uint32_t elapsedMs = static_cast<uint32_t>(millis() - syncStartMs);
+    if (elapsedMs >= timeoutMs) {
       break;
     }
 
     const size_t serversLeft = (sizeof(kNtpServers) / sizeof(kNtpServers[0])) - i;
-    const uint32_t remainingMs = static_cast<uint32_t>(deadlineMs - nowMs);
+    const uint32_t remainingMs = timeoutMs - elapsedMs;
     uint32_t attemptTimeoutMs = remainingMs / static_cast<uint32_t>(serversLeft);
     if (attemptTimeoutMs == 0) {
       attemptTimeoutMs = remainingMs;

@@ -17,12 +17,12 @@ struct Fixture {
                              {"schema.json", 1024, kDigest, false}};
   PackageRequirement needs[2] = {{"kernel.serial", 1}, {"kernel.clock", 2}};
   PackageEnvelopeView package{};
-  PackageRuntimePolicy runtime{"xtensa-esp32s3", 3, 2, 16384, 32768};
+  PackageRuntimePolicy runtime{"xtensa-esp32s3", 3, 16384, 32768};
   int resolveCalls = 0;
 
   Fixture() {
     assert(makeIdentity(Kind::Driver, "gps-nmea", "1.10.0", "driver.elf", false, &identity));
-    package = {identity, "xtensa-esp32s3", 2, 2, entries, 3, needs, 2};
+    package = {identity, "xtensa-esp32s3", 2, entries, 3, needs, 2};
   }
   PreflightResult check() {
     return preflightPackage(package, runtime, [this](const char* capability) -> uint32_t {
@@ -47,8 +47,6 @@ void ordinaryPackageWithoutSigning() {
   for (Kind kind : {Kind::Application, Kind::Driver, Kind::Service, Kind::Provider}) {
     Fixture f;
     f.package.identity.kind = kind;
-    f.package.securityVersion = 0; // Not an implicit security-floor enrollment.
-    f.runtime.minimumSecurityVersion = 0; // Explicit ordinary package policy.
     assert(f.check() == PreflightResult::ReadyForContentVerification);
     assert(f.resolveCalls == 2);
     f.resolveCalls = 0;
@@ -60,8 +58,6 @@ void ordinaryPackageWithoutSigning() {
     assert(f.check() == PreflightResult::InvalidEntry);
     assert(f.resolveCalls == 0);
     f.entries[0].sha256 = kDigest;
-    f.runtime.minimumSecurityVersion = 1;
-    assert(f.check() == PreflightResult::SecurityRollback);
   }
 }
 
@@ -79,8 +75,6 @@ void rejectsIdentityAndCompatibility() {
   f.package.minRuntimeApi = 4;
   assert(f.check() == PreflightResult::IncompatibleRuntime);
   f.package.minRuntimeApi = 2;
-  f.package.securityVersion = 1;
-  assert(f.check() == PreflightResult::SecurityRollback);
   assert(f.resolveCalls == 0);
 }
 

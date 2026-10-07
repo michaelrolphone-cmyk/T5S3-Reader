@@ -131,7 +131,7 @@ VERSION = '''bool installedVersionGet(const char* id, char* version, size_t capa
     version[0] = 0;
     const std::string canonicalPath = std::string("/Drivers/") + id;
     constexpr RuntimePackages::PackageRuntimePolicy policy{
-        "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+        "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
     RuntimePackages::Identity observed{};
     if (RuntimePackages::verifyOrdinarySdDirectory(canonicalPath.c_str(), policy,
             RuntimePackages::installedCapabilityVersion, observed) &&

@@ -10,7 +10,8 @@
 #include "T5SystemUiApi.h"
 #include "T5UiApi.h"
 
-void app_main(void);
+/* Include production implementation to exercise its private response parser. */
+#include "../../Apps/llm_ask.c"
 
 static uint8_t stored_session[20000];
 static size_t stored_session_size;
@@ -246,6 +247,24 @@ const t5_network_api_v1 *t5_network_get_api(uint32_t version) {
 }
 
 int main(void) {
+    char decoded[32];
+    const char valid_pair[] = "\"\\uD83D\\uDE00\"";
+    const char lone_high[] = "\"\\uD800\"";
+    const char lone_low[] = "\"\\uDC00\"";
+    const char invalid_pair[] = "\"\\uD800\\u0041\"";
+    const char valid_bmp[] = "\"\\u20AC\"";
+    const char truncated_escape[] = "\"\\u12";
+    const char surrogate_at_end[] = {'\"', '\\', 'u', 'D', '8', '0', '0'};
+    assert(decode_json_string(valid_pair, sizeof(valid_pair) - 1u, decoded, sizeof(decoded)));
+    assert(strcmp(decoded, "\xF0\x9F\x98\x80") == 0);
+    assert(decode_json_string(valid_bmp, sizeof(valid_bmp) - 1u, decoded, sizeof(decoded)));
+    assert(strcmp(decoded, "\xE2\x82\xAC") == 0);
+    assert(!decode_json_string(lone_high, sizeof(lone_high) - 1u, decoded, sizeof(decoded)));
+    assert(!decode_json_string(lone_low, sizeof(lone_low) - 1u, decoded, sizeof(decoded)));
+    assert(!decode_json_string(invalid_pair, sizeof(invalid_pair) - 1u, decoded, sizeof(decoded)));
+    assert(!decode_json_string(truncated_escape, sizeof(truncated_escape) - 1u, decoded, sizeof(decoded)));
+    assert(!decode_json_string(surrogate_at_end, sizeof(surrogate_at_end), decoded, sizeof(decoded)));
+
     phase = 1;
     event_sent = false;
     app_main();

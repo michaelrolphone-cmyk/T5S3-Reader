@@ -14,7 +14,7 @@ void delay(unsigned n) { std::this_thread::sleep_for(std::chrono::milliseconds(n
 namespace Color { enum { Black }; }
 namespace EpdFontFamily { enum { BOLD }; }
 [[maybe_unused]] static struct { void suppressInitialFullRefresh(){} } display;
-namespace HalDisplay { enum RefreshMode { HALF_REFRESH, FAST_REFRESH, FULL_REFRESH }; }
+enum class DisplayPresentMode { Quality, LowLatency, Clean };
 constexpr int UI_12_FONT_ID=0, SMALL_FONT_ID=1;
 struct GfxRenderer {
  enum { BW }; int presents=0;
@@ -22,8 +22,8 @@ struct GfxRenderer {
  void clearScreen(){} int getScreenWidth(){return 540;} int getScreenHeight(){return 960;}
  void fillRoundedRect(int,int,int,int,int,int){}
  void drawCenteredText(int,int,const char*,bool=false,int=0){}
- void displayBuffer(HalDisplay::RefreshMode){++presents;}
- void requestNextRefresh(HalDisplay::RefreshMode){}
+ void displayBuffer(DisplayPresentMode){++presents;}
+ void requestNextRefresh(DisplayPresentMode){}
 };
 using esp_err_t=int;
 constexpr int ESP_OK=0;
@@ -56,7 +56,7 @@ static bool submit(uint16_t,uint16_t){assert(!stopped);lastSubmit=millis();retur
 static bool pending(){return false;}
 static uint32_t frames(){return 0;}
 static void stop(){stopped=true;++stops;}
-static const t5_video_api_v1 video={T5_VIDEO_API_VERSION,sizeof(t5_video_api_v1),startVideo,back,capacity,submit,pending,frames,stop,nullptr,nullptr,nullptr};
+static const t5_video_api_v1 video={T5_VIDEO_API_VERSION,sizeof(t5_video_api_v1),startVideo,back,capacity,submit,pending,frames,stop,nullptr,nullptr,nullptr,nullptr};
 extern "C" const t5_video_api_v1* t5_video_get_api(uint32_t){return &video;}
 extern "C" int native_hardware_takeover_begin(uint32_t flags){assert(flags==(T5_HARDWARE_TAKEOVER_DISPLAY|T5_HARDWARE_TAKEOVER_UI_VIDEO));return ESP_OK;}
 extern "C" int native_hardware_takeover_end(uint32_t){++ends;return failEnd?1:0;}

@@ -90,7 +90,7 @@ bool nativeDeviceConsentPrompt(const RuntimeDevices::DeviceInfo& device,
   renderer.drawText(UI_12_FONT_ID, denyX + 18, buttonY + 17, "DENY");
   outline(allowX, buttonY, buttonWidth, 55);
   renderer.drawText(UI_12_FONT_ID, allowX + 18, buttonY + 17, "ALLOW");
-  renderer.displayBuffer(HalDisplay::FULL_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Clean);
 
   // A completed tap cannot approve until the firmware observes a fully idle
   // touch frame AFTER this trusted prompt appears. nativeTouchHadActivity

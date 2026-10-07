@@ -75,8 +75,10 @@ void XMLCALL ContainerParser::startElement(void* userData, const XML_Char* name,
       }
     }
 
-    // Check if this is the standard OEBPS package
-    if (mediaType && path && strcmp(mediaType, "application/oebps-package+xml") == 0) {
+    // The first supported rootfile is the default rendition. Later alternatives
+    // must not replace it (EPUB Reading Systems, META-INF/container.xml).
+    if (self->fullPath.empty() && mediaType && path && path[0] != '\0' &&
+        strcmp(mediaType, "application/oebps-package+xml") == 0) {
       self->fullPath = path;
     }
   }

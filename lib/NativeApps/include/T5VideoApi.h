@@ -73,6 +73,11 @@ typedef struct {
      * a framebuffer, delay submit completion, or touch whites/gray pixels.
      * False if unsupported/stopped/invalid. Optical result requires device QA. */
     bool (*reinforce_black)(uint16_t y, uint16_t height, uint8_t passes);
+    /* Optional additive checked teardown. False retains live backend resources;
+     * callers must retain their provider lease and retry before another owner
+     * starts or the provider is unloaded. Legacy stop() remains ABI-compatible
+     * but cannot certify quiescence. Check struct_size before access. */
+    bool (*try_stop)(void);
 } t5_video_api_v1;
 
 const t5_video_api_v1 *t5_video_get_api(uint32_t api_version);

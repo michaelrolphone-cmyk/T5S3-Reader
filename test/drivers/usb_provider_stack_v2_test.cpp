@@ -3,12 +3,14 @@
 #include <cassert>
 #include <cstdio>
 
+#include "serial_prefix_stream_host.h"
+
 int main(int argc, char **argv) {
   assert(argc == 3);
-  RuntimeProviders::GraphV2 graph;
+  RuntimeProviders::GraphV2 graph(&streamHost);
   const RuntimeProviders::RequirementV2 needsHost[] = {{"usb.host", 1}};
   assert(graph.addVerified({"fixture-usb-host", argv[1], "usb.host", 1, nullptr, 0}));
-  assert(graph.addVerified({"usb-cdc-acm-v2", argv[2], "serial.port", 1,
+  assert(graph.addVerified({"usb-cdc-acm", argv[2], "serial.port", 1,
                             needsHost, 1}));
   // A semantic consumer never needs to identify USB, class or device driver.
   auto serial = graph.acquire("serial.port", 1);
@@ -33,7 +35,7 @@ int main(int argc, char **argv) {
   assert(graph.release(host) && graph.shutdown());
   // A missing USB host ELF cannot be replaced with a hidden firmware fallback.
   RuntimeProviders::GraphV2 missing;
-  assert(missing.addVerified({"usb-cdc-acm-v2", argv[2], "serial.port", 1,
+  assert(missing.addVerified({"usb-cdc-acm", argv[2], "serial.port", 1,
                               needsHost, 1}));
   assert(!missing.acquire("serial.port", 1).slot && missing.shutdown());
   std::puts("Two independently loaded provider ELFs: usb.host -> serial.port PASS");

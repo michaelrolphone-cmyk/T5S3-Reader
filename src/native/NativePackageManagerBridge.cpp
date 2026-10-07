@@ -1,47 +1,56 @@
+#include <RuntimeFaultRetention.h>
 #include <T5PackageManagerApi.h>
 #include <HalStorage.h>
 #include <NativeAppLauncher.h>
 #include "FileAssociationRegistry.h"
-#include <atomic>
+#include <cctype>
 #include <cstring>
 #include <cstdio>
 #include <memory>
 #include <new>
 #include <string>
 
+#include "NativeOnlineOrdinaryCatalog.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/PackageMutationGate.h"
+#include "runtime/packages/PackageCdcSdMigration.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
+#include "runtime/packages/PackageOrdinarySdZipAdapter.h"
 #include "runtime/packages/PackageOrdinaryTransaction.h"
+#include "runtime/packages/PackageOrdinaryStage.h"
+#include "runtime/packages/PackageRteZip.h"
 
 namespace {
 constexpr const char* kInbox = "/Packages/Inbox";
 constexpr RuntimePackages::PackageRuntimePolicy kPolicy{
-    "xtensa-esp32s3", 2, 0, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
+    "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr uint32_t kMaxInstalledPackages = 128u;
 t5_installed_package_t installedPackages[kMaxInstalledPackages]{};
 uint32_t installedPackageCount = 0;
+StorageGenerationStamp installedGeneration{};
 
 void clearInstalledCache() {
     std::memset(installedPackages, 0, sizeof(installedPackages));
     installedPackageCount = 0;
+    installedGeneration = {};
 }
-std::atomic_flag mutation = ATOMIC_FLAG_INIT;
-struct Mutation {
-    bool owned = !mutation.test_and_set(std::memory_order_acquire);
-    ~Mutation() { if (owned) mutation.clear(std::memory_order_release); }
-    explicit operator bool() const { return owned; }
-};
+using Mutation = RuntimePackages::ScopedPackageMutation;
 
-// Installed, integrity-verified provider generations satisfy INSTALL dependency
-// preflight; this never grants runtime privileges or activates hardware.
 uint32_t availableCapability(const char* name) {
     return RuntimePackages::installedCapabilityVersion(name);
 }
 
-// The shared manager may install all four ordinary kinds. The App Store and
-// Driver Manager are explicitly limited to their own package kind. An ELF
-// cannot pass an arbitrary path or impersonate a manager to gain mutations.
+bool appPath(const char* current, const char* id) {
+    if (!current || !id || !RuntimePackages::safeId(id)) return false;
+    const std::string flat = std::string("/sd/Apps/") + id + ".elf";
+    const std::string nested = std::string("/sd/Apps/") + id + "/" + id + ".elf";
+    return !std::strcmp(current, flat.c_str()) || !std::strcmp(current, nested.c_str());
+}
+
+// Privilege follows the authenticated executing application identity, not a
+// catalog row, archive filename or package metadata. Canonical managed apps
+// run from /sd/Apps/<id>/<artifact>; legacy flat paths remain bounded adapters.
 bool callerPath(const char* path, const char* id) {
     if (!path || !id) return false;
     char flat[128]{};
@@ -54,21 +63,39 @@ bool callerPath(const char* path, const char* id) {
 }
 int callerKind() {
     const char* path = native_app_current_path();
-    if (callerPath(path, "package_manager")) return 4;
-    if (callerPath(path, "app_store")) return T5_PACKAGE_APPLICATION;
-    if (callerPath(path, "driver_manager")) return T5_PACKAGE_DRIVER;
+    if (appPath(path, "package_manager")) return 4;
+    if (appPath(path, "app_store")) return T5_PACKAGE_APPLICATION;
+    if (appPath(path, "driver_manager")) return T5_PACKAGE_DRIVER;
     return -1;
 }
+
 bool permitted(uint8_t kind) {
     const int caller = callerKind();
     return kind <= T5_PACKAGE_PROVIDER && (caller == 4 || caller == kind);
 }
+
 bool folderPath(const char* folder, std::string& path) {
     path.clear();
     if (!RuntimePackages::safeId(folder)) return false;
     path = std::string(kInbox) + "/" + folder;
-    return true;
+    return path.size() < 120;
 }
+
+bool archivePath(const char* basename, std::string& path) {
+    path.clear();
+    if (!basename) return false;
+    size_t length = 0;
+    while (basename[length]) {
+        const unsigned char c = static_cast<unsigned char>(basename[length]);
+        if (++length >= 120 || !((c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') ||
+            (c == '.' && length > 1 && basename[length - 2] == '.')) return false;
+    }
+    if (length <= 8 || std::strcmp(basename + length - 8, ".rte.zip")) return false;
+    path = std::string(kInbox) + "/" + basename;
+    return path.size() < 120;
+}
+
 bool sourceMetadata(const char* folder, RuntimePackages::OrdinaryPackagePlan& plan) {
     plan = {};
     std::string path;
@@ -81,20 +108,23 @@ bool sourceMetadata(const char* folder, RuntimePackages::OrdinaryPackagePlan& pl
     }
     const uint64_t bytes = file.fileSize64();
     if (!bytes || bytes > 4096) { (void)file.close(); return false; }
-    // A nested 4096-byte stack buffer plus OrdinaryPackagePlan and the
-    // canonical verifier would overflow the Arduino loopTask during preview.
     std::unique_ptr<char[]> buffer(new (std::nothrow) char[4096]{});
     if (!buffer) { (void)file.close(); return false; }
-    const bool read = file.read(reinterpret_cast<uint8_t*>(buffer.get()), bytes) ==
-                      static_cast<int>(bytes);
+    const bool read = file.read(reinterpret_cast<uint8_t*>(buffer.get()),
+                                static_cast<size_t>(bytes)) == static_cast<int>(bytes);
     const bool closed = file.close();
     return read && closed &&
-        RuntimePackages::parseOrdinaryManifest(buffer.get(), bytes, plan) &&
+        RuntimePackages::parseOrdinaryManifest(buffer.get(), static_cast<size_t>(bytes), plan) &&
         std::strcmp(plan.identity.id, folder) == 0;
 }
 bool refreshInstalled() {
     if (callerKind() != 4 || !Storage.ready()) return false;
     clearInstalledCache();
+    if (!Storage.reconcileExternalStorage()) return false;
+    const auto generation = Storage.generation();
+    if (!generation.quiescent) return false;
+    // Nothing is visible until the complete bounded scan closes successfully.
+    auto fail = [] { clearInstalledCache(); return false; };
     struct Root {
         RuntimePackages::Kind kind;
         const char* path;
@@ -107,17 +137,32 @@ bool refreshInstalled() {
     };
     for (const auto& root : roots) {
         HalFile directory = Storage.open(root.path, O_RDONLY);
-        if (!directory.isOpen() || !directory.isDirectory()) {
-            if (directory.isOpen()) (void)directory.close();
+        if (!directory.isOpen()) {
+            if (Storage.exists(root.path) || !Storage.unchanged(generation)) return fail();
             continue;
         }
-        while (installedPackageCount < kMaxInstalledPackages) {
+        if (!directory.isDirectory()) { (void)directory.close(); return fail(); }
+        size_t examined = 0;
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+        const TickType_t started = xTaskGetTickCount();
+#endif
+        while (true) {
+#if defined(ESP_PLATFORM) || defined(ARDUINO_ARCH_ESP32)
+            if (xTaskGetTickCount() - started >= pdMS_TO_TICKS(2000)) {
+                (void)directory.close(); return fail();
+            }
+#endif
+            RuntimePackages::ordinaryCooperativeYield(1, 1);
             HalFile entry = directory.openNextFile();
-            if (!entry.isOpen()) break;
+            if (!entry.isOpen()) {
+                if (directory.getError()) { (void)directory.close(); return fail(); }
+                break;
+            }
+            if (++examined > 256) { (void)entry.close(); (void)directory.close(); return fail(); }
             char name[T5_PACKAGE_ID_MAX]{};
             const size_t length = entry.getName(name, sizeof(name));
             const bool isDirectory = entry.isDirectory();
-            (void)entry.close();
+            if (!entry.close()) { (void)directory.close(); return fail(); }
             if (!isDirectory || !length || length >= sizeof(name) ||
                 !RuntimePackages::safeId(name))
                 continue;
@@ -126,6 +171,9 @@ bool refreshInstalled() {
             const std::string manifest = target + "/.package.json";
             if (!Storage.exists(manifest.c_str())) continue;
 
+            if (installedPackageCount == kMaxInstalledPackages) {
+                (void)directory.close(); return fail();
+            }
             auto& out = installedPackages[installedPackageCount];
             out = {};
             out.kind = static_cast<uint8_t>(root.kind);
@@ -140,17 +188,107 @@ bool refreshInstalled() {
             }
             ++installedPackageCount;
         }
-        (void)directory.close();
-        if (installedPackageCount >= kMaxInstalledPackages) break;
+        if (!directory.close()) return fail();
     }
+    if (!Storage.unchanged(generation)) return fail();
+    installedGeneration = generation;
     return true;
 }
 uint32_t installedCount() {
-    return callerKind() == 4 ? installedPackageCount : 0u;
+    if (callerKind() != 4) return 0;
+    if (!Storage.unchanged(installedGeneration)) clearInstalledCache();
+    return installedPackageCount;
 }
 bool installedGet(uint32_t index, t5_installed_package_t* out) {
-    if (callerKind() != 4 || !out || index >= installedPackageCount) return false;
+    if (!out || index >= installedCount()) return false;
     *out = installedPackages[index];
+    if (!Storage.unchanged(installedGeneration)) {
+        *out = {}; clearInstalledCache(); return false;
+    }
+    return true;
+}
+
+
+bool archiveMetadata(const char* name, RuntimePackages::OrdinaryPackagePlan& plan) {
+    plan = {};
+    std::string path;
+    if (!archivePath(name, path) || !Storage.ready()) return false;
+    HalFile file = Storage.open(path.c_str(), O_RDONLY);
+    if (!file.isOpen() || file.isDirectory()) {
+        if (file.isOpen()) (void)file.close();
+        return false;
+    }
+    const uint64_t bytes = file.fileSize64();
+    if (bytes < RuntimePackages::kRteZipEocdBytes ||
+        bytes > RuntimePackages::kRteZipMaxTotalBytes + 8192u) {
+        (void)file.close();
+        return false;
+    }
+    auto read = [&file, bytes](uint64_t offset, uint8_t* data, size_t length) {
+        if (!length) return true;
+        return data && offset <= bytes && length <= bytes - offset &&
+            file.seek64(offset) && file.read(data, length) == static_cast<int>(length);
+    };
+    std::unique_ptr<RuntimePackages::RteZipView> zip(
+        new (std::nothrow) RuntimePackages::RteZipView{});
+    std::unique_ptr<uint8_t[]> manifest(new (std::nothrow) uint8_t[4096]{});
+    if (!zip || !manifest) { (void)file.close(); return false; }
+    const bool okay = RuntimePackages::inspectRteZip(read, bytes, *zip) ==
+                           RuntimePackages::RteZipResult::Ready &&
+        RuntimePackages::planRteZip(read, *zip, manifest.get(), 4096, plan) ==
+                           RuntimePackages::RteZipResult::Ready;
+    const bool closed = file.close();
+    return okay && closed;
+}
+
+bool describeIdentity(const RuntimePackages::Identity& identity,
+                      t5_package_preview_t* out) {
+    if (!out || !permitted(static_cast<uint8_t>(identity.kind))) return false;
+    RuntimePackages::OrdinaryTransactionPaths paths{};
+    if (!RuntimePackages::ordinaryTransactionPaths(identity.kind, identity.id, paths)) return false;
+    *out = {};
+    out->kind = static_cast<uint8_t>(identity.kind);
+    std::strcpy(out->id, identity.id);
+    std::strcpy(out->version, identity.version);
+    std::strcpy(out->artifact, identity.artifact);
+    if (identity.kind == RuntimePackages::Kind::Driver &&
+        !std::strcmp(identity.id, RuntimePackages::kCdcAliasId)) return true;
+    if (identity.kind == RuntimePackages::Kind::Driver &&
+        !std::strcmp(identity.id, RuntimePackages::kCdcCanonicalId)) {
+        RuntimePackages::Identity installed{};
+        bool allowed = false;
+        const bool valid = RuntimePackages::previewCanonicalCdcFromSd(identity, kPolicy,
+            availableCapability, installed, allowed);
+        out->valid_installation = valid ? 1 : 0;
+        out->install_allowed = valid && allowed ? 1 : 0;
+        if (valid && installed.version[0]) std::strcpy(out->installed_version, installed.version);
+        return true;
+    }
+    bool good = true;
+    if (Storage.exists(paths.target)) {
+        RuntimePackages::Identity installed{};
+        good = RuntimePackages::inspectInstalledOrdinarySdDirectory(paths.target, kPolicy,
+            availableCapability, installed) && installed.kind == identity.kind &&
+            std::strcmp(installed.id, identity.id) == 0;
+        if (good) std::strcpy(out->installed_version, installed.version);
+    }
+    out->valid_installation = good ? 1 : 0;
+    if (!good || Storage.exists(paths.stage) || Storage.exists(paths.backup) ||
+        Storage.exists(paths.removing) || RuntimePackages::systemPackageUseGate().pinned(paths.target))
+        return true;
+    out->install_allowed = !out->installed_version[0] ||
+        RuntimePackages::comparePackageVersions(out->version, out->installed_version) ==
+            RuntimePackages::VersionOrder::Newer;
+    return true;
+}
+
+bool describe(const RuntimePackages::OrdinaryPackagePlan& plan,
+              t5_package_preview_t* out) {
+    if (!describeIdentity(plan.identity, out)) return false;
+    if (!out->valid_installation || !out->install_allowed) return true;
+    if (RuntimePackages::preflightOrdinaryPackage(plan, kPolicy, availableCapability) !=
+        RuntimePackages::PreflightResult::ReadyForContentVerification)
+        out->install_allowed = 0;
     return true;
 }
 
@@ -159,51 +297,28 @@ bool preview(const char* folder, t5_package_preview_t* out) {
     if (callerKind() < 0 || !out) return false;
     std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(
         new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
-    if (!plan || !sourceMetadata(folder, *plan)) return false;
-    const auto& identity = plan->identity;
-    if (!permitted(static_cast<uint8_t>(identity.kind))) return false;
-    RuntimePackages::OrdinaryTransactionPaths paths{};
-    if (!RuntimePackages::ordinaryTransactionPaths(identity.kind, identity.id, paths)) return false;
-    out->kind = static_cast<uint8_t>(identity.kind);
-    std::strcpy(out->id, identity.id);
-    std::strcpy(out->version, identity.version);
-    std::strcpy(out->artifact, identity.artifact);
-    bool good = true;
-    if (Storage.exists(paths.target)) {
-        RuntimePackages::Identity installed{};
-        good = RuntimePackages::inspectInstalledOrdinarySdDirectory(paths.target, kPolicy,
-            availableCapability, installed) && installed.kind == identity.kind &&
-            std::strcmp(installed.id, identity.id) == 0;
-        if (good) std::strcpy(out->installed_version, installed.version);
-        if (!good && identity.kind == RuntimePackages::Kind::Driver) {
-            out->valid_installation = 0;
-            return true;
-        }
-    }
-    out->valid_installation = good ? 1 : 0;
-    if (!good || Storage.exists(paths.stage) || Storage.exists(paths.backup) ||
-        Storage.exists(paths.removing) ||
-        RuntimePackages::systemPackageUseGate().pinned(paths.target)) return true;
-    const auto policy = RuntimePackages::preflightOrdinaryPackage(*plan, kPolicy,
-                                                                 availableCapability);
-    if (policy != RuntimePackages::PreflightResult::ReadyForContentVerification)
-        return true;
-    out->install_allowed = !out->installed_version[0] ||
-        RuntimePackages::comparePackageVersions(out->version, out->installed_version) ==
-            RuntimePackages::VersionOrder::Newer;
-    return true;
+    return plan && sourceMetadata(folder, *plan) && describe(*plan, out);
 }
+
+bool previewArchive(const char* archive, t5_package_preview_t* out) {
+    if (out) *out = {};
+    if (callerKind() < 0 || !out) return false;
+    std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(
+        new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+    return plan && archiveMetadata(archive, *plan) && describe(*plan, out);
+}
+
 bool install(const char* folder) {
     if (callerKind() < 0) return false;
     Mutation lock;
     if (!lock) return false;
     t5_package_preview_t candidate{};
-    if (!preview(folder, &candidate) || !candidate.install_allowed ||
-        !permitted(candidate.kind)) return false;
+    if (!preview(folder, &candidate) || !candidate.valid_installation ||
+        !candidate.install_allowed || !permitted(candidate.kind)) return false;
     std::string source;
     if (!folderPath(folder, source)) return false;
-    const auto result = RuntimePackages::installOrdinaryFromSd(source.c_str(),
-                                                               kPolicy, availableCapability);
+    const auto result = RuntimePackages::installOrdinaryFromSd(
+        source.c_str(), kPolicy, availableCapability);
     const bool okay = result.result == RuntimePackages::OrdinaryInstallResult::Installed;
     if (okay) {
         clearInstalledCache();
@@ -211,6 +326,26 @@ bool install(const char* folder) {
             (void)NativeFileAssociations::rebuild();
     }
     return okay;
+}
+
+bool installArchive(const char* archive) {
+    if (callerKind() < 0) return false;
+    Mutation lock;
+    if (!lock) return false;
+    t5_package_preview_t candidate{};
+    if (!previewArchive(archive, &candidate) || !candidate.valid_installation ||
+        !candidate.install_allowed || !permitted(candidate.kind)) return false;
+    std::string source;
+    if (!archivePath(archive, source)) return false;
+    std::unique_ptr<RuntimePackages::OrdinaryPackagePlan> plan(new (std::nothrow) RuntimePackages::OrdinaryPackagePlan{});
+    if (!plan || !archiveMetadata(archive, *plan) ||
+        static_cast<uint8_t>(plan->identity.kind) != candidate.kind ||
+        std::strcmp(plan->identity.id, candidate.id) || std::strcmp(plan->identity.version, candidate.version) ||
+        std::strcmp(plan->identity.artifact, candidate.artifact)) return false;
+    // Payload mode comes from the explicit manifest, never a missing preview ELF.
+    const auto result = RuntimePackages::installOrdinaryFromSdZip(
+        source.c_str(), kPolicy, availableCapability, &plan->identity);
+    return result.result == RuntimePackages::OrdinaryInstallResult::Installed;
 }
 
 bool replacePackage(const char* folder) {
@@ -252,6 +387,7 @@ bool replacePackage(const char* folder) {
     }
     return okay;
 }
+
 bool uninstall(uint8_t kind, const char* id) {
     if (!permitted(kind) || !RuntimePackages::safeId(id)) return false;
     Mutation lock;
@@ -266,10 +402,108 @@ bool uninstall(uint8_t kind, const char* id) {
     }
     return okay;
 }
+
+bool onlineRefresh() {
+    if (callerKind() < 0) return false;
+    Mutation lock;
+    return lock && RuntimeOnlinePackages::Catalog::refresh();
+}
+
+uint32_t onlineCount() {
+    return RuntimeOnlinePackages::Catalog::count(callerKind());
+}
+
+bool onlineGet(uint32_t index, t5_package_catalog_row_t* out) {
+    if (out) *out = {};
+    if (callerKind() < 0 || !out) return false;
+    RuntimePackages::CatalogPackage candidate{};
+    char release[RuntimePackages::kOnlineReleaseTagBytes]{};
+    if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index, candidate, release) ||
+        !describeIdentity(candidate.identity, &out->package)) return false;
+    std::strcpy(out->archive, candidate.archive);
+    return true;
+}
+
+char onlineInstallError[96]{};
+
+void setOnlineInstallError(const char* message) {
+    if (!message) message = "package download or install failed";
+    std::snprintf(onlineInstallError, sizeof(onlineInstallError), "%s", message);
+}
+
+bool onlineInstallCommon(uint32_t index, t5_package_progress_fn progress, void* context) {
+    onlineInstallError[0] = 0;
+    if (risc_runtime_retention_required()) {
+        setOnlineInstallError("storage unavailable; manual reboot required");
+        return false;
+    }
+    if (callerKind() < 0) {
+        setOnlineInstallError("caller is not allowed to install packages");
+        return false;
+    }
+    Mutation lock;
+    if (!lock) {
+        setOnlineInstallError("another package mutation is active");
+        return false;
+    }
+    RuntimePackages::CatalogPackage candidate{};
+    char release[RuntimePackages::kOnlineReleaseTagBytes]{};
+    if (!RuntimeOnlinePackages::Catalog::selected(callerKind(), index, candidate, release)) {
+        setOnlineInstallError("selected package is no longer available");
+        return false;
+    }
+    t5_package_preview_t state{};
+    if (!describeIdentity(candidate.identity, &state) || !state.valid_installation ||
+        !state.install_allowed || !permitted(state.kind)) {
+        setOnlineInstallError("package is blocked by version, dependency, or recovery state");
+        return false;
+    }
+
+    HttpDownloader::ProgressCallback callback;
+    if (progress) {
+        const uint64_t total = candidate.sizeBytes;
+        callback = [progress, context, total](size_t downloaded, size_t) {
+            progress(context, static_cast<uint64_t>(downloaded), total);
+        };
+        progress(context, 0, total);
+    }
+
+    const bool okay = RuntimeOnlinePackages::OrdinaryZip::install(
+        candidate, release, callback);
+    if (!okay) {
+        setOnlineInstallError("package download, verification, or publication failed");
+        return false;
+    }
+    if (progress) progress(context, candidate.sizeBytes, candidate.sizeBytes);
+    clearInstalledCache();
+    if (candidate.identity.kind == RuntimePackages::Kind::Application)
+        (void)NativeFileAssociations::rebuild();
+    return true;
+}
+
+bool onlineInstall(uint32_t index) {
+    return onlineInstallCommon(index, nullptr, nullptr);
+}
+
+bool onlineInstallWithProgress(uint32_t index,
+                               t5_package_progress_fn progress,
+                               void* context) {
+    return onlineInstallCommon(index, progress, context);
+}
+
+bool onlineLastError(char* out, size_t capacity) {
+    if (!out || !capacity || !onlineInstallError[0]) return false;
+    std::snprintf(out, capacity, "%s", onlineInstallError);
+    return true;
+}
+
+
 const t5_package_manager_api_v1 api = {
     T5_PACKAGE_MANAGER_API_VERSION, sizeof(t5_package_manager_api_v1),
-    preview, install, uninstall,
+    preview, install, uninstall, previewArchive, installArchive,
+    onlineRefresh, onlineCount, onlineGet, onlineInstall,
     refreshInstalled, installedCount, installedGet, replacePackage,
+    onlineInstallWithProgress, onlineLastError,
 };
 } // namespace
 

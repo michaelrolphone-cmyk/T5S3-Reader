@@ -76,3 +76,28 @@ the backend, and no global idle-cleanup timing is weakened.
 The current 44-scene novella map remains in `HOLLOW_TRAIL_NOVELLA_ALIGNMENT.md`.
 Rain tank, signal-room staging, later chapter layouts and the missing final-door
 ending remain later work. This PR does not claim whole-novella completion.
+
+## Follow-on source-scan revalidation
+
+The [21:12 legacy scan](https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/a0478d0b443169704a251b5df4543ceb0fea5378/bugs.md)
+was rechecked against PR #336 head `f55e4b2f`, rather than treating its local
+numbers 258–260 as canonical ledger IDs or its stale open-PR assertion as fact.
+
+- Scan-local 258 (arrival-frame residue) is false on that head and scanned master:
+  traversal invokes the full forest/city backdrop, including full-raster cache
+  copies. A runtime probe compared zero/255 prefills across 92 sampled mill/city
+  frames in both output resolutions; every resulting image matched. Existing
+  cutscene tests now retain this prior-raster-independence check.
+- Scan-local 259 (Y mapped to X) reproduced through both real provider mapping
+  paths and the app scheduler: ordinary/X/Y walk acceleration was 48/53/48.
+  A dedicated Y action bit now gives 48/48/53, retaining X solely as Back. Tests
+  cover release, re-press, and suppression while paused, reading or in a cutscene.
+- Scan-local 260 (inactive 960x270 mode) is false: the production traversal pass
+  already enables the half-height flag, including on scanned master. An actual
+  render observed 103 full-height and 13 half-height cooperative checkpoints.
+  The renderer regression now observes both stages via its existing service
+  callback. No renderer implementation or resolution was changed for this claim.
+
+These checks establish software behavior, not physical controller-label or
+panel qualification. PR #336 was owner-merged during revalidation. The narrow Y correction is a
+separate continuation, Hollow Trail 1.1.38 → 1.1.39; firmware remains 1.3.48.

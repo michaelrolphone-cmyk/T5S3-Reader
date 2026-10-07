@@ -21,6 +21,15 @@ const char* resolveVisualText(const char* text, std::string& visualBuffer, int p
 uint8_t resolveSdCardStyle(const SdCardFont& font, const EpdFontFamily::Style style) {
   return font.resolveStyle(static_cast<uint8_t>(style));
 }
+// A populated advance cache is bounded, not a complete metrics table.
+// Preserve zero-width hits and the layout path's existing no-kerning policy.
+uint16_t sdCardAdvance(SdCardFont& font, uint32_t codepoint, uint8_t style) {
+  uint16_t advance = 0;
+  if (font.tryGetAdvance(codepoint, style, advance)) return advance;
+  const auto* epdFont = font.getEpdFont(style);
+  const auto* glyph = epdFont ? epdFont->getGlyph(codepoint) : nullptr;
+  return glyph ? glyph->advanceX : 0;
+}
 }  // namespace
 
 const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const EpdGlyph* glyph) const {
@@ -76,19 +85,72 @@ void GfxRenderer::ensureSdCardFontReady(int fontId, const std::vector<std::strin
   }
 }
 
-void GfxRenderer::begin() {
-  frameBuffer = display.getFrameBuffer();
-  if (!frameBuffer) {
-    LOG_ERR("GFX", "!! No framebuffer");
-    assert(false);
+bool GfxRenderer::preflightSurface() const {
+  const DisplaySurfaceInfo info = display.getSurfaceInfo();
+  const DisplaySurfaceValidationError validation = validateDisplaySurfaceInfo(info);
+  if (validation != DisplaySurfaceValidationError::None) {
+    LOG_ERR("GFX",
+            "Display preflight rejected: %s scan=%ux%u visible=%ux%u stride=%u bytes=%lu format=%u "
+            "safe=%u,%u,%u,%u",
+            displaySurfaceValidationErrorName(validation), info.width, info.height, info.visibleWidth,
+            info.visibleHeight, info.strideBytes, static_cast<unsigned long>(info.bufferSize),
+            static_cast<unsigned>(info.pixelFormat), info.safeInsets.top, info.safeInsets.right,
+            info.safeInsets.bottom, info.safeInsets.left);
+    return false;
   }
-  panelWidth = display.getDisplayWidth();
-  panelHeight = display.getDisplayHeight();
-  visibleWidth = display.getVisibleWidth();
-  visibleHeight = display.getVisibleHeight();
-  panelWidthBytes = display.getDisplayWidthBytes();
-  frameBufferSize = display.getBufferSize();
+  if (info.pixelFormat != DisplayPixelFormat::Mono1) {
+    LOG_ERR("GFX", "Display preflight rejected: current rasterizer requires MONO1, format=%u",
+            static_cast<unsigned>(info.pixelFormat));
+    return false;
+  }
+  LOG_INF("GFX",
+          "Display preflight accepted: scan=%ux%u visible=%ux%u stride=%u bytes=%lu format=%u safe=%u,%u,%u,%u",
+          info.width, info.height, info.visibleWidth, info.visibleHeight, info.strideBytes,
+          static_cast<unsigned long>(info.bufferSize), static_cast<unsigned>(info.pixelFormat),
+          info.safeInsets.top, info.safeInsets.right, info.safeInsets.bottom, info.safeInsets.left);
+  return true;
+}
+
+bool GfxRenderer::begin() {
+  // Never destroy a previously working renderer state until the replacement
+  // surface has passed every check. This is especially important after an ELF
+  // display handoff/resume: bad metadata must not turn into a blank-screen loop.
+  if (!display.isReady()) {
+    LOG_ERR("GFX", "Display backend is not ready; preserving prior renderer state");
+    return false;
+  }
+
+  const DisplaySurfaceInfo candidateInfo = display.getSurfaceInfo();
+  const DisplaySurfaceValidationError validation = validateDisplaySurfaceInfo(candidateInfo);
+  if (validation != DisplaySurfaceValidationError::None) {
+    LOG_ERR("GFX", "Rejected display surface metadata: %s", displaySurfaceValidationErrorName(validation));
+    return false;
+  }
+  if (candidateInfo.pixelFormat != DisplayPixelFormat::Mono1) {
+    LOG_ERR("GFX", "Renderer does not yet support display pixel format %u; preserving prior state",
+            static_cast<unsigned>(candidateInfo.pixelFormat));
+    return false;
+  }
+
+  uint8_t* const candidateFrameBuffer = display.getFrameBuffer();
+  if (!candidateFrameBuffer) {
+    LOG_ERR("GFX", "Display backend reported ready without a framebuffer; preserving prior renderer state");
+    return false;
+  }
+
+  // Commit only after all validation succeeds.
+  freeBwBufferChunks();
+  frameBuffer = candidateFrameBuffer;
+  panelWidth = candidateInfo.width;
+  panelHeight = candidateInfo.height;
+  visibleWidth = candidateInfo.visibleWidth;
+  visibleHeight = candidateInfo.visibleHeight;
+  panelWidthBytes = candidateInfo.strideBytes;
+  frameBufferSize = candidateInfo.bufferSize;
+  safeInsets = candidateInfo.safeInsets;
   bwBufferChunks.assign((frameBufferSize + BW_BUFFER_CHUNK_SIZE - 1) / BW_BUFFER_CHUNK_SIZE, nullptr);
+  initialized = true;
+  return true;
 }
 
 void GfxRenderer::insertFont(const int fontId, EpdFontFamily font) {
@@ -258,6 +320,8 @@ static void renderCharImpl(const GfxRenderer& renderer, GfxRenderer::RenderMode 
 // IMPORTANT: This function is in critical rendering path and is called for every pixel. Please keep it as simple and
 // efficient as possible.
 void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
+  if (!initialized || !frameBuffer) return;
+
   int phyX = 0;
   int phyY = 0;
 
@@ -729,6 +793,8 @@ void GfxRenderer::fillRoundedRect(const int x, const int y, const int width, con
 }
 
 void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
+  if (!initialized || !frameBuffer || !display.isReady() || !bitmap || width <= 0 || height <= 0) return;
+
   int rotatedX = 0;
   int rotatedY = 0;
   rotateCoordinates(orientation, x, y, &rotatedX, &rotatedY, panelWidth, panelHeight);
@@ -752,6 +818,7 @@ void GfxRenderer::drawImage(const uint8_t bitmap[], const int x, const int y, co
 }
 
 void GfxRenderer::drawIcon(const uint8_t bitmap[], const int x, const int y, const int width, const int height) const {
+  if (!initialized || !frameBuffer || !display.isReady() || !bitmap || width <= 0 || height <= 0) return;
   display.drawImageTransparent(bitmap, y, getScreenWidth() - width - x, height, width);
 }
 
@@ -996,33 +1063,46 @@ void GfxRenderer::fillPolygon(const int* xPoints, const int* yPoints, int numPoi
 static unsigned long start_ms = 0;
 
 void GfxRenderer::clearScreen(const uint8_t color) const {
+  if (!initialized || !frameBuffer || frameBufferSize == 0) return;
   start_ms = millis();
-  display.clearScreen(color);
+  // Clearing is a RAM raster operation, not a physical display operation.
+  // UI-video takeover deliberately suspends the backend while retaining this
+  // buffer. Detached renderers must likewise clear their own target, not the
+  // font source's display. Presentation keeps its separate readiness gate.
+  std::memset(frameBuffer, color, frameBufferSize);
 }
 
 void GfxRenderer::invertScreen() const {
+  if (!initialized || !frameBuffer) return;
   for (uint32_t i = 0; i < frameBufferSize; i++) {
     frameBuffer[i] = ~frameBuffer[i];
   }
 }
 
-void GfxRenderer::displayBuffer(const HalDisplay::RefreshMode refreshMode) const {
+void GfxRenderer::displayBuffer(const DisplayPresentMode refreshMode) const {
+  if (!initialized || !frameBuffer || !display.isReady()) {
+    LOG_ERR("GFX", "Refusing displayBuffer before a validated, ready display surface");
+    return;
+  }
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   display.displayBuffer(refreshMode);
 }
 
-void GfxRenderer::requestNextRefresh(const HalDisplay::RefreshMode refreshMode) const {
+void GfxRenderer::requestNextRefresh(const DisplayPresentMode refreshMode) const {
+  if (!initialized || !display.isReady()) return;
   display.requestNextRefresh(refreshMode);
 }
 
-void GfxRenderer::requestNextDisplayEffect(const HalDisplay::DisplayEffect effect) const {
+void GfxRenderer::requestNextDisplayEffect(const DisplayEffect effect) const {
+  if (!initialized || !display.isReady()) return;
   display.requestNextDisplayEffect(effect);
 }
 
 void GfxRenderer::requestNextPageTurnEffect(const bool isForwardTurn) const {
-  display.requestNextDisplayEffect(isForwardTurn ? HalDisplay::EFFECT_READER_TURN_FORWARD_STANDARD
-                                                 : HalDisplay::EFFECT_READER_TURN_BACKWARD_STANDARD);
+  if (!initialized || !display.isReady()) return;
+  display.requestNextDisplayEffect(isForwardTurn ? DisplayEffect::PageTurnForwardStandard
+                                                 : DisplayEffect::PageTurnBackwardStandard);
 }
 
 std::string GfxRenderer::truncatedText(const int fontId, const char* text, const int maxWidth,
@@ -1141,7 +1221,7 @@ int GfxRenderer::getSpaceWidth(const int fontId, const EpdFontFamily::Style styl
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
-    return fp4::toPixel(sdIt->second->getAdvance(' ', resolvedStyle));
+    return fp4::toPixel(sdCardAdvance(*sdIt->second, ' ', resolvedStyle));
   }
 
   const auto fontIt = fontMap.find(fontId);
@@ -1162,7 +1242,7 @@ int GfxRenderer::getSpaceAdvance(const int fontId, const uint32_t leftCp, const 
   auto sdIt = sdCardFonts_.find(fontId);
   if (sdIt != sdCardFonts_.end() && sdIt->second->hasAdvanceTable()) {
     const uint8_t resolvedStyle = resolveSdCardStyle(*sdIt->second, style);
-    return fp4::toPixel(sdIt->second->getAdvance(' ', resolvedStyle));
+    return fp4::toPixel(sdCardAdvance(*sdIt->second, ' ', resolvedStyle));
   }
 
   const auto fontIt = fontMap.find(fontId);
@@ -1194,7 +1274,7 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
     int32_t widthFP = 0;
     const uint8_t styleIdx = resolveSdCardStyle(*sdIt->second, style);
     while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
-      widthFP += sdIt->second->getAdvance(cp, styleIdx);
+      widthFP += sdCardAdvance(*sdIt->second, cp, styleIdx);
     }
     return fp4::toPixel(widthFP);
   }
@@ -1323,13 +1403,23 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 // unused
 // void GfxRenderer::grayscaleRevert() const { display.grayscaleRevert(); }
 
-void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuffers(frameBuffer); }
+void GfxRenderer::copyGrayscaleLsbBuffers() const {
+  if (!initialized || !frameBuffer || !display.isReady()) return;
+  display.copyGrayscaleLsbBuffers(frameBuffer);
+}
 
-void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
+void GfxRenderer::copyGrayscaleMsbBuffers() const {
+  if (!initialized || !frameBuffer || !display.isReady()) return;
+  display.copyGrayscaleMsbBuffers(frameBuffer);
+}
 
-bool GfxRenderer::captureGrayscaleBaseBuffer() const { return display.captureGrayscaleBaseBuffer(frameBuffer); }
+bool GfxRenderer::captureGrayscaleBaseBuffer() const {
+  if (!initialized || !frameBuffer || !display.isReady()) return false;
+  return display.captureGrayscaleBaseBuffer(frameBuffer);
+}
 
-void GfxRenderer::displayGrayBuffer(const HalDisplay::RefreshMode refreshMode) const {
+void GfxRenderer::displayGrayBuffer(const DisplayPresentMode refreshMode) const {
+  if (!initialized || !frameBuffer || !display.isReady()) return;
   display.displayGrayBuffer(refreshMode);
 }
 
@@ -1349,6 +1439,8 @@ void GfxRenderer::freeBwBufferChunks() {
  * Returns true if buffer was stored successfully, false if allocation failed.
  */
 bool GfxRenderer::storeBwBuffer() {
+  if (!initialized || !frameBuffer || frameBufferSize == 0) return false;
+
   // Allocate and copy each chunk
   for (size_t i = 0; i < bwBufferChunks.size(); i++) {
     // Check if any chunks are already allocated
@@ -1382,6 +1474,11 @@ bool GfxRenderer::storeBwBuffer() {
  * Uses chunked restoration to match chunked storage.
  */
 void GfxRenderer::restoreBwBuffer() {
+  if (!initialized || !frameBuffer || frameBufferSize == 0 || !display.isReady()) {
+    freeBwBufferChunks();
+    return;
+  }
+
   // Check if all chunks are allocated
   bool missingChunks = false;
   for (const auto& bwBufferChunk : bwBufferChunks) {
@@ -1413,7 +1510,7 @@ void GfxRenderer::restoreBwBuffer() {
  * Use this when BW buffer was re-rendered instead of stored/restored.
  */
 void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
-  if (frameBuffer) {
+  if (initialized && frameBuffer && display.isReady()) {
     display.cleanupGrayscaleBuffers(frameBuffer);
   }
 }
@@ -1421,28 +1518,28 @@ void GfxRenderer::cleanupGrayscaleWithFrameBuffer() const {
 void GfxRenderer::getOrientedViewableTRBL(int* outTop, int* outRight, int* outBottom, int* outLeft) const {
   switch (orientation) {
     case Portrait:
-      *outTop = VIEWABLE_MARGIN_TOP;
-      *outRight = VIEWABLE_MARGIN_RIGHT;
-      *outBottom = VIEWABLE_MARGIN_BOTTOM;
-      *outLeft = VIEWABLE_MARGIN_LEFT;
+      *outTop = safeInsets.top;
+      *outRight = safeInsets.right;
+      *outBottom = safeInsets.bottom;
+      *outLeft = safeInsets.left;
       break;
     case LandscapeClockwise:
-      *outTop = VIEWABLE_MARGIN_LEFT;
-      *outRight = VIEWABLE_MARGIN_TOP;
-      *outBottom = VIEWABLE_MARGIN_RIGHT;
-      *outLeft = VIEWABLE_MARGIN_BOTTOM;
+      *outTop = safeInsets.left;
+      *outRight = safeInsets.top;
+      *outBottom = safeInsets.right;
+      *outLeft = safeInsets.bottom;
       break;
     case PortraitInverted:
-      *outTop = VIEWABLE_MARGIN_BOTTOM;
-      *outRight = VIEWABLE_MARGIN_LEFT;
-      *outBottom = VIEWABLE_MARGIN_TOP;
-      *outLeft = VIEWABLE_MARGIN_RIGHT;
+      *outTop = safeInsets.bottom;
+      *outRight = safeInsets.left;
+      *outBottom = safeInsets.top;
+      *outLeft = safeInsets.right;
       break;
     case LandscapeCounterClockwise:
-      *outTop = VIEWABLE_MARGIN_RIGHT;
-      *outRight = VIEWABLE_MARGIN_BOTTOM;
-      *outBottom = VIEWABLE_MARGIN_LEFT;
-      *outLeft = VIEWABLE_MARGIN_TOP;
+      *outTop = safeInsets.right;
+      *outRight = safeInsets.bottom;
+      *outBottom = safeInsets.left;
+      *outLeft = safeInsets.top;
       break;
   }
 }

@@ -52,7 +52,7 @@ void ConfirmationActivity::render(RenderLock&& lock) {
   const auto labels = mappedInput.mapLabels("", "", I18N.get(StrId::STR_CANCEL), I18N.get(StrId::STR_CONFIRM));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
-  renderer.displayBuffer(HalDisplay::RefreshMode::FAST_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::LowLatency);
 }
 
 void ConfirmationActivity::loop() {
@@ -73,10 +73,8 @@ void ConfirmationActivity::loop() {
   }
 }
 
-bool ConfirmationActivity::onTouchTap(int16_t x, int16_t) {
-  ActivityResult res;
-  res.isCancelled = x < renderer.getScreenWidth() / 2;
-  setResult(std::move(res));
-  finish();
+bool ConfirmationActivity::onTouchTap(int16_t, int16_t) {
+  // Only mapped button-hint hits reach loop() as explicit button events.
+  // Ordinary body/title taps must not complete a safety confirmation.
   return true;
 }

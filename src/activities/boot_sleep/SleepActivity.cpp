@@ -186,7 +186,7 @@ void SleepActivity::renderDefaultSleepScreen() const {
     renderer.invertScreen();
   }
 
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
 }
 
 void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
@@ -241,7 +241,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
     renderer.invertScreen();
   }
 
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
 
   if (hasGreyscale) {
     if (!renderer.captureGrayscaleBaseBuffer()) {
@@ -261,7 +261,7 @@ void SleepActivity::renderBitmapSleepScreen(const Bitmap& bitmap) const {
     renderer.drawBitmap(bitmap, x, y, pageWidth, pageHeight, cropX, cropY);
     renderer.copyGrayscaleMsbBuffers();
 
-    renderer.displayGrayBuffer(HalDisplay::FULL_REFRESH);
+    renderer.displayGrayBuffer(DisplayPresentMode::Clean);
     renderer.setRenderMode(GfxRenderer::BW);
   }
 }
@@ -362,5 +362,5 @@ void SleepActivity::renderCoverSleepScreen() const {
 
 void SleepActivity::renderBlankSleepScreen() const {
   renderer.clearScreen();
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
 }

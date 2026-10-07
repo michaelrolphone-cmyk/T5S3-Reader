@@ -1,4 +1,4 @@
-/* Hollow Trail — deterministic ten-chapter platformer and PSRAM raster pipeline.
+/* Hollow Trail — deterministic ten-chapter route and final-door epilogue and PSRAM raster pipeline.
  * Baseline world/overlays are 480x270 with lower-resolution cached scenery;
  * the native A/B path rasterizes procedural geometry at the panel's 960x540
  * resolution. No textures, random frame noise, floating-point library,
@@ -82,7 +82,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER, HT_WINDOW };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -99,6 +99,12 @@ typedef struct {
     int ledge_side;
     uint8_t tree,branch_drop;
     int8_t tree_side;
+    int16_t mill_scrape_left,mill_scrape_right; /* Grounded desk-leg trace, retained on checkpoint retry. */
+    int mill_entry_left,mill_entry_right; /* Q8 grounded endpoints, never new terrain. */
+    uint8_t mill_entry_phase;
+    int window_entry_left,window_entry_right;
+    uint8_t window_phase,window_open,window_touch;
+    bool window_print;
     bool rope_awake;
 } ht_traversal;
 #include "hollow_trail_story.inc"
@@ -121,10 +127,29 @@ typedef struct {
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
+    uint16_t waiting_view_tick; /* Draw snapshot only. */
+    bool waiting_view_active;
+    int8_t first_house_lean;
+    bool isolator_view_active;
+    uint8_t isolator_view_stage;
+    uint16_t isolator_view_tick;
+    uint8_t cabin_view_stage;
+    uint16_t cabin_view_tick;
+    bool carriage_view_active,carriage_view_boots;
+    bool partition_view_active;
+    uint16_t partition_view_tick;
+    bool warming_view_active;
+    uint16_t warming_view_tick;
+    bool sleep_view_active;
+    uint8_t sleep_view_stage;
+    uint16_t sleep_view_tick;
     ht_traversal traversal;
     ht_puzzle_state puzzle;
     uint8_t verdict,last_verdict,endings; /* 0 undecided; 1 break; 2 complete; archive bitmask. */
     bool verdict_read;
+    uint8_t door_stage; /* Chapter XI: independent of the ten evidence/puzzle slots. */
+    uint16_t door_tick;
+    bool door_notebook;
     uint8_t story_seen[HT_LEVELS]; /* Reached narration beats; retained with evidence. */
     uint32_t evidence; /* Thirty discoveries, retained across chapters this run. */
 } ht_game;
@@ -314,10 +339,38 @@ static void ht_bind_native(uint8_t *memory) {
     ht_native_a=memory+HT_MEMORY;
     ht_native_b=ht_native_a+HT_NATIVE_PIXELS;
 }
-static int ht_evidence_platform(unsigned level,int item) { return level==0?(item==0?0:item==1?3:7):1+item*3; }
+#define HT_SIGNAL_LOG_X 2170
+#define HT_SIGNAL_ROOM_LEFT 2065
+#define HT_SIGNAL_ROOM_RIGHT 2280
+#define HT_SIGNAL_ROOM_HEIGHT 84
+/* The rendered entry bay, sill and collision share the same upper roof. */
+#define HT_SIGNAL_WINDOW_LEFT (ht_mechanics_by_level[1].ladders[2].x+17)
+#define HT_SIGNAL_WINDOW_RIGHT (ht_mechanics_by_level[1].ladders[2].x+59)
+#define HT_SIGNAL_WINDOW_STEPS 144
+static int ht_signal_window_floor(void) {return ht_level_land(1)[7].top;}
+static int ht_signal_window_sill(void) {return ht_signal_window_floor()-16;}
+static int ht_signal_window_top(void) {return ht_signal_window_floor()-70;}
+
+#define HT_WAITING_X 1745
+static int ht_waiting_floor(void) {return ht_land_height(4,4,HT_WAITING_X);}
+#define HT_DISTRIBUTION_X 2402
+static int ht_distribution_floor(void) {return ht_land_height(2,7,HT_DISTRIBUTION_X);}
+#define HT_STATION_TICKET_X 1180
+static int ht_station_floor(void) {return ht_land_height(3,2,HT_STATION_TICKET_X);}
+#define HT_STOVE_X 1820
+static int ht_stove_floor(void) {return ht_land_height(2,5,HT_STOVE_X);}
+static int ht_evidence_platform(unsigned level,int item) { return level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==0?(item==0?140:item==1?1180:p->left+42):item==1?p->right-45:p->left+42;
+    return level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
+}
+static int ht_evidence_world_x(const ht_game *game,int item) {
+    return game->level==0 && item==1?game->traversal.crate_x/256:ht_evidence_x(game->level,item);
+}
+static bool ht_mill_register_lit(const ht_game *game) {
+    int x=game->traversal.crate_x/256;
+    return game->level==0 && x>=HT_MILL_DESK_LIGHT_LEFT && x<=HT_MILL_DESK_LIGHT_RIGHT &&
+        ht_abs(game->traversal.crate_y/256-ht_land_height(0,3,x))<=2;
 }
 static bool ht_evidence_found(const ht_game *game,unsigned page) {
     return page<HT_LEVELS*3u && (game->evidence&(1u<<page))!=0;
@@ -326,10 +379,24 @@ static int ht_platform_top(const ht_game *g,int i);
 static int ht_evidence_near(const ht_game *game) {
     if(!game->grounded) return -1;
     for(int item=0;item<3;++item) {
-        if(ht_abs(game->x/256-ht_evidence_x(game->level,item))<=22 &&
+        if(game->level==0 && item==1 && !ht_mill_register_lit(game))continue;
+        if(ht_abs(game->x/256-ht_evidence_world_x(game,item))<=22 &&
            ht_abs(game->y/256-ht_surface_at(game,ht_evidence_platform(game->level,item),game->x/256))<=3) return item;
     }
     return -1;
+}
+static bool ht_schoolroom_near(const ht_game *g) {
+    return g->level==1 && ht_evidence_near(g)==0;
+}
+static bool ht_signal_room_near(const ht_game *g) {
+    return g->level==1 && ht_evidence_near(g)==2;
+}
+/* The last city narration belongs at the newly connected signal room, not
+ * several roofs after the player has already watched its empty mechanism. */
+static unsigned ht_story_beat_at(const ht_game *g) {
+    bool reached_room=g->grounded && g->x/256>=HT_SIGNAL_ROOM_LEFT &&
+        g->x/256<=HT_SIGNAL_ROOM_RIGHT && ht_abs(g->y/256-ht_level_land(1)[7].top)<=3;
+    return g->level==1 && (g->story_seen[1]>=3 || reached_room)?2u:ht_story_beat(g->story_x);
 }
 static int ht_inspect(void) {
     int item=ht_evidence_near(&ht);
@@ -337,6 +404,9 @@ static int ht_inspect(void) {
     int page=(int)ht.level*3+item;
     ht.evidence|=1u<<(unsigned)page;
     ht.scene_evidence|=(uint8_t)(1u<<(unsigned)item);
+    if(ht.level==0 && item==1 && ht.traversal.mode==HT_CRATE) {
+        ht.traversal.mode=HT_FREE;ht.traversal.crate_vx=0;ht.vx=0;
+    } /* Reading releases the desk; returning cannot continue a held push. */
     return page;
 }
 #define HT_PUZZLE_FIRST 2900
@@ -349,7 +419,7 @@ static int ht_puzzle_near(const ht_game *game) {
     return -1;
 }
 static bool ht_final_near(const ht_game *game) {
-    return game->level==HT_LEVELS-1 && game->puzzle.solved && game->grounded &&
+    return !game->door_stage && game->level==HT_LEVELS-1 && game->puzzle.solved && game->grounded &&
         game->x/256>=HT_PUZZLE_GATE-22 && game->y/256==ht_level_land(game->level)[9].top;
 }
 static bool ht_final_locked(const ht_game *game) {
@@ -483,7 +553,11 @@ static bool ht_observe(void) {
     ht.observation=(uint8_t)(ht.level*2+scene+1);ht.observation_ticks=220;return true;
 }
 static void ht_spawn(bool restart) {
+    if(!restart && ht.door_stage)return; /* No death/respawn can erase the held ending. */
+    int16_t scrape_left=ht.traversal.mill_scrape_left,scrape_right=ht.traversal.mill_scrape_right;
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
+    uint8_t window_open=restart?0:ht.traversal.window_open;
+    bool window_print=!restart && ht.traversal.window_print;
     uint8_t scene_evidence=restart?0:ht.scene_evidence;
     uint16_t weather_amount=restart?0:ht.weather_amount;
     uint16_t weather_age=restart?0:ht.weather_age;
@@ -502,15 +576,21 @@ static void ht_spawn(bool restart) {
     memcpy(ht.story_seen,seen,sizeof(seen));
     if(!ht.story_seen[level]) ht.story_seen[level]=1;
     ht.story_x=story_x; ht.checkpoint=cp; ht.x=(cp?ht_land[cp].left+35:95)*256;
+    if(level==0 && cp==3)ht.x=(HT_MILL_SHUTTER_RIGHT+5)*256;
     ht.y=ht_land_height(level,cp,ht.x/256)*256; ht.airborne_origin=ht.y; ht.grounded=true; ht.facing=1;
     ht.pace=(uint16_t)ht_pace_target(&ht);ht.intimacy=(uint16_t)ht_intimacy_target(&ht);
     ht.camera=ht_clamp(ht.x/256-200,-120,HT_GOAL-260)*256;
     ht.camera_y=ht_clamp(ht.y/256-180,-300,100)*256;
     const ht_mechanics *m=&ht_mechanics_by_level[level];
     ht.traversal.bridge_open=bridge_open;
+    if(level==1){ht.traversal.window_open=window_open;ht.traversal.window_print=window_print;}
     ht.traversal.forest_log_phase=level==0 && bridge_open==32?32:0;
     ht.traversal.ball_x=m->ball_x*256;ht.traversal.ball_y=(m->ball_floor-HT_BALL_RADIUS)*256;
     ht.traversal.crate_x=m->crate_x*256;ht.traversal.crate_y=m->crate_floor*256;
+    if(level==0) {
+        ht.traversal.mill_scrape_left=(int16_t)(!restart && scrape_left?scrape_left:HT_MILL_DESK_START+9);
+        ht.traversal.mill_scrape_right=(int16_t)(!restart && scrape_right?scrape_right:HT_MILL_DESK_START+9);
+    }
     ht.traversal.boat_x=m->boat_left*256;
     ht.traversal.rope_grip=m->rope_length*256;
     for(int i=0;i<HT_ROPE_NODES;++i) {
@@ -518,6 +598,7 @@ static void ht_spawn(bool restart) {
         ht.traversal.rope_py[i]=ht.traversal.rope_oy[i]=(m->rope_anchor_y+m->rope_length*i/(HT_ROPE_NODES-1))*256;
     }
 }
+#include "hollow_trail_final_door.inc"
 #include "hollow_trail_traversal.inc"
 
 static void ht_span(uint8_t *b,int x0,int x1,int y,int c) {
@@ -1450,13 +1531,25 @@ static int ht_sway_wave(unsigned phase) {
     int triangle=t<256?t:t<768?512-t:t-1024;
     return triangle*(512-ht_abs(triangle))/256;
 }
+/* A floor-bound room has a stable vertical. Ease the outdoor camera movement
+ * away at the mill walls without touching physical motion or stored phases. */
+static int ht_camera_motion_gain(const ht_game *g) {
+    int x=g->x/256;
+    if(g->level!=0 || x<=1080 || x>=1268 ||
+       ht_abs(g->y/256-ht_land_height(0,3,x))>4)return 256;
+    return 256-ht_clamp(ht_min(x-1080,1268-x)*256/40,0,256);
+}
+static int ht_camera_breathe(const ht_game *g) {
+    int amount=(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+    return 4096-amount*ht_camera_motion_gain(g)/256;
+}
 /* Raster only the visible interior. At <=344/4096 off-diagonal rotation and inward
  * scaling, the nine-pixel border keeps the rounded source sample in bounds.
  * The vignette replaces everything outside this range immediately afterward. */
 static void ht_camera_coefficients(const ht_game *g,int *turn,int *scale) {
     int gain=43+(int)g->camera_mood*213/256;
-    *turn=ht_sway_wave(g->rotation_phase>>8)*43/32*gain/256;
-    int breathe=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+    *turn=ht_sway_wave(g->rotation_phase>>8)*43/32*gain/256*ht_camera_motion_gain(g)/256;
+    int breathe=ht_camera_breathe(g);
     /* Widen toward the uncropped view during a true drop, then ease back
      * into the unchanged breathing phase. Retain the corner-safe crop. */
     breathe+=(4096-breathe)*g->drop_zoom/256;
@@ -1474,7 +1567,7 @@ static void ht_frame_camera(ht_game *g,unsigned mode) {
     if(mode!=HT_CAMERA_OFF && (g->sway_phase || g->drop_zoom)) {
         ht_camera_coefficients(g,&turn,&scale);
         if(mode==HT_CAMERA_NO_ROTATION) {
-            turn=0;scale=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+            turn=0;scale=ht_camera_breathe(g);
             scale+=(4096-scale)*g->drop_zoom/256;
         } else if(mode==HT_CAMERA_NO_ZOOM)scale=4096;
     }
@@ -1545,7 +1638,7 @@ static __attribute__((optimize("O3"))) void ht_rotation_into(const uint8_t *sour
 static void ht_camera_into(const uint8_t *source,const ht_game *g,unsigned mode) {
     int turn,scale;ht_camera_coefficients(g,&turn,&scale);
     if(mode==HT_CAMERA_NO_ROTATION) {
-        scale=4096-(ht_sway_wave(g->sway_phase/2+768)+256)*4/3;
+        scale=ht_camera_breathe(g);
         scale+=(4096-scale)*g->drop_zoom/256;
         ht_zoom_into(source,scale);
     } else if(mode==HT_CAMERA_NO_ZOOM) ht_rotation_into(source,turn);
@@ -1567,6 +1660,8 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
         }
     return floor;
 }
+/* Precipitation-only cover: ht_weather_floor also bounds character contrast. */
+static int ht_rain_tank_weather_floor(const ht_game *g,int x0,int x1,int floor);
 static void ht_weather(const ht_game *g) {
     const ht_climate *c=&ht_climates[g->level];int exposure=ht_exposure(g);
     if(!exposure || !(c->rain+c->leaves+c->dust+c->sleet)) return;
@@ -1577,7 +1672,7 @@ static void ht_weather(const ht_game *g) {
         int x=(int)(seed%HT_W)+drift-g->camera/512;
         x=((x%HT_W)+HT_W)%HT_W;
         int y=(int)((seed/HT_W+(g->ticks%HT_H)*(i%2+3))%HT_H);
-        int floor=ht_weather_floor(g,x);
+        int floor=ht_rain_tank_weather_floor(g,x,x+wind/9,ht_weather_floor(g,x));
         if(y<floor) ht_limb(ht_scene,x,y,x+wind/9,ht_min(floor-1,y+(c->sleet?2:4)+(int)(i%3)),0,0,c->sleet?180:125);
         if((i&15)==15) ht_checkpoint();
     }
@@ -1589,6 +1684,8 @@ static void ht_weather(const ht_game *g) {
         x=((x%HT_W)+HT_W)%HT_W;
         int y=(int)((seed/HT_W+(g->ticks/3)%HT_H)%HT_H)+flutter/5;
         if(y>=ht_weather_floor(g,x)-3) continue;
+        if(g->level==0 && x+g->camera/256>=HT_MILL_SHUTTER_LEFT && x+g->camera/256<1212 &&
+           y+g->camera_y/256>=133)continue; /* Leaf drift stays outside the mill interior. */
         int lean=wind<0?-1:1;
         if(c->leaves) ht_limb(ht_scene,x,y,x+lean*3,y+(flutter<8?1:-1),1,0,190);
         else ht_rect(ht_scene,x,y,1+(int)(i%3),1,i%2?70:155);
@@ -1601,12 +1698,15 @@ static void ht_city_observer_foreground(const ht_game *game);
 static void ht_authored_foreground(const ht_game *game);
 static void ht_draw_puzzle(const ht_game *game);
 static void ht_draw_evidence(const ht_game *game);
+static void ht_signal_window_draw(const ht_game *game,bool front);
 /* At full opacity the grotto supplies every background pixel itself. */
 static bool ht_grotto_opaque(const ht_game *g) {
     return g->level==4 && g->camera/256<=700;
 }
 
+#include "hollow_trail_final_door_draw.inc"
 static void ht_render_scene_from(const ht_game *source,bool character) {
+    if(source->door_stage) {ht_door_render(source,character);return;}
     memset(&ht_render_last,0,sizeof(ht_render_last));
     uint32_t stage=ht_render_now();
     ht_game game=*source;
@@ -1657,6 +1757,7 @@ static void ht_render_scene_from(const ht_game *source,bool character) {
     if(character)ht_character(px,(game.y-game.camera_y)/256,&game);
     ht_weather(&game);
     ht_forest_foreground(&game);
+    ht_signal_window_draw(&game,true);
     ht_city_observer_foreground(&game);
     ht_authored_foreground(&game);
     uint32_t post_start=ht_render_now();
@@ -1977,7 +2078,8 @@ static void ht_narration_hash(const char *text) {
 }
 static void ht_narration(const ht_game *game) {
     ht_narration_key=2166136261u;
-    unsigned beat=ht_story_beat(game->story_x);
+    if(game->door_stage) {ht_door_caption(game);return;}
+    unsigned beat=ht_story_beat_at(game);
     ht_rect(ht_scene,57,230,366,23,255);
     for(int line=0;line<2;++line) {
         const char *text=ht_chapters[game->level].lines[beat][line];
@@ -1998,23 +2100,23 @@ static void ht_narration(const ht_game *game) {
     }
 }
 
+#include "hollow_trail_cabinet_room_draw.inc"
+#include "hollow_trail_isolator_draw.inc"
+#include "hollow_trail_warming_draw.inc"
+#include "hollow_trail_partition_draw.inc"
 #include "hollow_trail_mechanism_draw.inc"
 static void ht_draw_puzzle(const ht_game *game) {
-    int camera=game->camera/256,top=ht_level_land(game->level)[9].top-game->camera_y/256;
+    int top=ht_level_land(game->level)[9].top-game->camera_y/256;
     ht_draw_mechanisms(game,top);
-    int x=HT_GOAL-camera;
+    ht_isolator_box(game,game->isolator_view_active?ht_isolator_lid(game->isolator_view_stage,game->isolator_view_tick):0,
+       game->isolator_view_active && !game->isolator_view_stage?ht_isolator_lift(game->isolator_view_tick):game->puzzle.stage?4:0);
+    ht_warming_pipe(game,game->warming_view_active?ht_warming_amount(game->warming_view_tick):game->puzzle.stage?256:0);
     if(game->level==HT_LEVELS-1 && game->puzzle.solved) {
-        ht_rect(ht_scene,x-18,top-48,36,48,255);
-        ht_rect(ht_scene,x-15,top-45,30,37,0);
-        ht_rect(ht_scene,x-1,top-45,2,37,255);
-        ht_rect(ht_scene,x-12,top-38,8,19,game->verdict==2?255:140);
-        ht_limb(ht_scene,x+4,top-39,x+11,top-18,1,1,255);
-        if(game->verdict==1) ht_rect(ht_scene,x+2,top-45,13,37,255);
-        ht_disk(ht_scene,x,top-56,4,255);
-        if(game->verdict!=1) ht_disk(ht_scene,x,top-56,2,0);
+        ht_cabinet_case(game,top);
         return;
     }
     ht_draw_chapter_gate(game,top);
+    ht_partition_response(game,top);
 }
 static void ht_puzzle_prompt(const ht_game *game) {
     if(ht_puzzle_near(game)<0) return;
@@ -2036,27 +2138,74 @@ static void ht_puzzle_prompt(const ht_game *game) {
     } else ht_text_color(74,49,"A / CONFIRM OPERATE THE NEARBY CONTROL",1,85);
 }
 
+/* Chapter I: one marked tree, not three unrelated clue props. The older
+ * rounded wound faces the road; the new cloth stays caught on its hook after
+ * inspection. Neither bark texture nor paper adds collision geometry. */
+static void ht_marked_tree(int x,int ground,bool paper) {
+    int trunk=x-8;
+    ht_organic_snag(ht_scene,trunk,ground+5,245,16,813u,247);
+    /* Unequal roots meet the existing terrain rather than a flat pedestal. */
+    ht_limb(ht_scene,trunk,ground-6,x-30,ground+3,8,1,245);
+    ht_limb(ht_scene,trunk+3,ground-7,x+18,ground+5,6,1,241);
+    for(int n=0;n<4;++n) {
+        int bx=trunk-9+n*5;
+        ht_limb(ht_scene,bx,ground-160,bx+2,ground-118+n*5,0,0,221+n*4);
+        ht_limb(ht_scene,bx+2,ground-108+n*4,bx-1,ground-66+n*3,0,0,221+n*4);
+    }
+    /* Rounded callus around the old wedge. The pale inner wood is quieter
+     * than the new wool, and both remain physically adjacent. */
+    ht_limb(ht_scene,trunk+5,ground-48,trunk+10,ground-38,3,3,174);
+    ht_limb(ht_scene,trunk+10,ground-38,trunk+5,ground-30,3,3,174);
+    ht_triangle(ht_scene,trunk+5,ground-46,trunk+10,ground-38,trunk+5,ground-32,207);
+    /* Small incisions suggest the weathered date without inventing numerals
+     * the novella never specifies. The full attribution is in the notebook. */
+    for(int n=0;n<4;++n) {
+        ht_limb(ht_scene,trunk-5+n*3,ground-61,trunk-4+n*3,ground-57,0,0,160);
+        ht_limb(ht_scene,trunk-5+n*3,ground-57,trunk-3+n*3,ground-58,0,0,160);
+    }
+    for(int row=0;row<2;++row)for(int n=0;n<5;++n)
+        ht_limb(ht_scene,trunk-6+n*3,ground-54+row*3,trunk-5+n*3,ground-53+row*3,0,0,181);
+    ht_limb(ht_scene,trunk+4,ground-30,x+12,ground-35,2,1,244);
+    ht_limb(ht_scene,x+12,ground-35,x+13,ground-39,1,0,244);
+    /* Cloth folded into the new cut; a separate fine filament holds it. */
+    ht_limb(ht_scene,trunk+8,ground-31,x+10,ground-34,0,0,129);
+    ht_triangle(ht_scene,trunk+7,ground-32,x+9,ground-31,x+4,ground-14,99);
+    ht_triangle(ht_scene,trunk+7,ground-32,x+4,ground-14,trunk+6,ground-19,114);
+    ht_limb(ht_scene,x+2,ground-27,x+4,ground-16,0,0,179);
+    /* Two backward bites interrupt the hem's otherwise neat run. */
+    for(int n=0;n<5;++n)ht_limb(ht_scene,x+4,ground-28+n*2,x+5,ground-28+n*2,0,0,217);
+    ht_limb(ht_scene,x+5,ground-26,x+3,ground-27,0,0,217);
+    ht_limb(ht_scene,x+5,ground-20,x+3,ground-21,0,0,217);
+    /* Narrow paper in the fold. Its socket is a drawing opening roadward,
+     * never an invented physical lamp/socket attached to this tree. */
+    if(paper) {
+        ht_triangle(ht_scene,x+5,ground-27,x+13,ground-29,x+14,ground-22,64);
+        ht_triangle(ht_scene,x+5,ground-27,x+14,ground-22,x+6,ground-21,64);
+        ht_limb(ht_scene,x+8,ground-26,x+8,ground-23,0,0,212);
+        ht_limb(ht_scene,x+8,ground-26,x+11,ground-26,0,0,212);
+        ht_limb(ht_scene,x+8,ground-23,x+11,ground-23,0,0,212);
+    }
+}
 /* Tiny scraps/containers embedded in scenery. No flashing markers or distant
  * arrows; nearby interaction reveals the title without exposing the contents. */
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
+        if((game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5 && item==0))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
-        if(x< -12-ht_view_margin() || x>=HT_W+12+ht_view_margin()) continue;
+        int extent=game->level==0 && item==0?34:12;
+        if(x< -extent-ht_view_margin() || x>=HT_W+extent+ht_view_margin()) continue;
         /* Finds are objects within the scene, never hovering clue diagrams. */
         int ink=ht_evidence_found(game,game->level*3u+(unsigned)item)?150:95;
         if(game->level==0 && item==0) {
-            ht_organic_snag(ht_scene,x-6,y,46,7,813u,255);
-            ht_limb(ht_scene,x-9,y-36,x+5,y-42,3,0,255);
-            ht_limb(ht_scene,x-10,y-24,x+1,y-20,1,0,ink);
-            ht_limb(ht_scene,x+1,y-20,x+4,y-13,1,0,ink);
-        } else if(game->level==0 && item==1) {
-            /* Register remains on the mill desk, spatially joined to its beam. */
-            ht_limb(ht_scene,x-15,y-21,x+15,y-25,2,2,210);
-            ht_limb(ht_scene,x-13,y-20,x-12,y,2,1,235);
-            ht_limb(ht_scene,x+12,y-23,x+11,y,2,1,235);
-            ht_triangle(ht_scene,x-9,y-24,x+8,y-27,x+10,y-23,46);
-            ht_limb(ht_scene,x-5,y-24,x+5,y-25,0,0,ink);
+            ht_marked_tree(x,y,!ht_evidence_found(game,0));
+        } else if(game->level==1 && item==0) {
+            /* Brick-weighted schoolroom map on its child-sized desk. */
+            ht_triangle(ht_scene,x-15,y-29,x+13,y-32,x+16,y-26,38);
+            ht_triangle(ht_scene,x-15,y-29,x+16,y-26,x-13,y-24,38);
+            ht_limb(ht_scene,x-9,y-27,x+8,y-29,0,0,160);
+            for(int side=-1;side<=1;side+=2)for(int row=0;row<2;++row)
+                ht_rect(ht_scene,x+side*13-2,y-30+row*4,4,2,189);
         } else if((game->level==0 && item==2) || (game->level==8 && item==0)) {
             if(game->level==0)ht_organic_snag(ht_scene,x-10,y,33,3,871u,255);
             else ht_limb(ht_scene,x-10,y,x-12,y-35,3,2,255);
@@ -2110,3 +2259,24 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 
 #include "hollow_trail_atmosphere_draw.inc"
 #include "hollow_trail_traversal_draw.inc"
+
+#include "hollow_trail_stove_study.inc"
+
+#include "hollow_trail_station_study.inc"
+
+#include "hollow_trail_distribution_study.inc"
+
+#include "hollow_trail_waiting_study.inc"
+
+#include "hollow_trail_pouch_study.inc"
+
+#include "hollow_trail_sleep_study.inc"
+
+#include "hollow_trail_partition_study.inc"
+#include "hollow_trail_warming_study.inc"
+
+#include "hollow_trail_isolator_study.inc"
+
+#include "hollow_trail_first_house_study.inc"
+#include "hollow_trail_carriage_study.inc"
+#include "hollow_trail_signal_cabin_study.inc"

@@ -85,7 +85,7 @@ Applications / Scene Runtime
               Framework capabilities
                        |
                        v
-                 Signed Drivers
+                 Installed Drivers
                        |
                        v
                     Hardware
@@ -168,7 +168,7 @@ Installed services SHOULD use a dedicated namespace:
         signature.bin
 ```
 
-Development policy MAY permit unsigned packages. Signed/production policy SHALL follow `SECURITY_ARCHITECTURE.md`.
+Services use the ordinary package integrity and independent runtime authorization contract in `SECURITY_ARCHITECTURE.md`.
 
 The package container used for distribution is not a security boundary.
 
@@ -978,7 +978,7 @@ not implicitly allowed:
     unrestricted filesystem
 ```
 
-The authenticated manifest may declare requested capabilities, but the trusted system policy determines what the signer/service identity is allowed to receive.
+The validated manifest may declare requested capabilities, but trusted runtime policy determines what the service execution context is allowed to receive.
 
 Services SHOULD receive opaque handles and narrow APIs rather than raw firmware subsystem pointers.
 
@@ -992,7 +992,7 @@ This limits the impact of a compromised service release key.
 
 Delegated signing MAY be permitted for third-party system services, but certificates/policy SHOULD constrain allowed service identities and capabilities.
 
-A third-party clock synchronization service should not gain driver-level hardware privilege merely because its package signature is valid.
+A third-party clock synchronization service should not gain driver-level hardware privilege merely because its package metadata and digests are valid.
 
 ---
 

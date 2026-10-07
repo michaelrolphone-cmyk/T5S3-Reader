@@ -31,6 +31,7 @@ static char files[FILE_LIMIT][NAME_LIMIT + 1];
 static char status[96];
 static char keyboard_error[160];
 static size_t file_count, selected_file, proposed_size, first_row;
+static bool picker_open;
 static editor_mode_t mode;
 static after_t after;
 static bool resume_after_save, caps, plugged, redraw;
@@ -65,7 +66,7 @@ static void report(const char *text) {
     redraw = true;
 }
 
-// Documents is intentionally the only editable directory in this initial app.
+// New files and the local picker use Documents; trusted handoffs retain their VFS path.
 // Reject traversal, hidden names, separators and all but .txt/.md extensions.
 static bool valid_name(const char *name) {
     const size_t len = name ? strlen(name) : 0;
@@ -128,6 +129,10 @@ static bool discard_changes(void) {
     return true;
 }
 
+static void close_picker(void) {
+    if (picker_open) app->dir_close();
+    picker_open = false;
+}
 static bool load_file(const char *name) {
     char target[160] = {0};
     size_t size = 0, count = 0;
@@ -140,6 +145,7 @@ static bool load_file(const char *name) {
     }
     (void)snprintf(path, sizeof(path), "%s", target);
     (void)snprintf(filename, sizeof(filename), "%s", name);
+    close_picker();
     first_row = 0; mode = EDITING;
     report("Opened. Ctrl+S save / Ctrl+O open / Ctrl+N new.");
     return true;
@@ -147,7 +153,7 @@ static bool load_file(const char *name) {
 static bool load_handoff_path(const char *source) {
     size_t size = 0, count = 0;
     if (!source || strncmp(source, "/sd/", 4) != 0) return false;
-    const char *storage_path = source + 3; /* Keep the leading slash after /sd. */
+    const char *storage_path = source; /* Public storage calls require the /sd VFS prefix. */
     if (!storage_path[0] || strstr(storage_path, "/../") || strstr(storage_path, "/./"))
         return false;
     const char *name = strrchr(storage_path, '/');
@@ -181,24 +187,50 @@ static bool make_new(const char *name) {
     report("New file. Ctrl+S saves it to Documents.");
     return true;
 }
-static void list_files(void) {
+// One page retains at most 64 names, examines at most 128 entries and spends
+// at most 100 ms between I/O calls. Keep the open cursor for explicit PgDn,
+// never rescan a prefix automatically. The directory ABI has no I/O timeout
+// or EOF/error distinction; Home explicitly restarts after a stopped scan.
+static void next_file_page(void) {
+    if (!picker_open) return;
     file_count = selected_file = 0;
-    if (!app->dir_open(DOCUMENTS)) {
-        report("Documents is empty. Press N to create a file.");
-        return;
-    }
-    t5_app_dirent_t item = {0};
+    const uint32_t started = app->millis();
+    uint32_t checkpoint = started;
+    unsigned since_yield = 0;
     for (unsigned seen = 0; seen < 128 && file_count < FILE_LIMIT; ++seen) {
-        if (!app->dir_next(&item)) break;
+        t5_app_dirent_t item = {0};
+        if (!app->dir_next(&item)) {
+            close_picker();
+            break;
+        }
         if (!item.is_directory && valid_name(item.name))
             (void)snprintf(files[file_count++], NAME_LIMIT + 1, "%.*s", (int)NAME_LIMIT, item.name);
-        if ((seen & 15u) == 15u) {
-            t5_app_input_t unused = {0};
-            (void)app->poll(&unused, 0); // Cooperative checkpoint during scan.
+        const uint32_t now = app->millis();
+        if (++since_yield >= 8 || (uint32_t)(now - checkpoint) >= 10) {
+            t5_app_input_t input = {0};
+            if (!app->poll(&input, 1) || input.exit_requested) {
+                close_picker(); mode = DONE; return;
+            }
+            if (input.buttons & T5_APP_BUTTON_BACK) {
+                old_buttons = (uint8_t)input.buttons;
+                close_picker(); mode = EDITING; report("Open cancelled."); return;
+            }
+            since_yield = 0; checkpoint = app->millis();
         }
+        if ((uint32_t)(app->millis() - started) >= 100) break;
     }
-    app->dir_close();
-    report("Up/Down select; Enter open; N new; Esc cancel.");
+    report(picker_open ? "PgDn: next page / Home: restart / Esc: cancel" :
+                        "Scan ended or unreadable. Home: retry / Esc: cancel");
+}
+static void list_files(void) {
+    close_picker();
+    file_count = selected_file = 0;
+    picker_open = app->dir_open(DOCUMENTS);
+    if (!picker_open) {
+        report("Cannot open Documents. Home: retry / N: new / Esc: cancel");
+        return;
+    }
+    next_file_page();
 }
 static void continue_after(void) {
     resume_after_save = false;
@@ -207,6 +239,7 @@ static void continue_after(void) {
     else { mode = FILE_PICKER; list_files(); }
 }
 static void transition(after_t action) {
+    close_picker();
     after = action;
     if (document.dirty) {
         mode = UNSAVED;
@@ -243,6 +276,7 @@ static void key_press(uint8_t key, uint8_t modifiers) {
     const bool alt = (modifiers & 0x44u) != 0;
     if (key == 0x39) { caps = !caps; redraw = true; return; }
     if (key == 0x29) {
+        close_picker();
         if (mode == EDITING) transition(DO_EXIT);
         else if (mode == SAVE_NAME && resume_after_save) {
             mode = UNSAVED; report("Unsaved changes: S save / D discard / Esc cancel.");
@@ -295,7 +329,9 @@ static void key_press(uint8_t key, uint8_t modifiers) {
         return;
     }
     if (mode == FILE_PICKER) {
-        if (key == 0x52 && selected_file) --selected_file;
+        if (key == 0x4e) next_file_page();
+        else if (key == 0x4a) list_files();
+        else if (key == 0x52 && selected_file) --selected_file;
         else if (key == 0x51 && selected_file + 1 < file_count) ++selected_file;
         else if (key == 0x28 && file_count) (void)load_file(files[selected_file]);
         else if (key == 0x11) transition(DO_NEW);
@@ -402,7 +438,8 @@ static void paint(void) {
             (void)snprintf(line, sizeof(line), "%c %s", selected_file == i ? '>' : ' ', files[i]);
             app->draw_text(8, 64 + (int32_t)(i - first) * 18, line);
         }
-        if (!file_count) app->draw_text(8, 64, "No .md/.txt files. N creates one.");
+        if (!file_count) app->draw_text(8, 64, picker_open ?
+            "No matches on this page. PgDn: more." : "No matches on this page. Home: retry.");
     } else if (mode == NEW_NAME || mode == SAVE_NAME) {
         app->draw_text(8, 44, mode == NEW_NAME ? "New filename:" : "Save As filename:");
         app->draw_text(8, 72, proposed);
@@ -445,6 +482,7 @@ void app_main(void) {
         !providers || providers->api_version != T5_PROVIDER_CAPABILITY_API_VERSION ||
         providers->struct_size < offsetof(t5_provider_capability_api_v1, release) + sizeof(providers->release) || !providers->acquire || !providers->release) return;
     app->set_back_exits_app(false);
+    close_picker();
     te_reset(&document);
     path[0] = filename[0] = 0; // Never implicitly save an empty buffer over an existing file.
     caps = plugged = false;
@@ -536,6 +574,7 @@ void app_main(void) {
             paint(); last_paint = now;
         }
     }
+    close_picker();
     if (keyboard && subscription) (void)keyboard->unsubscribe(keyboard->context, subscription);
     subscription = 0; keyboard = NULL;
     if (grant) (void)providers->release(grant);

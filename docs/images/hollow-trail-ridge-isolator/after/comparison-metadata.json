@@ -1,0 +1,402 @@
+{
+  "before": {
+    "source_commit": "92f9f7f23f420b3d415118eba545fb136c44b296",
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "a2a7cfd9bbccf4b131a1b720fa3302d7abb352ef046493d277d8f581b7d17422",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "4c3ac4abc68493e17b5eea41381229e96afce966ca1cefde4b5f88dbb4461cf0",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "84d8af7d3976236ab102299532951baf543102ce0a96dea4802e2067b2d9d758",
+      "Apps/hollow_trail_city_draw.inc": "079ea6077921a66fba0b70b584a017a41559ba9e7188909ce1322ef42c111be7",
+      "Apps/hollow_trail_cutscene.inc": "709e0b7c21875ebde49b60e7d719d7242e4523c6dd9aa090c581a852df03ebb6",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_distribution_draw.inc": "f9cefb3a9f3513b4a7b6815dc7fda37ec0760c1b944b516d5aba8446ff702062",
+      "Apps/hollow_trail_distribution_study.inc": "d792a46b972eaa3eb6ef769ce9604be0a1bc5cc4d8477c178c8cefb7b525f251",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "ef0d64f6317bd3ba354b22e95efff061bdefcf23816e9e159c32a2f58354efc4",
+      "Apps/hollow_trail_evidence.inc": "56ec42539fd03f0bfcf6476846b017b47aad767857772d0c5f17d04c83636131",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_final_door.inc": "c936355bbd0b9dffa7fdd5a35f8039679b9a73d1a83c4a8fa828252e7536a431",
+      "Apps/hollow_trail_final_door_draw.inc": "b36493ff71302a954ede740956f431a09fa1b7003325fd16666fa97a55e4e528",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "33f473c80162339b24d9b977594963888e13e2123160718e42771e4b4b869760",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "632c22e6d64f3dd3e8a65d06ae92db50a9a43dd6c4db38c47e386248a5ff2499",
+      "Apps/hollow_trail_journal.inc": "4ee5ec3e822926864d93e8f528f4108ab57529fe0f0cf2370b1ae98c7ffe0a08",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "3b4ca23111dbd41f6e5b64de45a66fca2982f6e80bce2f143b00a28cb923c74e",
+      "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_pouch_draw.inc": "a4e5d15464e3ed0090994a53246f20957f519151b19734da42fc84ed1ea2acb7",
+      "Apps/hollow_trail_pouch_study.inc": "d27ca512470eb5c634b6775a326b28beb066312fd0be09fb8776618af45f6486",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "536b31378408797e71ed6003e77c4a0335554f58e840b2572506db2209359db0",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_sleep_draw.inc": "7fb18a0440fe51ded3bd146cda669d3b9f00df10f772662b580e85508b4e4a9c",
+      "Apps/hollow_trail_sleep_study.inc": "3d9980c69eb37d256537d0ad1250501bf352fcd744195ea353c3054a4df5aa13",
+      "Apps/hollow_trail_station_draw.inc": "229b3c3cf1f83b62683f2097c3bc4430421a1b11c5421ecaf5a39ddd20c79057",
+      "Apps/hollow_trail_station_study.inc": "ecd4b7a41d5950a695e1ae9834ecca711555919fb06126eed9437065d5c674e5",
+      "Apps/hollow_trail_story.inc": "ca918b47b38fea35f12e3dec317b4e47118c1c359467f39d58c138216a83dbbe",
+      "Apps/hollow_trail_stove_draw.inc": "bed5786629b57b1037a0f35638d01784fef26f50a0223bd5e5c363037a47a5bc",
+      "Apps/hollow_trail_stove_study.inc": "36c098d2763e904212118ad55ecf894f1e06610f4bc191ff09075f88206b0212",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+      "Apps/hollow_trail_traversal.inc": "7536205d8e8d30ff27bd0d9cc2edd710bfe4f89247ccd38961be2ea41ffa8708",
+      "Apps/hollow_trail_traversal_draw.inc": "b3db556a37b8f2d549603f0259af000a430a09f558ec3c83ec05b0b551d9bebe",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_waiting_draw.inc": "47692a9028a19014c014d8f2aeeecfa5a9b87285ddf27aad9346d70c9e85b45d",
+      "Apps/hollow_trail_waiting_study.inc": "70a3e2858eb4b9d306d3a644671fb48dad1d90b89c1a08b5ea42c75927ba59d0",
+      "Apps/hollow_trail_warming_draw.inc": "9ba482b0b65cc907a14765177e1a1876efab0e7f72b6370f75f0ce5a7ce07c53",
+      "Apps/hollow_trail_warming_study.inc": "2427cbab3c6a7b2878e0cd1a5cc011704ce53883d72c52ae982f811d176b1947",
+      "Apps/hollow_trail_watch_memory.inc": "ff458f6f2e00eef834ebccc7bd7502ed015dadf2b1195dac142384132c7ad978",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "fixture": "The actual ridge route reaches the existing WIRE control. Confirm opens the inward contact. The after source stages catch, lid, knife contact and two intervals at the existing ridge mast. Connected-mast uses a fixed lit phase of that production mast. Both sources complete the unchanged 1/0/2/1 chime sequence and fully open the crossing.",
+    "raster": [
+      960,
+      540
+    ],
+    "captures": [
+      {
+        "view": "connected-mast",
+        "requested_tick": 0,
+        "observed_state": "game 0 117440512 806956 40960",
+        "hashes": {
+          "gray": "ed396a12695e9ab7be88534788f9856045c4823f9c830b71be98bc6e0cb05e33",
+          "mono": "e830f8bce765a298dcaf4bd49860fc1d3839390925145eb8bae4db02a19f7051"
+        }
+      },
+      {
+        "view": "housing",
+        "requested_tick": 0,
+        "observed_state": "game 0 117440512 806956 40960",
+        "hashes": {
+          "gray": "b9bf92321a3fcf503dbcee2185fea39175659436076ffb2d8c807af65cdeddeb",
+          "mono": "3e281584bfa5312299f13eacde141d31ea03f7419c8b091e91c262ed77fb32fc"
+        }
+      },
+      {
+        "view": "catch",
+        "requested_tick": 32,
+        "observed_state": "game 32 117440512 807247 40960",
+        "hashes": {
+          "gray": "f7bb111e645830572baea9840e10a648bcda068b7d4a4178ae052bbbbe283da2",
+          "mono": "5170a7b2726735453ae4aecbe420712f8bd2d35d0357d38ceb1748003b53cfa1"
+        }
+      },
+      {
+        "view": "open",
+        "requested_tick": 128,
+        "observed_state": "game 128 117440512 807247 40960",
+        "hashes": {
+          "gray": "f7bb111e645830572baea9840e10a648bcda068b7d4a4178ae052bbbbe283da2",
+          "mono": "5170a7b2726735453ae4aecbe420712f8bd2d35d0357d38ceb1748003b53cfa1"
+        }
+      },
+      {
+        "view": "knife",
+        "requested_tick": 224,
+        "observed_state": "game 224 117440512 807247 40960",
+        "hashes": {
+          "gray": "f7bb111e645830572baea9840e10a648bcda068b7d4a4178ae052bbbbe283da2",
+          "mono": "5170a7b2726735453ae4aecbe420712f8bd2d35d0357d38ceb1748003b53cfa1"
+        }
+      },
+      {
+        "view": "first-interval",
+        "requested_tick": 300,
+        "observed_state": "game 300 117440512 807247 40960",
+        "hashes": {
+          "gray": "f7bb111e645830572baea9840e10a648bcda068b7d4a4178ae052bbbbe283da2",
+          "mono": "5170a7b2726735453ae4aecbe420712f8bd2d35d0357d38ceb1748003b53cfa1"
+        }
+      },
+      {
+        "view": "second-interval",
+        "requested_tick": 444,
+        "observed_state": "game 444 117440512 807247 40960",
+        "hashes": {
+          "gray": "f7bb111e645830572baea9840e10a648bcda068b7d4a4178ae052bbbbe283da2",
+          "mono": "5170a7b2726735453ae4aecbe420712f8bd2d35d0357d38ceb1748003b53cfa1"
+        }
+      },
+      {
+        "view": "gap",
+        "requested_tick": 576,
+        "observed_state": "game 576 117440512 807247 40960",
+        "hashes": {
+          "gray": "f7bb111e645830572baea9840e10a648bcda068b7d4a4178ae052bbbbe283da2",
+          "mono": "5170a7b2726735453ae4aecbe420712f8bd2d35d0357d38ceb1748003b53cfa1"
+        }
+      },
+      {
+        "view": "closed",
+        "requested_tick": 576,
+        "observed_state": "game 576 117440512 807247 40960",
+        "hashes": {
+          "gray": "f7bb111e645830572baea9840e10a648bcda068b7d4a4178ae052bbbbe283da2",
+          "mono": "5170a7b2726735453ae4aecbe420712f8bd2d35d0357d38ceb1748003b53cfa1"
+        }
+      },
+      {
+        "view": "chimes",
+        "requested_tick": 576,
+        "observed_state": "game 576 117440512 764846 40960",
+        "hashes": {
+          "gray": "aefbbd78702515f4358e2995ac0d9af317b269f5682ba83dca6571e86661a479",
+          "mono": "ceed6ce9d706928e771e97238e40bc4df5b339106a06a36d481cbb48fe46c944"
+        }
+      }
+    ],
+    "source_snapshot_sha256": "e759f9a31bb7ecfcf17b59fee0fc74a741d2e0b1afb6967d8fd6c9e43bb0a229"
+  },
+  "after": {
+    "source_commit": "f7c68a3a7fa32b6ebaa8b89fe8c958f8335ef5a3",
+    "version": "1.1.49",
+    "source_files": {
+      "Apps/hollow_trail.c": "1c33cc63d6e2477976baba2c5a91215bc86858fbc382614b94c9bba91bb70bd2",
+      "Apps/hollow_trail.json": "99aa5a4c8e7c20c84f19b32b078aa0400c9433473278df3e9600b9aeb1d40c32",
+      "Apps/hollow_trail_atmosphere_draw.inc": "49d86d82d4a8a482efc5e9511725bdea97fd52e892d47a5d43053208f3771c6b",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "84d8af7d3976236ab102299532951baf543102ce0a96dea4802e2067b2d9d758",
+      "Apps/hollow_trail_city_draw.inc": "079ea6077921a66fba0b70b584a017a41559ba9e7188909ce1322ef42c111be7",
+      "Apps/hollow_trail_cutscene.inc": "709e0b7c21875ebde49b60e7d719d7242e4523c6dd9aa090c581a852df03ebb6",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_distribution_draw.inc": "f9cefb3a9f3513b4a7b6815dc7fda37ec0760c1b944b516d5aba8446ff702062",
+      "Apps/hollow_trail_distribution_study.inc": "d792a46b972eaa3eb6ef769ce9604be0a1bc5cc4d8477c178c8cefb7b525f251",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "e2dd76e04ef2f675152915677bc7c08960f6daa98afea88ed090fad7f682847c",
+      "Apps/hollow_trail_evidence.inc": "56ec42539fd03f0bfcf6476846b017b47aad767857772d0c5f17d04c83636131",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_final_door.inc": "c936355bbd0b9dffa7fdd5a35f8039679b9a73d1a83c4a8fa828252e7536a431",
+      "Apps/hollow_trail_final_door_draw.inc": "b36493ff71302a954ede740956f431a09fa1b7003325fd16666fa97a55e4e528",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "33f473c80162339b24d9b977594963888e13e2123160718e42771e4b4b869760",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "632c22e6d64f3dd3e8a65d06ae92db50a9a43dd6c4db38c47e386248a5ff2499",
+      "Apps/hollow_trail_isolator_draw.inc": "ac54e11ae6ef3124e889c7ff701f4715a89d800dd7598f5e12d96aa043703ce8",
+      "Apps/hollow_trail_isolator_study.inc": "8a4f55306e84f55149fe7cc06300bdb574024f91e2ed6f0022c234918c6ff919",
+      "Apps/hollow_trail_journal.inc": "4ee5ec3e822926864d93e8f528f4108ab57529fe0f0cf2370b1ae98c7ffe0a08",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "f55a277a25f5828a6911258143af6f78086859463d65bde25c422f144f41bfc4",
+      "Apps/hollow_trail_maps.inc": "f41182cc64b07bbaaeb1d62f44337280513084d741227c915c374c64951e1207",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_mill_memory.inc": "f283ff60161e0164bab68e6df7a310ae9181efec4cdb8bdea1646157a5edb1c5",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_pouch_draw.inc": "a4e5d15464e3ed0090994a53246f20957f519151b19734da42fc84ed1ea2acb7",
+      "Apps/hollow_trail_pouch_study.inc": "d27ca512470eb5c634b6775a326b28beb066312fd0be09fb8776618af45f6486",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "536b31378408797e71ed6003e77c4a0335554f58e840b2572506db2209359db0",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_sleep_draw.inc": "7fb18a0440fe51ded3bd146cda669d3b9f00df10f772662b580e85508b4e4a9c",
+      "Apps/hollow_trail_sleep_study.inc": "3d9980c69eb37d256537d0ad1250501bf352fcd744195ea353c3054a4df5aa13",
+      "Apps/hollow_trail_station_draw.inc": "229b3c3cf1f83b62683f2097c3bc4430421a1b11c5421ecaf5a39ddd20c79057",
+      "Apps/hollow_trail_station_study.inc": "ecd4b7a41d5950a695e1ae9834ecca711555919fb06126eed9437065d5c674e5",
+      "Apps/hollow_trail_story.inc": "ca918b47b38fea35f12e3dec317b4e47118c1c359467f39d58c138216a83dbbe",
+      "Apps/hollow_trail_stove_draw.inc": "bed5786629b57b1037a0f35638d01784fef26f50a0223bd5e5c363037a47a5bc",
+      "Apps/hollow_trail_stove_study.inc": "36c098d2763e904212118ad55ecf894f1e06610f4bc191ff09075f88206b0212",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "06e454beba008f8bfe8609057c634e324b68a928e73a9a2be5305d8dd8d51172",
+      "Apps/hollow_trail_traversal.inc": "7536205d8e8d30ff27bd0d9cc2edd710bfe4f89247ccd38961be2ea41ffa8708",
+      "Apps/hollow_trail_traversal_draw.inc": "b3db556a37b8f2d549603f0259af000a430a09f558ec3c83ec05b0b551d9bebe",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0",
+      "Apps/hollow_trail_waiting_draw.inc": "47692a9028a19014c014d8f2aeeecfa5a9b87285ddf27aad9346d70c9e85b45d",
+      "Apps/hollow_trail_waiting_study.inc": "70a3e2858eb4b9d306d3a644671fb48dad1d90b89c1a08b5ea42c75927ba59d0",
+      "Apps/hollow_trail_warming_draw.inc": "9ba482b0b65cc907a14765177e1a1876efab0e7f72b6370f75f0ce5a7ce07c53",
+      "Apps/hollow_trail_warming_study.inc": "2427cbab3c6a7b2878e0cd1a5cc011704ce53883d72c52ae982f811d176b1947",
+      "Apps/hollow_trail_watch_memory.inc": "ff458f6f2e00eef834ebccc7bd7502ed015dadf2b1195dac142384132c7ad978",
+      "Apps/hollow_trail_western_vista.inc": "497e4929ecc695ca79b9fe4c98f517e00c4aa17f2f0df8e21f93831bbc819f02"
+    },
+    "fixture": "The actual ridge route reaches the existing WIRE control. Confirm opens the inward contact. The after source stages catch, lid, knife contact and two intervals at the existing ridge mast. Connected-mast uses a fixed lit phase of that production mast. Both sources complete the unchanged 1/0/2/1 chime sequence and fully open the crossing.",
+    "raster": [
+      960,
+      540
+    ],
+    "captures": [
+      {
+        "view": "connected-mast",
+        "requested_tick": 0,
+        "observed_state": "game 0 117440512 806956 40960",
+        "hashes": {
+          "gray": "ed396a12695e9ab7be88534788f9856045c4823f9c830b71be98bc6e0cb05e33",
+          "mono": "e830f8bce765a298dcaf4bd49860fc1d3839390925145eb8bae4db02a19f7051"
+        }
+      },
+      {
+        "view": "housing",
+        "requested_tick": 0,
+        "observed_state": "game 0 117440512 806956 40960",
+        "hashes": {
+          "gray": "d43108f9d36d3134049b58ce2ecc66cc81b93861a7c328b10e7152658e10dd5f",
+          "mono": "0ddc26d4f00e539ac902b6256eefba5d7e835216a2ea918be8d1cf4503d0ce49"
+        }
+      },
+      {
+        "view": "catch",
+        "requested_tick": 32,
+        "observed_state": "isolator 32 117440512 806956 40960",
+        "hashes": {
+          "gray": "66a8e9be0db06b6debedb84494b77569a56c2a3968ee2f97708faea9f9a7c8c8",
+          "mono": "4ec231c0f2c2ad42b4f8591b0145fff0b4703e5abf09e7c1c40b02815a319af7"
+        }
+      },
+      {
+        "view": "open",
+        "requested_tick": 128,
+        "observed_state": "isolator 128 117440512 806956 40960",
+        "hashes": {
+          "gray": "54afb32e0f079c332ba2919cee9a92c39b79b5188f235fa3de2a6ce3b37d9005",
+          "mono": "4407831e985a6c8b2bb8ec3767ad5b72ce693623cea8be86654c4153485c88bf"
+        }
+      },
+      {
+        "view": "knife",
+        "requested_tick": 224,
+        "observed_state": "isolator 224 117440512 806956 40960",
+        "hashes": {
+          "gray": "c38410d80638e80c523076bc3c176d42e2a7c8544baaab57f6b9cb34acd3f9b4",
+          "mono": "19368a0b2def69b254af733362862bf7e32e5f148887f0ae9418707b1a687ebb"
+        }
+      },
+      {
+        "view": "first-interval",
+        "requested_tick": 300,
+        "observed_state": "isolator 300 117440512 806956 40960",
+        "hashes": {
+          "gray": "f75937bd5677d91dc57a4e31223e40f3567c05ed0b7002da00fa619404e25867",
+          "mono": "da585065f815233f2c70b13b152a1865f76a53eb9356d8f79010a46d89a2146f"
+        }
+      },
+      {
+        "view": "second-interval",
+        "requested_tick": 444,
+        "observed_state": "isolator 444 117440512 806956 40960",
+        "hashes": {
+          "gray": "e5be1defa75a723bc83365513d2be004d4aa0d74ec2fb4353da82bd0284ad1cd",
+          "mono": "85dfa7c58dc385e4f6de5a4367097d77542990c0bc1931de62b0677211bb0433"
+        }
+      },
+      {
+        "view": "gap",
+        "requested_tick": 576,
+        "observed_state": "isolator 576 117440512 806956 40960",
+        "hashes": {
+          "gray": "3a7f16285e2176ec53e3e8e18f13b4743d07e8f42c89a2590f23a65d9c33e270",
+          "mono": "c385612104d3a406582d89a45a8e9e09b7e51228991f0a026c995a306f6345f8"
+        }
+      },
+      {
+        "view": "closed",
+        "requested_tick": 576,
+        "observed_state": "isolator 576 117440512 806956 40960",
+        "hashes": {
+          "gray": "19803ac14a53e9cddca5991eb4bc86e6340b971c8205d650f851b118d044c52c",
+          "mono": "c6bc84a165d44f1e23c5b985108e6e9175ac0a8ec29bf5e29ca06ad9428cf93e"
+        }
+      },
+      {
+        "view": "chimes",
+        "requested_tick": 576,
+        "observed_state": "game 576 117440512 764624 40960",
+        "hashes": {
+          "gray": "022b0fa8887feba0e2bc795cbee6726361929acdac26387aeb5e3a62d6469a37",
+          "mono": "413fa7e2ac7eab377ddf933f692037a9a6e7a06c65847104ae0eea574ee90bee"
+        }
+      }
+    ],
+    "source_snapshot_sha256": "7cc8887a882895a542fbf70cecbed16db330fdcf0b9222e51fb1b0e7d97739d5"
+  },
+  "pairs": [
+    {
+      "view": "connected-mast",
+      "changed_pixels": {
+        "gray": 0,
+        "mono": 0
+      }
+    },
+    {
+      "view": "housing",
+      "changed_pixels": {
+        "gray": 1984,
+        "mono": 380
+      }
+    },
+    {
+      "view": "catch",
+      "changed_pixels": {
+        "gray": 255866,
+        "mono": 35310
+      }
+    },
+    {
+      "view": "open",
+      "changed_pixels": {
+        "gray": 256516,
+        "mono": 34857
+      }
+    },
+    {
+      "view": "knife",
+      "changed_pixels": {
+        "gray": 256934,
+        "mono": 35202
+      }
+    },
+    {
+      "view": "first-interval",
+      "changed_pixels": {
+        "gray": 339351,
+        "mono": 71784
+      }
+    },
+    {
+      "view": "second-interval",
+      "changed_pixels": {
+        "gray": 339571,
+        "mono": 71949
+      }
+    },
+    {
+      "view": "gap",
+      "changed_pixels": {
+        "gray": 257320,
+        "mono": 35481
+      }
+    },
+    {
+      "view": "closed",
+      "changed_pixels": {
+        "gray": 256384,
+        "mono": 35659
+      }
+    },
+    {
+      "view": "chimes",
+      "changed_pixels": {
+        "gray": 4002,
+        "mono": 716
+      }
+    }
+  ]
+}

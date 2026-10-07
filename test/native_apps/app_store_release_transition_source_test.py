@@ -12,8 +12,8 @@ block = source[start:end]
 
 assert "if (view == RELEASES)" in block
 assert "view = SD_INBOX;" in block
-assert "else if (refresh_releases(app, ui))" in block
-assert block.index("refresh_releases(app, ui)") < block.index("view = RELEASES;")
+assert "else if (refresh_releases(manager, ui))" in block
+assert block.index("refresh_releases(manager, ui)") < block.index("view = RELEASES;")
 assert '"Release refresh failed; SD packages available"' in block
 
 def switch_from_inbox(refresh_ok):

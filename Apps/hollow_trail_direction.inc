@@ -13,6 +13,9 @@ static int ht_pace_target(const ht_game *g) {
     };
     int x=ht_clamp(g->x/256,0,3199),span=x/800,u=x%800;
     int speed=walk[g->level][span]+((int)walk[g->level][span+1]-walk[g->level][span])*u/800;
+    if(g->level==1 && g->grounded && g->x/256>=HT_SIGNAL_ROOM_LEFT &&
+       g->x/256<=HT_SIGNAL_ROOM_RIGHT && ht_abs(g->y/256-ht_level_land(1)[7].top)<=3)
+        return 272; /* Set 11: 0.68 of the original 400-Q8 walking speed. */
     speed-=ht_exposure(g)/16;
     if(g->observation_ticks)speed-=24;
     return ht_clamp(speed,256,384);
@@ -31,7 +34,7 @@ static int ht_scene_scale(const ht_game *g) {
     return 256+g->intimacy/2-g->vista*5/16;
 }
 static bool ht_motion_emphasis;
-/* Y/journal-back is a transient performance modifier during gameplay only.
+/* Y is a transient performance modifier during gameplay only.
  * Keep authored pace in g->pace unchanged; multiply the physical action output
  * so releasing Y returns cleanly to the scene-directed speed. */
 static int ht_walk_speed(const ht_game *g) {return g->pace?g->pace:ht_pace_target(g);}
