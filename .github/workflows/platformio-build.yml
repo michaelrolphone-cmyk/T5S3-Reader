@@ -263,7 +263,9 @@ jobs:
           cp dist/x4-paired-deployment/deployment.json dist/riscrte-xteink-x4-pro-deployment.json
           cp dist/x4-paired-deployment/README.txt dist/riscrte-xteink-x4-pro-SD-README.txt
           python - <<'PY'
+          import hashlib
           import json
+          import os
           from pathlib import Path
           expected = [
               'Drivers/platform-clock-v1/manifest.json',
@@ -277,10 +279,13 @@ jobs:
               'Drivers/x4pro-rtc/manifest.json',
           ]
           manifest = json.loads(Path('dist/x4-paired-deployment/deployment.json').read_text())
-          assert manifest['source_sha'] == Path('.git/HEAD').read_text().strip() or manifest['source_sha']
+          assert manifest['source_sha'] == os.environ['SOURCE_SHA']
           files = manifest['files']
           for name in expected:
               assert name in files, name
+          sd = Path('dist/riscrte-xteink-x4-pro-sdcard.zip').read_bytes()
+          assert len(sd) == manifest['sd_archive']['bytes']
+          assert hashlib.sha256(sd).hexdigest() == manifest['sd_archive']['sha256']
           PY
 
       - name: Upload RiscRTE firmware artifact
