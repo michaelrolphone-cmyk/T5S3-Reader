@@ -597,9 +597,10 @@ static bool commit_sleep(void *context) {
 }
 static int32_t resume_sleep(void *context) {
     (void)context;
+    /* The custody hook must be safe even for rejected non-owner callers. Do
+     * not inspect transaction state without owning the operation guard. */
     if (!enter_lifecycle())
-        return sleep_state == SLEEP_RETAINED || STORAGE_VOLUME_SLEEP_UNSAFE()
-            ? RISC_STORAGE_SLEEP_RETAINED : RISC_STORAGE_SLEEP_REFUSED;
+        return STORAGE_VOLUME_SLEEP_UNSAFE() ? RISC_STORAGE_SLEEP_RETAINED : RISC_STORAGE_SLEEP_REFUSED;
     int32_t result;
     if (sleep_state == SLEEP_RETAINED || STORAGE_VOLUME_SLEEP_UNSAFE()) {
         sleep_state = SLEEP_RETAINED;

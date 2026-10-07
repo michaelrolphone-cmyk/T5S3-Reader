@@ -56,6 +56,8 @@ The helper emits this suffix only when the transport defines both
 `STORAGE_VOLUME_TRY_RESUME_POWER_DOWN` and the checked commit/custody hooks.
 The resume hook must run normal `init_card`, confirm hold/rail custody, and leave
 `mounted`, `card_ready`, and `io_failed` accurate. An opted-in transport's checked
+custody hook must also be safe on rejected non-owner admission, without reading
+mutable transaction state belonging to another task. Its checked
 quiesce must reject `sleep_state != SLEEP_ACTIVE`; it must never discard the
 state, GPIO tokens, dependencies, or the handle-generation counter on failure.
 Only the separately maintained X4 ordinary transport opts in. The legacy Reader
