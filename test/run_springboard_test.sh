@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 python3 "$(dirname "${BASH_SOURCE[0]}")/epub_guide/guide_test.py"
+python3 "$(dirname "${BASH_SOURCE[0]}")/epub_container/container_test.py"
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$repo_dir/test/util/url_resolution_test.py" --sanitize
+python3 "$repo_dir/test/recent_books/migration_test.py" --sanitize
+SANITIZE=1 bash "$repo_dir/test/run_language_migration_test.sh"
+XTC_SANITIZE=1 bash "$repo_dir/test/run_xtc_metadata_test.sh"
+python3 "$repo_dir/test/activities/confirmation_touch_test.py"
+python3 "$repo_dir/test/epub_toc/path_test.py"
+python3 "$repo_dir/test/epub_paths/normalise_test.py"
+python3 "$repo_dir/test/epub_image_cache/image_cache_test.py" --sanitize
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
+python3 "$repo_dir/test/activities/footnotes_viewport_test.py" --sanitize
 python3 "$repo_dir/test/native_apps/hollow_trail_memory_test.py"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/springboard_video_test.c" -o "$binary"
@@ -51,6 +61,7 @@ python3 "$repo_dir/test/native_apps/global_home_overlay_contract_test.py"
 python3 "$repo_dir/test/native_apps/global_home_overlay_behavior_test.py"
 python3 "$repo_dir/test/native_apps/required_app_workflow_contract_test.py"
 python3 "$repo_dir/test/native_apps/file_association_contract_test.py"
+EPUB_SANITIZE=1 python3 "$repo_dir/test/epub/external_links_test.py"
 # OTA discovery state belongs to the latest check only, including early errors.
 c++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers \
   -I"$repo_dir/test/network/ota_updater_stubs" -I"$repo_dir/src" \
