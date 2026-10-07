@@ -31,8 +31,9 @@ monochrome rasters retain their original pixels. Capture metadata identifies
 the exact source bytes, including the original local capture commit.
 
 This remains the cumulative unreleased **1.1.48 → 1.1.49** update; minimum firmware
-is **1.3.37**. The gust/caught sheet, notebook gesture and feed-driven lamp-line
-response remain further Chapter III work. Whole-book parity is unfinished.
+is **1.3.37**. The [gust/caught sheet, notebook gesture and feed-driven lamp-line
+response](HOLLOW_TRAIL_DISTRIBUTION_STORY_1_1_50.md) are connected in the later
+cumulative 1.1.50 continuation. Whole-book parity is unfinished.
 
 ## Verification
 

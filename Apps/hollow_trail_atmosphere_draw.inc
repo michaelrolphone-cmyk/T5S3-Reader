@@ -55,6 +55,7 @@ static void ht_story_landmarks(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256,wind=ht_wind(g);
     /* Two authored scenes per chapter, keyed to its actual route supports. */
     for(int scene=0;scene<2;++scene) {
+        if(g->level==3 && !scene)continue; /* This member is the bracing route, not a bench. */
         int platform=scene?6:3;
         int world=ht_landmark_x(g->level,scene);
         int x=world-cx,y=ht_buried_base(g,platform,world,62)-cy;

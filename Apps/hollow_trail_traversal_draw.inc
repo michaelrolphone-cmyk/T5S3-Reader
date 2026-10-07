@@ -1,13 +1,28 @@
 #include "hollow_trail_first_house_draw.inc"
+#include "hollow_trail_settlement_draw.inc"
 #include "hollow_trail_sleep_draw.inc"
 #include "hollow_trail_pouch_draw.inc"
+#include "hollow_trail_grip_draw.inc"
+#include "hollow_trail_valve_draw.inc"
+#include "hollow_trail_gauge_draw.inc"
+#include "hollow_trail_tower_draw.inc"
+#include "hollow_trail_shelter_draw.inc"
 #include "hollow_trail_material_detail.inc"
 #include "hollow_trail_waiting_draw.inc"
 #include "hollow_trail_distribution_draw.inc"
 #include "hollow_trail_station_draw.inc"
 #include "hollow_trail_carriage_draw.inc"
 #include "hollow_trail_signal_cabin_draw.inc"
+#include "hollow_trail_living_bed_draw.inc"
+#include "hollow_trail_glasshouse_draw.inc"
+#include "hollow_trail_food_draw.inc"
+#include "hollow_trail_care_draw.inc"
+#include "hollow_trail_counts_draw.inc"
+#include "hollow_trail_drawing_draw.inc"
+#include "hollow_trail_quarry_ascent_draw.inc"
+#include "hollow_trail_trestle_draw.inc"
 #include "hollow_trail_geography_draw.inc"
+#include "hollow_trail_marsh_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
 #include "hollow_trail_forest_draw.inc"
@@ -38,6 +53,7 @@ static void ht_draw_traversal(const ht_game *g) {
     if(g->level==1)ht_city_backdrop(g);
     ht_city_vanished_house(g);
     ht_authored_backdrop(g);
+    ht_quarry_country(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
         ht_landscape_detail(g);
@@ -70,10 +86,12 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     ht_dam_spray(g);
     ht_boat_grotto(g);
+    ht_marsh_backdrop(g);
     /* Background/grotto retain the original full 960x540 native path.
      * From here forward, native A/B uses 960x270 detail: full horizontal
      * resolution with one computed row duplicated to each physical row pair. */
     if(ht_native_active)ht_native_foreground_half_y=true;
+    ht_gallery_wall(g);
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(g->level==1 || i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
@@ -103,6 +121,7 @@ static void ht_draw_traversal(const ht_game *g) {
             }
         }
     }
+    ht_marsh_bank(g);
     if(g->level==0)ht_forest_log_draw(g);
     ht_city_roof_detail(g);
     ht_city_service_arrival(g);
@@ -111,11 +130,24 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_stove_room(g,0,0);
     ht_station_room(g);
     ht_distribution_room(g,48);
+    ht_valve_room(g);
+    ht_gauge_approach(g);ht_gauge_room(g);
+    ht_tower_room(g);ht_shelter_room(g);
+    ht_distribution_service_line(g);
     ht_sleep_room(g,g->sleep_view_active?ht_sleep_closure(g->sleep_view_stage,g->sleep_view_tick):0,
       !g->sleep_view_active || g->sleep_view_stage==0 || g->sleep_view_stage==4 || (g->sleep_view_stage==1 && g->sleep_view_tick<80) || (g->sleep_view_stage==3 && g->sleep_view_tick>=96));
+    ht_gallery_floor(g);
+    ht_living_bed(g);
+    ht_glasshouse_arrival(g);
+    ht_food_room(g);
+    ht_counts_room(g);
+    ht_drawing_room(g);
     ht_cabinet_room(g);
+    ht_settlement_streets(g);
     ht_first_house_room(g,g->first_house_lean);
-    ht_pouch_room(g);
+    ht_settlement_returns(g);
+    ht_pouch_room(g);ht_grip_room(g);
+    ht_quarry_ascent_traces(g);
     ht_waiting_room(g,g->waiting_view_active?(unsigned)ht_waiting_pull(g->waiting_view_tick):0,
         g->waiting_view_active && g->waiting_view_tick>=104?ht_waiting_swing(g->waiting_view_tick-104):0);
     if(m->plate_kind) {
@@ -265,6 +297,7 @@ static void ht_draw_traversal(const ht_game *g) {
             ht_rect(ht_scene,at,y+13+rip/3,4+i,1,45);
         }
     }
+    ht_ferry_boat_draw(g);
     if(m->rope_length) {
         int rest_x=m->rope_anchor_x-cx,rest_y=m->rope_anchor_y-cy;
         int ax=g->traversal.rope_px[0]/256-cx,ay=g->traversal.rope_py[0]/256-cy;
@@ -306,8 +339,12 @@ static void ht_draw_traversal(const ht_game *g) {
     int x,y;
     /* Exit architecture follows its actual terrace when the camera climbs. */
     x=HT_GOAL-cx;y=land[9].top-cy;
-    ht_rect(ht_scene,x-20,y-52,6,52,255);ht_rect(ht_scene,x+14,y-52,6,52,255);
-    ht_rect(ht_scene,x-22,y-56,44,6,255);
+    /* The solved quarry draws its one moving cage with the mechanism;
+     * keeping this generic doorway would leave a second stationary frame. */
+    if(g->level!=5 || !g->puzzle.solved || g->puzzle.opening!=48){
+        ht_rect(ht_scene,x-20,y-52,6,52,255);ht_rect(ht_scene,x+14,y-52,6,52,255);
+        ht_rect(ht_scene,x-22,y-56,44,6,255);
+    }
 }
 static void ht_traversal_prompt(const ht_game *g) {
     if(g->level==0) {
@@ -322,6 +359,10 @@ static void ht_traversal_prompt(const ht_game *g) {
     }
     const char *text=NULL;
     switch(ht_traversal_near(g)) {
+    case HT_TRESTLE: text=g->traversal.mode==HT_TRESTLE?
+        (g->traversal.trestle_phase==HT_TRESTLE_TOUCH && !g->traversal.trestle_tested?
+         "A TEST NEXT FOOTING - LEFT TO GO BACK":"L/R FEEL ALONG BRACING - REVERSE TO RETURN"):
+         "A TAKE BRACE - L/R LOWER AND CROSS";break;
     case HT_WINDOW: text=g->traversal.mode==HT_WINDOW?"L/R OPEN AND CROSS - REVERSE TO GO BACK":"A TAKE WINDOW - L/R OPEN AND CLIMB";break;
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
     case HT_CLIMB: text="CLIMBING";break;

@@ -1,4 +1,4 @@
-/* Real HID/XInput interruption and resume of the signal-window attachment. */
+/* Actual paired-list controls, gesture interruptions and validated feed cause/effect. */
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +24,7 @@ static unsigned source;
 static void input(uint32_t buttons,unsigned hat) {report.buttons=buttons;report.hat=(uint8_t)hat;ht_input(1);}
 static void press(uint32_t mask){input(0,8);input(mask,8);}
 static void action(void){press(source?2:1);}
+static void gesture(void){press(source?1:2);}
 static void cancel(void){press(source?4:8);}
 static void ticks(unsigned n){for(unsigned i=0;i<n;++i)ht_advance(now+=HT_STEP_MS);}
 static void present(void){ht_journal_render();assert(ht_journal_page_ready);ht_read_submitted_revision=scene_revision;}
@@ -38,6 +39,55 @@ static void reset(void){
  report=(risc_usb_gamepad_state_v1){.connected=1,.device=1,.hat=8};
  pad=source?NULL:&gamepad;hid_pad=source?&gamepad:NULL;host_exit=pad_failure=false;app=&fake_app;
  ht_input(1);input(0,8);
+}
+static void story_tests(void){
+ for(source=0;source<2;++source){
+  reset();action();input(0,8);ticks(140);action();input(0,8);
+  ht_game frozen=ht;unsigned evidence=ht.evidence;
+  for(unsigned stage=2;stage<=10;stage+=2){
+   /* Held face button cannot consume the next quiet hold. */
+   gesture();assert(ht_distribution.stage==stage);ticks(17);
+   ht_distribution_state moving=ht_distribution;
+   press(source?64:256);input(0,8);ticks(20);assert(ht_distribution.tick==moving.tick);
+   press(source?64:256);input(0,8);
+   action();assert(reading);ticks(20);assert(ht_distribution.tick==moving.tick);
+   press(source?128:512);input(0,8);assert(!reading);
+   pad_failure=true;input(0,8);ticks(30);assert(ht_distribution.tick==moving.tick);
+   pad_failure=false;input(0,8);input(source?1:2,8);ticks(210);
+   assert(ht_distribution.stage==stage+1 && !ht_distribution.tick);
+   unsigned rev=scene_revision;ticks(80);assert(scene_revision==rev);
+   assert(ht.evidence==evidence && !memcmp(&ht,&frozen,sizeof(ht)));
+   input(0,8);
+  }
+  gesture();assert(ht_distribution.stage==1);input(0,8);input(0,0);assert(ht_distribution.stage==2);
+  input(0,8);ticks(21);cancel();assert(!ht_distribution.active);input(0,8);action();assert(!ht_distribution.stage);
+  host_exit=true;input(0,8);assert(quitting);
+ }
+ /* Native mapped Up retains its current interpretation but also requests the
+  * gesture while the inspection owns input; release cannot leak a jump. */
+ reset();pad=hid_pad=NULL;ht_pad_owned=false;ht_pad_source=-1;input(0,8);
+ mapped=T5_APP_BUTTON_CONFIRM;ht_input(1);mapped=0;ht_input(1);ticks(140);
+ mapped=T5_APP_BUTTON_CONFIRM;ht_input(1);mapped=0;ht_input(1);
+ mapped=T5_APP_BUTTON_UP;ht_input(1);assert(ht_distribution.stage==2 && !jump_down);
+ mapped=0;ht_input(1);
+ for(unsigned tick=48;tick<128;++tick){
+  ht_distribution_state s={true,false,0,2,(uint8_t)tick,0};
+  ht_joint blank=ht_distribution_blank(&s),hand=ht_distribution_catch(&s);
+  assert(hand.x==blank.x+8 && hand.y==blank.y+99);
+ }
+ /* Real control operations preserve fuel and require the release lever after
+  * balance. Failed releases, other levels and corrupt balances stay dark. */
+ ht_game g={0};g.level=2;ht_puzzle_reset(&g.puzzle,2);
+ ht_puzzle_operate(&g.puzzle,2,3);assert(!g.puzzle.solved);
+ for(unsigned n=0;n<4;++n)assert(!ht_distribution_lamp_level(&g,n));
+ const char *moves="0121012";
+ for(unsigned k=0;moves[k];++k){ht_puzzle_operate(&g.puzzle,2,moves[k]-'0');assert(g.puzzle.value[0]+g.puzzle.value[1]+g.puzzle.value[2]==8);}
+ assert(g.puzzle.value[0]==4 && g.puzzle.value[1]==4 && !g.puzzle.value[2] && !g.puzzle.solved);
+ g.puzzle.opening=48;for(unsigned n=0;n<4;++n)assert(!ht_distribution_lamp_level(&g,n));
+ ht_puzzle_operate(&g.puzzle,2,3);assert(g.puzzle.solved);
+ for(unsigned n=0;n<4;++n){int prior=0;for(unsigned t=0;t<=48;++t){g.puzzle.opening=(uint8_t)t;int light=ht_distribution_lamp_level(&g,n);assert(light>=prior);prior=light;}assert(prior==256);}
+ g.puzzle.opening=18;assert(ht_distribution_lamp_level(&g,0)==256 && ht_distribution_lamp_level(&g,1)>0 && !ht_distribution_lamp_level(&g,2));
+ g.puzzle.value[2]=1;assert(!ht_distribution_lamp_level(&g,0));g.puzzle.value[2]=0;g.level=7;assert(!ht_distribution_lamp_level(&g,0));
 }
 int main(void){
  uint8_t *memory=malloc(HT_MEMORY+HT_NATIVE_MEMORY),*copy=malloc(HT_NATIVE_PIXELS);
@@ -62,6 +112,7 @@ int main(void){
   cancel();assert(!ht_distribution.active);input(0,8);action();assert(!ht_distribution.stage);
   host_exit=true;input(0,8);assert(quitting);
  }
+ story_tests();
  for(int native=0;native<2;++native){
   reset();ht_camera_mode=native?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;ht_game frozen=ht;
   ht_distribution_state state={true,false,0,1,128,0};
@@ -69,14 +120,44 @@ int main(void){
   memcpy(copy,ht_scene,bytes);ht_distribution_study_render(&frozen,&state);assert(!memcmp(copy,ht_scene,bytes));
   state.overlap=64;ht_distribution_study_render(&frozen,&state);assert(memcmp(copy,ht_scene,bytes));
   assert(!memcmp(&ht,&frozen,sizeof(ht)));
+  for(unsigned stage=3;stage<=11;stage+=2){state.stage=(uint8_t)stage;state.tick=0;
+   ht_distribution_study_render(&frozen,&state);memcpy(copy,ht_scene,bytes);
+   ht_distribution_study_render(&frozen,&state);assert(!memcmp(copy,ht_scene,bytes));
+  }
+  /* Packed pixels retain notebook copying, crossing and abrasion in the page
+   * itself, away from text captions. */
+  unsigned prior=0;for(unsigned stage=5;stage<=11;stage+=2){state.stage=(uint8_t)stage;state.tick=0;
+   ht_distribution_study_render(&frozen,&state);ht_pack_mono(bits,120);
+   unsigned count=0;for(int y=208;y<386;++y)for(int x=326;x<432;++x){unsigned at=y*120+x/8;count+=!!(bits[at]&(0x80u>>(x&7)));}
+   if(stage>5)assert(count!=prior);
+   prior=count;
+  }
   ht_world_scale=256;ht_native_active=native!=0;ht_native_foreground_half_y=false;ht_scene=native?ht_native_a:ht_scene_low;
   memset(ht_scene,74,bytes);ht_pack_mono(base,120);
   ht_distribution_initial(150,60);ht_pack_mono(bits,120);
   unsigned changed=0;for(int y=298;y<312;++y)for(int x=325;x<350;++x)changed+=((base[y*120+x/8]^bits[y*120+x/8])&(1u<<(7-(x&7))))!=0;
   assert(changed>10);
  }
+ /* The lamps change actual grayscale and packed pixels in both raster
+  * modes. Adjacent unsolved state yields identical light even at opening 48. */
+ for(unsigned native=0;native<2;++native){
+  ht_native_active=native!=0;ht_native_foreground_half_y=false;ht_world_scale=256;
+  ht_scene=native?ht_native_a:ht_scene_low;int bytes=native?HT_NATIVE_PIXELS:HT_PIXELS;
+  ht_game g={0};g.level=2;g.camera=2810*256;g.camera_y=40*256;
+  ht_puzzle_reset(&g.puzzle,2);const char *moves="0121012";
+  for(unsigned k=0;moves[k];++k)ht_puzzle_operate(&g.puzzle,2,moves[k]-'0');
+  memset(ht_scene,110,bytes);ht_distribution_service_line(&g);ht_pack_mono(base,120);memcpy(copy,ht_scene,bytes);
+  g.puzzle.opening=48;memset(ht_scene,110,bytes);ht_distribution_service_line(&g);assert(!memcmp(copy,ht_scene,bytes));
+  ht_puzzle_operate(&g.puzzle,2,3);ht_distribution_service_line(&g);ht_pack_mono(bits,120);
+  for(unsigned n=0;n<4;++n){
+   int x=(2840+(int)n*130-2810+8)*2,y=(ht_surface_at(&g,9,2840+(int)n*130)-40-86+4)*2;
+   unsigned changed=0;for(int yy=y;yy<y+20;++yy)for(int xx=x;xx<x+12;++xx)
+    changed+=!!((base[yy*120+xx/8]^bits[yy*120+xx/8])&(0x80u>>(xx&7)));
+   assert(changed>30);
+  }
+ }
  assert(!ht_distribution_can_offset(48) && !ht_distribution_can_offset(400));
  assert(ht_distribution_can_offset(1)!=0);
  free(base);free(bits);free(copy);free(memory);
- puts("Distribution: physical can/list inspection, bounded comparison, pause/journal/fault/retry/exit, static holds, mono eighth-line distinction and frozen gameplay PASS");
+ puts("Distribution: paired lists, caught blank sheet, notebook contacts, bounded gestures, HID/XInput/mapped controls, pause/read/fault/retry/exit, held pixels, validated feed lamps and frozen gameplay PASS");
 }

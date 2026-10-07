@@ -76,14 +76,6 @@ static void ht_scene_geography(const ht_game *g) {
             }
             ht_rect(ht_scene,x+145,y-15,20,3,210);
         }
-        /* The one broken crossing is a trestle over a real cutting. */
-        int x=1240-cx,y=220-cy;
-        ht_rect(ht_scene,x,y+10,260,7,230);
-        for(int k=0;k<4;++k) {
-            int at=x+15+k*72;
-            ht_limb(ht_scene,at,y+17,at+10,y+245,5,7,210);
-            ht_limb(ht_scene,at+10,y+90,at+68,y+17,2,2,195);
-            ht_limb(ht_scene,at+10,y+165,at+68,y+90,2,2,195);
-        }
+        ht_trestle_structure(g);
     } else if(g->level==7) ht_dam_wall(g);
 }

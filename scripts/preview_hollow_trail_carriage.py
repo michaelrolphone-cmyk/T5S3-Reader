@@ -22,7 +22,7 @@ ref = a.source_ref or 'HEAD'
 if a.source_ref:
     subprocess.run(['git', '-C', str(r), 'diff', '--exit-code', ref, '--', 'Apps'], check=True)
 commit = subprocess.check_output(['git', '-C', str(r), 'rev-parse', ref], text=True).strip()
-shots = [('outside',0),('transfer',104),('sill',128),('inside',184),('boots',80),('asleep',224),('waking',32),('dawn',288),('returned',344)]
+shots = [('outside',0),('transfer',104),('sill',128),('inside',184),('boots',80),('asleep',224),('reflection',96),('turned',288),('quiet',0),('sister-dream',96),('accounts',300),('left-out',460),('blank-place',650),('remember',704),('waking',32),('dawn',288),('returned',344)]
 source = r'''
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,11 +62,30 @@ int main(int argc,char **argv){
   if(strcmp(argv[1],"sill") && strcmp(argv[1],"transfer") && strcmp(argv[1],"inside")){
    confirm();assert(ht_carriage.stage==2);unsigned rest=!strcmp(argv[1],"boots")?80:224;
    for(unsigned i=0;i<rest;++i)ht_input(32);
+#ifdef HT_CARRIAGE_DREAM
    if(strcmp(argv[1],"boots") && strcmp(argv[1],"asleep")){
+    bool reflection=!strcmp(argv[1],"reflection") || !strcmp(argv[1],"turned");
+    unsigned rt=reflection?ticks:HT_CARRIAGE_REFLECTION_TICKS;
+    for(unsigned i=0;i<rt;++i)ht_input(32);
+    if(!reflection && strcmp(argv[1],"quiet")){
+     confirm();assert(ht_carriage.stage==8);
+     bool dreaming=!strcmp(argv[1],"sister-dream") || !strcmp(argv[1],"accounts") || !strcmp(argv[1],"left-out") || !strcmp(argv[1],"blank-place");
+     unsigned dt=dreaming?ticks:HT_CARRIAGE_DREAM_TICKS;
+     for(unsigned i=0;i<dt;++i)ht_input(32);
+     if(!dreaming && strcmp(argv[1],"remember")){
+      confirm();assert(ht_carriage.stage==4);unsigned wake=!strcmp(argv[1],"waking")?32:288;
+      for(unsigned i=0;i<wake;++i)ht_input(32);
+      if(!strcmp(argv[1],"returned")){confirm();for(unsigned i=0;i<344;++i)ht_input(32);assert(!ht_carriage.active);}
+     }
+    }
+   }
+#else
+   if(!strcmp(argv[1],"waking") || !strcmp(argv[1],"dawn") || !strcmp(argv[1],"returned")){
     confirm();assert(ht_carriage.stage==4);unsigned wake=!strcmp(argv[1],"waking")?32:288;
     for(unsigned i=0;i<wake;++i)ht_input(32);
     if(!strcmp(argv[1],"returned")){confirm();for(unsigned i=0;i<344;++i)ht_input(32);assert(!ht_carriage.active);}
    }
+#endif
   }
   assert(!memcmp(&ht,&frozen,sizeof(ht)));
  }
@@ -103,7 +122,7 @@ with tempfile.TemporaryDirectory(prefix='carriage-preview-') as tmp:
     c.write_text(source)
     subprocess.run(['cc', '-std=c11', '-O2', '-Wno-unused-function', '-I'+str(r/'lib/NativeApps/include'),
                     '-I'+str(r/'sdk/driver'), str(c), '-o', str(exe)], check=True)
-    sheet = Image.new('RGB', (1440, 30+4*295), '#e9e6df')
+    sheet = Image.new('RGB', (1440, 30+((len(shots)+2)//3)*295), '#e9e6df')
     draw = ImageDraw.Draw(sheet)
     draw.text((12, 8), 'HOLLOW TRAIL | Real input and C renderer | Sleeping carriage', fill='#252525')
     for i, (name, tick) in enumerate(shots):
@@ -123,7 +142,7 @@ with tempfile.TemporaryDirectory(prefix='carriage-preview-') as tmp:
 meta = {'source_commit':commit, 'version':json.loads((r/'Apps/hollow_trail.json').read_text())['version'],
         'source_files':{str(f.relative_to(r)):hashlib.sha256(f.read_bytes()).hexdigest()
                         for f in sorted((r/'Apps').glob('hollow_trail*')) if f.is_file()},
-        'fixture': 'The actual first rail support leads to the separate wheel-less carriage before the intact train. Real Confirm input enters its broken end window, chooses the dry bench, rests, wakes, views the existing locomotive and exits along the same window path. Live route, puzzle, evidence and spawn are unchanged.',
+        'fixture': 'The actual first rail support leads to the separate wheel-less carriage before the intact train. Real Confirm input enters its broken end window and chooses the dry bench. With HT_CARRIAGE_DREAM, bounded reflection and dream frames lead through deliberate sleep/wake holds to the existing dawn reveal and shared exit. On the baseline, named missing dream/reflection views stay in the actual old rest hold. Live route, puzzle, evidence and spawn are unchanged.',
     'raster':[960, 540], 'captures':captures}
 meta.update(source_identity(r, meta['source_files'], a.source_ref))
 (out/'capture-metadata.json').write_text(json.dumps(meta, indent=2)+'\n')

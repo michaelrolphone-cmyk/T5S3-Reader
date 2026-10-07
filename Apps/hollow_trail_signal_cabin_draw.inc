@@ -30,8 +30,11 @@ static void ht_signal_cabin_room(const ht_game *g){
   ht_rect(ht_scene,lever-5,f-4,10,4,221);ht_limb(ht_scene,lever,f-4,lever,f-28,2,2,210);
   ht_rect(ht_scene,lever-4,f-30,8,5,235);ht_rect(ht_scene,lever-2,f-30,3,2,110);
   ht_disk(ht_scene,lever,f-13,4,146);char number[2]={(char)('1'+n),0};ht_text_color(lever-2,f-16,number,1,241);
-  if(n==1 && (g->cabin_view_stage<3 || g->cabin_view_stage>=6 || (g->cabin_view_stage==3 && g->cabin_view_tick<HT_CABIN_UNROLL_START) || (g->cabin_view_stage==5 && g->cabin_view_tick>=112))){
-   ht_rect(ht_scene,lever-3,f-30,6,7,55);ht_limb(ht_scene,lever-3,f-28,lever+3,f-26,1,1,127);
+  if(n==1){
+   bool shirt=(g->packet&HT_PACKET_DOG) || (g->cabin_view_stage==7 && g->cabin_view_tick>=176);
+   bool paper=!shirt && (g->cabin_view_stage<3 || g->cabin_view_stage==6 || (g->cabin_view_stage==3 && g->cabin_view_tick<HT_CABIN_UNROLL_START) || (g->cabin_view_stage==5 && g->cabin_view_tick>=112) || (g->cabin_view_stage==7 && g->cabin_view_tick<48));
+   if(paper){ht_rect(ht_scene,lever-3,f-30,6,7,55);ht_limb(ht_scene,lever-3,f-28,lever+3,f-26,1,1,127);}
+   if(shirt){ht_limb(ht_scene,lever-3,f-29,lever+3,f-27,1,1,91);ht_limb(ht_scene,lever+2,f-27,lever+3,f-22,1,0,103);}
   }
  }
  ht_rect(ht_scene,x-56,f,112,4,215);ht_checkpoint();

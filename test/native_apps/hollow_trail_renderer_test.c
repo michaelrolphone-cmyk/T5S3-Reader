@@ -152,24 +152,24 @@ static const unsigned golden[][2]={
 {3644739766,32595887},
 {1846896691u,846753261u},
 {3241840614,1097779836},
-{1894069161u,2141184015u}, /* Corrected-map cabin at the existing rail evidence. */
+{223795782u,2437891813u}, /* Reviewed lower trestle/ditch; corrected-map cabin and other 29 pairs retained. */
 {2033607303,4272025260},
 {737287855,150225469},
-{2871873071,1039595674}, /* Reviewed waiting awning on the actual marsh bank. */
+{4025276642u,2003882676u}, /* Reviewed raised bank/cloud shallows and quarry; other 29 pairs exact. */
 {1684780377,2737385310},
 {1477351146,501319504},
 {3095071177,861699871},
-{3515373870,2854332469},
-{719806906,1462119617},
-{1326196981,2258384156},
-{1143499482,207677384},
+{3195525885u,56340071u}, /* Reviewed shared gallery, pane and three ridge-anchored rows. */
+{1623275131u,2992220726u}, /* Same three rows recede with the existing camera. */
+{2250815207u,1628315133u}, /* Rows leave the horizon; grounded count-row care is retained. */
+{1305748946u,1440843516u}, /* Turbine approach rail and puddle on support zero; other 29 pairs retained. */
 {3747272453,2052152225},
-{512589384,2061789897},
-{413184930,1205470550},
+{3385086579u,435798566u}, /* Far valve furniture on unchanged support four; other 29 pairs retained. */
+{3202950730u,1887044532u}, /* Opening support shelter; other 29 fixtures retained. */
 {1805041436,3386618820},
-{3469364471,1119496009},
-{4124658611,3847112319},
-{297423422,3292122172},
+{793447873u,1798168286u}, /* Page25 shelf, slab-roof lee and old floor burn on support four; 29 pairs exact. */
+{1310939257u,1646281843u}, /* Grounded settlement walls and first-window return; 28 other pairs exact. */
+{2025419423u,2270779796u}, /* Street plots, cistern and clipped inward return on unchanged supports. */
 {3021503600,3314516329},
 };
 int main(void){
@@ -178,7 +178,8 @@ int main(void){
  cab_step_plant_tests(mem,bits);
  for(unsigned ready=0;ready<=HT_OPT_SIMD_ALL;++ready)
   for(unsigned level=0;level<HT_LEVELS;++level)for(int view=0;view<3;++view){
-   ht_bind(mem);ht.level=level;ht_spawn(true);ht.camera=view*733*256;ht.x=(view*733+190)*256;
+   ht_bind(mem);ht.level=level;ht_spawn(true);ht.traversal.boat_x=ht_mech(&ht)->boat_left*256; /* Frozen pre-retrieval renderer fixture. */
+   ht.camera=view*733*256;ht.x=(view*733+190)*256;
    ht.vista=view?256:0;ht.sway_phase=view?128+view*317:0;ht.rotation_phase=(128+view*219)<<8;ht.camera_mood=256;
    ht_simd_stage_ready=ready;ht_simd_ready=ready!=0;
    ht_render_scene();ht_pack_mono(bits,HT_W/4);

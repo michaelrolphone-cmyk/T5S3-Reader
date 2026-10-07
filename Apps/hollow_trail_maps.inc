@@ -22,6 +22,17 @@ static int ht_crate_height(unsigned level) {return level==0?HT_MILL_DESK_HEIGHT:
 #define HT_MILL_SHUTTER_SILL 183
 #define HT_MILL_SHUTTER_TOP 147
 #define HT_MILL_SHUTTER_STEPS 96
+/* The lower member is the actual walkable trestle; the upper railway is behind it. */
+#define HT_TRESTLE_ROUTE 1
+#define HT_TRESTLE_LEFT 1240
+#define HT_TRESTLE_CAP 1480
+#define HT_TRESTLE_END 1500
+#define HT_TRESTLE_FLOOR 268
+#define HT_TRESTLE_HAND 246
+#define HT_TRESTLE_WOOL 1368
+#define HT_TRESTLE_TOUCH 194
+#define HT_TRESTLE_TEST_END 258
+#define HT_TRESTLE_STEPS 442
 #define HT_ROPE_NODES 7
 #define HT_BOAT_HALF 30
 #define HT_BRIDGE_STEP 7

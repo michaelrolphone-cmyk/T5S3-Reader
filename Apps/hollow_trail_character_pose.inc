@@ -33,7 +33,7 @@ static int ht_person_ground(const ht_game *g,int x,int feet) {
     for(int i=0;i<HT_PLATFORMS;++i)for(int part=0;part<3;++part) {
         int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top))break;
         if(world<l || world>=r)continue;
-        if(part!=2)top=ht_surface_at(g,i,world);
+        top=ht_piece_top(g,i,part,top,world);
         top-=g->camera_y/256;
         if(ht_abs(top-feet)<=5)return top;
     }
@@ -90,6 +90,46 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
             p.foot[1]=ht_joint_at(x-f*5,feet-1-rise);
             p.hand[0]=ht_joint_at(x+f*7,feet-21-rise/2+fall);
             p.hand[1]=ht_joint_at(x-f*6,feet-18-rise/2+fall);
+        }
+    } else if(t->mode==HT_TRESTLE) {
+        int phase=t->trestle_phase,cx=g->camera/256,cy=g->camera_y/256;
+        bool across=phase>=80 && phase<=362;
+        if(phase>=HT_TRESTLE_TOUCH && phase<=HT_TRESTLE_TEST_END) {
+            int crouch=ht_min(ht_clamp(phase-HT_TRESTLE_TOUCH,0,16),ht_clamp(HT_TRESTLE_TEST_END-phase,0,16));
+            p.hip.y+=crouch/4;p.shoulder.y+=crouch/8;
+        }
+        for(int i=0;i<2;++i) {
+            int hx=g->x/256+(i?-6:8),hy=g->y/256-22;
+            int fx=g->x/256+(i?-3:3),fy=g->y/256;
+            if(across) {
+                int q=(g->x/256+i*8)&15;
+                fx=g->x/256+(q<8?4-q:q-12);
+                fy=HT_TRESTLE_FLOOR-(q>=10 && q<=13?2:0);
+                hy=HT_TRESTLE_HAND;
+                if(phase>=HT_TRESTLE_TOUCH && phase<=HT_TRESTLE_TEST_END) {
+                    /* The forward toe reaches the next footing before the
+                     * centre of mass follows; the wool never leaves its brace. */
+                    int reach=ht_clamp(phase-HT_TRESTLE_TOUCH,0,32);
+                    hx=i?1354:HT_TRESTLE_WOOL;
+                    fx=i?1357:1363+reach/4;
+                    fy=HT_TRESTLE_FLOOR-(i?0:(reach<32?2:0));
+                    if(phase>HT_TRESTLE_TOUCH+48){hx=i?g->x/256-6:g->x/256+8;fx=i?g->x/256-3:1371;}
+                }
+            } else if(phase<16) {
+                if(!i)hx=HT_TRESTLE_LEFT;
+                else if(g->x/256>=1244)hx=HT_TRESTLE_LEFT+14;
+            } else if(phase>=16 && phase<=80) {
+                hx=HT_TRESTLE_LEFT+(i?0:14);
+                fy=220+ht_clamp((g->y/256-220-(i?3:0))/6,0,8)*6;
+            } else if(phase>=362 && phase<=426) {
+                hx=1474+(i?-6:8);
+                fy=220+ht_clamp((g->y/256-220-(i?3:0))/6,0,8)*6;
+            } else if(phase>426) {
+                if(!i)hx=HT_TRESTLE_CAP+2;
+                else if(g->x/256<=1478)hx=HT_TRESTLE_CAP-12;
+            }
+            p.hand[i]=ht_joint_at(hx-cx,hy-cy);
+            p.foot[i]=ht_joint_at(fx-cx,fy-cy);
         }
     } else if(t->mode==HT_WINDOW) {
         int phase=t->window_phase,q=phase-32,cx=g->camera/256,cy=g->camera_y/256;
@@ -217,6 +257,12 @@ static ht_person_pose ht_person_pose_at(int x,int feet,const ht_game *g) {
             p.knee[i]=-f;
         }
     }
+    /* The cloth carries a passing hand, never body weight or collision. */
+    if(ht_quarry_cloth_contact(g)) {
+        int wx=g->x/256+f*5;
+        p.hand[0]=ht_joint_at(wx-g->camera/256,ht_quarry_cloth_y(wx)-g->camera_y/256);
+        p.elbow[0]=f;
+    }
     return p;
 }
 static void ht_person_arm(ht_joint root,ht_joint hand,int bend,int ink) {
@@ -254,8 +300,19 @@ static void ht_person_draw(const ht_person_pose *p) {
         ht_limb(ht_scene,sx-f,sy,sx+f,sy+1,0,0,200);
     }
 }
+static void ht_person_scarf(const ht_person_pose *p,unsigned scarf) {
+    if(scarf==1) {
+        ht_joint h=p->hand[1];
+        ht_limb(ht_scene,h.x,h.y,h.x-2,h.y+7,1,1,151);
+        ht_limb(ht_scene,h.x-2,h.y+7,h.x+2,h.y+10,1,0,139);
+    } else if(scarf==2) {
+        /* The same frayed strip now lies inside the existing coat collar. */
+        ht_limb(ht_scene,p->shoulder.x-1,p->shoulder.y-2,p->shoulder.x+2,p->shoulder.y-1,1,0,145);
+    }
+}
 static void ht_character_walk(int x,int feet,const ht_game *g) {
     ht_person_pose p=ht_person_pose_at(x,feet,g);ht_person_draw(&p);
+    ht_person_scarf(&p,g->scarf);
     if(g->traversal.mode==HT_WINDOW && g->traversal.window_touch) {
         for(int i=0;i<4;++i) {
             int length=3+i%3,release=255-g->traversal.window_touch-i*42;

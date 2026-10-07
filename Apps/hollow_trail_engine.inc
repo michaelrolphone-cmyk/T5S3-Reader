@@ -82,7 +82,7 @@ static const ht_platform ht_routes[7][HT_PLATFORMS] = {
 };
 #include "hollow_trail_maps.inc"
 /* Fixed-size chapter mechanics, included in every render snapshot. */
-enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER, HT_WINDOW };
+enum { HT_FREE, HT_ROLL, HT_CRATE, HT_LADDER, HT_ROPE, HT_BOAT, HT_LEDGE, HT_CLIMB, HT_TREE, HT_PUSH, HT_SHUTTER, HT_WINDOW, HT_TRESTLE };
 typedef struct {
     int ball_x,ball_y,crate_x,boat_x,rope_x,rope_v,ride_offset;
     int ball_vx,ball_vy,ball_roll,crate_y,crate_vx,crate_vy,boat_vx;
@@ -105,11 +105,16 @@ typedef struct {
     int window_entry_left,window_entry_right;
     uint8_t window_phase,window_open,window_touch;
     bool window_print;
+    uint16_t trestle_phase;
+    int16_t trestle_print_left,trestle_print_right;
+    bool trestle_tested;
     bool rope_awake;
+    bool ferry_retrieved,ferry_line_taken;
 } ht_traversal;
 #include "hollow_trail_story.inc"
 #include "hollow_trail_puzzles.inc"
 #include "hollow_trail_evidence.inc"
+enum { HT_PACKET_DOG=1,HT_PACKET_FOOD=2,HT_PACKET_CRUMBS=4 };
 typedef struct {
     int x, y, vx, vy; /* Q8, y is feet */
     int camera, camera_y, checkpoint, coyote, jump_buffer, facing, stride;
@@ -127,12 +132,27 @@ typedef struct {
     unsigned level; /* Laps count complete ten-chapter journeys. */
     int story_x; /* Furthest progress in this chapter, retained on death. */
     bool grounded;
+    uint8_t scarf; /* 0 on ridge post, 1 carried, 2 inside collar, 3 inside coat. */
+    uint8_t packet; /* Physical optional keepsakes/provisions, never archive discoveries. */
     uint16_t waiting_view_tick; /* Draw snapshot only. */
     bool waiting_view_active;
     int8_t first_house_lean;
     bool isolator_view_active;
     uint8_t isolator_view_stage;
     uint16_t isolator_view_tick;
+    uint8_t cage_view_drop,cage_view_travel; /* Draw snapshot only; live boarding stays parked. */
+    uint8_t drawing_view_stage;
+    uint16_t drawing_view_tick;
+    uint8_t counts_view_stage;
+    uint16_t counts_view_tick;
+    bool care_tended,care_view_active; /* Optional physical scene; never an evidence/route gate. */
+    uint8_t care_view_stage;
+    uint16_t care_view_tick,care_view_ambient;
+    bool food_view_active;
+    uint8_t food_view_stage;
+    uint16_t food_view_tick,food_view_ambient;
+    uint8_t bed_view_stage;
+    uint16_t bed_view_tick;
     uint8_t cabin_view_stage;
     uint16_t cabin_view_tick;
     bool carriage_view_active,carriage_view_boots;
@@ -359,10 +379,10 @@ static int ht_distribution_floor(void) {return ht_land_height(2,7,HT_DISTRIBUTIO
 static int ht_station_floor(void) {return ht_land_height(3,2,HT_STATION_TICKET_X);}
 #define HT_STOVE_X 1820
 static int ht_stove_floor(void) {return ht_land_height(2,5,HT_STOVE_X);}
-static int ht_evidence_platform(unsigned level,int item) { return level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
+static int ht_evidence_platform(unsigned level,int item) { return level==9 && item==1?8:level==5 && item==2?9:level==3 && item==0?2:level==2 && item==1?5:level==0?(item==0?0:item==1?3:7):1+item*3; }
 static int ht_evidence_x(unsigned level,int item) {
     const ht_platform *p=&ht_level_land(level)[ht_evidence_platform(level,item)];
-    return level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
+    return level==9 && item==1?2755:level==5 && item==2?HT_GOAL-26:level==3 && item==0?HT_STATION_TICKET_X:level==2 && item==1?HT_STOVE_X:level==0?(item==0?140:item==1?1180:p->left+42):level==1 && item==0?535:level==1 && item==2?HT_SIGNAL_LOG_X:item==1?p->right-45:p->left+42;
 }
 static int ht_evidence_world_x(const ht_game *game,int item) {
     return game->level==0 && item==1?game->traversal.crate_x/256:ht_evidence_x(game->level,item);
@@ -380,7 +400,7 @@ static int ht_evidence_near(const ht_game *game) {
     if(!game->grounded) return -1;
     for(int item=0;item<3;++item) {
         if(game->level==0 && item==1 && !ht_mill_register_lit(game))continue;
-        if(ht_abs(game->x/256-ht_evidence_world_x(game,item))<=22 &&
+        if(ht_abs(game->x/256-ht_evidence_world_x(game,item))<=(game->level==5 && item==2?5:22) &&
            ht_abs(game->y/256-ht_surface_at(game,ht_evidence_platform(game->level,item),game->x/256))<=3) return item;
     }
     return -1;
@@ -556,12 +576,17 @@ static void ht_spawn(bool restart) {
     if(!restart && ht.door_stage)return; /* No death/respawn can erase the held ending. */
     int16_t scrape_left=ht.traversal.mill_scrape_left,scrape_right=ht.traversal.mill_scrape_right;
     uint8_t bridge_open=restart?0:ht.traversal.bridge_open;
+    bool ferry_retrieved=!restart && ht.traversal.ferry_retrieved;
+    bool ferry_line_taken=!restart && ht.traversal.ferry_line_taken;
+    int ferry_x=ht.traversal.boat_x;
     uint8_t window_open=restart?0:ht.traversal.window_open;
     bool window_print=!restart && ht.traversal.window_print;
     uint8_t scene_evidence=restart?0:ht.scene_evidence;
     uint16_t weather_amount=restart?0:ht.weather_amount;
     uint16_t weather_age=restart?0:ht.weather_age;
     uint32_t evidence=ht.evidence;
+    uint8_t scarf=restart && ht.level<8?0:ht.scarf;
+    uint8_t packet=restart && ht.level==0?0:ht.packet;
     uint8_t verdict=restart?0:ht.verdict,last_verdict=ht.last_verdict,endings=ht.endings;
     bool verdict_read=!restart && ht.verdict_read;
     uint8_t seen[HT_LEVELS]; memcpy(seen,ht.story_seen,sizeof(seen));
@@ -570,7 +595,7 @@ static void ht_spawn(bool restart) {
     unsigned laps=ht.laps, deaths=ht.deaths, level=ht.level;
     int cp=restart?0:ht.checkpoint, story_x=restart?0:ht.story_x;
     memset(&ht,0,sizeof(ht)); ht.laps=laps; ht.deaths=deaths; ht.level=level;
-    ht.evidence=evidence; ht.puzzle=puzzle;
+    ht.evidence=evidence; ht.puzzle=puzzle; ht.scarf=scarf; ht.packet=packet;
     ht.scene_evidence=scene_evidence;ht.weather_amount=weather_amount;ht.weather_age=weather_age;
     ht.verdict=verdict; ht.last_verdict=last_verdict; ht.endings=endings; ht.verdict_read=verdict_read;
     memcpy(ht.story_seen,seen,sizeof(seen));
@@ -592,6 +617,12 @@ static void ht_spawn(bool restart) {
         ht.traversal.mill_scrape_right=(int16_t)(!restart && scrape_right?scrape_right:HT_MILL_DESK_START+9);
     }
     ht.traversal.boat_x=m->boat_left*256;
+    if(level==4){
+        ht.traversal.ferry_retrieved=ferry_retrieved || cp>0;
+        ht.traversal.ferry_line_taken=ferry_line_taken;
+        ht.traversal.boat_x=cp?m->boat_right*256:ferry_retrieved?m->boat_left*256:restart?m->boat_right*256:
+            ht_clamp(ferry_x,m->boat_left*256,m->boat_right*256);
+    }
     ht.traversal.rope_grip=m->rope_length*256;
     for(int i=0;i<HT_ROPE_NODES;++i) {
         ht.traversal.rope_px[i]=ht.traversal.rope_ox[i]=m->rope_anchor_x*256;
@@ -1458,6 +1489,7 @@ static __attribute__((optimize("O3"))) void ht_expand_scene_native(const uint8_t
         if((y&15)==15)ht_checkpoint();
     }
 }
+#include "hollow_trail_quarry_ascent.inc"
 #include "hollow_trail_character_pose.inc"
 static int ht_weather_floor(const ht_game *g,int screen_x);
 static void ht_character(int x,int feet,const ht_game *game) {
@@ -1656,7 +1688,7 @@ static int ht_weather_floor(const ht_game *g,int screen_x) {
     for(int i=0;i<HT_PLATFORMS;++i)
         for(int part=0;part<3;++part) {
             int l,r,top;if(!ht_platform_piece(g,i,part,&l,&r,&top)) break;
-            if(x>=l && x<r) floor=ht_min(floor,(part==2?top:ht_surface_at(g,i,x))-g->camera_y/256);
+            if(x>=l && x<r) floor=ht_min(floor,ht_piece_top(g,i,part,top,x)-g->camera_y/256);
         }
     return floor;
 }
@@ -1693,6 +1725,7 @@ static void ht_weather(const ht_game *g) {
     ht_checkpoint();
 }
 static void ht_draw_traversal(const ht_game *game);
+static void ht_marsh_foreground(const ht_game *game);
 static void ht_forest_foreground(const ht_game *game);
 static void ht_city_observer_foreground(const ht_game *game);
 static void ht_authored_foreground(const ht_game *game);
@@ -1760,6 +1793,7 @@ static void ht_render_scene_from(const ht_game *source,bool character) {
     ht_signal_window_draw(&game,true);
     ht_city_observer_foreground(&game);
     ht_authored_foreground(&game);
+    ht_marsh_foreground(&game);
     uint32_t post_start=ht_render_now();
     ht_render_last.world=post_start-world_start;
     ht_world_scale=256;
@@ -2090,6 +2124,8 @@ static void ht_narration(const ht_game *game) {
             text=line?"THE WAY IS OPEN WHEN I HAVE READ WHAT I CHANGED.":
                 (game->verdict==1?"I BROKE THE FEED. HER PLAN INCLUDED MY RESCUE.":
                                   "I COMPLETED THE FEED. THE PEN WRITES AS HER.");
+        if(game->level==3 && game->traversal.mode==HT_TRESTLE)
+            text=ht_trestle_caption(game,line);
         ht_narration_hash(text);
         int x=(HT_W-(int)strlen(text)*6)/2, y=233+line*10;
         for(;*text;++text,x+=6) {
@@ -2104,6 +2140,7 @@ static void ht_narration(const ht_game *game) {
 #include "hollow_trail_isolator_draw.inc"
 #include "hollow_trail_warming_draw.inc"
 #include "hollow_trail_partition_draw.inc"
+#include "hollow_trail_cage_draw.inc"
 #include "hollow_trail_mechanism_draw.inc"
 static void ht_draw_puzzle(const ht_game *game) {
     int top=ht_level_land(game->level)[9].top-game->camera_y/256;
@@ -2116,6 +2153,7 @@ static void ht_draw_puzzle(const ht_game *game) {
         return;
     }
     ht_draw_chapter_gate(game,top);
+    ht_empty_cage_room(game);
     ht_partition_response(game,top);
 }
 static void ht_puzzle_prompt(const ht_game *game) {
@@ -2127,7 +2165,9 @@ static void ht_puzzle_prompt(const ht_game *game) {
         ht_text_color(74,49,!game->verdict?"A / CONFIRM AT THE GLASS: BREAK OR COMPLETE":
             !game->verdict_read?"A / CONFIRM AT THE GLASS: READ THE CHANGED TESTIMONY":
             "PASSAGE OPEN - WALK ON TO BEGIN ANOTHER JOURNEY",1,85);
-    } else if(game->puzzle.solved) ht_text_color(74,49,game->puzzle.opening<48?"THE PASSAGE IS OPENING":"PASSAGE OPEN - FOLLOW THE LIGHT",1,85);
+    } else if(game->level==5 && game->puzzle.solved && game->puzzle.opening==48 && ht_puzzle_near(game)==3)
+        ht_text_color(74,49,"A TEST EMPTY CAGE - WALK RIGHT TO BOARD",1,85);
+    else if(game->puzzle.solved) ht_text_color(74,49,game->puzzle.opening<48?"THE PASSAGE IS OPENING":"PASSAGE OPEN - FOLLOW THE LIGHT",1,85);
     else if(p->kind==HT_POINTS && ht_puzzle_near(game)<3) {
         ht_text_color(74,49,game->puzzle.selected==3?"A COUPLE REAR WAGON - RUN TESTS DEPARTURE":
             "A MOVE HERE - SAME ROAD RELEASES COUPLER",1,85);
@@ -2188,9 +2228,15 @@ static void ht_marked_tree(int x,int ground,bool paper) {
 }
 /* Tiny scraps/containers embedded in scenery. No flashing markers or distant
  * arrows; nearby interaction reveals the title without exposing the contents. */
+#include "hollow_trail_recorder_draw.inc"
+#include "hollow_trail_scarf_draw.inc"
+#include "hollow_trail_ridge_papers_draw.inc"
 static void ht_draw_evidence(const ht_game *game) {
     for(int item=0;item<3;++item) {
-        if((game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5 && item==0))continue; /* Drawn on their actual scene furniture. */
+        if(game->level==8 && item==0){ht_scarf_post(game);continue;}
+        if(game->level==8 && item==1){ht_papers_room(game);continue;}
+        if(game->level==7 && item==2){ht_recorder_cabinet(game,0);continue;}
+        if((game->level==9 && item==1) || (game->level==7 && (item==0 || item==1)) || (game->level==6 && (item==1 || item==2)) || (game->level==1 && item==2) || (game->level==0 && item==1) || (game->level==2 && item==1) || (game->level==3 && (item==0 || item==1)) || (game->level==2 && item==2) || (game->level==4 && item==1) || (game->level==5))continue; /* Drawn on their actual scene furniture. */
         int x=ht_evidence_x(game->level,item)-game->camera/256;
         int y=ht_buried_base(game,ht_evidence_platform(game->level,item),ht_evidence_x(game->level,item),14)-game->camera_y/256;
         int extent=game->level==0 && item==0?34:12;
@@ -2206,9 +2252,8 @@ static void ht_draw_evidence(const ht_game *game) {
             ht_limb(ht_scene,x-9,y-27,x+8,y-29,0,0,160);
             for(int side=-1;side<=1;side+=2)for(int row=0;row<2;++row)
                 ht_rect(ht_scene,x+side*13-2,y-30+row*4,4,2,189);
-        } else if((game->level==0 && item==2) || (game->level==8 && item==0)) {
-            if(game->level==0)ht_organic_snag(ht_scene,x-10,y,33,3,871u,255);
-            else ht_limb(ht_scene,x-10,y,x-12,y-35,3,2,255);
+        } else if(game->level==0 && item==2) {
+            ht_organic_snag(ht_scene,x-10,y,33,3,871u,255);
             ht_limb(ht_scene,x-12,y-34,x+4,y-31,2,1,255);
             ht_limb(ht_scene,x+2,y-31,x+2,y-23,0,0,180);
             ht_triangle(ht_scene,x-2,y-18,x+6,y-18,x+2,y-24,170);
@@ -2234,7 +2279,7 @@ static void ht_evidence_prompt(const ht_game *game) {
     int item=ht_evidence_near(game);
     if(item<0) return;
     ht_rect(ht_scene,66,33,348,29,255);
-    ht_text_color(74,37,ht_evidence[game->level][item].title,1,85);
+    ht_text_color(74,37,game->level==5 && item==2?"THE PARKED CAGE":ht_evidence[game->level][item].title,1,85);
     ht_text_color(74,49,"A / CONFIRM INSPECT",1,85);
 }
 static void ht_draw_journal(const ht_game *game,unsigned page) {
@@ -2258,6 +2303,7 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 }
 
 #include "hollow_trail_atmosphere_draw.inc"
+#include "hollow_trail_ferry_draw.inc"
 #include "hollow_trail_traversal_draw.inc"
 
 #include "hollow_trail_stove_study.inc"
@@ -2269,6 +2315,7 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_waiting_study.inc"
 
 #include "hollow_trail_pouch_study.inc"
+#include "hollow_trail_grip_study.inc"
 
 #include "hollow_trail_sleep_study.inc"
 
@@ -2280,3 +2327,28 @@ static void ht_draw_journal(const ht_game *game,unsigned page) {
 #include "hollow_trail_first_house_study.inc"
 #include "hollow_trail_carriage_study.inc"
 #include "hollow_trail_signal_cabin_study.inc"
+#include "hollow_trail_living_bed_study.inc"
+#include "hollow_trail_counts_study.inc"
+
+#include "hollow_trail_drawing_study.inc"
+
+#include "hollow_trail_garden_night.inc"
+
+#include "hollow_trail_food_study.inc"
+#include "hollow_trail_care_study.inc"
+
+#include "hollow_trail_privacy_study.inc"
+
+#include "hollow_trail_cage_study.inc"
+#include "hollow_trail_floorboard_study.inc"
+
+#include "hollow_trail_ferry_study.inc"
+#include "hollow_trail_recorder_study.inc"
+#include "hollow_trail_valve_study.inc"
+
+#include "hollow_trail_gauge_study.inc"
+#include "hollow_trail_tower_study.inc"
+#include "hollow_trail_shelter_study.inc"
+#include "hollow_trail_scarf_study.inc"
+
+#include "hollow_trail_ridge_papers_study.inc"

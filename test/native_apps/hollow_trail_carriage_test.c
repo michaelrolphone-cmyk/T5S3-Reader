@@ -59,13 +59,26 @@ int main(void){
   press(source?128:512);assert(reading && ht_journal_index);ticks(60);assert(ht_carriage.tick==tick);press(source?128:512);input(0,8);assert(!reading);
   pad_failure=true;input(0,8);ticks(30);assert(ht_carriage.tick==tick);pad_failure=false;input(0,8);ticks(200);
   assert(ht_carriage.stage==1);unsigned rev=scene_revision;ticks(60);assert(scene_revision==rev);
-  action();input(0,8);ticks(224);assert(ht_carriage.stage==3);rev=scene_revision;ticks(60);assert(scene_revision==rev);
+  action();input(0,8);ticks(224);assert(ht_carriage.stage==7);ticks(HT_CARRIAGE_REFLECTION_TICKS);assert(ht_carriage.stage==3);rev=scene_revision;ticks(60);assert(scene_revision==rev);
+  action();input(0,8);assert(ht_carriage.stage==8);
+  ticks(HT_CARRIAGE_DREAM_TICKS);assert(ht_carriage.stage==9);rev=scene_revision;ticks(120);assert(scene_revision==rev);
   action();input(0,8);ticks(288);assert(ht_carriage.stage==5);rev=scene_revision;ticks(60);assert(scene_revision==rev && !memcmp(&ht,&frozen,sizeof(ht)));
   action();input(0,8);ticks(344);assert(!ht_carriage.active && ht_input_rearm && !memcmp(&ht,&frozen,sizeof(ht)));
   input(source?2:1,2);ticks(3);assert(!ht_carriage.active && ht_input_rearm && held==0);
   input(0,8);action();assert(ht_carriage.active);cancel();assert(!ht_carriage.active && ht.evidence==frozen.evidence);
   input(0,8);action();host_exit=true;input(0,8);assert(quitting);
-  for(unsigned stage=0;stage<=6;++stage){reset();action();ht_carriage.stage=stage;ht_carriage.tick=stage==1 || stage==3 || stage==5?0:40;frozen=ht;cancel();assert(!ht_carriage.active && !memcmp(&ht,&frozen,sizeof(ht)));}
+  for(unsigned stage=7;stage<=9;++stage){
+   reset();action();ht_carriage.stage=stage;ht_carriage.tick=stage==9?0:40;frozen=ht;
+   unsigned at=ht_carriage.tick;press(source?64:256);ticks(100);assert(ht_carriage.paused && ht_carriage.tick==at);
+   press(source?64:256);press(source?128:512);ticks(100);assert(reading && ht_carriage.tick==at);
+   press(source?128:512);input(0,8);assert(!reading);
+   pad_failure=true;input(0,8);ticks(40);assert(ht_carriage.tick==at);
+   pad_failure=false;input(source?2:1,2);ticks(3);assert(ht_input_rearm && ht_carriage.tick==at);
+   input(0,8);ticks(1);assert(!ht_input_rearm && !memcmp(&ht,&frozen,sizeof(ht)));
+   if(stage<9){unsigned st=ht_carriage.stage;action();assert(ht_carriage.stage==st);}
+   host_exit=true;input(0,8);assert(quitting);
+  }
+  for(unsigned stage=0;stage<=9;++stage){reset();action();ht_carriage.stage=stage;ht_carriage.tick=stage==1 || stage==3 || stage==5 || stage==9?0:40;frozen=ht;cancel();assert(!ht_carriage.active && !memcmp(&ht,&frozen,sizeof(ht)));}
  }
  source=0;reset();ht_game game=ht;game.camera=game.camera_y=0;
  for(unsigned tick=0;tick<=184;++tick){
@@ -85,14 +98,27 @@ int main(void){
  }
  for(unsigned tick=0;tick<=224;++tick){ht_person_pose p=ht_carriage_rest_pose(&game,tick,false);reach(&p,1000+tick);}
  ht_person_pose wake=ht_carriage_rest_pose(&game,224,true);reach(&wake,2000);
+ /* The finger lands in an unmarked cell, while the traveller supports the
+  * page at its lower-left edge. Both render contacts use these endpoints. */
+ ht_native_active=false;ht_world_scale=256;memset(ht_scene,0,HT_PIXELS);ht_carriage_account(0,0);
+ ht_joint blank=ht_carriage_blank_place(),grip=ht_carriage_account_grip();
+ assert(ht_scene[blank.y*HT_W+blank.x]==31);
+ assert(ht_scene[grip.y*HT_W+grip.x]!=0); /* paper or its ruling, never outside */
+ for(unsigned tick=0;tick<=HT_CARRIAGE_DREAM_TICKS;++tick){
+  ht_joint finger=ht_carriage_dream_finger(tick);int dx=finger.x+5-268,dy=finger.y-1-163;
+  assert(dx*dx+dy*dy<=52*52); /* elbow-to-finger stays within the drawn arm */
+ }
+ for(unsigned tick=608;tick<=HT_CARRIAGE_DREAM_TICKS;++tick){
+  ht_joint finger=ht_carriage_dream_finger(tick),blank=ht_carriage_blank_place();assert(finger.x==blank.x && finger.y==blank.y);
+ }
  for(int native=0;native<2;++native){
   reset();ht_camera_mode=native?HT_CAMERA_NATIVE:HT_CAMERA_BASELINE;ht_game frozen=ht;
-  for(unsigned stage=0;stage<=6;++stage){ht_carriage_state state={true,false,(uint8_t)stage,stage==0?128:stage==2?80:0};
+  for(unsigned stage=0;stage<=9;++stage){ht_carriage_state state={true,false,(uint8_t)stage,stage==0?128:stage==2?80:0};
    ht_carriage_study_render(&frozen,&state);int bytes=native?HT_NATIVE_PIXELS:HT_PIXELS;memcpy(copy,ht_scene,bytes);ht_pack_mono(bits,120);
    ht_carriage_study_render(&frozen,&state);assert(!memcmp(copy,ht_scene,bytes) && !memcmp(&ht,&frozen,sizeof(ht)));
   }
  }
  reset();ht.level=2;assert(!ht_carriage_near(&ht));ht.level=3;ht.x=(HT_CARRIAGE_X+20)*256;assert(!ht_carriage_near(&ht));
  free(bits);free(copy);free(memory);
- puts("Sleeping carriage: real route entry, reachable shared timber/window contacts, no lower-wall penetration, reversible exit, boots/rest/dawn, frozen route and HID/XInput interruption/retry/exit PASS");
+ puts("Sleeping carriage: real route entry, reachable shared timber/window contacts, no lower-wall penetration, reversible exit, boots/reflection/account-dream/held-reply/dawn, frozen route and HID/XInput interruption/retry/exit PASS");
 }

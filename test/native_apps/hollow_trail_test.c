@@ -209,6 +209,7 @@ static void eroded_cliffs_and_grotto(void) {
     assert(ht.grounded);
     /* Visual water extends under the eroded bank, across both physics bounds.
      * The collision channel must not become a rectangular paint clip. */
+    ht.traversal.boat_x=ht_mech(&ht)->boat_left*256; /* Frozen water-reflection fixture. */
     ht.camera=120*256;ht.camera_y=40*256;ht_world_scale=256;
     memset(ht_scene,0,HT_PIXELS);ht_boat_grotto(&ht);
     for(int edge=350;edge<=680;edge+=330) {
@@ -294,7 +295,7 @@ int main(void) {
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
-    const unsigned required_mechanics[HT_LEVELS]={104,68,5,12,16,5,6,28,14,20};
+    const unsigned required_mechanics[HT_LEVELS]={104,68,5,76,16,5,6,28,14,20};
     for(int tick=0;tick<HT_LEVELS*4500 && !ht.door_stage;++tick) {
         walk_route_tick();
         if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);
@@ -377,6 +378,8 @@ int main(void) {
      * sits at its centre; disembarking and coasting never move a bank. */
     for(unsigned level=0;level<HT_LEVELS;++level) if(ht_mechanics_by_level[level].boat_right) {
         ht.level=level;ht_spawn(true);const ht_mechanics *m=ht_mech(&ht);
+        /* Isolate the existing rowing contact after ferry retrieval. */
+        ht.traversal.boat_x=m->boat_left*256;
         ht.x=(m->water_left-3)*256;ht.y=m->boat_deck*256;ht.grounded=true;
         assert(ht_traversal_interact() && ht.traversal.mode==HT_BOAT);
         assert(ht.x==ht.traversal.boat_x);
