@@ -1,10 +1,19 @@
+#include "hollow_trail_first_house_draw.inc"
+#include "hollow_trail_sleep_draw.inc"
+#include "hollow_trail_pouch_draw.inc"
 #include "hollow_trail_material_detail.inc"
+#include "hollow_trail_waiting_draw.inc"
+#include "hollow_trail_distribution_draw.inc"
+#include "hollow_trail_station_draw.inc"
+#include "hollow_trail_carriage_draw.inc"
+#include "hollow_trail_signal_cabin_draw.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
 #include "hollow_trail_forest_draw.inc"
 #include "hollow_trail_city_draw.inc"
 #include "hollow_trail_chapter_draw.inc"
+#include "hollow_trail_stove_draw.inc"
 /* Continuous dark rope with alternating diagonal fibre ridges. The pattern
  * belongs to arc length, so it turns with the rope rather than screen time. */
 static void ht_twisted_rope(int x,int y,int ex,int ey,int *along) {
@@ -27,6 +36,7 @@ static void ht_draw_traversal(const ht_game *g) {
     if(g->level==0)ht_forest_backdrop(g);
     ht_forest_city_horizon(g);
     if(g->level==1)ht_city_backdrop(g);
+    ht_city_vanished_house(g);
     ht_authored_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
@@ -97,6 +107,17 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_city_roof_detail(g);
     ht_city_service_arrival(g);
     ht_city_rain_tank(g);
+    ht_city_signal_room(g);
+    ht_stove_room(g,0,0);
+    ht_station_room(g);
+    ht_distribution_room(g,48);
+    ht_sleep_room(g,g->sleep_view_active?ht_sleep_closure(g->sleep_view_stage,g->sleep_view_tick):0,
+      !g->sleep_view_active || g->sleep_view_stage==0 || g->sleep_view_stage==4 || (g->sleep_view_stage==1 && g->sleep_view_tick<80) || (g->sleep_view_stage==3 && g->sleep_view_tick>=96));
+    ht_cabinet_room(g);
+    ht_first_house_room(g,g->first_house_lean);
+    ht_pouch_room(g);
+    ht_waiting_room(g,g->waiting_view_active?(unsigned)ht_waiting_pull(g->waiting_view_tick):0,
+        g->waiting_view_active && g->waiting_view_tick>=104?ht_waiting_swing(g->waiting_view_tick-104):0);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);
@@ -153,13 +174,42 @@ static void ht_draw_traversal(const ht_game *g) {
         }
     }
     if(m->crate_x) {
-        int x=g->traversal.crate_x/256-cx,y=g->traversal.crate_y/256-HT_CRATE_HEIGHT-cy;
+        int x=g->traversal.crate_x/256-cx,y=g->traversal.crate_y/256-ht_crate_height(g->level)-cy;
+        if(g->level==0) {
+            /* Sloping writing board over a level timber frame. The frame is
+             * the same 24x14 physical body; four legs meet the real contour. */
+            bool lit=ht_mill_register_lit(g);int floor=g->traversal.crate_y/256-cy;
+            ht_limb(ht_scene,x-12,y,x+12,y,1,1,220);
+            ht_triangle(ht_scene,x-14,y-2,x+12,y-5,x+14,y,lit?104:206);
+            ht_triangle(ht_scene,x-14,y-2,x+14,y,x-12,y+2,lit?104:206);
+            ht_limb(ht_scene,x-11,y+1,x-10,ht_surface_at(g,3,g->traversal.crate_x/256-10)-cy,1,1,231);
+            ht_limb(ht_scene,x+10,y,x+9,ht_surface_at(g,3,g->traversal.crate_x/256+9)-cy,1,1,227);
+            ht_limb(ht_scene,x-10,floor-8,x+9,floor-8,1,1,203);
+            ht_triangle(ht_scene,x-9,y-3,x+8,y-5,x+10,y-1,lit?38:157);
+            ht_triangle(ht_scene,x-9,y-3,x+10,y-1,x-7,y+1,lit?38:157);
+            /* The ruled column and seven entries emerge into the hard beam. */
+            for(int row=0;row<7;++row) {
+                int xx=x-6+row*2;
+                ht_limb(ht_scene,xx,y-3,xx,y-1,0,0,lit?211:164);
+            }
+            ht_limb(ht_scene,x-3,y-4,x-2,y,0,0,lit?105:162);
+            ht_limb(ht_scene,x-11,y+3,x-6,y+2,1,0,lit?154:202); /* worn hand hollow */
+            /* The first fresh scrape grows only behind an actually moved leg. */
+            int first=ht_clamp(g->traversal.mill_scrape_left,1119,1209);
+            int last=ht_clamp(g->traversal.mill_scrape_right,1119,1209);
+            if(last>first)for(int wx=first;wx<last;++wx) {
+                int sy=ht_surface_at(g,3,wx)-cy;
+                ht_rect(ht_scene,wx-cx,sy,1,1,wx>=1161 && wx<=1206?48:94);
+            }
+            ht_checkpoint();
+        } else {
         ht_rect(ht_scene,x-12,y,24,26,255);ht_rect(ht_scene,x-10,y+2,19,22,150);
         for(int dy=7;dy<24;dy+=6) ht_rect(ht_scene,x-10,y+dy,19,1,235);
         ht_rect(ht_scene,x+7,y+2,3,22,210);
         ht_limb(ht_scene,x-9,y+22,x+6,y+3,2,2,255);
         ht_limb(ht_scene,x-7,y+22,x+8,y+3,0,0,75);
         for(int dx=-8;dx<=8;dx+=16) {ht_rect(ht_scene,x+dx,y+3,1,1,0);ht_rect(ht_scene,x+dx,y+22,1,1,0);}
+        }
     }
     if(m->boat_right) {
         int x=g->traversal.boat_x/256-cx,y=ht_boat_top(g)/256-cy;
@@ -260,9 +310,19 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_rect(ht_scene,x-22,y-56,44,6,255);
 }
 static void ht_traversal_prompt(const ht_game *g) {
-    if(g->level==0)return; /* The forest teaches through visible physical consequences. */
+    if(g->level==0) {
+        if(ht_traversal_near(g)==HT_SHUTTER) {
+            ht_rect(ht_scene,66,33,348,19,255);
+            ht_text_color(74,38,g->traversal.mode==HT_SHUTTER?"L/R THROUGH SHUTTER - REVERSE TO GO BACK":"FACE SHUTTER - A TAKE HOLD - L/R CROSS",1,85);
+        } else if(ht_traversal_near(g)==HT_CRATE && !ht_mill_register_lit(g)) {
+            ht_rect(ht_scene,66,33,348,19,255);
+            ht_text_color(74,38,g->traversal.mode==HT_CRATE?"L/R DRAW THE DESK TOWARD THE WINDOW LIGHT":"A GRIP DESK - DRAW IT TOWARD THE LIGHT",1,85);
+        }
+        return; /* Other forest objects teach through physical consequences. */
+    }
     const char *text=NULL;
     switch(ht_traversal_near(g)) {
+    case HT_WINDOW: text=g->traversal.mode==HT_WINDOW?"L/R OPEN AND CROSS - REVERSE TO GO BACK":"A TAKE WINDOW - L/R OPEN AND CLIMB";break;
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
     case HT_CLIMB: text="CLIMBING";break;
     case HT_ROLL: text=g->traversal.mode?"LEFT / RIGHT ROLL - A RELEASE":"A GRIP STONE - ROLL ONTO THE WEIGHT PLATE";break;

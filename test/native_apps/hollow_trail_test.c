@@ -157,6 +157,8 @@ static void landscape_contact_and_pull(void) {
     }
     uint8_t pushed[HT_PIXELS];
     ht.camera=ht.camera_y=0;ht.x=200*256;ht.y=220*256;
+    for(unsigned chapter=0;chapter<2;++chapter) {
+    ht.level=chapter;
     for(int mode=HT_ROLL;mode<=HT_CRATE;++mode) for(int side=-1;side<=1;side+=2) {
         ht.traversal.mode=mode;ht.traversal.ball_x=ht.traversal.crate_x=(200+side*21)*256;
         ht.traversal.ball_y=204*256;ht.traversal.crate_y=220*256;
@@ -169,10 +171,11 @@ static void landscape_contact_and_pull(void) {
         int hand=221; /* Object-facing hand remains on the same load contact. */
         if(side<0) hand=179;
         hand-=side*(mode==HT_ROLL?HT_BALL_RADIUS-2:HT_CRATE_HALF);
-        int hy=mode==HT_ROLL?200:202;
+        int hy=mode==HT_ROLL?200:chapter==0?207:202; /* 14-high mill desk vs the unchanged 26-high crate. */
         assert(ht_scene[hy*HT_W+hand] && pushed[hy*HT_W+hand]);
     }
-    ht_spawn(true);
+    }
+    ht.level=0;ht_spawn(true);
 }
 static void eroded_cliffs_and_grotto(void) {
     ht.level=0;ht_spawn(true);ht.camera=1250*256;ht.camera_y=200*256;
@@ -291,16 +294,18 @@ int main(void) {
     /* Walk the entire route using the same fixed-step physics and hold jump
      * from each takeoff. A route that silently respawns cannot pass. */
     unsigned visited=1;
-    const unsigned required_mechanics[HT_LEVELS]={40,4,5,12,16,5,6,28,14,20};
-    for(int tick=0;tick<HT_LEVELS*4500 && !ht.laps;++tick) {
+    const unsigned required_mechanics[HT_LEVELS]={104,68,5,12,16,5,6,28,14,20};
+    for(int tick=0;tick<HT_LEVELS*4500 && !ht.door_stage;++tick) {
         walk_route_tick();
         if(ht.level!=walk_level) assert(walk_mechanics==required_mechanics[walk_level]);
         visited|=1u<<ht.level;
     }
-    assert(visited==(1u<<HT_LEVELS)-1 && ht.laps==1 && ht.deaths==0);
+    assert(visited==(1u<<HT_LEVELS)-1 && !ht.laps && ht.deaths==0);
+    assert(ht.door_stage==HT_DOOR_YARD && walk_mechanics==required_mechanics[HT_LEVELS-1]);
     assert(ht.evidence==((1u<<30)-1));
-    assert(ht.level==0 && ht.story_x==0);
-    assert(ht.x==95*256 && ht.checkpoint==0);
+    assert(ht.level==HT_LEVELS-1 && ht.verdict_read && ht.x==32*256);
+    /* Chapter XI is independently exercised through real app/journal input. */
+    ht.level=0;ht_spawn(true);
     for(unsigned level=0;level<HT_LEVELS;++level) {
         ht.level=level;
         /* A failed jump returns to the latest checkpoint, not the start. */
@@ -487,6 +492,7 @@ int main(void) {
                 ht.weather_age=388;assert(!ht_lightning(&ht));
             }
             ht.x=(c->end+1)*256;assert(!ht_exposure(&ht) && !ht_wind(&ht));
+            if(level==0) {ht.traversal.crate_x=1180*256;ht.traversal.crate_y=ht_land_height(0,3,1180)*256;}
             ht.x=ht_evidence_x(level,c->until)*256;
             ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,c->until),ht.x/256)*256;
             assert(ht_inspect()>=0 && !ht_weather_target(&ht) && !ht_lightning(&ht));
@@ -546,7 +552,10 @@ int main(void) {
         }
         for(int tick=0;tick<48;++tick) ht_step(0,false,false);
         ht.x=HT_GOAL*256; ht.y=ht_land[9].top*256; ht.vy=0; ht_step(1,false,false);
-        assert(ht.level==(level+1)%HT_LEVELS && !ht.puzzle.solved && ht.puzzle.progress==0);
+        if(level==HT_LEVELS-1) {
+            assert(ht.level==level && ht.door_stage==HT_DOOR_YARD && ht.puzzle.solved);
+            assert(ht.verdict==2 && ht.verdict_read && !ht.laps);
+        } else assert(ht.level==level+1 && !ht.puzzle.solved && ht.puzzle.progress==0);
     }
     ht.level=8; ht_spawn(true); ht.puzzle.stage=1; ht.grounded=true;ht.y=ht_land[9].top*256;
     ht.x=HT_PUZZLE_FIRST*256; assert(ht_interact());
@@ -575,6 +584,7 @@ int main(void) {
         for(int item=0;item<3;++item) {
             unsigned page=level*3u+(unsigned)item;
             assert(!ht_evidence_found(&ht,page));
+            if(level==0 && item==1) {ht.traversal.crate_x=1180*256;ht.traversal.crate_y=ht_land_height(0,3,1180)*256;}
             ht.x=ht_evidence_x(level,item)*256;
             ht.y=ht_surface_at(&ht,ht_evidence_platform(ht.level,item),ht.x/256)*256;
             ht.grounded=false; assert(ht_inspect()==-1);
@@ -709,7 +719,7 @@ int main(void) {
             tones|=1u<<((frame[n]>>shift)&3);
         assert(tones==15);
     }
-    printf("Hollow Trail: complete route, loop, checkpoints, trench hazards, deterministic 2bpp frames PASS (%.1f ms/host frame)\n",
+    printf("Hollow Trail: complete route, final-door handoff, checkpoints, trench hazards, deterministic 2bpp frames PASS (%.1f ms/host frame)\n",
            (double)(clock()-start)*1000.0/CLOCKS_PER_SEC/12.0);
     free(frame); free(memory); return 0;
 }

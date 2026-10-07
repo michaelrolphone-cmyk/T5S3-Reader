@@ -11,6 +11,7 @@
 
 namespace {
 std::uint32_t store_add_calls = 0;
+bool store_load_ok = true;
 const t5_app_api_v1* active_app = reinterpret_cast<const t5_app_api_v1*>(1);
 }
 
@@ -20,7 +21,7 @@ extern "C" const t5_app_api_v1* t5_app_get_api(std::uint32_t abi_version) {
 
 OpdsServerStore OpdsServerStore::instance;
 
-bool OpdsServerStore::loadFromFile() { return true; }
+bool OpdsServerStore::loadFromFile() { return store_load_ok; }
 
 bool OpdsServerStore::addServer(const OpdsServer& server) {
   ++store_add_calls;
@@ -104,6 +105,18 @@ int main() {
   assert(store_add_calls == 1);
   t5_opds_server_t saved{};
   assert(api->read(0, &saved));
+  assert(std::strcmp(saved.url, "https://books.example/opds") == 0);
+
+  // Independently exercise bridge failure propagation with a store fixture
+  // that retains its prior snapshot even after returning a load error.
+  store_load_ok = false;
+  assert(OPDS_STORE.getCount() == 1);
+  assert(api->count() == 0);
+  assert(!api->read(0, &saved));
+  const t5_opds_server_t empty{};
+  assert(std::memcmp(&saved, &empty, sizeof(saved)) == 0);
+  store_load_ok = true;
+  assert(api->count() == 1 && api->read(0, &saved));
   assert(std::strcmp(saved.url, "https://books.example/opds") == 0);
   return 0;
 }

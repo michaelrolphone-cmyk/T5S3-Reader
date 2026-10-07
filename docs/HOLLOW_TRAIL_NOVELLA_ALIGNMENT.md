@@ -1,6 +1,9 @@
-# Hollow Trail: novella alignment, 1.1.36
+# Hollow Trail: ongoing whole-book alignment
 
-This is an implementation map, not a claim that the 44-set direction is complete.
+This is the ongoing implementation map for the entire book. The assignment ends
+only when all relevant scenes, cutscenes, playable levels and scenery are drawn
+and connected in the game. A merged increment does not pause or complete it.
+The 44-set direction is not complete.
 The novella remains the narrative source; `HOLLOW_TRAIL_PLAYABLE_SCENES.md` remains
 the composition target. Existing ten-chapter traversal, boat quality, 960×270
 foreground option, Y emphasis and #331's slower introduction are retained.
@@ -58,6 +61,29 @@ then returns to the same spawned city state with a neutral-input gate. It does
 not solve the forest puzzle, automatically climb the ladder or substitute for
 city exploration. Later chapter jumps do not trigger it; it is once per session.
 
+## Current connected increment: signal room, 1.1.48
+
+[The empty signal room](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md) connects the rain-tank
+light to a human-scale playable room on the existing upper roof, a two-cycle
+arrival tableau, and player-controlled physical watch-log comparison. The
+existing relay remains player-operated. Source, screenshot and regression
+checks are recorded with the increment; the relay now lights the existing lower windows and earns a reaction shot.
+The westward transition is connected in the cumulative 1.1.49 work. The physical
+window entry/handprint is also implemented in a separate local checkpoint;
+it and the bedside memory are delivered through PR414. See
+[publication and provenance](HOLLOW_TRAIL_PUBLICATION_1_1_49.md).
+
+## Mill-register continuation, 1.1.49
+
+After PR411 was merged, [the mill desk becomes player-operated](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md).
+The register follows that body and becomes readable in the existing window beam;
+the fresh desk-leg scrape records actual grounded movement. The original route,
+chapter mechanism and published city work remain intact. The same unreleased
+increment adds [the earned register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md):
+her unequal shoulders and wrist/hair gesture, the departure doorway and second
+loaf, then the trembling page, covered/uncovered six names and keeper's last
+line. [Player-controlled broken-shutter entry](HOLLOW_TRAIL_SHUTTER_ENTRY_1_1_49.md) now connects the grounded approach to that same desk.
+
 ## Scene-by-scene remaining map
 
 “Partial” means there is relevant source/gameplay/art, not full novella parity.
@@ -70,21 +96,21 @@ traversal wholesale with autoplay.
 | 1 Kitchen | Implemented visual increment | Refine hand/cup contact and window reflection against owner feedback |
 | 2 Grass memory | Implemented visual increment | Wrist/knuckle interaction and more natural close facial silhouettes |
 | 3 Departure/orchard | Implemented thread/packing/night beats; continuous route retained | White chimney's final bank occlusion, alder ditch/bronze leaves, animate chair tuck |
-| 4 Marked forest | Partial: rooted terrain, monumental trunks, cloth evidence | Join older bark cut/date/socket to the cloth; local inspection framing |
-| 5 Fallen-tree hollow | Existing resisted push and gravity fall retained | Saw/root detail and bounded settling debris; tune effort only with route evidence |
-| 6 Mill hollow | Implemented exterior/desk placement and arrival tableau | Broken-shutter entry and a player-moved desk exposing the register's ink |
+| 4 Marked forest | [Connected marked tree](images/hollow-trail-marked-tree/README.md): hooked wool, two backward stitches, rounded old wound, date/inscription and paper socket drawing; exact book inspection prose | Physical hand/cloth handling and look-back remain; camera/traversal retained |
+| 5 Fallen-tree hollow | Existing resisted push/gravity retained; [partly sawn roots and split attachment](images/hollow-trail-sawn-roots/README.md) follow the same grounded trunk | Bounded settling debris and finer soil/wood materials remain; preserve force/contact/timing |
+| 6 Mill hollow | Exterior/arrival, [physical shutter entry](HOLLOW_TRAIL_SHUTTER_ENTRY_1_1_49.md), [player-moved desk](HOLLOW_TRAIL_MILL_REGISTER_1_1_49.md) and [earned sister/departure/register memory](HOLLOW_TRAIL_MILL_MEMORY_1_1_49.md) | Refine close silhouettes against owner feedback |
 | 7 Ravine/clearing/gate | Existing branch/rope/bell/gate; new layered skyline and earned city tableau | Extend clearing terrain/large vista and refine gate spatial continuity |
-| 8 Service terrace | New ladder puddle, rubbed bolt/arrows, cage/nest/tank and held city arrival | Extend abandoned terrace materials and continuous onward roof route |
+| 8 Service terrace | Ladder puddle, rubbed bolt/arrows, cage/nest/tank, held arrival, and [vanished-house wall with two exposed rooms](images/hollow-trail-vanished-house/README.md) along the schoolroom-to-upper-roof route | Extend abandoned terrace materials and continuous onward roof route |
 | 9 Schoolroom | Player-controlled schoolroom/map implemented in [1.1.41 continuation](HOLLOW_TRAIL_SCHOOLROOM_1_1_41.md) | Refine hand/desk contact and compare subsequent crossings to the traced sightline |
 | 10 Rain tank/crossings | [Tank refuge and earned opposite-window tableau, 1.1.45](HOLLOW_TRAIL_RAIN_TANK_1_1_45.md), existing physical roofs retained | Brief submerged street glimpse; connect arrival to empty signal-room inspection |
-| 11 Signal room/relay | Existing relay/log puzzle and narrative | Empty chair/automated wheel staging; reveal rather than assume mechanism |
+| 11 Signal room/relay | [Room, autonomous wheel, earned arrival and physical log comparison, 1.1.48](HOLLOW_TRAIL_SIGNAL_ROOM_1_1_48.md); existing player-operated relay | Lower-window response/reaction implemented in 1.1.48; [earned westward warehouse/siding/pump-country view](HOLLOW_TRAIL_WESTERN_VIEW_1_1_49.md) in the cumulative 1.1.49 continuation. [Earned winter bedside-watch memory](HOLLOW_TRAIL_WATCH_MEMORY_1_1_49.md) now follows actual log completion. [Physical window entry/handprint](HOLLOW_TRAIL_WINDOW_ENTRY_1_1_49.md) is implemented and tested, with source/evidence delivered through PR414 |
 | 12 Pump plain | Existing stopped pump silhouettes | Place service lamps and retain exposure/empty horizon |
 | 13 Tank basin/cut | Existing tanks/terrain/stone | Close curved-wall occlusion, eroded culvert and connected underground pipe routes |
-| 14 Stove shed | Narrative fragment only | Cold ordered interior, wrapped pipe, dish rings responding to knocks |
-| 15 Distribution | Existing vessel puzzle/evidence | Physical paired lists/eighth line and progressive steady lamp line |
+| 14 Stove shed | [Physical shed/pipe interaction](HOLLOW_TRAIL_STOVE_SHED_1_1_49.md): cold stove, wrapped pipe, dish rings/shudder, deliberate reply and unanswered wait | Broader ration/distribution story remains separate |
+| 15 Distribution | [Physical paired lists](HOLLOW_TRAIL_DISTRIBUTION_LISTS_1_1_49.md): tied can row, nested lists, empty/marked eighth line and reversible comparison; existing vessel puzzle retained | Gust/caught blank sheet, notebook gesture and feed-driven steady lamp line remain |
 | 16 Carriage/rail dawn | Existing train/yard art | Wheel-less sleeping carriage and coherent dawn reveal |
-| 17 HOME ticket | Existing ticket evidence | Station benches/window with blocked cutting and three comparable dates |
-| 18 Trestle/cabin | Existing crossing/route puzzle | Under-track bracing route, wool contact and five-legged dog at lever |
+| 17 HOME ticket | [Station inspection](HOLLOW_TRAIL_STATION_TICKET_1_1_49.md): relocated HOME ticket, reversible crease, cancellation book, warning and same-world blocked cutting | Relative warning → cancellation → collapse order is preserved; no calendar dates invented |
+| 18 Trestle/cabin | Existing crossing/route puzzle; corrected-map tilt and five-legged paper-dog interaction implemented in local source `df9b3eead`, publication/checks tracked in PR414 | Under-track bracing route and wool contact remain; no new route implied by the cabin insert |
 | 19 Shunting/marsh | Existing three-wagon puzzle | Distinct heavy bodies and continuous ballast-to-reed terrain transition |
 | 20 Ferry | Existing approved boat/grotto retained | Far-bank canvas/person ambiguity and pulling boat to shore; preserve hull quality |
 | 21 Marsh path | Partial wet terrain/depth | Raised bank with transparent/mirrored water and quarry sightline |
@@ -110,16 +136,17 @@ traversal wholesale with autoplay.
 | 41 Settlement | Existing houses/mast | Connected alleys/retaining walls, mundane occupancy traces, ambiguous windows |
 | 42 Tower | Existing climbing/channel boat | Eight hooks/bench, older masonry and visibly steadier boat handling |
 | 43 Cabinet | Existing exclusive choice and testimony | Modest literal room, physical evidence floor, shutters/lamps/pantry-lamp sequence |
-| 44 Final door | Missing; game still loops after final chapter | Dedicated unwired street, shoes, notebook, unpatterned knock and static waiting end |
+| 44 Final door | [Playable Chapter XI, same unreleased 1.1.49](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md): yard pause, unwired street, physical shoes, notebook, unpatterned knock and held waiting frame | Refine human-scale materials/poses against owner feedback; preserve the unanswered end |
 
 ## Next coherent increments
 
-1. Finish Chapter I's mill interaction and clearing terrain without
-   replacing tree/rope gameplay; use the new timeline where stillness aids story
-2. Build the schoolroom → rain tank → empty signal-room sequence as connected
-   city spaces, preserving existing traversal and player-operated relay
-3. Continue chapter-by-chapter. The last-door ending is an explicit missing
-   product outcome, not something the existing ten-chapter loop already proves
+1. Preserve completed forest/mill/city increments; bedside and physical window
+   work are committed/tested and delivered through PR414.
+2. Continue substantive missing physical scenes in Chapters III–X, beginning
+   with the cold-stove shed. The smaller Chapter II submerged-street glimpse
+   remains a later gap, not the next implementation.
+3. Continue chapter-by-chapter. The [dedicated last-door ending](HOLLOW_TRAIL_FINAL_DOOR_1_1_49.md)
+   now follows the tower; the remaining partial/missing sets above still need their own increments
 
 ## Verification record
 
