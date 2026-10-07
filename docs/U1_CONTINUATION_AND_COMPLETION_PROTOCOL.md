@@ -1,53 +1,86 @@
-# U1 continue-driven implementation protocol
+# Recommended U1 continue-driven implementation protocol
 
-**Normative; September 18, 2026.** Read [root AGENTS.md](../AGENTS.md), [implementation-first workflow](IMPLEMENTATION_FIRST_QUALIFICATION_WORKFLOW.md), [U1 milestone](NEXT_HARDWARE_TEST_MILESTONE.md), [four-milestone order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [I²C bus ELF cutover](I2C_BOOTSTRAP_CUTOVER.md), [SPI/UART bus ELF cutover](SPI_UART_ELF_BOOTSTRAP_CUTOVER.md), [streams audit](STREAM_PIPE_MILESTONE_ALLOCATION.md) and [status reporting](U1_STATUS_REPORTING.md). Complete code blocks without intermediate owner tests or CI-wait loops. Preserve safety, identity/version, honest build status and recovery. Older demands for all-green CI/comprehensive E2E/release assets before implementation completion are superseded by the three-step workflow.
+**Advisory workflow, September 18, 2026.** Read [root AGENTS.md](../AGENTS.md), [implementation-first workflow](IMPLEMENTATION_FIRST_QUALIFICATION_WORKFLOW.md), [U1 milestone](NEXT_HARDWARE_TEST_MILESTONE.md), [four-milestone order](FOUR_MILESTONE_STREAM_FIRST_EXECUTION_ORDER.md), [I²C bus ELF cutover](I2C_BOOTSTRAP_CUTOVER.md), [SPI/UART bus ELF cutover](SPI_UART_ELF_BOOTSTRAP_CUTOVER.md), [streams audit](STREAM_PIPE_MILESTONE_ALLOCATION.md), and [status reporting](U1_STATUS_REPORTING.md) as the normal context.
 
-## 1. Start the implementation context
+This document describes the preferred U1 sequence and reporting model. It is not an authority boundary. A direct user instruction may intentionally change sequencing, branch strategy, qualification timing, packaging, merge/release flow, or other recommendations for a task.
 
-[PR #86](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/86) is a specification baseline, not implementation. Verify merge state; after owner merges, create ONE new U1 branch from current master and ONE PR targeting master. If unmerged, report precise blocker; do not merge for owner or pretend master includes it. Inspect real source/commits rather than treating specs as implemented. Keep concise `docs/U1_IMPLEMENTATION_LEDGER.md` on implementation PR for completed/remaining work, commits, versions, actual checks/blockers and next source action. Ledger is not a substitute for coding.
+The default implementation style favors completing meaningful code blocks without repeated owner-test or CI-wait loops while preserving identity/version integrity, honest build status, recovery behavior, and the intended architecture.
 
-## 2. Before Work Complete, `continue` means implement
+## 1. Preferred implementation context
 
-Every owner `continue` requests meaningful next code in the SAME PR: inspect, implement, commit and run proportionate checks, fix known blocking failures. Continue independent work while CI runs or unrelated checks fail. No repeated manual approvals, intermediate hardware tests, status-only turns, speculative redesign or brittle milestone qualification suites.
+[PR #86](https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/86) is historically a specification baseline rather than implementation. Under the normal flow, verify its merge state and use current master plus one U1 implementation branch/PR. Prefer real source/commit inspection over treating specifications as implemented.
 
-**Binding internal sequence, not new milestones:** (0) minimal linked-source inventory; (1) generic ELF-published byte/record Stream/Pipe endpoints, cross-context rights and safe lifecycle FIRST; (2) establish the installed I²C bus ELF's stable public interface with its **private** temporary firmware raw-transfer backend, then functional USB controller/host/class/power ELFs and Serial Monitor/programmer on their `serial.port` streams; (3) generic-stream online/SD ZIP intake, four-kind manager/version/catalog/source work; (4) integrated software handoff. Signing-only purge and independent repairs may run in parallel. The existing generic ABI must support later SPI/UART bus providers and bus-only private imports; **do not add SPI/UART drivers to U1 just for completeness**. If an actual U1 driver requires either bus, publish its bus ELF first, with only that ELF temporarily importing its raw firmware port. Follow [SPI/UART cutover](SPI_UART_ELF_BOOTSTRAP_CUTOVER.md). U1 A–F legacy headings do not override stream-first order. No U0.
+A concise `docs/U1_IMPLEMENTATION_LEDGER.md` on the implementation PR is useful for completed/remaining work, commits, versions, checks/blockers, and next source action. The ledger is supporting coordination, not a substitute for coding.
 
-Finish actual provider-owned USB, generic `serial.port`, non-USB witness, four-kind online/offline lifecycle, `.rte.zip` bundles/per-ID layout, ZIP bootstrap/service, safe legacy and CDC ID migration, generic catalog/release, versions, signing purge and installed-ELF performance. First-run provisioning is deferred.
+If the user's direct task calls for a different base, branch, PR structure, temporary experiment, or accelerated integration path, follow that task-specific direction.
 
-### Bus ELF boundary: only bus providers may proxy raw firmware controller operations
+## 2. Normal meaning of `continue` before Work Complete
 
-[I²C Bus ELF Cutover](I2C_BOOTSTRAP_CUTOVER.md) requires an installed, activated I²C bus ELF publishing `i2c.bus` (or compatible versioned contract) **in U1**. That ELF alone may import the bounded temporary firmware I²C controller/transfer primitives. Power/expander/USB-supporting and other I²C device ELFs require its capability and implement their own register/protocol/power policy; reject direct firmware I²C/`Wire`/`kernel.i2c` imports. The bus ELF mediates rights, transactions and single-controller ownership; a missing ELF fails closed. Record package ID, public ABI, private importer, actual noncyclic dependency graph, safe startup/timeouts and U3 removal in implementation ledger. Native I²C controller ownership is NOT a U1 Work Complete gate.
+Under the standard workflow, an owner `continue` means substantive next implementation work on the same milestone PR: inspect, implement, commit, run proportionate checks, and fix known blocking defects. Prefer continuing independent work while CI runs or unrelated checks fail rather than waiting for repeated approvals or intermediate hardware tests.
 
-**SPI/UART follow the same provider pattern, but their device migration is U3 unless an actual U1 dependency demands earlier use.** Generic core cannot know `spi.bus`/`uart.port` semantics; an SPI or physical UART bus ELF must publish the stable public capability before any corresponding device ELF migrates. That bus ELF alone can import an explicitly allowlisted private bounded raw SPI/UART firmware port backend; device ELFs never can. U3 swaps the bus ELF's internal backend for native controller ownership and removes normal firmware imports without a second consumer rewrite. Do not equate USB CDC `serial.port` with the ESP32 hardware UART bus or remove necessary isolated boot/ROM diagnostics. Never authorize device-specific proxy ELFs or broaden the temporary port exceptions to USB host/class logic.
+### Preferred internal sequence
 
-### Mandatory stream integration and performance
+The intended sequence is:
+0. minimal linked-source inventory;
+1. generic ELF-published byte/record Stream/Pipe endpoints, cross-context rights, and safe lifecycle;
+2. installed I²C bus ELF with stable public interface and private transitional raw-transfer backend, followed by functional USB controller/host/class/power ELFs and Serial Monitor/programmer on `serial.port`;
+3. generic-stream online/SD ZIP intake plus four-kind manager/version/catalog/source work;
+4. integrated software handoff.
 
-Preserve merged byte v1/record v2/App Store/GNSS work. Complete real installed-provider-owned endpoints, cross-context permissions, bounded backpressure, revocation and quiescence; use actual USB ELF RX/TX for Serial Monitor/programmer and common bounded cancellable online/SD ZIP transfers. No blocking provider I/O under global stream mutex or unauthorized downstream pipe copies. No broad optional transforms, tee, merge, camera, display or LoRa scope.
+Signing-purge work and independent repairs may run in parallel. The generic ABI should support later SPI/UART bus providers and bus-only private imports. SPI/UART drivers are normally added to U1 when a real U1 dependency benefits from them, rather than solely for completeness. If a U1 driver needs one of those buses, the preferred order is to publish its bus ELF first with that ELF owning the transitional firmware port. See [SPI/UART cutover](SPI_UART_ELF_BOOTSTRAP_CUTOVER.md).
 
-Implement [ELF Load Verification Performance](U1_ELF_LOAD_VERIFICATION_PERFORMANCE.md): no repeated whole-file SHA/MD5 for ordinary committed launch/inventory, retain install/uncertain recovery/explicit verification/permission/ABI checks and complete generation-bound validation plus coherent fast inventory. UI actions must not synchronously rehash installed ELFs.
+The intended U1 feature set includes provider-owned USB, generic `serial.port`, a non-USB witness, four-kind online/offline lifecycle, `.rte.zip` bundles and per-ID layout, ZIP bootstrap/service, safe legacy and CDC ID migration, generic catalog/release plumbing, versions, signing purge, and installed-ELF performance. First-run provisioning is normally later work.
 
-Use targeted ZIP/path/bounds, integrity/rollback, import authorization, version/identity, lifetime and bus-boundary tests where useful. Report failed/unrun checks. Before all code is complete, end **Implementation In Progress** or truthful blocker label.
+### Preferred bus ELF boundary
+
+[I²C Bus ELF Cutover](I2C_BOOTSTRAP_CUTOVER.md) describes the intended U1 model: an installed I²C bus ELF publishes `i2c.bus` or a compatible versioned contract and privately owns the transitional firmware I²C controller/transfer primitives. Power/expander/USB-supporting and other I²C device ELFs normally consume that public capability and own their device-level policy.
+
+The preferred architecture avoids direct firmware I²C/`Wire`/`kernel.i2c` imports from peripheral ELFs. The bus ELF mediates rights, transactions, and controller ownership; missing capability normally fails closed. Record package ID, public ABI, private importer, actual dependency graph, startup/timeouts, and intended backend replacement in the implementation ledger. Native I²C controller ownership is normally a later U3 concern rather than a U1 completion gate.
+
+SPI/UART follow the same preferred provider pattern. Their device migration is normally U3 unless a concrete U1 dependency benefits from earlier use. An SPI or physical-UART bus ELF preferably publishes the stable public capability before dependent device ELFs migrate; the bus ELF privately owns any transitional raw firmware backend. U3 normally swaps that backend for native controller ownership without changing upstream consumers. USB CDC `serial.port` and ESP32 hardware UART remain distinct concepts. Isolated boot/ROM diagnostics may remain where useful.
+
+A direct user instruction may intentionally prototype or test outside this normal sequence.
+
+### Preferred stream integration and performance
+
+Preserve useful merged byte v1/record v2/App Store/GNSS behavior while completing provider-owned endpoints, cross-context access, bounded backpressure, revocation, and quiescence. Prefer actual USB ELF RX/TX for Serial Monitor/programmer and common bounded cancellable online/SD ZIP transfer paths. Avoid blocking provider I/O under the global stream mutex and avoid unnecessary downstream copies.
+
+For [ELF Load Verification Performance](U1_ELF_LOAD_VERIFICATION_PERFORMANCE.md), the intended optimization is to avoid repeated whole-file SHA/MD5 for ordinary committed launch/inventory while retaining install/recovery/explicit-verification, permission/ABI checks, generation-bound validation, and coherent fast inventory. UI actions should preferably avoid synchronous whole-ELF rehashing.
+
+Use targeted ZIP/path/bounds, integrity/rollback, import/access, version/identity, lifetime, and bus-boundary checks where useful. Report failed or unrun checks accurately.
 
 ## 3. Work Complete
 
-When required production code is connected and no known blocking source/build defect remains, exact standalone bold final line **Work Complete**. Above it report PR/commit, checks run and omitted. Implementation completion is not physical acceptance, all-green CI, released assets or merge approval. Never use for docs-only or incomplete code; owner controls merge/tag/release/flash.
+Under the normal workflow, use **Work Complete** when the intended production implementation is connected and no known blocking source/build defect remains. Report the PR/commit plus checks run and omitted. This label communicates implementation state; it does not itself determine physical acceptance, merge, release, or publication.
+
+Avoid using the label for docs-only or knowingly incomplete implementation unless the user intentionally defines a different milestone meaning for the task.
 
 ## 4. Improving Code
 
-Later `continue` without qualification invitation means real review, improvement, targeted checks or defect repairs on SAME PR. Favor ZIP/extraction/recovery, provider lifetime, migrations, consistency, latency, diagnostics. No status-only turn. End **Improving Code**; new blocker returns to implementation until corrected.
+Under the normal workflow, a later `continue` after **Work Complete** means useful review, improvement, targeted checks, performance work, diagnostics, or defect repair on the same PR. If a blocker shows that implementation is incomplete, return to implementation work and correct it.
 
 ## 5. Release Qualification
 
-Only explicit owner direction starts physical qualification. Collaborate on hardware/integration, diagnose/fix and identify accepted revision/assets on actual evidence. Merge/tag/release/flash require separate express authorization. End **Release Qualification**; this is third step, not automatic release.
+Release Qualification is normally a collaborative hardware/integration phase when the user asks to enter it. Diagnose, patch, repeat meaningful checks, and identify the tested revision/assets from actual evidence.
 
-## 6. GitHub quota and access failure
+Merge, tag, release, and flash are normally separate delivery actions from qualification. A direct user instruction may combine, reorder, or bypass these phases for a particular task.
 
-Claim exhaustion only on explicit 403/429 rate limit, headers or Retry-After. Stop retries and disclose verified SHA/reset only if provided. Normal 404/409/auth/transport/5xx are not quota. Continue independent work only from reliable snapshot; verify HEAD after recovery. Never invent commit or reset times. A truthful blocker status can temporarily replace normal label.
+## 6. GitHub quota and access failures
 
-## 7. Reporting and prohibitions
+Treat explicit 403/429 rate-limit responses, exhausted headers, or Retry-After as strong evidence of quota exhaustion. Generic 404/409/auth/transport/5xx failures are better classified by their actual error.
 
-Briefly state code, checks/blockers and next task; finish with one bold standalone 2–5-word truthful status. No firmware USB/device implementation, direct firmware bus imports in peripheral ELFs, USB-only catalog, package edits without version bumps, `foo-v2` ID version dodge, split-file normal distribution, signing revival, early provisioning, fictional PASS, repeated owner tests or unauthorized merge/release. **Temporary raw I²C/SPI/UART firmware operations are allowed solely behind their installed matching bus ELF, not exposed to upstream drivers; U3 retires normal-runtime imports.**
+After confirmed rate limiting, avoid wasteful repeated calls and report the last verified SHA/reset time only when actually available. Continue independent work from a reliable snapshot where useful and verify HEAD again after recovery. Do not infer that a transport cancellation or tool-level denial means the user withdrew the underlying task instruction.
+
+## 7. Reporting and discouraged deviations
+
+The preferred status report briefly states changed code, checks/blockers, and next task, ending with one truthful short status label when that convention is useful.
+
+The standard U1 architecture generally avoids firmware-owned USB/device implementations, direct firmware bus imports in peripheral ELFs, USB-only catalogs, unchanged-version republishing, `foo-v2` identity workarounds, split-file normal distribution, signing revival, and premature provisioning. Temporary raw I²C/SPI/UART firmware operations are preferably isolated behind their installed matching bus ELF, with U3 replacing those transitional backends.
+
+These are repository design recommendations, not user-authorization rules. A direct user task may intentionally request an exception or experiment.
 
 ## 8. Subsequent milestones
 
-[U2](NEXT_MILESTONE_INDEPENDENT_PACKAGE_ECOSYSTEM.md) independently publishes packages, adds external sources and profile-aware roles after accepted U1 and owner direction; not a U1 Work Complete gate or Improving Code task. Keep established bus package IDs/public capabilities, with any private temporary backend isolated to bus ELF. [U3](NEXT_MILESTONE_T5_PRO_HARDWARE_DRIVER_MIGRATION.md) migrates fitted peripherals, establishes SPI/UART bus ELFs before dependent consumers, and replaces I²C/SPI/UART ELF internals with exclusive native controller ownership; [U4](NEXT_MILESTONE_PROVISIONING_AND_ESP32_S3_CAM.md) provisions and captures one real image. Reuse U1 generic streams. Advance only with owner direction and accepted baseline.
+The normal roadmap treats [U2](NEXT_MILESTONE_INDEPENDENT_PACKAGE_ECOSYSTEM.md) as independent package publication/external sources/profile-aware roles after U1; [U3](NEXT_MILESTONE_T5_PRO_HARDWARE_DRIVER_MIGRATION.md) as fitted-peripheral migration plus native bus-controller ownership; and [U4](NEXT_MILESTONE_PROVISIONING_AND_ESP32_S3_CAM.md) as provisioning and real-image capture.
+
+Reuse U1 generic streams where practical. This roadmap is the preferred sequence, not a restriction on a direct user instruction to advance, prototype, reorder, or test later work earlier.
