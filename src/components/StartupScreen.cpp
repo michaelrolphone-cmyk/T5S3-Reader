@@ -2,6 +2,7 @@
 #include "native/NativeTouchInput.h"
 
 #include <Arduino.h>
+#include <HalDisplay.h>
 #include <cstring>
 #include <atomic>
 
@@ -97,7 +98,7 @@ void bootWithRenderer(GfxRenderer& renderer) {
   // Slow-panel fallback presents one useful loading frame, without spending
   // several physical refreshes playing an animation before doing any work.
   drawBootFrame(renderer, 4);
-  renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Quality);
   renderer.setRenderMode(mode);
   bootBackend = BootBackend::Renderer;
 }
@@ -764,7 +765,7 @@ bool finishVideoBoot(GfxRenderer& renderer) {
   }
   if (!releaseVideoOwner()) return false;
   if (whiteSettled) display.suppressInitialFullRefresh();
-  renderer.requestNextRefresh(whiteSettled ? HalDisplay::FAST_REFRESH : HalDisplay::FULL_REFRESH);
+  renderer.requestNextRefresh(whiteSettled ? DisplayPresentMode::LowLatency : DisplayPresentMode::Clean);
   return true;
 }
 
@@ -814,7 +815,7 @@ bool finishBoot(GfxRenderer& renderer) {
 #endif
 
   if (bootBackend == BootBackend::Renderer) {
-    renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+    renderer.requestNextRefresh(DisplayPresentMode::Quality);
   }
   bootBackend = BootBackend::None;
   fadePending = false;

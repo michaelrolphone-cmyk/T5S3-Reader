@@ -6,8 +6,8 @@ namespace RuntimePackages {
 
 // Only runtime-owned, single-directory layouts may use this primitive. Paths
 // are derived from validated identities and writes go through HalStorage.
-// Verify checks every managed byte before publication; publisher authentication
-// remains a separate prerequisite for the future signed package installer.
+// Verify checks every managed byte before publication. Content consistency
+// does not grant execution/import or hardware authority; runtime policy does.
 struct TransactionPaths {
   const char* target;
   const char* stage;

@@ -22,6 +22,8 @@ bool nativeTouchGetTap(NativeTouchPoint& point);
 bool nativeTouchGetContact(NativeTouchPoint& point);
 bool nativeTouchGetHold(NativeTouchPoint& point, unsigned long& heldMs);
 bool nativeTouchGetSwipe(NativeTouchPoint& start, NativeTouchPoint& end);
+// One-shot capture timestamp, retained even when the UI polls late.
+bool nativeTouchTakeHomePress(unsigned long& eventMs);
 bool nativeTouchTakeHomePress();
 
 // Copied counters for diagnostics; no provider pointers escape the consumer.

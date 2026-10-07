@@ -1,0 +1,40 @@
+name: CAM headless port contracts
+on:
+  pull_request:
+    paths:
+      - 'Drivers/camera_esp32s3/**'
+      - 'Drivers/cam_ov3660_profile/**'
+      - 'sdk/driver/RiscCamera*'
+      - 'test/camera/**'
+      - 'test/hardware/cam/**'
+      - 'test/run_camera_provider_test.sh'
+      - 'ports/cam/**'
+      - 'src/runtime/boot/Headless*'
+      - 'src/runtime/boot/DefaultAppSelection.h'
+      - 'src/main.cpp'
+      - 'lib/NativeApps/src/NativeAppLauncher.c'
+      - 'Apps/camera_utility.*'
+      - 'test/native_apps/camera_utility_test.c'
+      - 'test/runtime/default_app_*'
+      - 'test/boot/**'
+      - 'test/run_cam_headless_test.sh'
+      - '.github/workflows/cam-headless.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot failure and real port coherence contracts
+        run: bash test/run_cam_headless_test.sh
+      - name: Camera lifecycle and bounded stream contracts
+        run: sh test/run_camera_provider_test.sh
+      - name: Default app selection and camera utility contracts
+        run: |
+          c++ -std=c++17 -Wall -Wextra -Werror -Itest/runtime/default_app_stubs -Ilib/NativeApps/include -Isrc test/runtime/default_app_selection_test.cpp -o "$RUNNER_TEMP/default-app-test"
+          "$RUNNER_TEMP/default-app-test"
+          cc -std=c11 -Wall -Wextra -Werror -Ilib/NativeApps/include -Isdk/driver test/native_apps/camera_utility_test.c -o "$RUNNER_TEMP/camera-app-test"
+          "$RUNNER_TEMP/camera-app-test"

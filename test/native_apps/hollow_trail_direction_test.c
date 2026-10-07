@@ -21,6 +21,24 @@ int main(void) {
     assert(ht.x-start>=30*256 && ht.x-start<=36*256); /* ~1 sec of ordinary walking. */
     for(int n=0;n<8;++n)ht_step_controls(0,0,false,false);
     assert(ht.vx==0 && ht.grounded);
+    /* Y emphasis is transient: output speed/acceleration gain 10%
+     * (integer-rounded) while authored pace storage remains untouched. */
+    ht_spawn(true);ht.grounded=true;ht.traversal.mode=HT_FREE;
+    ht.pace=300;ht_motion_emphasis=false;
+    assert(ht_walk_speed(&ht)==300 && ht_motion_speed(&ht)==300);
+    ht_motion_emphasis=true;
+    assert(ht_motion_speed(&ht)==330 && ht.pace==300);
+    assert(ht_climb_speed(&ht)==330*3/4);
+    ht_motion_emphasis=false;
+    ht.pace=(uint16_t)ht_pace_target(&ht);ht.vx=0;
+    ht_game ordinary=ht;
+    ht_step_controls(1,0,false,false);
+    int ordinary_accel=ht.vx;
+    ht=ordinary;ht_motion_emphasis=true;
+    ht_step_controls(1,0,false,false);
+    assert(ht.vx==ht_emphasis_amount(ordinary_accel));
+    assert(ht.pace<=ordinary.pace+2 && ht.pace+2>=ordinary.pace);
+    ht_motion_emphasis=false;
     ht.x=1840*256;assert(ht_pace_target(&ht)>close+40);
     ht_game scene=ht;scene.intimacy=ht_intimacy_target(&scene);scene.vista=ht_vista_target(&scene);
     assert(ht_scene_scale(&scene)==176);

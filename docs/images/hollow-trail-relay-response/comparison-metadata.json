@@ -1,0 +1,224 @@
+{
+  "before": {
+    "version": "1.1.48",
+    "source_files": {
+      "Apps/hollow_trail.c": "c225825603a828776c38cfafb68e96eda8678f55a7922ca2dc77813b9aa295e8",
+      "Apps/hollow_trail.json": "54d5f2231e3f709c007cd59decc5125ba3b4437eeccae30b59e4352d2c446aff",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "ff7093eddab7c524004d09514377ba5050d757b6f0624e611f547dc7c063ffd5",
+      "Apps/hollow_trail_city_draw.inc": "c29eef309b67c2cda2dfdfb61a94f3997aa26325ea315f4c51734274756f5747",
+      "Apps/hollow_trail_cutscene.inc": "c8cbc62d5957eec07897038fc456c2e9e125e6f29d1a8b07911338fe6305ce8b",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "89c2e87f60d586b2107714c12a3815c7c72326b49bab40445ccb07b4dccfef23",
+      "Apps/hollow_trail_evidence.inc": "71e1fc0a6bbaf46861e2cf558682c1693c31bd603b9c46ba610f842bacc7daab",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "9fecb00c8682c7ff60743e270d36321ad23deef8ad673e4def8c954a6795c9d6",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "ff680e3e183b1260fec9c7c565c562dc0a76b672855e1bb50360ca9abc6d79f3",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "697f578fd9bf0870073660348de01406128c0329a9f6f61f7c6dd0253baa1cc3",
+      "Apps/hollow_trail_maps.inc": "3583c463b5c13b6926f2b45faf7e87762b69b8db0fd4b716ae9461e3ce2dafcb",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "ea33bd83e1c10498e8ac9dc4ccc78d9623fd394151d9f86dd8cd15ebb37b0a5a",
+      "Apps/hollow_trail_traversal.inc": "7c7b8dcbe69471c53450153bf67625a93d1901b668f4f091239e50220ada4f2e",
+      "Apps/hollow_trail_traversal_draw.inc": "ec7558a9702e8814b68bce7bc7c231117e223375e10f4419950c228f15ec89ba",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0"
+    },
+    "captures": [
+      {
+        "view": "unpowered",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "763a75eca11fea1bd930aa819f4bb55fc0e5f16d530bf5d6a5b52fbde77ef107",
+          "mono": "6d7373598db1425cb5acd4bf2bbf62c3d9de7564f6b823ba1c691a83cb4487c9"
+        }
+      },
+      {
+        "view": "powered",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "ab7b815d20959319bf866088d0706d152eb66ecd3de5e22a890f573e3e34a003",
+          "mono": "8679d94d9046559e9dba895e201449aa08dc1ffc052231ae2b3704f81ce38d14"
+        }
+      },
+      {
+        "view": "reaction",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "8984899d3a191e78adb4578cf31679910cfbe0be35df5aeb3c268d7d4dbb950e",
+          "mono": "e48aa1c400783c132ea05566d12d96b8457a0ebcb0efa234fe6d09f99f16e18f"
+        }
+      }
+    ],
+    "fixture": {
+      "player": [
+        3155,
+        200
+      ],
+      "camera": [
+        2955,
+        20
+      ],
+      "ticks": 8,
+      "relay_values": [
+        2,
+        1,
+        2
+      ],
+      "reaction_tick": 240,
+      "reaction_camera_shift": [
+        42,
+        64
+      ]
+    },
+    "baseline_reaction": "Matched composition using original production source draw functions; the after image uses the new real reaction timeline."
+  },
+  "after": {
+    "version": "1.1.48",
+    "source_files": {
+      "Apps/hollow_trail.c": "91f0460aa46bcd52e06b7612a588dd53832e9cd3d8fe817f2b1c0704b1093cda",
+      "Apps/hollow_trail.json": "54d5f2231e3f709c007cd59decc5125ba3b4437eeccae30b59e4352d2c446aff",
+      "Apps/hollow_trail_atmosphere_draw.inc": "2d27173349c888de72092ec2d878f73782c92339adc2fbe2685a2646a23c96e3",
+      "Apps/hollow_trail_chapter_draw.inc": "09107cb092d73e99e8c34046499996df982a0d70f12fec598a149b8b24ff2f2d",
+      "Apps/hollow_trail_character_pose.inc": "ff7093eddab7c524004d09514377ba5050d757b6f0624e611f547dc7c063ffd5",
+      "Apps/hollow_trail_city_draw.inc": "c29eef309b67c2cda2dfdfb61a94f3997aa26325ea315f4c51734274756f5747",
+      "Apps/hollow_trail_cutscene.inc": "7c7e1ea463f6a821a281b7837c5a0071cf56fcb77fcc714daf3e4f27472f461c",
+      "Apps/hollow_trail_dam_draw.inc": "994a97965af094d25ce8f138a4a7a7a425aacef52854cc00848ac4d839276970",
+      "Apps/hollow_trail_depth.inc": "cb7b014bb8c648bb0196ed8899b37583e1b5bcccf40bae2510f4c57daad1f32b",
+      "Apps/hollow_trail_direction.inc": "a2ffe4bbef2a0d5b95652a4d576f48646d88e218b8533676a4c06e3bd3774329",
+      "Apps/hollow_trail_domestic_draw.inc": "a7a406fa46c5822564d518148bbe031f28423b2eeca3ca42aaa15c8d87db86a6",
+      "Apps/hollow_trail_endings.inc": "56ea1bf673e30d74bbc5ec94a475ae22743f69273afeeceed548bee2b99c60b2",
+      "Apps/hollow_trail_engine.inc": "89c2e87f60d586b2107714c12a3815c7c72326b49bab40445ccb07b4dccfef23",
+      "Apps/hollow_trail_evidence.inc": "71e1fc0a6bbaf46861e2cf558682c1693c31bd603b9c46ba610f842bacc7daab",
+      "Apps/hollow_trail_expanded_simd.inc": "81ac0b5f2e067b70390cd83768344daedb5655c6864fce52eed9efcd17d5cecc",
+      "Apps/hollow_trail_foliage.inc": "08c35c792d9221f50ab263e9590f26fb23e6a4fcd9362cb64aecac09385115a2",
+      "Apps/hollow_trail_forest_draw.inc": "9fecb00c8682c7ff60743e270d36321ad23deef8ad673e4def8c954a6795c9d6",
+      "Apps/hollow_trail_forest_light.inc": "8485b768f600f109fea62f919232b9a1eb40cd1178b3bfb4c6f377981665132c",
+      "Apps/hollow_trail_fps.inc": "687aa54d0d10b8d982a222bd41f4979175d963ce81aa880c56083a0535bdae4e",
+      "Apps/hollow_trail_geography_draw.inc": "7e09103d894c338d62b0e5538dc7866503ea2f7a61ad0eea81ad5e7c95d85d5a",
+      "Apps/hollow_trail_journal.inc": "ff680e3e183b1260fec9c7c565c562dc0a76b672855e1bb50360ca9abc6d79f3",
+      "Apps/hollow_trail_landscape_detail.inc": "640a173707c4c3d850c794e6397bfb1356c9e40ccba09d0c1cdb0cfa3779344e",
+      "Apps/hollow_trail_lore.inc": "697f578fd9bf0870073660348de01406128c0329a9f6f61f7c6dd0253baa1cc3",
+      "Apps/hollow_trail_maps.inc": "3583c463b5c13b6926f2b45faf7e87762b69b8db0fd4b716ae9461e3ce2dafcb",
+      "Apps/hollow_trail_material_detail.inc": "ef5040101377a7518f37b9b3216550f11af8feebf3eccc77acb876f90cd0678e",
+      "Apps/hollow_trail_mechanism_draw.inc": "a7fcbf5aa08cb020aad072fdebb6576c885541d8462a416ed6da6d3008f994c8",
+      "Apps/hollow_trail_memory.h": "23554b0fe95e48e44b54dcf5611c5de445353c09076dfad5061c9a4e370b8717",
+      "Apps/hollow_trail_neural_upscale.inc": "e10d340dc4dc1ee73e115d436fba47aab531ab8ae6913c3ab2877a0b13209f20",
+      "Apps/hollow_trail_organic_draw.inc": "5ea9b6fac761c490ab2dee566d4732bf2cf49ec362ea0a66db45788a9b847447",
+      "Apps/hollow_trail_puzzles.inc": "7f2fdce6f0079d84577f22f7f7af92905eba8533de4f7f698b797c4611b6f4cb",
+      "Apps/hollow_trail_rain_tank.inc": "78f4e1399c94549332d0edba4803b54bf3707b747b6d9a741c3c76b9905a66ca",
+      "Apps/hollow_trail_schoolroom.inc": "c8221c964f592f36681b3f127931fad5429155fade4d9bd3d55d09a164517a19",
+      "Apps/hollow_trail_signal_room.inc": "e4ecdd0a1e1f4905f9bb0c64f832a539f55262832fc182320c4bed0e5c37f1de",
+      "Apps/hollow_trail_simd.inc": "ce23756b89a2de7cc08438c767ab0dcdcc6a28ffe9362e7f61e8a78e98dc53eb",
+      "Apps/hollow_trail_story.inc": "e7fa2fe20f6fc74c2ef28e411bd8a710f6c91ce3828bc7512a8cd34f8c8ae18b",
+      "Apps/hollow_trail_terrain.inc": "c6437dbe868b0d95b56827ab124f2ac54dfdc8d72f41994b9e41d60063d5f2a5",
+      "Apps/hollow_trail_terrain_draw.inc": "c17dd8f50092e0519d8ed65121898f78a608a78939a85f759babc52c85a7e059",
+      "Apps/hollow_trail_traversal.inc": "7c7b8dcbe69471c53450153bf67625a93d1901b668f4f091239e50220ada4f2e",
+      "Apps/hollow_trail_traversal_draw.inc": "ec7558a9702e8814b68bce7bc7c231117e223375e10f4419950c228f15ec89ba",
+      "Apps/hollow_trail_trees.inc": "30db74be3ac0ba2c5ead0a3f27ef19a2e500197810251e45c954fbedeba134b0"
+    },
+    "captures": [
+      {
+        "view": "unpowered",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "763a75eca11fea1bd930aa819f4bb55fc0e5f16d530bf5d6a5b52fbde77ef107",
+          "mono": "6d7373598db1425cb5acd4bf2bbf62c3d9de7564f6b823ba1c691a83cb4487c9"
+        }
+      },
+      {
+        "view": "powered",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "01df413954638bd57dfc08026ab67d3a7df1fc3414039943ccc5f2b1efb616ab",
+          "mono": "93bca6b13fb6bb23eab4e8f7db22240f3117a37dd3d9aa7908de2967ebb93a5f"
+        }
+      },
+      {
+        "view": "reaction",
+        "raster": [
+          960,
+          540
+        ],
+        "hashes": {
+          "gray": "fd4ff32842a5b73c2a7c00076484908afc0cdb3f07c59c15fa4f7641a3889278",
+          "mono": "19cf8a2a1a946b3f1e493bb94147a00eed7c65024febdd39503da159f72ff025"
+        }
+      }
+    ],
+    "fixture": {
+      "player": [
+        3155,
+        200
+      ],
+      "camera": [
+        2955,
+        20
+      ],
+      "ticks": 8,
+      "relay_values": [
+        2,
+        1,
+        2
+      ],
+      "reaction_tick": 240,
+      "reaction_camera_shift": [
+        42,
+        64
+      ]
+    },
+    "baseline_reaction": "Matched composition using original production source draw functions; the after image uses the new real reaction timeline."
+  },
+  "unpowered_control": "identical grayscale and packed mono",
+  "comparisons": [
+    {
+      "view": "powered",
+      "changed_pixels": {
+        "gray": 17319,
+        "mono": 8141
+      }
+    },
+    {
+      "view": "reaction",
+      "changed_pixels": {
+        "gray": 14972,
+        "mono": 8206
+      }
+    }
+  ],
+  "canvas_check": "Each image region was compared byte-for-byte to its original raster."
+}

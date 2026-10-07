@@ -1,10 +1,19 @@
+#include "hollow_trail_first_house_draw.inc"
+#include "hollow_trail_sleep_draw.inc"
+#include "hollow_trail_pouch_draw.inc"
 #include "hollow_trail_material_detail.inc"
+#include "hollow_trail_waiting_draw.inc"
+#include "hollow_trail_distribution_draw.inc"
+#include "hollow_trail_station_draw.inc"
+#include "hollow_trail_carriage_draw.inc"
+#include "hollow_trail_signal_cabin_draw.inc"
 #include "hollow_trail_geography_draw.inc"
 #include "hollow_trail_terrain_draw.inc"
 #include "hollow_trail_landscape_detail.inc"
 #include "hollow_trail_forest_draw.inc"
 #include "hollow_trail_city_draw.inc"
 #include "hollow_trail_chapter_draw.inc"
+#include "hollow_trail_stove_draw.inc"
 /* Continuous dark rope with alternating diagonal fibre ridges. The pattern
  * belongs to arc length, so it turns with the rope rather than screen time. */
 static void ht_twisted_rope(int x,int y,int ex,int ey,int *along) {
@@ -25,7 +34,9 @@ static void ht_draw_traversal(const ht_game *g) {
     const ht_platform *land=ht_level_land(g->level);
     const ht_mechanics *m=ht_mech(g);
     if(g->level==0)ht_forest_backdrop(g);
+    ht_forest_city_horizon(g);
     if(g->level==1)ht_city_backdrop(g);
+    ht_city_vanished_house(g);
     ht_authored_backdrop(g);
     if(!ht_grotto_opaque(g)) {
         ht_scene_geography(g);
@@ -59,6 +70,10 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     ht_dam_spray(g);
     ht_boat_grotto(g);
+    /* Background/grotto retain the original full 960x540 native path.
+     * From here forward, native A/B uses 960x270 detail: full horizontal
+     * resolution with one computed row duplicated to each physical row pair. */
+    if(ht_native_active)ht_native_foreground_half_y=true;
     /* Distinct natural silhouettes stay anchored to the new physical route. */
     for(int i=0;i<HT_PLATFORMS;++i) {
         if(g->level==1 || i==m->bridge || (i!=0 && i!=2 && i!=5 && i!=8) || (g->level==4 && i==0)) continue;
@@ -70,6 +85,8 @@ static void ht_draw_traversal(const ht_game *g) {
             ht_grounded_tree(g,i,world,g->level==0?340+(i%3)*65:130+(i%3)*27,g->level==0?23+(i%3)*5:7,(unsigned)i+901);
 
     }
+    ht_forest_mill(g);
+    ht_city_schoolroom(g);
     ht_story_landmarks(g);
     ht_draw_evidence(g);
     for(int i=0;i<HT_PLATFORMS;++i) {
@@ -88,6 +105,19 @@ static void ht_draw_traversal(const ht_game *g) {
     }
     if(g->level==0)ht_forest_log_draw(g);
     ht_city_roof_detail(g);
+    ht_city_service_arrival(g);
+    ht_city_rain_tank(g);
+    ht_city_signal_room(g);
+    ht_stove_room(g,0,0);
+    ht_station_room(g);
+    ht_distribution_room(g,48);
+    ht_sleep_room(g,g->sleep_view_active?ht_sleep_closure(g->sleep_view_stage,g->sleep_view_tick):0,
+      !g->sleep_view_active || g->sleep_view_stage==0 || g->sleep_view_stage==4 || (g->sleep_view_stage==1 && g->sleep_view_tick<80) || (g->sleep_view_stage==3 && g->sleep_view_tick>=96));
+    ht_cabinet_room(g);
+    ht_first_house_room(g,g->first_house_lean);
+    ht_pouch_room(g);
+    ht_waiting_room(g,g->waiting_view_active?(unsigned)ht_waiting_pull(g->waiting_view_tick):0,
+        g->waiting_view_active && g->waiting_view_tick>=104?ht_waiting_swing(g->waiting_view_tick-104):0);
     if(m->plate_kind) {
         int x=m->plate_x-cx,y=m->plate_y-cy;
         ht_rect(ht_scene,x-21,y-1,42,3,255);
@@ -117,25 +147,21 @@ static void ht_draw_traversal(const ht_game *g) {
     if(m->ball_x) {
         int bx=g->traversal.ball_x/256-cx,by=g->traversal.ball_y/256-cy;
         if(bx>=-18 && bx<=HT_W+18 && by>=-18 && by<=HT_H+18) {
-            if(g->level==0) {
-                /* Rounded weathering is still the physical circular stone;
-                 * shallow contour chips and broad facets replace the wheel rim. */
-                static const int8_t rim[24][2]={{16,0},{15,4},{14,8},{11,11},{8,14},{4,15},
-                    {0,16},{-4,15},{-8,13},{-11,11},{-14,8},{-15,4},
-                    {-16,0},{-15,-4},{-14,-8},{-11,-11},{-8,-14},{-4,-15},
-                    {0,-16},{4,-15},{8,-14},{11,-11},{14,-8},{15,-4}};
-                for(int v=0;v<24;++v) {
-                    int n=(v+1)%24;
-                    ht_triangle(ht_scene,bx-2,by-3,bx+rim[v][0],by+rim[v][1],
-                        bx+rim[n][0],by+rim[n][1],v<8?219:(v<15?180:148));
-                }
-                ht_limb(ht_scene,bx-10,by-7,bx-6,by-12,0,0,110);
-            } else {
-            ht_disk(ht_scene,bx,by,HT_BALL_RADIUS,255);
-            ht_disk(ht_scene,bx-1,by-1,HT_BALL_RADIUS-2,165);
-            ht_triangle(ht_scene,bx-11,by-8,bx+1,by-13,bx-3,by+2,80);
-            ht_triangle(ht_scene,bx+10,by-8,bx+12,by+9,bx-1,by+13,225);
+            /* A chipped mineral mass, not a wheel. Keep the same stable
+             * circular contact envelope so existing roll/step physics agree.
+             * Bright upper facet and dark rim survive either dark soil or fog. */
+            static const int8_t rim[12][2]={{16,0},{13,7},{10,12},{1,16},
+                {-7,13},{-14,7},{-16,-1},{-12,-10},{-5,-15},{3,-16},{12,-10},{15,-4}};
+            ht_limb(ht_scene,bx-14,by+16,bx+17,by+16,1,0,240);
+            for(int v=0;v<12;++v) {
+                int n=(v+1)%12;
+                ht_triangle(ht_scene,bx-3,by-3,bx+rim[v][0],by+rim[v][1],
+                    bx+rim[n][0],by+rim[n][1],v<5?224:(v<8?166:62));
+                ht_limb(ht_scene,bx+rim[v][0],by+rim[v][1],
+                    bx+rim[n][0],by+rim[n][1],0,0,v>=7?24:255);
             }
+            ht_triangle(ht_scene,bx-11,by-9,bx+2,by-14,bx-3,by-3,26);
+            ht_triangle(ht_scene,bx-3,by-3,bx+12,by-8,bx+8,by+9,120);
             /* Fractures rotate by travelled arc length: no sliding texture. */
             static const int16_t sine[32]={0,50,98,142,181,213,237,251,256,251,237,213,181,142,98,50,0,-50,-98,-142,-181,-213,-237,-251,-256,-251,-237,-213,-181,-142,-98,-50};
             unsigned angle=(unsigned)(g->traversal.ball_roll/(HT_BALL_RADIUS*50))&31u;
@@ -148,13 +174,42 @@ static void ht_draw_traversal(const ht_game *g) {
         }
     }
     if(m->crate_x) {
-        int x=g->traversal.crate_x/256-cx,y=g->traversal.crate_y/256-HT_CRATE_HEIGHT-cy;
+        int x=g->traversal.crate_x/256-cx,y=g->traversal.crate_y/256-ht_crate_height(g->level)-cy;
+        if(g->level==0) {
+            /* Sloping writing board over a level timber frame. The frame is
+             * the same 24x14 physical body; four legs meet the real contour. */
+            bool lit=ht_mill_register_lit(g);int floor=g->traversal.crate_y/256-cy;
+            ht_limb(ht_scene,x-12,y,x+12,y,1,1,220);
+            ht_triangle(ht_scene,x-14,y-2,x+12,y-5,x+14,y,lit?104:206);
+            ht_triangle(ht_scene,x-14,y-2,x+14,y,x-12,y+2,lit?104:206);
+            ht_limb(ht_scene,x-11,y+1,x-10,ht_surface_at(g,3,g->traversal.crate_x/256-10)-cy,1,1,231);
+            ht_limb(ht_scene,x+10,y,x+9,ht_surface_at(g,3,g->traversal.crate_x/256+9)-cy,1,1,227);
+            ht_limb(ht_scene,x-10,floor-8,x+9,floor-8,1,1,203);
+            ht_triangle(ht_scene,x-9,y-3,x+8,y-5,x+10,y-1,lit?38:157);
+            ht_triangle(ht_scene,x-9,y-3,x+10,y-1,x-7,y+1,lit?38:157);
+            /* The ruled column and seven entries emerge into the hard beam. */
+            for(int row=0;row<7;++row) {
+                int xx=x-6+row*2;
+                ht_limb(ht_scene,xx,y-3,xx,y-1,0,0,lit?211:164);
+            }
+            ht_limb(ht_scene,x-3,y-4,x-2,y,0,0,lit?105:162);
+            ht_limb(ht_scene,x-11,y+3,x-6,y+2,1,0,lit?154:202); /* worn hand hollow */
+            /* The first fresh scrape grows only behind an actually moved leg. */
+            int first=ht_clamp(g->traversal.mill_scrape_left,1119,1209);
+            int last=ht_clamp(g->traversal.mill_scrape_right,1119,1209);
+            if(last>first)for(int wx=first;wx<last;++wx) {
+                int sy=ht_surface_at(g,3,wx)-cy;
+                ht_rect(ht_scene,wx-cx,sy,1,1,wx>=1161 && wx<=1206?48:94);
+            }
+            ht_checkpoint();
+        } else {
         ht_rect(ht_scene,x-12,y,24,26,255);ht_rect(ht_scene,x-10,y+2,19,22,150);
         for(int dy=7;dy<24;dy+=6) ht_rect(ht_scene,x-10,y+dy,19,1,235);
         ht_rect(ht_scene,x+7,y+2,3,22,210);
         ht_limb(ht_scene,x-9,y+22,x+6,y+3,2,2,255);
         ht_limb(ht_scene,x-7,y+22,x+8,y+3,0,0,75);
         for(int dx=-8;dx<=8;dx+=16) {ht_rect(ht_scene,x+dx,y+3,1,1,0);ht_rect(ht_scene,x+dx,y+22,1,1,0);}
+        }
     }
     if(m->boat_right) {
         int x=g->traversal.boat_x/256-cx,y=ht_boat_top(g)/256-cy;
@@ -255,9 +310,19 @@ static void ht_draw_traversal(const ht_game *g) {
     ht_rect(ht_scene,x-22,y-56,44,6,255);
 }
 static void ht_traversal_prompt(const ht_game *g) {
-    if(g->level==0)return; /* The forest teaches through visible physical consequences. */
+    if(g->level==0) {
+        if(ht_traversal_near(g)==HT_SHUTTER) {
+            ht_rect(ht_scene,66,33,348,19,255);
+            ht_text_color(74,38,g->traversal.mode==HT_SHUTTER?"L/R THROUGH SHUTTER - REVERSE TO GO BACK":"FACE SHUTTER - A TAKE HOLD - L/R CROSS",1,85);
+        } else if(ht_traversal_near(g)==HT_CRATE && !ht_mill_register_lit(g)) {
+            ht_rect(ht_scene,66,33,348,19,255);
+            ht_text_color(74,38,g->traversal.mode==HT_CRATE?"L/R DRAW THE DESK TOWARD THE WINDOW LIGHT":"A GRIP DESK - DRAW IT TOWARD THE LIGHT",1,85);
+        }
+        return; /* Other forest objects teach through physical consequences. */
+    }
     const char *text=NULL;
     switch(ht_traversal_near(g)) {
+    case HT_WINDOW: text=g->traversal.mode==HT_WINDOW?"L/R OPEN AND CROSS - REVERSE TO GO BACK":"A TAKE WINDOW - L/R OPEN AND CLIMB";break;
     case HT_LEDGE: text="UP / A CLIMB - DOWN DROP - B JUMP AWAY";break;
     case HT_CLIMB: text="CLIMBING";break;
     case HT_ROLL: text=g->traversal.mode?"LEFT / RIGHT ROLL - A RELEASE":"A GRIP STONE - ROLL ONTO THE WEIGHT PLATE";break;

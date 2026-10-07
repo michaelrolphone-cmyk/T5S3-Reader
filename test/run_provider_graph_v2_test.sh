@@ -70,6 +70,17 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -ldl -o "$build/recovery-test"
 "$build/recovery-test" "$build/root.so" "$build/failed-start.so"
 
+# Recover a grantless failed activation by exact installed ID while another
+# provider sharing its dependency holds a live grant. Global graph shutdown
+# or speculative dependency release would invalidate the unrelated provider.
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
+  -I"$repo/test/drivers/stubs" -I"$repo/src" \
+  "$repo/src/runtime/drivers/ProviderModuleV2.cpp" \
+  "$repo/src/runtime/drivers/ProviderGraphV2.cpp" \
+  "$repo/test/drivers/provider_targeted_recovery_v2_test.cpp" \
+  -ldl -o "$build/targeted-recovery-test"
+"$build/targeted-recovery-test" "$build/root.so" "$build/failed-start.so" "$build/other.so"
+
 # Failed quiescence revokes grants and does not force-unmap hardware.
 cc "${flags[@]}" -DFIXTURE_ID='"fixture-retry"' \
   -DFIXTURE_CAPABILITY='"cap.retry"' -DFIXTURE_QUIESCE_FAIL_ONCE \
@@ -95,6 +106,34 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -ldl -o "$build/destruction-test"
 "$build/destruction-test" "$build/stuck.so"
 
+# Select exclusively from installed semantic capabilities, pin uncertain
+# rejects, and never try another class after a failed acquire/probe/teardown.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/src" \
+  "$repo/test/drivers/installed_provider_selector_test.cpp" \
+  -o "$build/installed-selector-test"
+"$build/installed-selector-test"
+
+# The same generic session now owns class grant lifetimes in production.
+# Exercise failed acquisition with and without an exact grant, rejected-class
+# quiescence retry and no cross-candidate activation while quarantined.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/src" \
+  "$repo/test/drivers/installed_provider_session_test.cpp" \
+  -o "$build/installed-session-test"
+"$build/installed-session-test"
+
+# One hardware-agnostic monitor enumerates every installed serial class by
+# manifest, holds exact provider grants, publishes generation-bound devices
+# and fails closed on uncertain identities or checked quiescence failure.
+c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer \
+  -I"$repo/sdk/driver" -I"$repo/src" \
+  "$repo/test/drivers/installed_serial_inventory_test.cpp" \
+  -o "$build/installed-serial-inventory-test"
+"$build/installed-serial-inventory-test"
+
+# Source check supplements graph behavior tests, not hardware acceptance.
+python3 "$repo/test/drivers/usb_dynamic_selection_source_test.py"
 # Controller diagnostic formatting is local to the ELF, bounded and import-free.
 c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo/test/drivers/controller_startup_diagnostic_test.cpp" -o "$build/controller-diagnostic-test"

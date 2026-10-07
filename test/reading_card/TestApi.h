@@ -33,6 +33,7 @@ struct Bitmap {
   int getHeight() const { return state.height; }
 };
 struct HalDisplay { enum RefreshMode { FULL_REFRESH, HALF_REFRESH, BALANCED_REFRESH, FAST_REFRESH }; };
+enum class DisplayPresentMode { Clean, Quality, Balanced, LowLatency };
 class GfxRenderer {
  public:
   struct Text { int x, y, font; std::string value; bool black; };
@@ -110,8 +111,8 @@ class GfxRenderer {
   void copyGrayscaleLsbBuffers() const { calls.push_back("lsb"); if (failure != 3) lsb = frame; }
   void copyGrayscaleMsbBuffers() const { calls.push_back("msb"); if (failure != 4) msb = frame; }
   bool grayscaleBuffersReady() const { return !base.empty() && !lsb.empty() && !msb.empty(); }
-  void displayGrayBuffer(HalDisplay::RefreshMode mode) const {
-    assert(mode == HalDisplay::HALF_REFRESH && grayscaleBuffersReady());
+  void displayGrayBuffer(DisplayPresentMode mode) const {
+    assert(mode == DisplayPresentMode::Quality && grayscaleBuffersReady());
     assert(saved.empty() && frame == base); // Restore before publishing.
     calls.push_back("gray"); ++presentations; ++grayPresentations;
     shown.resize(static_cast<size_t>(width) * height);

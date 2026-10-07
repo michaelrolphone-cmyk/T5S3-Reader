@@ -10,7 +10,7 @@
 
 using namespace RuntimePackages;
 namespace {
-constexpr PackageRuntimePolicy kPolicy{"xtensa-esp32s3", 2, 0, 4096, 8192};
+constexpr PackageRuntimePolicy kPolicy{"xtensa-esp32s3", 2, 4096, 8192};
 OrdinaryTransactionPaths paths(Kind kind) {
   OrdinaryTransactionPaths p{};
   assert(ordinaryTransactionPaths(kind, "test", p));

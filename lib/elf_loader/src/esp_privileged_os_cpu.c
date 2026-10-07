@@ -8,9 +8,10 @@
 #include "freertos/task.h"
 #include "private/esp_privileged_os_cpu.h"
 #ifdef BOARD_T5S3_PRO
-/* Explicit temporary exception, NOT an OS/CPU inventory entry or an ordinary
- * app export. Provider admission restricts this import to i2c-esp32s3-v2. */
+/* Temporary physical backends, never part of the generic OS/CPU inventory.
+ * Provider admission restricts each import to its exact installed identity. */
 #include "RiscFirmwareI2cCompatV1.h"
+#include "T5VideoApi.h"
 #endif
 
 /* The firmware logger supplies generic printf/puts sinks for privileged
@@ -159,10 +160,12 @@ uintptr_t esp_elf_privileged_os_cpu_lookup_v1(const char *symbol)
     if (strcmp(symbol, "puts") == 0 && risc_provider_diagnostic_puts)
         return (uintptr_t)&risc_provider_diagnostic_puts;
 #ifdef BOARD_T5S3_PRO
-    /* The sole physical-bus compatibility exception. Never insert this into
-     * privileged_os_cpu_symbols_v1.def or a globally visible ELF table. */
+    /* Scoped physical compatibility backends stay outside the generic
+     * privileged_os_cpu_symbols_v1.def inventory. */
     if (strcmp(symbol, "risc_fw_i2c_transact_v1") == 0)
         return (uintptr_t)&risc_fw_i2c_transact_v1;
+    if (strcmp(symbol, "t5_video_get_api") == 0)
+        return (uintptr_t)&t5_video_get_api;
 #endif
     for (size_t i = 0; i < sizeof(s_privileged_symbols_v1) /
                            sizeof(s_privileged_symbols_v1[0]); ++i) {

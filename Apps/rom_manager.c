@@ -62,9 +62,18 @@ static size_t bounded_len(const char *s, size_t cap) { size_t n=0; if(s) while(n
 static void copy_text(char *d,size_t c,const char*s){ if(!d||!c)return; if(!s)s=""; size_t n=bounded_len(s,c-1); memcpy(d,s,n); d[n]=0; }
 static char lower_ascii(char c){return c>='A'&&c<='Z'?(char)(c+32):c;}
 static bool ends_ci(const char *s,const char *suffix){size_t n=strlen(s),m=strlen(suffix);if(n<m)return false;for(size_t i=0;i<m;i++)if(lower_ascii(s[n-m+i])!=lower_ascii(suffix[i]))return false;return true;}
+/* Inspect only the HTTPS path; query/fragment bytes remain unchanged for HTTP. */
+static bool url_path_ends_ci(const char *url,const char *suffix){
+  const char *path=url+8u+strcspn(url+8u,"/?#");
+  if(*path!='/')return false;
+  const size_t n=strcspn(path,"?#"),m=strlen(suffix);
+  if(n<m)return false;
+  for(size_t i=0;i<m;++i)if(lower_ascii(path[n-m+i])!=lower_ascii(suffix[i]))return false;
+  return true;
+}
 static bool contains_ci(const char *s,const char *q){if(!q||!q[0])return true;size_t m=strlen(q);for(size_t i=0;s&&s[i];++i){size_t j=0;while(j<m&&s[i+j]&&lower_ascii(s[i+j])==lower_ascii(q[j]))++j;if(j==m)return true;}return false;}
 static void safe_name(const char *src,char *dst,size_t cap,const char *fallback){
-  const char *base=src; for(const char*p=src;p&&*p;++p) if(*p=='/'||*p=='\\')base=p+1;
+  const char *base=src; for(const char*p=src;p&&*p&&*p!='?'&&*p!='#';++p) if(*p=='/'||*p=='\\')base=p+1;
   size_t w=0; for(size_t i=0;base&&base[i]&&w+1<cap;++i){char c=base[i]; if(c=='?'||c=='#')break; if((unsigned char)c<32||c=='/'||c=='\\'||c==':'||c=='*'||c=='"'||c=='<'||c=='>'||c=='|')c='_'; dst[w++]=c;}
   dst[w]=0; if(!w)copy_text(dst,cap,fallback);
 }
@@ -230,8 +239,8 @@ static bool extraction_progress(void *ctx,uint64_t done,uint64_t total){
 }
 static bool import_url(const char *url){
   if(!url||strncmp(url,"https://",8)!=0){copy_text(status_text,sizeof(status_text),"Only HTTPS URLs are accepted");return false;}
-  const bool zipped=ends_ci(url,".zip");
-  if(!zipped&&!ends_ci(url,".gb")){copy_text(status_text,sizeof(status_text),"URL must end in .zip or .gb");return false;}
+  const bool zipped=url_path_ends_ci(url,".zip");
+  if(!zipped&&!url_path_ends_ci(url,".gb")){copy_text(status_text,sizeof(status_text),"URL must end in .zip or .gb");return false;}
   const char *tmp=zipped?TMP_ZIP:TMP_GB;
   copy_text(status_text,sizeof(status_text),"Starting download...");
   if(!stream_download(url,tmp)){copy_text(status_text,sizeof(status_text),"Download failed or cancelled");return false;}
@@ -249,7 +258,7 @@ static bool import_url(const char *url){
       storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"Downloaded .gb has an invalid size");return false;
     }
     storage->stream_close(raw);
-    const char *slash=strrchr(url,'/'); safe_name(slash?slash+1:url,out_name,sizeof(out_name),"game.gb"); ensure_gb_suffix(out_name,sizeof(out_name));
+    safe_name(url,out_name,sizeof(out_name),"game.gb"); ensure_gb_suffix(out_name,sizeof(out_name));
     make_path(out_name,out_path,sizeof(out_path));
     if(!storage->rename_file(tmp,out_path)){storage->remove_file(tmp);copy_text(status_text,sizeof(status_text),"ROM already exists or rename failed");return false;}
   }

@@ -35,4 +35,10 @@ class HttpDownloader {
   static DownloadError downloadToFile(const std::string& url, const std::string& destPath,
                                       ProgressCallback progress = nullptr, const std::string& username = "",
                                       const std::string& password = "");
+  // Invocation-scoped strict staging: exact expected length and total elapsed
+  // transfer budget, checked before excess bytes can reach SD. No legacy
+  // transport fallback without an authenticated stream execution context.
+  static DownloadError downloadToFileBounded(const std::string& url, const std::string& destPath,
+                                             uint64_t expectedBytes, uint32_t timeoutMs,
+                                             ProgressCallback progress = nullptr);
 };

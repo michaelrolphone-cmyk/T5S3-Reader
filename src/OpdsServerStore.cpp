@@ -20,6 +20,9 @@ bool OpdsServerStore::saveToFile() const {
 }
 
 bool OpdsServerStore::loadFromFile() {
+  // A reload replaces the snapshot, including when its backing file is no
+  // longer readable. Never expose servers left over from an earlier load.
+  servers.clear();
   if (Storage.exists(OPDS_FILE_JSON)) {
     String json = Storage.readFile(OPDS_FILE_JSON);
     if (!json.isEmpty()) {

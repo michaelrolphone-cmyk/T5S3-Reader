@@ -5,7 +5,7 @@ Governed by the [Platform Specification](RISCRTE_PLATFORM_SPEC.md) and
 
 ## Installation and controls
 
-Install **usb-ui-navigation 0.1.1** and its declared dependencies alongside
+Install **usb-ui-navigation 0.1.2** and its declared dependencies alongside
 firmware containing this integration. It is a separate composite driver that
 provides `input.navigation@1`, built and exported through the existing driver
 package workflow. Keyboard text entry additionally uses
@@ -53,11 +53,15 @@ revoked by this setting. Failed cleanup still retains unsafe packages.
 | Page Up / Page Down | Previous/next reader page |
 | Home | Firmware Home gesture |
 | Gamepad D-pad or left stick | Move selection; turn reader pages |
-| HID Button 1 / Button 2 | Confirm / Back |
-| XInput A / B | Confirm / Back |
+| HID Button 1 / Button 3 (X) | Confirm / Back |
+| XInput A / X | Confirm / Back |
 | Gamepad shoulders (bits 4/5) | Previous/next reader page |
 
 HID button numbers are descriptor-defined, not universal face-button labels.
+Back uses X (HID mask 0x04; normalized XInput mask 0x08), with no A/B
+Back alias. Updating this driver changes Back throughout the OS and apps that
+consume semantic navigation; those apps do not need rebuilding. The 3D Model
+Viewer uses raw gamepad input and requires its separate 1.2.5 app update.
 This default matches the tested SNES-style numbering; a different controller
 may label the same buttons differently. Analog directions use a 16000 threshold
 on the normalized signed-16-bit axes. Physical buttons and touch remain usable.

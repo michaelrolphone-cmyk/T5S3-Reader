@@ -22,6 +22,7 @@
 #include "OpdsServerStore.h"
 #include "SdCardFontGlobals.h"
 #include "SettingsList.h"
+#include "SettingsJsonWriter.h"
 #include "WebDAVHandler.h"
 #include "html/FilesPageHtml.generated.h"
 #include "html/FontsPageHtml.generated.h"
@@ -103,6 +104,13 @@ bool isCaptivePortalProbePath(const String& uri) {
 class CrossPointHttpServer : public WebServer {
  public:
   using WebServer::WebServer;
+
+  void abortResponse() {
+    // client() returns a shared WiFiClient copy. Stop the actual owner and
+    // suppress WebServer's automatic successful chunk terminator on return.
+    _chunked = false;
+    _currentClient.stop();
+  }
 
   void handleClient() override {
     if (_currentStatus == HC_NONE) {
@@ -1204,10 +1212,8 @@ void CrossPointWebServer::handleGetSettings() const {
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
-  server->sendContent("[");
-
-  char output[512];
-  constexpr size_t outputSize = sizeof(output);
+  SettingsJsonWriter<CrossPointHttpServer> output(*static_cast<CrossPointHttpServer*>(server.get()));
+  output.write('[');
   bool seenFirst = false;
   JsonDocument doc;
 
@@ -1276,21 +1282,26 @@ void CrossPointWebServer::handleGetSettings() const {
         continue;
     }
 
-    const size_t written = serializeJson(doc, output, outputSize);
-    if (written >= outputSize) {
-      LOG_DBG("WEB", "Skipping oversized setting JSON for: %s", s.key);
-      continue;
+    if (doc.overflowed()) {
+      LOG_DBG("WEB", "Could not allocate setting JSON for: %s", s.key);
+      output.abort();
+      return;
     }
 
     if (seenFirst) {
-      server->sendContent(",");
+      output.write(',');
     } else {
       seenFirst = true;
     }
-    server->sendContent(output);
+    serializeJson(doc, output);
+    if (!output.flush()) {
+      LOG_DBG("WEB", "Settings response interrupted at: %s", s.key);
+      return;
+    }
   }
 
-  server->sendContent("]");
+  output.write(']');
+  if (!output.flush()) return;
   server->sendContent("");
   LOG_DBG("WEB", "Served settings API");
 }
@@ -1495,6 +1506,7 @@ void CrossPointWebServer::handleGetOpdsServers() const {
   char output[512];
   constexpr size_t outputSize = sizeof(output);
   JsonDocument doc;
+  bool emittedAny = false;
 
   for (size_t i = 0; i < servers.size(); i++) {
     doc.clear();
@@ -1508,8 +1520,10 @@ void CrossPointWebServer::handleGetOpdsServers() const {
     const size_t written = serializeJson(doc, output, outputSize);
     if (written >= outputSize) continue;
 
-    if (i > 0) server->sendContent(",");
+    // Oversized records are skipped, so source indices do not count emitted objects.
+    if (emittedAny) server->sendContent(",");
     server->sendContent(output);
+    emittedAny = true;
   }
 
   server->sendContent("]");

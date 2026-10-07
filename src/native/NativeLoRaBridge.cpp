@@ -1,10 +1,12 @@
+#include <Arduino.h>
+#include <SdSpiFault.h>
 #include <T5AppApi.h>
 #include <T5LoRaApi.h>
-#include "runtime/resources/RadioPower.h"
 
-#include <Arduino.h>
 #include <cstdint>
 #include <cstring>
+
+#include "runtime/resources/RadioPower.h"
 
 #if defined(BOARD_T5S3_PRO)
 #include <BoardT5S3.h>
@@ -61,6 +63,8 @@ void releaseRadioPins() {
 }
 
 bool startReceiver() {
+  if (risc_sd_spi_faulted()) return false;
+  SdSpiOperation spiOperation;
   if (!running) return false;
   packetReceived = false;
   radio.setPacketReceivedAction(onPacketReceived);
@@ -76,6 +80,8 @@ bool startReceiver() {
 }
 
 void shutdownHardware() {
+  if (risc_sd_spi_faulted()) return;
+  SdSpiOperation spiOperation;
   if (running) {
     radio.clearPacketReceivedAction();
     (void)radio.sleep();
@@ -88,6 +94,8 @@ void shutdownHardware() {
 }
 
 bool initializeHardware(const t5_lora_config_t* config) {
+  if (risc_sd_spi_faulted()) return false;
+  SdSpiOperation spiOperation;
   if (!config) return false;
   currentConfig = *config;
   receiverActive = false;
@@ -108,8 +116,7 @@ bool initializeHardware(const t5_lora_config_t* config) {
   const float frequencyMhz = static_cast<float>(config->frequency_hz) / 1000000.0f;
   const float bandwidthKhz = static_cast<float>(config->bandwidth_hz) / 1000.0f;
   int16_t state = radio.begin(frequencyMhz, bandwidthKhz, config->spreading_factor, config->coding_rate,
-                              config->sync_word, config->tx_power_dbm, config->preamble_symbols,
-                              2.4f, false);
+                              config->sync_word, config->tx_power_dbm, config->preamble_symbols, 2.4f, false);
   if (state == RADIOLIB_ERR_NONE) state = radio.setCurrentLimit(140.0f);
   if (state == RADIOLIB_ERR_NONE) state = radio.setCRC(config->crc_enabled != 0);
   if (state == RADIOLIB_ERR_NONE) state = radio.setDio2AsRfSwitch();
@@ -122,6 +129,8 @@ bool initializeHardware(const t5_lora_config_t* config) {
 
   running = true;
   if (!startReceiver()) {
+    if (risc_sd_spi_faulted()) return false;
+    SdSpiOperation spiOperation;
     const int16_t receiveError = lastError;
     shutdownHardware();
     lastError = receiveError;
@@ -140,6 +149,8 @@ bool supported() {
 }
 
 bool start(const t5_lora_config_t* config) {
+  if (risc_sd_spi_faulted()) return false;
+  SdSpiOperation spiOperation;
   if (!active() || !supported()) return false;
 #if defined(BOARD_T5S3_PRO)
   if (running) return true;
@@ -159,6 +170,8 @@ bool start(const t5_lora_config_t* config) {
 }
 
 void stop() {
+  if (risc_sd_spi_faulted()) return;
+  SdSpiOperation spiOperation;
 #if defined(BOARD_T5S3_PRO)
   pausedForDisplay = false;
   shutdownHardware();
@@ -175,14 +188,23 @@ bool readState(t5_lora_state_t* state) {
     return true;
   }
 #if defined(BOARD_T5S3_PRO)
+  if (risc_sd_spi_faulted()) {
+    state->config = currentConfig;
+    state->status = T5_LORA_STATUS_ERROR;
+    state->last_error = T5_LORA_ERROR_REBOOT_REQUIRED;  // Shared SD/SPI fault: manual reboot required.
+    return true;
+  }
   state->config = currentConfig;
   state->last_error = lastError;
   state->packets_received = packetsReceived;
   state->packets_sent = packetsSent;
   state->receiver_active = receiverActive ? 1u : 0u;
-  if (running) state->status = T5_LORA_STATUS_READY;
-  else if (lastError != RADIOLIB_ERR_NONE) state->status = T5_LORA_STATUS_ERROR;
-  else state->status = T5_LORA_STATUS_OFF;
+  if (running)
+    state->status = T5_LORA_STATUS_READY;
+  else if (lastError != RADIOLIB_ERR_NONE)
+    state->status = T5_LORA_STATUS_ERROR;
+  else
+    state->status = T5_LORA_STATUS_OFF;
   return true;
 #else
   return false;
@@ -190,6 +212,8 @@ bool readState(t5_lora_state_t* state) {
 }
 
 bool pollPacket(t5_lora_packet_t* packet) {
+  if (risc_sd_spi_faulted()) return false;
+  SdSpiOperation spiOperation;
   if (!packet) return false;
   std::memset(packet, 0, sizeof(*packet));
 #if defined(BOARD_T5S3_PRO)
@@ -226,6 +250,8 @@ bool pollPacket(t5_lora_packet_t* packet) {
 }
 
 bool transmit(const uint8_t* data, uint16_t length) {
+  if (risc_sd_spi_faulted()) return false;
+  SdSpiOperation spiOperation;
   if (!data || length == 0 || length > T5_LORA_MAX_PACKET) return false;
 #if defined(BOARD_T5S3_PRO)
   if (!running) return false;
@@ -249,6 +275,8 @@ bool transmit(const uint8_t* data, uint16_t length) {
 }
 
 bool prepareDisplay() {
+  if (risc_sd_spi_faulted()) return false;
+  SdSpiOperation spiOperation;
   if (!active()) return false;
 #if defined(BOARD_T5S3_PRO)
   if (!running) return true;
@@ -264,6 +292,8 @@ bool prepareDisplay() {
 }
 
 bool finishDisplay() {
+  if (risc_sd_spi_faulted()) return false;
+  SdSpiOperation spiOperation;
   if (!active()) return false;
 #if defined(BOARD_T5S3_PRO)
   if (!pausedForDisplay) return true;

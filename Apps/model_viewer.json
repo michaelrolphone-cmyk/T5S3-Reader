@@ -1,12 +1,16 @@
 {
-  "min_firmware_version": "1.3.29",
-  "version": "1.2.4",
+  "min_firmware_version": "1.3.49",
+  "version": "1.2.8",
   "display_name": "3D Model Viewer",
   "file_name": "model_viewer.elf",
   "icon": "solid:f1b2",
   "requires": [
     {
       "capability": "input.touch.raw",
+      "api": ">=1"
+    },
+    {
+      "capability": "display.output",
       "api": ">=1"
     }
   ],

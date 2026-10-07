@@ -40,6 +40,11 @@ int main(void)
     symbols[2].info = ELF_ST_INFO(STB_GLOBAL, STT_FUNC);
 
     assert(esp_elf_privileged_imports_valid_v1(bytes, length));
+    /* Shared ZIP primitives use these existing public libc exports. */
+    strcpy(names + 1, "memcmp");
+    assert(esp_elf_privileged_imports_valid_v1(bytes, length));
+    strcpy(names + 1, "strncmp");
+    assert(esp_elf_privileged_imports_valid_v1(bytes, length));
     strcpy(names + 1, "__stack_chk_guard");
     symbols[1].info = ELF_ST_INFO(STB_GLOBAL, STT_OBJECT);
     assert(esp_elf_privileged_imports_valid_v1(bytes, length));

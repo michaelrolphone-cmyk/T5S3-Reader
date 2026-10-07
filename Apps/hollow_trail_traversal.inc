@@ -103,10 +103,67 @@ static int ht_rope_catch(const ht_game *g) {
     }
     return grip;
 }
+/* The broken shutter is a short passage in the downhill timber face. A takes
+ * contact; L/R controls each part of the crossing, including backing out. */
+static int ht_mill_shutter_near(const ht_game *g) {
+    if(g->level || !g->grounded || g->traversal.mode)return 0;
+    int x=g->x/256;
+    if(ht_abs(g->y/256-ht_land_height(0,3,x))>1)return 0;
+    if(x>=HT_MILL_SHUTTER_LEFT-9 && x<=HT_MILL_SHUTTER_LEFT-5 && g->facing>0)return 1;
+    if(x>=HT_MILL_SHUTTER_RIGHT+5 && x<=HT_MILL_SHUTTER_RIGHT+7 && g->facing<0)return -1;
+    return 0;
+}
+static int ht_shutter_lerp(int a,int b,int phase,int lo,int hi) {
+    return a+(b-a)*ht_clamp(phase-lo,0,hi-lo)/(hi-lo);
+}
+static void ht_mill_shutter_step(int direction) {
+    ht_traversal *t=&ht.traversal;
+    int p=ht_clamp(t->mill_entry_phase+direction,0,HT_MILL_SHUTTER_STEPS);
+    t->mill_entry_phase=(uint8_t)p;
+    int left=t->mill_entry_left,right=t->mill_entry_right;
+    if(p<=40)ht.x=ht_shutter_lerp(left,(HT_MILL_SHUTTER_LEFT+4)*256,p,16,40);
+    else if(p<=64)ht.x=ht_shutter_lerp((HT_MILL_SHUTTER_LEFT+4)*256,(HT_MILL_SHUTTER_RIGHT-3)*256,p,40,64);
+    else ht.x=ht_shutter_lerp((HT_MILL_SHUTTER_RIGHT-3)*256,right,p,64,88);
+    int ground=ht_land_height(0,3,ht.x/256)*256;
+    ht.y=p<=40?ht_shutter_lerp(ground,HT_MILL_SHUTTER_SILL*256,p,16,40):
+        ht_shutter_lerp(HT_MILL_SHUTTER_SILL*256,ground,p,64,88);
+    ht.vx=ht.vy=0;ht.grounded=p<=16 || p>=88;
+    ht.coyote=ht.jump_buffer=0;
+    if((!p && direction<0) || (p==HT_MILL_SHUTTER_STEPS && direction>0)) {
+        t->mode=HT_FREE;ht.grounded=true;t->mill_entry_phase=0;
+    }
+}
+static int ht_signal_window_near(const ht_game *g) {
+    if(g->level!=1 || !g->grounded || g->traversal.mode ||
+       ht_abs(g->y/256-ht_signal_window_floor())>1)return 0;
+    int x=g->x/256;
+    if(x>=HT_SIGNAL_WINDOW_LEFT-5 && x<=HT_SIGNAL_WINDOW_LEFT-4 && g->facing>0)return 1;
+    if(x>=HT_SIGNAL_WINDOW_RIGHT+5 && x<=HT_SIGNAL_WINDOW_RIGHT+6 && g->facing<0)return -1;
+    return 0;
+}
+static void ht_signal_window_step(int direction) {
+    ht_traversal *t=&ht.traversal;
+    int p=ht_clamp(t->window_phase+direction,0,HT_SIGNAL_WINDOW_STEPS),q=p-32;
+    t->window_phase=(uint8_t)p;
+    int opening=direction<0?ht_clamp((144-p)*4,0,32):ht_clamp(p-16,0,32);
+    if(direction)t->window_open=(uint8_t)ht_max(t->window_open,opening);
+    int left=t->window_entry_left,right=t->window_entry_right;
+    if(q<=40)ht.x=ht_shutter_lerp(left,(HT_SIGNAL_WINDOW_LEFT+12)*256,q,16,40);
+    else if(q<=72)ht.x=ht_shutter_lerp((HT_SIGNAL_WINDOW_LEFT+12)*256,(HT_SIGNAL_WINDOW_RIGHT-12)*256,q,40,72);
+    else ht.x=ht_shutter_lerp((HT_SIGNAL_WINDOW_RIGHT-12)*256,right,q,72,104);
+    int floor=ht_signal_window_floor()*256,sill=ht_signal_window_sill()*256;
+    ht.y=q<=40?ht_shutter_lerp(floor,sill,q,16,40):ht_shutter_lerp(sill,floor,q,72,104);
+    ht.vx=ht.vy=0;ht.grounded=q<=16 || q>=104;ht.coyote=ht.jump_buffer=0;
+    if((!p && direction<0) || (p==HT_SIGNAL_WINDOW_STEPS && direction>0)) {
+        t->mode=HT_FREE;t->window_phase=t->window_touch=0;ht.grounded=true;
+    }
+}
 static int ht_traversal_near(const ht_game *g) {
     const ht_traversal *t=&g->traversal;const ht_mechanics *m=ht_mech(g);
     if(t->mode) return t->mode;
     int x=g->x/256,y=g->y/256;
+    if(ht_mill_shutter_near(g))return HT_SHUTTER;
+    if(ht_signal_window_near(g))return HT_WINDOW;
     if(m->ball_x && g->grounded && ht_abs(x-t->ball_x/256)<=HT_BALL_RADIUS+9 &&
        ht_abs(y-(t->ball_y/256+HT_BALL_RADIUS))<=5) return HT_ROLL;
     if(m->crate_x && g->grounded && ht_abs(x-t->crate_x/256)<=HT_CRATE_HALF+9 &&
@@ -125,6 +182,7 @@ static bool ht_traversal_interact(void) {
     if(!t->mode && ht_forest_log_near(&ht)) {
         t->mode=HT_PUSH;t->forest_push=0;ht.vx=ht.vy=0;return true;
     }
+    if(t->mode==HT_SHUTTER || t->mode==HT_WINDOW)return true; /* L/R returns to either grounded end. */
     if(t->mode==HT_TREE)return false; /* A remains inspection, never tree capture/release. */
     if(t->mode==HT_LEDGE) {t->mode=HT_CLIMB;t->climb=t->climb_phase=0;return true;}
     if(t->mode==HT_CLIMB) return true;
@@ -135,6 +193,21 @@ static bool ht_traversal_interact(void) {
         t->mode=HT_FREE;return true;
     }
     int near=ht_traversal_near(&ht);if(!near || near==HT_LADDER) return false;
+    if(near==HT_WINDOW) {
+        int side=ht_signal_window_near(&ht);
+        t->window_entry_left=side>0?ht.x:(HT_SIGNAL_WINDOW_LEFT-5)*256;
+        t->window_entry_right=side<0?ht.x:(HT_SIGNAL_WINDOW_RIGHT+5)*256;
+        t->window_phase=(uint8_t)(side>0?0:HT_SIGNAL_WINDOW_STEPS);
+        if(side>0)t->window_print=true;
+        t->window_touch=0;ht.coyote=ht.jump_buffer=0;
+    }
+    if(near==HT_SHUTTER) {
+        int side=ht_mill_shutter_near(&ht);
+        t->mill_entry_left=side>0?ht.x:(HT_MILL_SHUTTER_LEFT-5)*256;
+        t->mill_entry_right=side<0?ht.x:(HT_MILL_SHUTTER_RIGHT+5)*256;
+        t->mill_entry_phase=(uint8_t)(side>0?0:HT_MILL_SHUTTER_STEPS);
+        ht.coyote=ht.jump_buffer=0;
+    }
     t->mode=(uint8_t)near;
     if(near==HT_ROPE) {
         t->rope_grip=ht_rope_catch(&ht);t->rope_slide_v=0;
@@ -200,19 +273,30 @@ static void ht_props_step(int direction) {
     int ball_old=t->ball_x,crate_old=t->crate_x,boat_old=t->boat_x;
     int bridge_old=t->bridge_open;
     if(m->ball_x) {
-        t->ball_vx=ht_clamp(ht_drag(t->ball_vx,4)+(t->mode==HT_ROLL?direction*14:0),-224,224);
+        t->ball_vx=ht_clamp(ht_drag(t->ball_vx,4)+(t->mode==HT_ROLL?direction*ht_emphasis_amount(14):0),-224,224);
         ht_body_step(&t->ball_x,&t->ball_y,&t->ball_vx,&t->ball_vy,HT_BALL_RADIUS,0,true);
         t->ball_roll+=t->ball_x-ball_old;
         t->ball_phase=t->ball_vy?1:2;
         if(t->ball_y>500*256) {t->ball_x=m->ball_x*256;t->ball_y=(m->ball_floor-HT_BALL_RADIUS)*256;t->ball_vx=t->ball_vy=0;}
     }
     if(m->crate_x) {
-        t->crate_vx=ht_clamp(ht_drag(t->crate_vx,24)+(t->mode==HT_CRATE?direction*36:0),-192,192);
-        ht_body_step(&t->crate_x,&t->crate_y,&t->crate_vx,&t->crate_vy,HT_CRATE_HALF,HT_CRATE_HEIGHT,false);
+        t->crate_vx=ht_clamp(ht_drag(t->crate_vx,24)+(t->mode==HT_CRATE?direction*ht_emphasis_amount(36):0),-192,192);
+        ht_body_step(&t->crate_x,&t->crate_y,&t->crate_vx,&t->crate_vy,HT_CRATE_HALF,ht_crate_height(ht.level),false);
+        if(ht.level==0) {
+            /* The shutter's inner landing and uphill stone wall bound this
+             * room's desk. Leave the original left grip/return passage clear. */
+            int bounded=ht_clamp(t->crate_x,HT_MILL_DESK_START*256,1200*256);
+            if(bounded!=t->crate_x) {t->crate_x=bounded;t->crate_vx=0;}
+            int at=t->crate_x/256;
+            if(ht_abs(t->crate_y/256-ht_land_height(0,3,at))<=2) {
+                t->mill_scrape_left=(int16_t)ht_min(t->mill_scrape_left,at+9);
+                t->mill_scrape_right=(int16_t)ht_max(t->mill_scrape_right,at+9);
+            }
+        }
         if(t->crate_y>500*256) {t->crate_x=m->crate_x*256;t->crate_y=m->crate_floor*256;t->crate_vx=t->crate_vy=0;}
     }
     if(m->boat_right) {
-        t->boat_vx=ht_clamp(ht_drag(t->boat_vx,3)+(t->mode==HT_BOAT?direction*15:0),-320,320);
+        t->boat_vx=ht_clamp(ht_drag(t->boat_vx,3)+(t->mode==HT_BOAT?direction*ht_emphasis_amount(15):0),-320,320);
         int left=ht_max(m->boat_left,m->water_left+ht_boat_half(&ht))*256;
         int right=ht_min(m->boat_right,m->water_right-ht_boat_half(&ht))*256;
         t->boat_x=ht_clamp(t->boat_x+t->boat_vx,left,right);
@@ -263,7 +347,7 @@ static void ht_props_step(int direction) {
         }
         for(int i=1;i<HT_ROPE_NODES;++i) {
             int x=t->rope_px[i],y=t->rope_py[i];
-            t->rope_px[i]+=ht_clamp(ht_drag(x-t->rope_ox[i],1),-720,720)+(i==node+1 && t->mode==HT_ROPE?direction*64:0);
+            t->rope_px[i]+=ht_clamp(ht_drag(x-t->rope_ox[i],1),-720,720)+(i==node+1 && t->mode==HT_ROPE?direction*ht_emphasis_amount(64):0);
             t->rope_py[i]+=ht_clamp(ht_drag(y-t->rope_oy[i],1),-720,720)+88;
             t->rope_ox[i]=x;t->rope_oy[i]=y;
         }
@@ -395,6 +479,7 @@ static void ht_forest_log_collision(int old_x) {
     }
 }
 static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool jump_held) {
+    if(ht.door_stage) {ht_door_step(direction);return;}
     bool jump_request=jump_pressed;
     int start_x=ht.x,start_y=ht.y,fall_speed=ht.vy;
     bool was_grounded=ht.grounded;
@@ -425,23 +510,27 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     if(t->mode==HT_LEDGE && vertical<0) {t->mode=HT_CLIMB;t->climb=t->climb_phase=0;}
     if(t->mode==HT_LEDGE && (vertical>0 || jump_pressed)) {
         t->mode=HT_FREE;t->drop_cooldown=20;ht.vy=0;ht.coyote=ht.jump_buffer=0;
-        if(jump_pressed) {ht.vx=-t->ledge_side*ht_walk_speed(&ht);ht.vy=-1000;}
+        if(jump_pressed) {ht.vx=-t->ledge_side*ht_motion_speed(&ht);ht.vy=-1000;}
         jump_pressed=false;
     }
-    if(jump_pressed && t->mode && t->mode!=HT_CLIMB) {
+    if(jump_pressed && t->mode && t->mode!=HT_CLIMB && t->mode!=HT_SHUTTER && t->mode!=HT_WINDOW) {
         int mode=t->mode;t->mode=HT_FREE;
         if(mode==HT_LADDER || mode==HT_TREE) t->drop_cooldown=12;
         if(mode==HT_LADDER || mode==HT_TREE || mode==HT_ROPE || mode==HT_BOAT) {
             int rvx,rvy;ht_rope_velocity(&ht,&rvx,&rvy);
-            ht.vx=mode==HT_ROPE?ht_clamp(rvx,-1000,1000):(mode==HT_TREE && !direction?t->tree_side:direction)*ht_walk_speed(&ht);
+            ht.vx=mode==HT_ROPE?ht_clamp(rvx,-1000,1000):(mode==HT_TREE && !direction?t->tree_side:direction)*ht_motion_speed(&ht);
             ht.vy=-HT_JUMP_SPEED+(mode==HT_ROPE?ht_clamp(rvy,-384,384):0);ht.grounded=false;ht.coyote=0;jump_pressed=false;
         }
     }
-    if(t->mode==HT_PUSH) {
-        if(!ht_forest_log_near(&ht) || direction<0) {t->mode=HT_FREE;ht.vx=direction*ht_walk_speed(&ht);}
+    if(t->mode==HT_WINDOW) {
+        ht_signal_window_step(direction);
+    } else if(t->mode==HT_SHUTTER) {
+        ht_mill_shutter_step(direction);
+    } else if(t->mode==HT_PUSH) {
+        if(!ht_forest_log_near(&ht) || direction<0) {t->mode=HT_FREE;ht.vx=direction*ht_motion_speed(&ht);}
         else {
             int old=ht.x;
-            ht.x+=ht_clamp(350*256-ht.x,-ht_walk_speed(&ht),ht_walk_speed(&ht));
+            ht.x+=ht_clamp(350*256-ht.x,-ht_motion_speed(&ht),ht_motion_speed(&ht));
             ht.vx=ht.vy=0;ht.facing=1;ht.grounded=true;ht.stride+=ht_abs(ht.x-old);
             if(direction>0 && ht.x==350*256) {
                 if(++t->forest_push==HT_FOREST_PUSH_STEPS) {
@@ -462,7 +551,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             if(direction) {
                 /* Leaving the trunk always works. Step onto a nearby real
                  * limb, otherwise fall naturally: no magnetic recapture. */
-                t->mode=HT_FREE;t->drop_cooldown=12;ht.vx=direction*ht_walk_speed(&ht)/2;
+                t->mode=HT_FREE;t->drop_cooldown=12;ht.vx=direction*ht_motion_speed(&ht)/2;
                 for(int b=0;b<6;++b) {
                     int top;if(ht_tree_footing(&ht,&tree,b,ht.x/256,&top) && ht_abs(ht.y/256-top)<=5) {
                         ht.y=top*256;ht.grounded=true;t->support=5;break;
@@ -511,14 +600,15 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(jump_pressed) ht.jump_buffer=4;
         else if(ht.jump_buffer) --ht.jump_buffer;
         if(ht.grounded) ht.coyote=3;else if(ht.coyote) --ht.coyote;
-        int target=direction*ht_walk_speed(&ht);
+        int target=direction*ht_motion_speed(&ht);
         /* Firm starts/stops on soil, small corrections in flight. Preserve
          * swing momentum instead of braking a rope release into a walk. */
-        if(!ht.grounded && (!direction || (ht.vx*direction>0 && ht_abs(ht.vx)>ht_walk_speed(&ht))))target=ht.vx;
+        if(!ht.grounded && (!direction || (ht.vx*direction>0 && ht_abs(ht.vx)>ht_motion_speed(&ht))))target=ht.vx;
         int acceleration=ht.grounded?(direction?48:80):32;
+        if(direction) acceleration=ht_emphasis_amount(acceleration);
         if(ht.vx<target) ht.vx=ht_min(target,ht.vx+acceleration);
         if(ht.vx>target) ht.vx=ht_max(target,ht.vx-acceleration);
-        if(ht.jump_buffer && ht.coyote) {if(direction)ht.vx=direction*ht_walk_speed(&ht);ht.vy=-HT_JUMP_SPEED;ht.grounded=false;ht.coyote=0;ht.jump_buffer=0;}
+        if(ht.jump_buffer && ht.coyote) {if(direction)ht.vx=direction*ht_motion_speed(&ht);ht.vy=-HT_JUMP_SPEED;ht.grounded=false;ht.coyote=0;ht.jump_buffer=0;}
         /* One grounded impulse: releasing B cannot cancel gravity mid-arc. */
         int old_x=ht.x,old_y=ht.y;
         ht.vy=ht_min(ht.vy+HT_GRAVITY,2400);
@@ -565,7 +655,7 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
             }
         }
         if(m->crate_x && t->mode!=HT_CRATE) {
-            int top=t->crate_y/256-HT_CRATE_HEIGHT;
+            int top=t->crate_y/256-ht_crate_height(ht.level);
             ht_collide(t->crate_x/256-HT_CRATE_HALF,t->crate_x/256+HT_CRATE_HALF,top,t->crate_y/256,old_x,old_y);
             if(ht.grounded && ht.y==top*256 && ht_abs(ht.x-t->crate_x)<(HT_CRATE_HALF+5)*256) t->support=2;
         }
@@ -582,8 +672,27 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
         if(ht.y-29*256<ceiling*256) {ht.y=(ceiling+29)*256;ht.vy=ht_max(0,ht.vy);}
     }
     if(!jump_request) (void)ht_ladder_enter(vertical);
+    if(ht.level==0 && t->mode!=HT_SHUTTER) {
+        /* Actual sill and lintel, not an invisible full-height gate. */
+        ht_collide(HT_MILL_SHUTTER_LEFT,HT_MILL_SHUTTER_RIGHT,HT_MILL_SHUTTER_SILL,220,start_x,start_y);
+        ht_collide(HT_MILL_SHUTTER_LEFT,HT_MILL_SHUTTER_RIGHT,132,HT_MILL_SHUTTER_TOP,start_x,start_y);
+    }
+    if(ht.level==1 && t->mode!=HT_WINDOW) {
+        int floor=ht_signal_window_floor(),top=ht_signal_window_top(),sill=ht_signal_window_sill();
+        ht_collide(HT_SIGNAL_WINDOW_LEFT,HT_SIGNAL_WINDOW_RIGHT,sill,floor,start_x,start_y);
+        ht_collide(HT_SIGNAL_WINDOW_LEFT,HT_SIGNAL_WINDOW_RIGHT,floor-84,top,start_x,start_y);
+        if(t->window_open<32)ht_collide(HT_SIGNAL_WINDOW_LEFT,HT_SIGNAL_WINDOW_RIGHT,top,sill,start_x,start_y);
+    }
     ht_forest_log_collision(start_x);
     ht_reconcile_ground(start_x,start_y);
+    t->push_hint=0;
+    if(t->mode==HT_FREE && ht.grounded && direction && !ht.vx) {
+        int near=ht_traversal_near(&ht);
+        int object=near==HT_ROLL?t->ball_x:near==HT_CRATE?t->crate_x:ht.x;
+        if((near==HT_ROLL || near==HT_CRATE) && (object-ht.x)*direction>0)
+            t->push_hint=(uint8_t)near;
+        else if(direction>0 && ht_forest_log_near(&ht))t->push_hint=HT_PUSH;
+    }
     ht_camera_step((direction || vertical || t->mode==HT_CLIMB) && (start_x!=ht.x || start_y!=ht.y));
     if(ht.grounded && !was_grounded && fall_speed>384 && !t->mode) {
         ht.landing_ticks=10;ht.landing_strength=(uint8_t)ht_clamp(fall_speed/256,2,8);
@@ -592,17 +701,18 @@ static void ht_step_controls(int direction,int vertical,bool jump_pressed,bool j
     if(direction) ht.facing=direction;
     if(ht.grounded) {
         ht.stride+=ht_abs(ht.x-start_x);
-        for(int i=3;i<=9;i+=3) if(ht.x/256>=ht_land[i].left && ht.x/256<ht_land[i].right && ht.y==ht_surface_at(&ht,i,ht.x/256)*256) ht.checkpoint=i;
+        for(int i=3;i<=9;i+=3) if(!(ht.level==0 && i==3 && ht.x<(HT_MILL_SHUTTER_RIGHT+5)*256) && ht.x/256>=ht_land[i].left && ht.x/256<ht_land[i].right && ht.y==ht_surface_at(&ht,i,ht.x/256)*256) ht.checkpoint=i;
     }
     if((!ht.puzzle.solved || ht.puzzle.opening<48 || ht_final_locked(&ht)) && ht.x>HT_PUZZLE_GATE*256) {ht.x=HT_PUZZLE_GATE*256;ht.vx=0;}
     ht.story_x=ht_max(ht.story_x,ht.x/256);
-    unsigned beat=ht_story_beat(ht.story_x)+1;
+    unsigned beat=ht_story_beat_at(&ht)+1;
     if(ht.story_seen[ht.level]<beat) ht.story_seen[ht.level]=(uint8_t)beat;
     if(ht.y>500*256) {
         ++ht.deaths;ht_spawn(false);return;
     }
     if(ht.x>=HT_GOAL*256 && ht.grounded && ht.puzzle.solved && ht.puzzle.opening==48 && !ht_final_locked(&ht)) {
-        if(++ht.level==HT_LEVELS) {ht.level=0;++ht.laps;} ht_spawn(true);return;
+        if(ht.level==HT_LEVELS-1) {ht_door_begin();return;}
+        ++ht.level;ht_spawn(true);return;
     }
     ht.camera+=(ht_clamp(ht.x/256-200,-120,HT_GOAL-260)*256-ht.camera)/8;
     ht.camera_y+=(ht_clamp(ht.y/256-180-ht_vista_lift(&ht),-300,100)*256-ht.camera_y)/8;

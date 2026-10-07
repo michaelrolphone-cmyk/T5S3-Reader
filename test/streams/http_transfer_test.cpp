@@ -21,7 +21,7 @@ struct Mock {
   size_t position = 0;
   size_t failReadAt = SIZE_MAX;
   size_t failWriteAt = SIZE_MAX;
-  uint32_t now = 0;
+  uint32_t now = 0, readAdvance = 0, finishAdvance = 0;
   unsigned slowWrites = 0;
   unsigned sourceClose = 0, fileClose = 0, fileFinish = 0;
   bool stageExists = false, finishFails = false, cancelled = false, stall = false;
@@ -54,6 +54,9 @@ struct Mock {
     api.read = [](t5_stream_t handle, void* data, uint32_t size, uint32_t* count) -> int32_t {
       return active->registry.read(owner, handle, data, size, count);
     };
+    api.write = [](t5_stream_t handle, const void* data, uint32_t size, uint32_t* count) -> int32_t {
+      return active->registry.write(owner, handle, data, size, count);
+    };
     api.finish = [](t5_stream_t handle) -> int32_t { return active->registry.finish(owner, handle); };
     api.close = [](t5_stream_t handle) -> int32_t { return active->registry.close(owner, handle); };
     api.pipe_connect = [](t5_stream_t source, t5_stream_t dest, uint32_t policy, t5_pipe_t* out) -> int32_t {
@@ -68,6 +71,7 @@ struct Mock {
 
   static int32_t readSource(void* ctx, void* data, uint32_t size, uint32_t* count) {
     auto& mock = *static_cast<Mock*>(ctx);
+    mock.now += mock.readAdvance;
     if (mock.stall) return T5_STREAM_AGAIN;
     if (mock.position >= mock.failReadAt) return T5_STREAM_IO;
     if (mock.position == mock.body.size()) return T5_STREAM_EOF;
@@ -90,6 +94,7 @@ struct Mock {
   static int32_t finishFile(void* ctx) {
     auto& mock = *static_cast<Mock*>(ctx);
     ++mock.fileFinish;
+    mock.now += mock.finishAdvance;
     return mock.finishFails ? T5_STREAM_IO : T5_STREAM_OK;
   }
   static void closeFile(void* ctx) { ++static_cast<Mock*>(ctx)->fileClose; }
@@ -239,5 +244,67 @@ int main() {
     assert(mock.fileFinish == 0);
     assertReleased(mock);
   }
-  std::cout << "HTTP stream transfer tests passed, including exclusive staged-file ownership\n";
+
+  {
+    Mock mock(10000); uint64_t total = 0, progress = 0; bool created = false;
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), 10000, 300000, onProgress, &progress, &total, &created) == Result::Ok);
+    assert(created && total == 10000 && progress == 10000 && mock.staged == mock.body);
+    assert(mock.fileFinish == 1 && mock.slowWrites > 7); assertReleased(mock);
+  }
+  for (size_t limit : {size_t(1), size_t(511), size_t(512), size_t(9999)}) {
+    Mock mock(10000); bool created = false; uint64_t total = 99;
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), limit, 300000, nullptr, nullptr, &total, &created) == Result::Transfer);
+    assert(created && !total && mock.staged.size() <= limit && !mock.fileFinish);
+    assertReleased(mock);
+  }
+  {
+    Mock mock(10000); // Steady progress never bypasses the total duration cap.
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(1000), 10000, 150) == Result::Timeout);
+    assert(!mock.staged.empty() && mock.staged.size() < mock.body.size() && !mock.fileFinish);
+    assertReleased(mock);
+  }
+  {
+    Mock mock(100); mock.readAdvance = 100; // Reject a late callback before its bytes reach SD.
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), 100, 100) == Result::Timeout);
+    assert(mock.staged.empty()); assertReleased(mock);
+  }
+  {
+    Mock mock(10); mock.finishAdvance = 100;
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), 10, 100) == Result::Timeout);
+    assert(mock.fileFinish == 1); assertReleased(mock);
+  }
+  {
+    Mock mock(100); mock.now = UINT32_MAX - 50; // Unsigned elapsed time survives timer wrap.
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), 100, 1000) == Result::Ok); assertReleased(mock);
+  }
+  {
+    Mock mock(100); mock.stageExists = true; mock.staged = {1, 2, 3}; bool created = true;
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), 100, 1000, nullptr, nullptr, nullptr, &created) == Result::File);
+    assert(!created && mock.staged == std::vector<uint8_t>({1, 2, 3})); assertReleased(mock);
+  }
+  {
+    Mock mock(100); mock.cancelled = true;
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), 100, 1000) == Result::Cancelled);
+    assert(!mock.stageExists); assertReleased(mock);
+  }
+  {
+    Mock mock(100); mock.stall = true;
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(50), 100, 1000) == Result::Timeout); assertReleased(mock);
+  }
+  {
+    Mock mock(100); mock.failWriteAt = 17;
+    assert(downloadBounded(&mock.api, "https://example.test/payload", "/sd/Apps/test.elf.part",
+        mock.hooks(), 100, 1000) == Result::File);
+    assert(mock.staged.size() == 17 && !mock.fileFinish); assertReleased(mock);
+  }
+  std::cout << "HTTP stream transfers: exclusive stages, strict byte caps, total/stall deadlines, short writes and revocation passed\n";
 }

@@ -67,6 +67,17 @@ typedef struct {
     /* Optional additive 1.3.32 entry. Check struct_size before access.
      * Copies a coherent snapshot; false when stopped or no window is ready. */
     bool (*scan_stats)(t5_video_scan_stats_v1 *out);
+    /* Optional additive 1.3.48 bounded mono black-endpoint reinforcement. Check struct_size.
+     * Physical rows only: 1..64 rows, 1..2 extra passes; passes=0 cancels.
+     * Latest request replaces previous; expires after 16 scans. Does not own
+     * a framebuffer, delay submit completion, or touch whites/gray pixels.
+     * False if unsupported/stopped/invalid. Optical result requires device QA. */
+    bool (*reinforce_black)(uint16_t y, uint16_t height, uint8_t passes);
+    /* Optional additive checked teardown. False retains live backend resources;
+     * callers must retain their provider lease and retry before another owner
+     * starts or the provider is unloaded. Legacy stop() remains ABI-compatible
+     * but cannot certify quiescence. Check struct_size before access. */
+    bool (*try_stop)(void);
 } t5_video_api_v1;
 
 const t5_video_api_v1 *t5_video_get_api(uint32_t api_version);

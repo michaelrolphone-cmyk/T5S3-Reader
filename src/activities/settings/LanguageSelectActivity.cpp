@@ -60,5 +60,5 @@ void LanguageSelectActivity::render(RenderLock&&) {
   } else {
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, "Opening Language...");
   }
-  renderer.displayBuffer(HalDisplay::BALANCED_REFRESH);
+  renderer.displayBuffer(DisplayPresentMode::Balanced);
 }

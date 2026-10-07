@@ -1,0 +1,96 @@
+{
+  "before_commit": "cff6ef0c11b79634dfa2c688d880df393d8c153c",
+  "after_source_blobs": {
+    "Apps/hollow_trail_geography_draw.inc": "71e1dcb5f9eee0b7e04e81281f76d3ca8502bf59",
+    "Apps/hollow_trail.json": "c217352ae21051d9f96223e13be34fec16d3e0f0",
+    "scripts/preview_hollow_trail_story.py": "bd5b1b4a19ce4a55b841ca6eca5a3c80742cd890",
+    "test/native_apps/hollow_trail_renderer_test.c": "a79947be874bc6b1fbebb96826b1b3690be858f9"
+  },
+  "after_version": "1.1.47",
+  "source_base_verification": "85 Hollow Trail app/story/preview/native-test source files matched live master blob IDs before edits.",
+  "capture": "scripts/preview_hollow_trail_story.py --cab-step; same updated harness for both revisions, only repository source root differs",
+  "compiler": "cc (Debian 14.2.0-19) 14.2.0",
+  "render": {
+    "width": 960,
+    "height": 540,
+    "camera_mode": "HT_CAMERA_NATIVE",
+    "level": 3,
+    "x": 760,
+    "y": 220,
+    "camera_x": 560,
+    "camera_y": 40,
+    "ticks": 0,
+    "grounded": true,
+    "close": {
+      "intimacy": 256,
+      "vista": 0
+    },
+    "wide": {
+      "intimacy": 0,
+      "vista": 256
+    },
+    "mono": "ht_pack_mono, 120 bytes per row"
+  },
+  "presentation": {
+    "full_scene_pairs": "Native pixel size, no resampling. Labels outside rendered pixels.",
+    "detail_crop": {
+      "box": [
+        388,
+        198,
+        456,
+        278
+      ],
+      "scale": 4,
+      "resampling": "nearest"
+    }
+  },
+  "image_sha256": {
+    "before-close.png": "12e0f5737196a24bfd5fe0de65ff948cb76ce621d5409363526b0488f58f4180",
+    "after-close.png": "ac7148776313fe3b8cabc2ae4bffd5a36965fa6031bf80dd912787c895edd987",
+    "before-close-mono.png": "62c2bb1e8f52adfb06cc178cf596f3ecf8c56abbae6fcd949ec66ec7edc91945",
+    "after-close-mono.png": "3f935a157154d190d2475b80b024956f73457733fbd7782f239ee7794005b70b",
+    "before-wide.png": "990ef02e11781ce1c4013a1a11dc641460171346eaa3e1f77b3096e85d2f0a53",
+    "after-wide.png": "b45afffdbe9aaf6c85a1816b53326b1047562915fe9177a880cf0dd54c9cf627",
+    "before-wide-mono.png": "ef3da2be41ff8f5ac14800b6252e15470250a5491f99e76a0ea40d3fc206d5c5",
+    "after-wide-mono.png": "dd1a744607005fd3de588c679353634e24499b1302e3b720e046b7d3ac7ae670"
+  },
+  "scene_difference": {
+    "close": {
+      "pixels": 280,
+      "bounds": [
+        400,
+        214,
+        443,
+        263
+      ]
+    },
+    "close-mono": {
+      "pixels": 82,
+      "bounds": [
+        400,
+        215,
+        437,
+        262
+      ]
+    },
+    "wide": {
+      "pixels": 84,
+      "bounds": [
+        444,
+        270,
+        465,
+        293
+      ]
+    },
+    "wide-mono": {
+      "pixels": 36,
+      "bounds": [
+        445,
+        271,
+        459,
+        293
+      ]
+    }
+  },
+  "limits": "Host raster/packing evidence, not physical e-ink, FPS, ghosting or hardware qualification."
+}

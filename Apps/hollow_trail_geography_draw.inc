@@ -5,6 +5,9 @@
 static void ht_scene_geography(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256,margin=ht_view_margin();
     if(g->level==3) {
+        ht_carriage_shell(g,g->carriage_view_active,g->carriage_view_boots);
+        ht_signal_cabin_room(g);
+        ht_station_cutting(g);
         int bed=630-cx;
         ht_rect(ht_scene,bed,219-cy,530,350,170);
         ht_triangle(ht_scene,bed-60,520-cy,bed,219-cy,bed,520-cy,170);
@@ -47,6 +50,12 @@ static void ht_scene_geography(const ht_game *g) {
                 for(int bar=0;bar<5;++bar)ht_limb(ht_scene,x+7+bar*3,y-20,x-12+bar*7,y+1,0,0,220);
                 ht_limb(ht_scene,x+102,y-19,x+141,y-19,1,1,207);
                 ht_rect(ht_scene,x+133,y-16,13,3,202);ht_rect(ht_scene,x+136,y-10,13,3,202);
+                /* Novella IV: three leaves have reached the iron cab tread.
+                 * Root on the existing step; this remains non-colliding art. */
+                ht_limb(ht_scene,x+139,y-16,x+141,y-27,0,0,116);
+                ht_detail_leaf(x+140,y-19,x+133,y-24,2,96);
+                ht_detail_leaf(x+140,y-23,x+147,y-28,2,96);
+                ht_detail_leaf(x+141,y-26,x+140,y-32,2,96);
 
             } else {
                 ht_rect(ht_scene,x+4,y-66,144,48,160);

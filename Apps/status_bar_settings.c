@@ -44,10 +44,14 @@ void app_main(void) {
         !statusbar->item_activate || !ui->render_list || !ui->hit_test || !ui->next_index || !ui->previous_index) return;
 
     selected = 0;
+    bool confirm_down = false;
     render();
     for (;;) {
         t5_app_input_t input;
         if (!app->poll(&input, 50) || input.exit_requested || (input.buttons & T5_APP_BUTTON_BACK)) break;
+        const bool confirm = (input.buttons & T5_APP_BUTTON_CONFIRM) != 0;
+        const bool confirm_pressed = confirm && !confirm_down;
+        confirm_down = confirm;
         if ((input.buttons & T5_APP_BUTTON_UP) || (input.buttons & T5_APP_BUTTON_LEFT)) {
             selected = ui->previous_index(selected, count);
             render();
@@ -67,7 +71,7 @@ void app_main(void) {
             }
             continue;
         }
-        if (input.buttons & T5_APP_BUTTON_CONFIRM) {
+        if (confirm_pressed) {
             if (selected >= 0 && (uint32_t)selected < count) statusbar->item_activate((uint32_t)selected);
             render();
         }

@@ -1131,25 +1131,14 @@ bool SdCardFont::hasAdvanceTable() const {
   return false;
 }
 
+bool SdCardFont::tryGetAdvance(uint32_t codepoint, uint8_t style, uint16_t& outAdvance) const {
+  return advanceTableLookup(style & (MAX_STYLES - 1), codepoint, &outAdvance);
+}
+
 uint16_t SdCardFont::getAdvance(uint32_t codepoint, uint8_t style) const {
-  style &= (MAX_STYLES - 1);
-  if (!advanceTable_[style]) return 0;
-  const AdvanceEntry* table = advanceTable_[style];
-  const uint32_t size = advanceTableSize_[style];
-  // Binary search sorted by codepoint
-  uint32_t lo = 0, hi = size;
-  while (lo < hi) {
-    uint32_t mid = lo + (hi - lo) / 2;
-    if (table[mid].codepoint < codepoint) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  if (lo < size && table[lo].codepoint == codepoint) {
-    return table[lo].advanceX;
-  }
-  return 0;
+  uint16_t advance = 0;
+  tryGetAdvance(codepoint, style, advance);
+  return advance;
 }
 
 // Given a sorted array of unique codepoints, resolve glyph indices per style,
@@ -1162,8 +1151,8 @@ int SdCardFont::fetchAdvancesForCodepoints(uint32_t* codepoints, uint32_t cpCoun
     const auto& s = styles_[si];
 
     // Stop fetching once the cache is full — further inserts would be dropped
-    // by the merge anyway. The renderer fast path tolerates missing entries
-    // (returns 0); the slow path is still correct for those codepoints.
+    // by the merge anyway. Renderer measurements resolve each cache miss
+    // through the existing glyph-metrics fallback.
     if (advanceTableSize_[si] >= ADVANCE_CACHE_LIMIT) continue;
 
     // For each codepoint in `codepoints`, skip those already cached, then

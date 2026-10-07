@@ -19,7 +19,7 @@ struct TxtDisplayLine {
 
 class TxtReaderActivity final : public Activity {
   std::unique_ptr<Txt> txt;
-  HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH;
+  DisplayPresentMode initialRefreshMode = DisplayPresentMode::Clean;
 
   int currentPage = 0;
   int totalPages = 1;
@@ -65,7 +65,7 @@ class TxtReaderActivity final : public Activity {
 
  public:
   explicit TxtReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::unique_ptr<Txt> txt,
-                             HalDisplay::RefreshMode initialRefreshMode = HalDisplay::FULL_REFRESH)
+                             DisplayPresentMode initialRefreshMode = DisplayPresentMode::Clean)
       : Activity("TxtReader", renderer, mappedInput),
         txt(std::move(txt)),
         initialRefreshMode(initialRefreshMode) {}

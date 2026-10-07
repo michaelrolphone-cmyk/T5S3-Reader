@@ -44,9 +44,9 @@ int main() {
   forged.requiredOsCpuAbi = 1;
   forged.verifiedElfBytes = image;
   forged.verifiedElfLength = sizeof(image);
-  forged.signedImports = imports;
-  forged.signedImportCount = 2;
-  std::memcpy(forged.authenticatedElfSha256, digest, 32);
+  forged.declaredImports = imports;
+  forged.declaredImportCount = 2;
+  std::memcpy(forged.contentSha256, digest, 32);
   GraphV2 graph;
   assert(!graph.addVerified(forged));
   assert(DeviceProviderExecutorV2::registerManagerValidated(graph, candidate));

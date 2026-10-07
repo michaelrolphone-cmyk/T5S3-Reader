@@ -1,0 +1,35 @@
+name: BMP layout overflow regression
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/bmp-layout-regression.yml"
+      - "platformio.ini"
+      - "src/native/BmpLayout.h"
+      - "src/native/NativeImageBridge.cpp"
+      - "test/native_image/**"
+      - "test/run_bmp_layout_test.sh"
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/bmp-layout-regression.yml"
+      - "platformio.ini"
+      - "src/native/BmpLayout.h"
+      - "src/native/NativeImageBridge.cpp"
+      - "test/native_image/**"
+      - "test/run_bmp_layout_test.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  bmp-layout:
+    name: BMP overflow and row bounds
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run production layout regression
+        run: bash test/run_bmp_layout_test.sh

@@ -1,3 +1,5 @@
+#include <HalStorageLifecycle.h>
+#include <SdSpiFault.h>
 #include "BoardEPD47.h"
 
 #include <cassert>
@@ -104,6 +106,7 @@ void setBacklightLevel(uint8_t level) { (void)level; }
 void restoreBacklightLevel(uint8_t level) { (void)level; }
 
 void prepareSdBus() {
+  risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
   pinMode(EPD47_SD_CS, OUTPUT);
   digitalWrite(EPD47_SD_CS, HIGH);
   SPI.begin(EPD47_SD_SCLK, EPD47_SD_MISO, EPD47_SD_MOSI, EPD47_SD_CS);
@@ -126,6 +129,8 @@ void begin() {
 }
 
 void deinitForSleep() {
+  risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
+  halStorageMediaUnavailable(); // Existing SD bus shutdown invalidates retained metadata.
   pinMode(EPD47_SD_CS, INPUT);
   pinMode(EPD47_SD_MISO, INPUT);
   pinMode(EPD47_SD_MOSI, INPUT);

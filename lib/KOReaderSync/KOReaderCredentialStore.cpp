@@ -105,9 +105,9 @@ bool KOReaderCredentialStore::loadFromBinaryFile() {
   }
 
   if (file.available()) {
-    uint8_t method;
+    uint8_t method = 0;
     serialization::readPod(file, method);
-    matchMethod = static_cast<DocumentMatchMethod>(method);
+    setMatchMethod(static_cast<DocumentMatchMethod>(method));
   } else {
     matchMethod = DocumentMatchMethod::FILENAME;
   }
@@ -170,6 +170,8 @@ std::string KOReaderCredentialStore::getBaseUrl() const {
 }
 
 void KOReaderCredentialStore::setMatchMethod(DocumentMatchMethod method) {
-  matchMethod = method;
-  LOG_DBG("KRS", "Set match method: %s", method == DocumentMatchMethod::FILENAME ? "Filename" : "Binary");
+  // All load and mutation paths share one fallback, so the settings UI and sync
+  // cannot interpret an invalid enum differently. Preserve both valid modes.
+  matchMethod = method == DocumentMatchMethod::BINARY ? DocumentMatchMethod::BINARY : DocumentMatchMethod::FILENAME;
+  LOG_DBG("KRS", "Set match method: %s", matchMethod == DocumentMatchMethod::FILENAME ? "Filename" : "Binary");
 }

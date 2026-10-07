@@ -71,17 +71,18 @@ std::string KOReaderDocumentId::calculate(const std::string& filePath) {
     // Seek to offset
     if (!file.seekSet(offset)) {
       LOG_DBG("KODoc", "Failed to seek to offset %zu", offset);
-      continue;
+      return "";
     }
 
     // Read up to CHUNK_SIZE bytes
     const size_t bytesToRead = std::min(CHUNK_SIZE, fileSize - offset);
-    const size_t bytesRead = file.read(buffer, bytesToRead);
-
-    if (bytesRead > 0) {
-      md5.add(buffer, bytesRead);
-      totalBytesRead += bytesRead;
+    const int bytesRead = file.read(buffer, bytesToRead);
+    if (bytesRead != static_cast<int>(bytesToRead)) {
+      LOG_DBG("KODoc", "Incomplete sample at offset %zu: read %d of %zu bytes", offset, bytesRead, bytesToRead);
+      return "";
     }
+    md5.add(buffer, bytesRead);
+    totalBytesRead += bytesRead;
   }
 
   // Calculate final hash

@@ -6,6 +6,7 @@
 #include <Serialization.h>
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 constexpr uint8_t STATE_FILE_VERSION = 4;
@@ -40,15 +41,17 @@ bool CrossPointState::loadFromFile() {
   // Try JSON first
   if (Storage.exists(STATE_FILE_JSON)) {
     String json = Storage.readFile(STATE_FILE_JSON);
-    if (!json.isEmpty()) {
-      return JsonSettingsIO::loadState(*this, json.c_str());
+    if (!json.isEmpty() && JsonSettingsIO::loadState(*this, json.c_str())) {
+      return true;
     }
   }
 
   // Fall back to binary migration
   if (Storage.exists(STATE_FILE_BIN)) {
-    if (loadFromBinaryFile()) {
-      if (saveToFile()) {
+    CrossPointState recovered;
+    if (recovered.loadFromBinaryFile()) {
+      if (recovered.saveToFile()) {
+        *this = std::move(recovered);
         Storage.rename(STATE_FILE_BIN, STATE_FILE_BAK);
         LOG_DBG("CPS", "Migrated state.bin to state.json");
         return true;

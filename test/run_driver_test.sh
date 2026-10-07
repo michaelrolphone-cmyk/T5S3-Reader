@@ -151,3 +151,6 @@ bash "$repo/test/run_program_msp_test.sh"
 python3 "$repo/test/drivers/package_test.py"
 python3 "$repo/test/drivers/usb_package_test.py"
 python3 "$repo/test/resources/package_integrity_test.py"
+
+# Installed software service uses the same provider graph and ZIP bootstrap.
+bash "$repo/test/run_archive_zip_service_test.sh"

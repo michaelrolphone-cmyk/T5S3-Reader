@@ -86,6 +86,8 @@ static void render_state(const t5_lora_state_t *state) {
 
     if (state->status == T5_LORA_STATUS_UNSUPPORTED) {
         copy_text(footer, sizeof(footer), "SX1262 hardware is not available on this board");
+    } else if (state->last_error == T5_LORA_ERROR_REBOOT_REQUIRED) {
+        copy_text(footer, sizeof(footer), "SD/SPI unavailable; manual reboot required");
     } else if (state->status == T5_LORA_STATUS_ERROR) {
         snprintf(footer, sizeof(footer), "Radio error %d", (int)state->last_error);
     } else {
@@ -113,7 +115,7 @@ static void render_state(const t5_lora_state_t *state) {
 
     // Firmware owns the shared display/radio pin arbitration. The app only
     // brackets its themed UI refresh with the LoRa service calls.
-    if (lora->prepare_display) (void)lora->prepare_display();
+    if (lora->prepare_display && !lora->prepare_display()) return;
     ui->render_list(&chrome, rows, (uint32_t)(sizeof(rows) / sizeof(rows[0])), 0);
     if (lora->finish_display) (void)lora->finish_display();
 }

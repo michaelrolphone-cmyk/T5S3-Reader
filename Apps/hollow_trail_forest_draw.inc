@@ -151,6 +151,37 @@ static void ht_forest_backdrop(const ht_game *g) {
 /* One dead snag at the washed-out bank. Its root hinge stays in the soil;
  * the crown accelerates through a circular fall and comes to rest on the far
  * bank. It has no switch, cables, moving ground or invisible early foothold. */
+/* Novella I: exposed roots were sawn only partway through. This dressing
+ * shares the existing stump and log transform; no contact surface changes. */
+static void ht_forest_sawn_roots(const ht_game *g,int x,int y,int dx,int dy) {
+    /* Existing bank-side root fan, still buried at its outer ends. */
+    ht_limb(ht_scene,x-9,y+1,x-27,y+8,4,2,231);
+    ht_limb(ht_scene,x-27,y+8,x-34,y+13,2,0,238);
+    ht_limb(ht_scene,x-10,y+4,x-22,y+12,3,0,225);
+    ht_limb(ht_scene,x-9,y+1,x-25,y+6,0,0,146);
+    /* A narrow kerf stops before the intact dark underside. Three parallel
+     * tooth tracks are cut into the pale exposed root, not laid over soil. */
+    ht_limb(ht_scene,x-20,y+3,x-16,y+6,2,1,139);
+    for(int n=0;n<3;++n)ht_limb(ht_scene,x-21+n*2,y+2,x-19+n*2,y+5,0,0,208);
+    ht_limb(ht_scene,x-20,y+7,x-15,y+7,1,1,248);
+    /* Two connected splinters and the piece of root travel with the same
+     * local axis used by every collision/render node of the heavy trunk. */
+    int ax=x+dx*10/312-dy*7/312,ay=y+dy*10/312+dx*7/312;
+    int bx=x+dx*23/312-dy*4/312,by=y+dy*23/312+dx*4/312;
+    ht_limb(ht_scene,ax,ay,bx,by,3,1,158);
+    ht_limb(ht_scene,ax,ay,x+dx*28/312-dy*6/312,y+dy*28/312+dx*6/312,0,0,215);
+    ht_limb(ht_scene,ax+dy*2/312,ay-dx*2/312,bx+dy*3/312,by-dx*3/312,0,0,207);
+    /* The retained underground connection is revealed only after the
+     * existing fall begins. Before that, the fixed root meets moving wood. */
+    if(g->traversal.forest_log_falling || g->traversal.forest_log_phase) {
+        ht_limb(ht_scene,x-15,y+4,x-12,y-3,1,0,164);
+        ht_limb(ht_scene,x-18,y+5,x-18,y-1,1,0,177);
+        ht_limb(ht_scene,ax,ay,ax-dy*7/312-dx*6/312,ay+dx*7/312-dy*6/312,2,0,225);
+    } else {
+        ht_limb(ht_scene,x-15,y+4,ax,ay,2,2,235);
+        ht_limb(ht_scene,x-15,y+2,ax,ay-1,0,0,178);
+    }
+}
 static void ht_forest_log_draw(const ht_game *g) {
     int cx=g->camera/256,cy=g->camera_y/256;
     int phase=g->traversal.forest_log_phase;
@@ -188,6 +219,7 @@ static void ht_forest_log_draw(const ht_game *g) {
     }
     ht_triangle(ht_scene,x-19,y+8,x-8,y-16,x+12,y+7,255);
     ht_limb(ht_scene,x-17,y+7,x-34,y+13,3,0,240);
+    ht_forest_sawn_roots(g,x,y,dx,dy);
     if(phase==32) {
         /* Ground contacts bury both ends. Narrow lit bark stays above them. */
         ht_limb(ht_scene,x-6,y+9,x+16,y+7,2,0,235);
@@ -207,11 +239,24 @@ static void ht_foreground_contour(int x,int y,const ht_foreground_section *v,int
         if((n&7)==0)ht_checkpoint();
     }
 }
+/* The near sill and jamb occlude only their own real timber after the actor.
+ * Feet sit on its upper edge; the hand can wrap around the narrow side. */
+static void ht_forest_shutter_foreground(const ht_game *g) {
+    if(g->level)return;
+    int left=HT_MILL_SHUTTER_LEFT-g->camera/256,right=HT_MILL_SHUTTER_RIGHT-g->camera/256;
+    if(right< -ht_view_margin() || left>HT_W+ht_view_margin())return;
+    int top=HT_MILL_SHUTTER_TOP-g->camera_y/256,sill=HT_MILL_SHUTTER_SILL-g->camera_y/256;
+    ht_rect(ht_scene,left-1,sill+1,right-left+3,3,227);
+    ht_limb(ht_scene,right+1,top,right+1,sill,1,1,240);
+    ht_limb(ht_scene,left-1,sill,left+6,sill,0,0,123);
+}
+
 /* The same two close trunks belong to the observer's bank. Their 130-vertex
  * contours, bark furrows and knots use the living-tree anatomy; the existing
  * broken branch and root collar retain their separate asymmetric outlines. */
 static void ht_forest_foreground(const ht_game *g) {
     if(g->level!=0)return;
+    ht_forest_shutter_foreground(g);
     static const int anchors[2]={1100,2800};
     static const ht_foreground_section branch[]={
         {-22,-236,-20,-277},{-42,-263,-36,-287},
@@ -235,4 +280,116 @@ static void ht_forest_foreground(const ht_game *g) {
         ht_limb(ht_scene,x-28,y-265,x-23,y-292,1,1,180);
         ht_limb(ht_scene,x-23,y-292,x-16,y-322,1,0,180);
     }
+}
+
+/* Chapter I's register belongs to a mill in the existing low hollow, not a
+ * document on an unrelated stump. The open/broken downhill wall exposes the
+ * desk while the player retains the established continuous ground route. */
+static void ht_forest_mill(const ht_game *g) {
+    if(g->level!=0)return;
+    int cx=g->camera/256,cy=g->camera_y/256,x=1095-cx,base=218-cy;
+    if(x+208< -ht_view_margin() || x-70>HT_W+ht_view_margin())return;
+    /* Stream-side stone footing and a leaf-choked pool behind the route. */
+    ht_triangle(ht_scene,x-55,base+2,x+171,base+2,x+140,base-17,74);
+    ht_triangle(ht_scene,x-55,base+2,x+140,base-17,x-34,base-10,74);
+    for(int i=0;i<15;++i) {
+        int xx=x-40+(i*29)%166,yy=base-3-(i%3)*3;
+        ht_limb(ht_scene,xx,yy,xx+9,yy,0,0,132+(i%3)*14);
+    }
+    /* Uphill stone wall, leaning timber front and a visibly sagging roof. */
+    ht_triangle(ht_scene,x+117,base-92,x+173,base-68,x+168,base,193);
+    ht_triangle(ht_scene,x+117,base-92,x+168,base,x+109,base,193);
+    for(int row=0;row<6;++row)for(int col=0;col<3;++col) {
+        int xx=x+119+col*17+(row&1)*3,yy=base-8-row*11;
+        ht_limb(ht_scene,xx,yy,xx+12,yy-1,0,0,163);
+    }
+    ht_rect(ht_scene,x,base-86,122,86,170);
+    for(int plank=0;plank<11;++plank) {
+        int xx=x+plank*11;ht_limb(ht_scene,xx,base-84,xx+2,base-3,0,0,203);
+        ht_limb(ht_scene,xx+3,base-48,xx+4,base-9,0,0,189);
+    }
+    ht_triangle(ht_scene,x-11,base-87,x+55,base-119,x+118,base-102,210);
+    ht_triangle(ht_scene,x-11,base-87,x+118,base-102,x+182,base-75,210);
+    /* Uneven courses sag over the wheel; missing ends expose the dark roof
+     * beneath. Large planes remain legible, wear never becomes frame noise. */
+    for(int row=0;row<4;++row)for(int tile=0;tile<7;++tile) {
+        int xx=x+7+row*9+tile*18,yy=base-92-row*4+tile*2;
+        if((tile+row*2)%9==5)continue;
+        ht_limb(ht_scene,xx,yy,xx+14+(tile%3),yy+1,0,0,170);
+        ht_limb(ht_scene,xx+14,yy+1,xx+14,yy+4,0,0,186);
+    }
+    int px=x-9,py=base-85;
+    for(int i=1;i<=8;++i) {
+        int nx=x-9+191*i/8,ny=base-85+10*i/8+5*i*(8-i)/16;
+        ht_limb(ht_scene,px,py,nx,ny,2,2,244);px=nx;py=ny;
+    }
+    /* Water-blackened board feet and two splits follow real plank seams. */
+    for(int i=0;i<10;++i) {
+        int xx=x+3+i*11,height=11+(i*7)%19;
+        ht_limb(ht_scene,xx,base-2,xx+1,base-height,2,0,224);
+    }
+    ht_limb(ht_scene,x+22,base-48,x+25,base-31,0,0,230);
+    ht_limb(ht_scene,x+25,base-31,x+23,base-21,0,0,230);
+    /* Three saplings in the gutter are roots in debris, not decorative trees. */
+    for(int i=0;i<3;++i) {
+        int xx=x+70+i*20,yy=base-83+i*2;
+        ht_limb(ht_scene,xx,yy,xx-3,yy-18-i*4,1,0,153);
+        ht_limb(ht_scene,xx-2,yy-11,xx+7,yy-19,1,0,148);
+        ht_limb(ht_scene,xx-2,yy-10,xx-10,yy-17,1,0,148);
+    }
+    /* Still wheel: asymmetric waterline and spokes. No frame-based rotation. */
+    int wx=x-18,wy=base-24;
+    ht_disk(ht_scene,wx,wy,29,232);ht_disk(ht_scene,wx,wy,24,83);
+    static const int8_t spokes[8][2]={{24,0},{17,17},{0,24},{-17,17},{-24,0},{-17,-17},{0,-24},{17,-17}};
+    for(int i=0;i<8;++i)ht_limb(ht_scene,wx,wy,wx+spokes[i][0],wy+spokes[i][1],2,1,208);
+    ht_disk(ht_scene,wx,wy,5,244);
+    for(int i=0;i<7;++i)ht_limb(ht_scene,wx-25+i*8,base-7,wx-22+i*8,base-5,2,1,151);
+    for(int i=0;i<4;++i)ht_limb(ht_scene,wx-23+i*12,base-1,wx-22+i*12,base+7,0,0,39);
+    /* The downhill broken shutter is the physical entry. The separate
+     * broken window to its right continues to cast the desk's light grid. */
+    int sl=HT_MILL_SHUTTER_LEFT-cx,sr=HT_MILL_SHUTTER_RIGHT-cx;
+    int sill=HT_MILL_SHUTTER_SILL-cy,lintel=HT_MILL_SHUTTER_TOP-cy;
+    ht_rect(ht_scene,sl-2,lintel-3,sr-sl+5,base-lintel+3,224);
+    ht_rect(ht_scene,sl,lintel,sr-sl,sill-lintel,87);
+    ht_limb(ht_scene,sl-1,lintel-2,sr+1,lintel-2,2,2,242);
+    ht_triangle(ht_scene,sl-2,lintel+3,sl-14,lintel+10,sl-13,sill+1,203);
+    ht_triangle(ht_scene,sl-2,lintel+3,sl-13,sill+1,sl-3,sill-5,203);
+    for(int i=0;i<3;++i)ht_limb(ht_scene,sl-11,lintel+12+i*8,sl-3,lintel+7+i*8,0,0,157);
+    ht_triangle(ht_scene,sl-13,sill+1,sl-8,sill-4,sl-9,sill+3,169);
+    ht_rect(ht_scene,x+47,base-72,66,64,225);
+    ht_triangle(ht_scene,x+52,base-72,x+91,base-72,x+111,base-8,103);
+    ht_triangle(ht_scene,x+52,base-72,x+111,base-8,x+66,base-8,103);
+    ht_limb(ht_scene,x+66,base-72,x+80,base-8,1,1,161);
+    ht_limb(ht_scene,x+53,base-51,x+97,base-51,1,1,158);
+    /* Novella I: the door under the eaves is barred from within; the broken
+     * shutter remains the open entry beside it. The cutaway shows the timber
+     * across the inner face, seated in two brackets, behind the stone jambs. */
+    ht_triangle(ht_scene,x+127,base-57,x+158,base-48,x+155,base-2,235);
+    ht_triangle(ht_scene,x+127,base-57,x+155,base-2,x+126,base-2,235);
+    for(int board=0;board<3;++board)
+        ht_limb(ht_scene,x+132+board*8,base-48+board*2,x+131+board*8,base-4,0,0,204);
+    ht_limb(ht_scene,x+126,base-40,x+158,base-36,2,2,135);
+    ht_rect(ht_scene,x+126,base-43,4,8,249);
+    ht_rect(ht_scene,x+154,base-39,4,8,249);
+    ht_limb(ht_scene,x+125,base-58,x+159,base-49,2,2,244);
+    ht_limb(ht_scene,x+125,base-58,x+124,base-2,2,2,226);
+    ht_limb(ht_scene,x+160,base-49,x+158,base-2,2,2,226);
+    /* Sparse fern/ivy contact remains grounded in the uphill wall. */
+    for(int i=0;i<5;++i) {
+        int xx=x+138+i*7,yy=base-i*10;
+        ht_limb(ht_scene,xx,yy,xx-8,yy-12,1,0,136);
+        ht_disk(ht_scene,xx-7,yy-9,3,123);
+        if(i)ht_limb(ht_scene,xx-7,yy-9,xx-14,yy+2,1,0,138);
+    }
+    /* Fern fronds root at the damp uphill wall, with tapering paired pinnae. */
+    for(int frond=0;frond<4;++frond) {
+        int root=x+155+frond*7,side=frond&1?1:-1;
+        for(int k=0;k<5;++k) {
+            int xx=root+side*k*3,yy=base-3-k*5+k*k/3,w=6-k;
+            ht_limb(ht_scene,xx,yy,xx+side*3,yy-4,0,0,149);
+            ht_limb(ht_scene,xx,yy,xx-w,yy-4,1,0,137);
+            ht_limb(ht_scene,xx,yy,xx+w,yy-3,1,0,137);
+        }
+    }
+    ht_checkpoint();
 }
