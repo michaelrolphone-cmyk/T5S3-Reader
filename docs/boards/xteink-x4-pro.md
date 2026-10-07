@@ -68,9 +68,11 @@ must use the matching ordinary package, never silently reuse old driver bytes.
 No application package is changed; Battery Status is maintained independently.
 
 The existing `board.battery@1` capability is acquired through the ordinary
-installed-provider graph. It stays optional and is not added to the mandatory
-boot package list. Missing/invalid packages leave Home usable with an explicit
-unavailable indicator. The X4 owner input loop (including native-app polling)
+installed-provider graph. The battery package is now selected by the X4 board
+boot profile together with the other physical board drivers; activation remains
+on-demand, so a chip/read failure still leaves Home usable with an explicit
+unavailable indicator. This removes battery telemetry's dependency on generic
+lazy package discovery after bootstrap. The X4 owner input loop (including native-app polling)
 reads at most once per five seconds and publishes a small copied snapshot;
 Board/Settings/render readers never load a provider or perform hardware I/O.
 Acquisition and pending-release cleanup attempts are spaced by 30 seconds.
@@ -136,7 +138,7 @@ Host tests compile the actual provider, FatFs and HAL against an in-memory nativ
 
 ## Remaining device limitations
 
-Frontlight restores the saved level at startup (on/off only). Battery/RTC integration, sleep/wake and shutdown policy remain incomplete. No hardware validation has been performed for the external-file milestone. The earlier embedded route passed automated boot and some owner interactions, but those do not qualify this corrected route. Device ownership remains with the separate CI/hardware task.
+Frontlight restores the saved level at startup (on/off only). Battery and RTC packages are selected by the X4 boot profile but activate on demand; sleep/wake and shutdown policy remain incomplete. Physical battery/RTC behavior still requires device validation after each integration change. The earlier embedded route passed automated boot and some owner interactions, but those do not qualify this corrected route. Device ownership remains with the separate CI/hardware task.
 
 ## Provider and board facts
 
@@ -144,7 +146,7 @@ Provider builds use the pinned Espressif `esp-14.2.0_20260121` compiler with `RI
 
 These selectively integrated fixes originate in CI commits `2c585242`, `484cd741`, and `4b4daea0`. All provider bytes are rebuilt from this branch; no old SD binary or manifest is imported. Package versions: clock `0.1.1`, panel `0.1.13`, I²C `0.1.1`, buttons `0.1.4`, frontlight `0.1.2`, GT911 `0.1.2`, battery `0.1.1`, storage `0.2.1`; firmware is `1.3.77`.
 
-Selected external packages are `platform-clock-v1`, `x4pro-panel`, `x4pro-buttons`, `x4pro-frontlight`, `x4pro-sd`, `x4pro-i2c`, and `x4pro-gt911`. Modules are verified by the ordinary package reader and `ProviderModuleV2::loadVerifiedBytes`, then owned by the normal provider graph. Drivers publish existing capability ABIs with `t5_driver_get`; peripheral logic stays in the providers.
+Selected external packages are `platform-clock-v1`, `x4pro-panel`, `x4pro-buttons`, `x4pro-frontlight`, `x4pro-sd`, `x4pro-i2c`, `x4pro-gt911`, `x4pro-battery`, and `x4pro-rtc`. Modules are verified by the ordinary package reader and `ProviderModuleV2::loadVerifiedBytes`, then owned by the normal provider graph. Drivers publish existing capability ABIs with `t5_driver_get`; peripheral logic stays in the providers.
 
 The GT911 provider controls master enable GPIO1 and active-low touch power GPIO2, performs the INT/RESET selection on GPIO10/4, and probes 0x5D/0x14 through the I2C provider. It publishes portrait single-contact DOWN/MOVE/UP and Home-key events to the shared capture task. Multiple contacts invalidate the gesture stream. The SD provider alone owns active-low power GPIO5 and native one-bit CMD42/CLK41/DAT0 40, with 80 ms off/120 ms on sequencing.
 
