@@ -136,6 +136,13 @@ bool initialize_spi() {
     Serial.printf("[X4LAB] overclock spi_bus_add_device failed: %s\n", esp_err_to_name(err));
     return false;
   }
+
+  device.clock_speed_hz = SPI_TURBO_HZ;
+  err = spi_bus_add_device(SPI2_HOST, &device, &spi_device_turbo);
+  if (err != ESP_OK) {
+    Serial.printf("[X4LAB] turbo spi_bus_add_device failed: %s\n", esp_err_to_name(err));
+    return false;
+  }
   spi_device = spi_device_nominal;
 
   dma_buffer = static_cast<uint8_t*>(heap_caps_malloc(SPI_CHUNK_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
