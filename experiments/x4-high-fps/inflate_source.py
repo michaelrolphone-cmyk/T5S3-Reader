@@ -8,7 +8,7 @@ from pathlib import Path
 
 Import("env")  # noqa: F821  # type: ignore[name-defined]
 
-EXPECTED_SHA256 = "6610ecc249ad3fb0da6996129ef77bdcc46357b7141a7ab01174f469abcd942f"
+EXPECTED_SHA256 = "4a6e3a69b567089d04e5114eeb8bc43769abb4e1ada740be2321772eef8ed7ec"
 project_dir = Path(env.subst("$PROJECT_DIR"))  # noqa: F821  # type: ignore[name-defined]
 payload = project_dir / "experiments" / "x4-high-fps" / "source" / "full_main.cpp.gz"
 generated = project_dir / "experiments" / "x4-high-fps" / "generated" / "full_main.inc"
