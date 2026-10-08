@@ -78,7 +78,6 @@ typedef ftdi_session serial_session;
 static void tagged_pump(serial_session *, uint32_t);
 #define RISC_SERIAL_TAGGED_SESSION(s) ((s)->tagged)
 #define RISC_SERIAL_TAGGED_PUMP(s, ms) tagged_pump(s, ms)
-#define RISC_SERIAL_TAGGED_ONLY 1
 #include "../common/SerialStreamPump.inc"
 
 static bool equal(const char *a, const char *b) {
@@ -444,6 +443,7 @@ static bool close_device(uint64_t token) {
         return false;
 
     host->release(host->context, s->claim);
+    if (s->rx || s->tx) close_endpoints(s);
     *s = (ftdi_session){0};
     return true;
 }
@@ -453,20 +453,23 @@ static bool close_device(uint64_t token) {
 #define TAGGED_IFACE(s) ((s)->iface)
 #define TAGGED_ALT(s) ((s)->alt)
 #define TAGGED_MAX_BAUD 12000000u
+#define TAGGED_LEGACY_ENDPOINTS 1
 #include "../common/SerialTaggedDeadline.inc"
 #include "TaggedVendor.inc"
+#include "Discovery.inc"
 #include "../common/SerialTaggedSessions.inc"
 
-static const risc_usb_cdc_api_v1 capability = {
-    RISC_USB_CDC_API_V1, sizeof(risc_usb_cdc_api_v1),
-    open_device, configure, control_lines, legacy_read, legacy_write, close_device
+static const risc_serial_port_streams_v1 capability = {
+    {{{RISC_USB_CDC_API_V1, sizeof(risc_serial_port_streams_v1),
+       open_device, configure, control_lines, legacy_read, legacy_write, close_device},
+      probe_device}, snapshot_devices}, legacy_endpoints
 };
 
 static const risc_driver_stream_sessions_v2 driver = {
   {
     {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_stream_sessions_v2),
       "usb-ftdi", "serial.port", RISC_USB_CDC_API_V1,
-      &capability, start, stop, quiesce}, 0, bind_streams},
+      &capability.inventory.discovery.serial, start, stop, quiesce}, 0, bind_streams},
     poll_tagged_serial
   }, RISC_DRIVER_STREAM_SESSIONS_TAG_V1, RISC_DRIVER_STREAM_SESSIONS_VERSION_V1,
   &tagged_sessions

@@ -367,7 +367,7 @@ int main(int argc, char **argv) {
         assert(!serial->configure(token,115200,8,0,1));
         assert(!serial->control_lines(token,true,true));
         assert(!serial->close(token));
-        if (VENDOR != 3) { uint32_t rx=99,tx=99; assert(!serial_streams->endpoints(token,&rx,&tx) && !rx && !tx); }
+        { uint32_t rx=99,tx=99; assert(!serial_streams->endpoints(token,&rx,&tx) && !rx && !tx); }
         uint8_t byte=0; assert(serial->read(token,&byte,1,1)<0);
         assert(serial->write(token,&byte,1,1)<0);
         assert(!serial->open(2));

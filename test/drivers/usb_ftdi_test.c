@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
     const risc_usb_cdc_api_v1 *serial =
         (const risc_usb_cdc_api_v1 *)driver->capability;
     assert(serial && serial->api_version == 1 &&
-           serial->struct_size == sizeof(*serial));
+           serial->struct_size >= sizeof(*serial));
 
     assert(!driver->start(NULL, 0));
     risc_usb_host_api_v1 host = {
