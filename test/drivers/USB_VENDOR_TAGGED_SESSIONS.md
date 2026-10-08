@@ -19,7 +19,7 @@ versions in both source manifests and published records:
 Each driver exposes the tagged session extension after the complete
 poll/stream/diagnostic/base prefix. CH34x and CP210x retain their existing serial
 capability inventory/stream layouts. FTDI retains its original raw capability
-layout; it does not acquire a discovery/inventory capability in this slice.
+prefix and appends compatible discovery, inventory and stream-endpoint fields.
 Legacy Reader open/configuration/I/O/cleanup remains available for raw sessions.
 Tagged tokens cannot be adopted, configured, read, written or closed through
 those raw callbacks.
@@ -109,8 +109,6 @@ The shipping physical controller still does not advertise the lower timed
 contract, so a complete hardware path remains intentionally unavailable.
 No physical attach, unplug, power-loss, PHY/VBUS routing, board pin assignment,
 electrical behavior, firmware image or full UI/broker stack is qualified here.
-FTDI selection through a legacy inventory-based broker still needs a separate
-capability-inventory extension or an already-known host device token.
 
 The unmodified generic package staging command fails before selected package
 staging because the base repository's unrelated `t5s3-sd` source graph lacks
@@ -118,3 +116,56 @@ staging because the base repository's unrelated `t5s3-sd` source graph lacks
 or claim a full repository staging pass. Target build and ELF validation are
 separate successful checks. No public branch, release index, release, firmware,
 product source or hardware was changed, and no artifacts were delivered.
+
+## FTDI discovery successor
+
+The successor to `b2c63a6b03d386f30c8cc9e3bace6b7bab9b5e51` closes the
+inventory-selection gap. On 2026-10-08, live FTDI source and release index still
+reported 0.1.0. The cumulative, unpublished package remains 0.1.1.
+
+The actual paper Serial client at
+`7de606b7e07dacf95c2b986693b7e6238b9fc726` first requires a complete serial
+inventory, then uses the stream capability suffix as its tagged-broker marker.
+FTDI now supplies both. The legacy raw fields retain their order and behavior;
+legacy endpoint consumers can also use the existing bounded shared queue pump.
+Tagged endpoints remain unavailable through the legacy endpoint callback.
+
+Each FTDI discovery/probe turn uses one fixed 250 ms total budget because the
+existing capability callback has no timeout argument. It requires the existing
+qualified timed-host suffix; a shipping host without that suffix fails closed
+without legacy enumeration, claims, controls or data transfers. At most eight
+unique nonzero host generations are inspected. Matching uses the existing FTDI
+VID/PID and single-interface descriptor policy. Full chip classification still
+occurs during open, where device-descriptor controls are allowed. Malformed or
+ambiguous supported descriptors, unknown host state, exhausted budgets and a
+changed inventory all fail without publishing a partial result. A second complete
+host snapshot verifies the same token set before publication. Inventory ordering
+may change without invalidating an otherwise identical set. Proven disconnects
+only reconcile legacy endpoint sessions; tagged custody is unchanged.
+
+Explicit retained discovery or a detected overrun fences the provider and its
+active tagged sessions. Their existing bounded, idempotent terminal notices
+inform Runtime; uncertain resources cannot be cleared, reused or reopened.
+
+```sh
+bash test/run_usb_ftdi_client_discovery_test.sh "$CLIENT" "$RUNTIME" "$HOST"
+SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 \
+  bash test/run_usb_ftdi_client_discovery_test.sh "$CLIENT" "$RUNTIME" "$HOST"
+```
+
+The runner validates the exact client and Runtime revisions and their shared
+headers. It compiles the unmodified `PortableSerialClient.c`, loads the real FTDI
+ELF, and uses production Runtime queues. A small test broker maps issued opaque
+IDs to the actual class and queue APIs; the complete production broker and paper
+UI are not exercised by this fixture. Twenty-six scenarios cover selection,
+zero/multiple/eight devices, unknown/duplicate/zero/overflow/partial/malformed
+inventory, nonmatches, changes and reordering during discovery, total deadlines,
+missing host support, insufficient capacity without partial writes, probes,
+stale selection before open, retained callbacks/overruns, raw stream compatibility,
+live unknown pauses, detach/reconnect and retained discovery during an open session.
+Ten additional scenarios load the real deadline host ELF, exercising actual
+host-generation allocation through the same client/class/queue path. Normal and
+ASan/UBSan runs pass. All earlier vendor tagged, legacy and queue/host regression
+fixtures continue to pass. The updated FTDI Xtensa ELF also passes the real
+Runtime structural and relocation-map validators, with only `memcpy`/`memset`
+imports and `t5_driver_get` as its sole function export.
