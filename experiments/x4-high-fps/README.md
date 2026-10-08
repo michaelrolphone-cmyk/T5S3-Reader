@@ -2,6 +2,8 @@
 
 Standalone firmware for experimentally driving the **UC8279 ZHX** Xteink X4 Pro panel outside the Reader runtime. It does not mount the SD card, load RiscRTE drivers, start touch, or enter the normal application firmware.
 
+The production-conversion and qualification work required to turn the stable v0.1.5 mechanism into a reliable general-use driver is specified in [`docs/X4_UC8279_HIGH_REFRESH_GENERAL_DRIVER_PLAN.md`](../../docs/X4_UC8279_HIGH_REFRESH_GENERAL_DRIVER_PLAN.md).
+
 ## Physical abort
 
 **Press either side navigation button at any time.** Both buttons are connected to an IRAM GPIO interrupt. The interrupt immediately:
@@ -55,7 +57,7 @@ Each frame logs:
 
 - DTM2/new-plane upload time;
 - BUSY_N waveform time;
-- DTM1 synchronization time (`0` in absolute modes);
+- DTM1/old-plane synchronization time (`0` in absolute modes);
 - total frame time; and
 - instantaneous FPS.
 
