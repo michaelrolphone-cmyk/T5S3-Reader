@@ -1,0 +1,65 @@
+name: X4 high-FPS lab
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/x4-high-fps/**'
+      - 'platformio.x4lab.ini'
+      - 'scripts/merge_firmware.py'
+      - '.github/workflows/x4-high-fps-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            ~/.platformio/packages
+            ~/.platformio/platforms
+          key: ${{ runner.os }}-x4-high-fps-${{ hashFiles('platformio.x4lab.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-x4-high-fps-
+      - name: Build exact-head standalone image
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python -m pip install platformio==6.1.19
+          pio run -c platformio.x4lab.ini -e x4-high-fps-lab
+          test -s .pio/build/x4-high-fps-lab/firmware.bin
+          test -s .pio/build/x4-high-fps-lab/firmware-merged.bin
+          test -s .pio/build/x4-high-fps-lab/firmware.elf
+      - name: Freeze artifact provenance
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          out="$RUNNER_TEMP/x4-high-fps-lab"
+          mkdir -p "$out"
+          cp .pio/build/x4-high-fps-lab/firmware.bin "$out/x4-high-fps-lab-app.bin"
+          cp .pio/build/x4-high-fps-lab/firmware-merged.bin "$out/x4-high-fps-lab-merged.bin"
+          cp .pio/build/x4-high-fps-lab/firmware.elf "$out/x4-high-fps-lab.elf"
+          cp experiments/x4-high-fps/README.md "$out/README.md"
+          printf 'source_sha=%s\nrun_id=%s\nrun_attempt=%s\n' "$SOURCE_SHA" "$RUN_ID" "$RUN_ATTEMPT" > "$out/provenance.txt"
+          (cd "$out" && sha256sum x4-high-fps-lab-app.bin x4-high-fps-lab-merged.bin x4-high-fps-lab.elf > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x4-high-fps-lab-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/x4-high-fps-lab/
+          retention-days: 14
+          if-no-files-found: error
