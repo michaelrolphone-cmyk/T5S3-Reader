@@ -12,8 +12,8 @@ static fake_queue_t queue;
 static usb_ep_desc_t descriptor;
 static usb_intf_desc_t intf_descriptor;
 static dma_buffer_block_t buffers[NUM_BUFFERS];
-static usb_dwc_ll_dma_qtd_t descriptors[NUM_BUFFERS][XFER_LIST_LEN_BULK];
-static uint8_t data[4096];
+static usb_dwc_ll_dma_qtd_t descriptors[NUM_BUFFERS][XFER_LIST_LEN_CTRL];
+static uint8_t data[4104];
 static bool checked_pipe_callback(hcd_pipe_handle_t handle,hcd_pipe_event_t event,void *arg,bool isr) {
     if(check_flush_lock) {
         assert(!isr && hcd_lock.depth>0 && host_lock.depth>0);
@@ -87,8 +87,8 @@ void rig_irq(unsigned event,int bytes) {
     bool yield=false;
     HCD_ENTER_CRITICAL();
     hcd_pipe_event_t result=_intr_hdlr_chan(&pipe,&channel,&yield);
+    if(result!=HCD_PIPE_EVENT_NONE) risc_hcd_dispatch_callback(&pipe,result,&yield);
     HCD_EXIT_CRITICAL();
-    if(result!=HCD_PIPE_EVENT_NONE) pipe.callback(&pipe,result,pipe.callback_arg,true);
 }
 void rig_disconnect(void) { port.flags.conn_dev_ena=false; rig_library_pending(3); }
 void rig_queue_events(unsigned count,bool replenish) { queue.count=count; client.dynamic.bounded_num_messages=count; replenish_events=replenish; client.dynamic.flags.events_pending=1; }

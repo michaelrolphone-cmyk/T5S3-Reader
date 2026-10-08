@@ -8,6 +8,7 @@
 #define __containerof(p,t,m) ((t *)((char *)(p)-offsetof(t,m)))
 #define NUM_BUFFERS 2
 #define XFER_LIST_LEN_BULK 2
+#define XFER_LIST_LEN_CTRL 3
 #define XFER_LIST_LEN_INTR 32
 #define XFER_LIST_LEN_ISOC 32
 #define FRAME_LIST_LEN 32
@@ -58,6 +59,13 @@ typedef struct __attribute__((packed)) { uint8_t bLength,bDescriptorType; uint16
     uint8_t bNumInterfaces,bConfigurationValue,iConfiguration,bmAttributes,bMaxPower; } usb_config_desc_t;
 typedef struct { uint16_t idVendor,idProduct; } usb_device_desc_t;
 typedef struct { uint8_t value; } usb_str_desc_t;
+#ifdef RISC_USB_CONTROL_TEST
+typedef struct __attribute__((packed)) { uint8_t bmRequestType,bRequest; uint16_t wValue,wIndex,wLength; } usb_setup_packet_t;
+#define USB_BM_REQUEST_TYPE_DIR_IN 0x80
+#define USB_DWC_HAL_XFER_DESC_FLAG_SETUP 1
+#define USB_DWC_HAL_XFER_DESC_FLAG_HOC 2
+#define USB_DWC_HAL_XFER_DESC_FLAG_IN 4
+#endif
 typedef struct { int in_mps, non_periodic_out_mps, periodic_out_mps; } fifo_mps_limits_t;
 typedef struct { hcd_pipe_callback_t callback; void *callback_arg,*context; const usb_ep_desc_t *ep_desc;
     usb_speed_t dev_speed; uint8_t dev_addr; } hcd_pipe_config_t;
@@ -85,6 +93,14 @@ static void sim_exit(portMUX_TYPE *lock) { assert(lock->depth > 0); --lock->dept
 #define HOST_EXIT_CRITICAL_SAFE() HOST_EXIT_CRITICAL()
 #define HCD_ENTER_CRITICAL() sim_enter(&hcd_lock)
 #define HCD_EXIT_CRITICAL() sim_exit(&hcd_lock)
+#ifdef RISC_USB_CONTROL_TEST
+static void (*dispatch_hook)(unsigned);
+#define HCD_EXIT_CRITICAL_ISR() do { HCD_EXIT_CRITICAL(); if(dispatch_hook) dispatch_hook(0); } while(0)
+#define HCD_ENTER_CRITICAL_ISR() do { if(dispatch_hook) dispatch_hook(1); HCD_ENTER_CRITICAL(); } while(0)
+#else
+#define HCD_EXIT_CRITICAL_ISR() HCD_EXIT_CRITICAL()
+#define HCD_ENTER_CRITICAL_ISR() HCD_ENTER_CRITICAL()
+#endif
 #define USBH_EXIT_CRITICAL() sim_exit(&usbh_lock)
 #define HCD_CHECK(c,r) do { if (!(c)) return (r); } while(0)
 #define HCD_CHECK_FROM_CRIT(c,r) do { if (!(c)) { HCD_EXIT_CRITICAL(); return (r); } } while(0)
@@ -110,5 +126,20 @@ static int usb_dwc_hal_chan_get_qtd_idx(usb_dwc_hal_chan_t *channel) { (void)cha
 static void usb_dwc_hal_chan_free(void *hal, usb_dwc_hal_chan_t *channel) { (void)hal; (void)channel; abort(); }
 #endif
 static void usb_dwc_hal_xfer_desc_parse(void *list,int index,int *left,int *status) {
-    assert(index==0); *left=((usb_dwc_ll_dma_qtd_t *)list)->remainder; *status=0;
+    assert(index>=0 && index<3); *left=((usb_dwc_ll_dma_qtd_t *)list)[index].remainder; *status=0;
 }
+#ifdef RISC_USB_CONTROL_TEST
+static bool control_hal_in;
+static unsigned control_hal_pid, control_hal_stage;
+static void usb_dwc_hal_xfer_desc_fill(void *list,int index,void *data,int size,unsigned flags) {
+    assert(index>=0 && index<3 && size>=0); (void)data; (void)flags;
+    ((usb_dwc_ll_dma_qtd_t *)list)[index].remainder=size;
+}
+static void usb_dwc_hal_xfer_desc_clear(void *list,int index) { ((usb_dwc_ll_dma_qtd_t *)list)[index].remainder=0; }
+static void usb_dwc_hal_chan_set_dir(usb_dwc_hal_chan_t *chan,bool in) { assert(!chan->flags.active); control_hal_in=in; }
+static void usb_dwc_hal_chan_set_pid(usb_dwc_hal_chan_t *chan,int pid) { assert(!chan->flags.active); control_hal_pid=pid; }
+static void usb_dwc_hal_chan_activate(usb_dwc_hal_chan_t *chan,void *list,int count,int start) {
+    (void)list; assert(!chan->flags.active && count==3 && start>=0 && start<3);
+    control_hal_stage=start; chan->flags.active=true;
+}
+#endif

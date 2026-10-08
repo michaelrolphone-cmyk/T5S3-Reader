@@ -5,6 +5,28 @@
  * is recursive. Try HCD admission before calling any stock HCD helper; those
  * nested critical sections are then recursive too, never a cross-core wait.
  */
+static void risc_hcd_dispatch_callback(pipe_t *pipe, hcd_pipe_event_t event, bool *yield)
+{
+    /* Called with the existing ISR HCD lock after event decode. Private
+     * retirement must also account for a decoded callback which has not yet
+     * returned. Save the pair before dropping the lock so no reused pool slot
+     * or restored default pipe can receive an old event under its new cookie. */
+    if (pipe->cs_flags.bounded_control || risc_hcd_pool_contains(pipe)) {
+        hcd_pipe_callback_t callback = pipe->callback;
+        void *argument = pipe->callback_arg;
+        if (pipe->bounded_dispatch != UINT32_MAX) ++pipe->bounded_dispatch;
+        HCD_EXIT_CRITICAL_ISR();
+        *yield |= callback(pipe, event, argument, true);
+        HCD_ENTER_CRITICAL_ISR();
+        /* Overflow is terminal custody, never a wrap back to idle. */
+        if (pipe->bounded_dispatch != UINT32_MAX) --pipe->bounded_dispatch;
+    } else {
+        HCD_EXIT_CRITICAL_ISR();
+        *yield |= pipe->callback(pipe, event, pipe->callback_arg, true);
+        HCD_ENTER_CRITICAL_ISR();
+    }
+}
+
 static bool risc_hcd_one_bulk(pipe_t *pipe)
 {
     return pipe->ep_char.type == USB_PRIV_XFER_TYPE_BULK &&

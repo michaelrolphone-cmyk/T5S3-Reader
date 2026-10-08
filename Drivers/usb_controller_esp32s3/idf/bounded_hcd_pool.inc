@@ -53,7 +53,7 @@ esp_err_t risc_hcd_pool_dispose(void)
     if (!risc_hcd_slots) return ESP_OK;
     if (!xPortEnterCriticalTimeout(&hcd_lock, 0)) return ESP_ERR_NOT_FINISHED;
     for (unsigned i = 0; i < RISC_HCD_POOL_COUNT; ++i) {
-        if (risc_hcd_slots[i].used) { HCD_EXIT_CRITICAL(); return ESP_ERR_INVALID_STATE; }
+        if (risc_hcd_slots[i].used || risc_hcd_slots[i].pipe.bounded_dispatch) { HCD_EXIT_CRITICAL(); return ESP_ERR_INVALID_STATE; }
     }
     risc_hcd_pool_slot_t *slots = risc_hcd_slots;
     uint8_t *dma = risc_hcd_dma;
@@ -132,6 +132,7 @@ esp_err_t risc_hcd_pool_release(hcd_pipe_handle_t handle)
     esp_err_t ret = ESP_ERR_INVALID_STATE;
     if (!slot || !slot->used) goto exit;
     pipe_t *pipe = &slot->pipe;
+    if (pipe->bounded_dispatch) { ret = ESP_ERR_NOT_FINISHED; goto exit; }
     if (pipe->cs_flags.bounded_halt || pipe->cs_flags.pipe_cmd_processing ||
         pipe->cs_flags.has_urb || pipe->cs_flags.reset_lock || pipe->task_waiting_pipe_notif ||
         pipe->chan_obj->flags.active || pipe->multi_buffer_control.buffer_is_executing ||
