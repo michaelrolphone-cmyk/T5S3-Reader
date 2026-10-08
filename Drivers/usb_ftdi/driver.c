@@ -1,4 +1,6 @@
-#include "RiscUsbProviderV1.h"
+#include "RiscStreamSessionProviderV1.h"
+#include "../../sdk/app/RiscSerialStreamSessionV1.h"
+#include "RiscUsbHostDeadlinesV1.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -54,11 +56,14 @@ typedef enum {
 
 typedef struct {
     uint64_t token, device, claim;
+    bool tagged, retained;
     uint8_t iface, alt, in_ep, out_ep;
     uint8_t channel;
     uint16_t max_packet;
     uint16_t bcd_device;
     uint8_t chip;
+    uint32_t rx, tx, rx_size, rx_offset, tx_size, tx_offset;
+    bool failed;
     uint16_t pending_offset, pending_length;
     uint8_t pending[FTDI_RX_PACKET_MAX - FTDI_RX_STATUS_BYTES];
 } ftdi_session;
@@ -68,6 +73,13 @@ static ftdi_session sessions[RISC_USB_CDC_MAX_SESSIONS];
 static uint8_t descriptors[RISC_USB_CONFIG_LIMIT];
 static uint8_t rx_packet[FTDI_RX_PACKET_MAX];
 static uint64_t generation;
+static bool tagged_fenced;
+typedef ftdi_session serial_session;
+static void tagged_pump(serial_session *, uint32_t);
+#define RISC_SERIAL_TAGGED_SESSION(s) ((s)->tagged)
+#define RISC_SERIAL_TAGGED_PUMP(s, ms) tagged_pump(s, ms)
+#define RISC_SERIAL_TAGGED_ONLY 1
+#include "../common/SerialStreamPump.inc"
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -102,13 +114,17 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
 }
 
 static bool quiesce(void) {
+    if (tagged_fenced) return false;
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
         if (sessions[i].token) return false;
     return true;
 }
 
 static void stop(void) {
-    if (quiesce()) host = 0;
+    if (tagged_fenced) return;
+    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
+        if (sessions[i].tagged) return;
+    if (quiesce()) { host = 0; streams = 0; next_session = 0; }
 }
 
 static bool commit_candidate(ftdi_session *found, uint8_t iface, uint8_t alt,
@@ -271,6 +287,9 @@ static bool baud_request(const ftdi_session *session, uint32_t baud,
 }
 
 static uint64_t open_device(uint64_t device) {
+    if (tagged_fenced) return 0;
+    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
+        if (sessions[i].tagged && sessions[i].device == device) return 0;
     if (!host || !device || generation == UINT64_MAX) return 0;
 
     ftdi_session *slot = 0;
@@ -320,6 +339,7 @@ static uint64_t open_device(uint64_t device) {
 static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
                       uint8_t parity, uint8_t stop_bits) {
     ftdi_session *s = lookup(token);
+    if (s && s->tagged) return false;
     if (!s || bits < 5u || bits > 8u || parity > 4u ||
         (stop_bits != 1u && stop_bits != 2u))
         return false;
@@ -339,6 +359,7 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
 
 static bool control_lines(uint64_t token, bool dtr, bool rts) {
     ftdi_session *s = lookup(token);
+    if (s && s->tagged) return false;
     if (!s) return false;
     uint16_t value = FTDI_DTR_MASK | FTDI_RTS_MASK;
     if (dtr) value |= FTDI_DTR_HIGH;
@@ -371,7 +392,7 @@ static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
         return -1;
 
     size_t copied = drain_pending(s, dst, capacity);
-    if (copied == capacity) return (int32_t)copied;
+    if (copied == capacity || (s->tagged && copied)) return (int32_t)copied;
 
     /*
      * Read exactly one USB packet. FTDI prepends modem/line status bytes to
@@ -380,6 +401,7 @@ static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
      */
     const int32_t n = host->bulk_read(host->context, s->claim, s->in_ep,
                                       rx_packet, s->max_packet, timeout_ms);
+    if (s->tagged && n == RISC_STREAM_RETAINED) return n;
     if (n < 0) return copied ? (int32_t)copied : -1;
     if (n == 0) return (int32_t)copied;
     if (n < (int32_t)FTDI_RX_STATUS_BYTES || n > (int32_t)s->max_packet)
@@ -408,11 +430,12 @@ static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
         return -1;
     const int32_t n = host->bulk_write(host->context, s->claim, s->out_ep,
                                        src, length, timeout_ms);
-    return n >= 0 && (size_t)n <= length ? n : -1;
+    return (s->tagged && n == RISC_STREAM_RETAINED) || (n >= 0 && (size_t)n <= length) ? n : -1;
 }
 
 static bool close_device(uint64_t token) {
     ftdi_session *s = lookup(token);
+    if (s && s->tagged) return false;
     if (!s) return false;
 
     /* Preserve the claim if line teardown cannot be confirmed. */
@@ -425,18 +448,31 @@ static bool close_device(uint64_t token) {
     return true;
 }
 
+#define TAGGED_GENERATION generation
+#define TAGGED_CONFIG_BYTES descriptors
+#define TAGGED_IFACE(s) ((s)->iface)
+#define TAGGED_ALT(s) ((s)->alt)
+#define TAGGED_MAX_BAUD 12000000u
+#include "../common/SerialTaggedDeadline.inc"
+#include "TaggedVendor.inc"
+#include "../common/SerialTaggedSessions.inc"
+
 static const risc_usb_cdc_api_v1 capability = {
     RISC_USB_CDC_API_V1, sizeof(risc_usb_cdc_api_v1),
-    open_device, configure, control_lines, read_data, write_data, close_device
+    open_device, configure, control_lines, legacy_read, legacy_write, close_device
 };
 
-static const risc_driver_v2 driver = {
-    RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
-    "usb-ftdi", "serial.port", RISC_USB_CDC_API_V1,
-    &capability, start, stop, quiesce
+static const risc_driver_stream_sessions_v2 driver = {
+  {
+    {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_stream_sessions_v2),
+      "usb-ftdi", "serial.port", RISC_USB_CDC_API_V1,
+      &capability, start, stop, quiesce}, 0, bind_streams},
+    poll_tagged_serial
+  }, RISC_DRIVER_STREAM_SESSIONS_TAG_V1, RISC_DRIVER_STREAM_SESSIONS_VERSION_V1,
+  &tagged_sessions
 };
 
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver : 0;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.poll.streams.driver : 0;
 }

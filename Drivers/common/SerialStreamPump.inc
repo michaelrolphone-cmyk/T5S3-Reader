@@ -21,6 +21,7 @@ static bool bind_streams(const risc_stream_provider_v1 *api) {
     streams = api;
     return true;
 }
+#ifndef RISC_SERIAL_TAGGED_ONLY
 static void close_endpoints(serial_session *s) {
     s->failed = true; // Stop data work before any physical close can fail.
     if (streams && s->rx) (void)streams->close(streams->context, s->rx);
@@ -47,6 +48,7 @@ static bool endpoints(uint64_t token, uint32_t *rx, uint32_t *tx) {
     *rx = s->rx; *tx = s->tx;
     return true;
 }
+#endif
 static void fail_endpoints(serial_session *s, int32_t error) {
     s->failed = true;
     (void)streams->finish(streams->context, s->rx, error);
@@ -113,6 +115,7 @@ static int32_t legacy_write(uint64_t token, const uint8_t *data, size_t n, uint3
     return s && !s->tx && !s->failed ? write_data(token, data, n, ms) : -1;
 }
 
+#ifndef RISC_SERIAL_TAGGED_ONLY
 static void reconcile_endpoints(const uint64_t *tokens, size_t count) {
     // A successful inventory is authoritative for disconnect. Revoke copied
     // endpoints immediately; physical claim cleanup remains checked close.
@@ -130,3 +133,4 @@ static void reconcile_endpoints(const uint64_t *tokens, size_t count) {
         }
     }
 }
+#endif

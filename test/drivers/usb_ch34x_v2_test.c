@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
     assert(driver && strcmp(driver->driver_id, "usb-ch34x-v2") == 0);
     assert(strcmp(driver->capability_id, "serial.port") == 0);
     const risc_driver_poll_v2 *poll_driver = (const risc_driver_poll_v2 *)driver;
-    assert(driver->struct_size == sizeof(risc_driver_poll_v2) &&
+    assert(driver->struct_size >= sizeof(risc_driver_poll_v2) &&
            poll_driver->streams.last_error);
     char diagnostic[96] = {0};
     assert(!poll_driver->streams.last_error(diagnostic, sizeof(diagnostic)));
