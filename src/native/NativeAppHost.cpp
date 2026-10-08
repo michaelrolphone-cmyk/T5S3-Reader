@@ -237,7 +237,10 @@ bool touchContact(t5_app_contact_t* out) {
 void present(bool full) {
   if (auto* s = current()) {
     esp_task_wdt_reset();
+    const uint32_t presentationStart = millis();
     (void)presentToneFrame(*s, full ? DisplayPresentMode::Clean : DisplayPresentMode::Quality);
+    LOG_INF("X4TIMING", "phase=present-sync mode=%s elapsed_ms=%lu", full ? "clean" : "quality",
+            (unsigned long)(millis() - presentationStart));
     esp_task_wdt_reset();
   }
 }
@@ -279,6 +282,7 @@ bool presentServicedMode(DisplayPresentMode mode,
         sizeof(refreshStack), nullptr, 1, refreshStack, &refreshTaskStorage, refreshCore);
     if (!refreshTask) return false;
   }
+  const uint32_t presentationStart = millis();
   s->presenting = true;
   pendingRefresh.store(&frame, std::memory_order_release);
   xTaskNotifyGive(refreshTask);
@@ -290,6 +294,8 @@ bool presentServicedMode(DisplayPresentMode mode,
     vTaskDelay(1);
   }
   s->presenting = false;
+  LOG_INF("X4TIMING", "phase=present-serviced mode=%u elapsed_ms=%lu",
+          (unsigned)mode, (unsigned long)(millis() - presentationStart));
   return true;
 }
 void noRefreshService(void*) {}
@@ -1627,6 +1633,7 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
       return ESP_ERR_NOT_SUPPORTED;
     }
   }
+  launchStage("package-verified");
   // Refuse a concurrent managed-package replacement before mapping the ELF.
   // Keep failed dlclose generations pinned for safe recovery.
   if (!canonicalRoot.empty() &&
@@ -1654,6 +1661,7 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
       (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
     return result;
   }
+  launchStage("package-pinned");
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
   renderer.setRenderMode(GfxRenderer::BW);
@@ -1680,7 +1688,10 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
       ? RuntimePackages::beginLooseAppAdmission(path,validateLooseAdmissionSidecar)
       : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
   launchStage(admissionReady ? "admitted" : "admission-failed");
+  const uint32_t elfStart = millis();
   const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
+  LOG_INF("X4TIMING", "phase=elf-runtime elapsed_ms=%lu result=%ld path=%s",
+          (unsigned long)(millis() - elfStart), (long)result, path);
   if (native_app_loader_retained()) retainNativeAppSession();
   if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
@@ -1725,6 +1736,7 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
   nativeTouchDiscardGestures();
   firmwareActionPending = !idleSleepRequested() && nativeSettingsDispatchPendingAction(renderer, input, path);
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
+  launchStage("cleanup-complete");
   returned = true;
   return result;
 }
@@ -1804,7 +1816,10 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
     if (idleSleepRequested()) return false;
     if (firmwareActionPending) return true;
     if (homeRequested || queuedLaunch.empty()) return false;
+    const uint32_t navigationStart = millis();
     const std::string selected = queuedLaunch;
+    LOG_INF("X4TIMING", "phase=app-selection elapsed_ms=%lu path=%s",
+            (unsigned long)(millis() - appsBegan), selected.c_str());
     const std::string selectedName = selected.substr(selected.find_last_of('/') + 1);
     if (t5_safe_elf_name(selectedName.c_str()) &&
         !RuntimePackages::recoverAppPair(selectedName.c_str())) {
@@ -1817,6 +1832,8 @@ bool runNativeSpringboard(GfxRenderer& renderer, MappedInputManager& input, bool
       if (storageUnavailable()) return false;
       showError("Application manifest is missing."); continue;
     }
+    LOG_INF("X4TIMING", "phase=app-preflight elapsed_ms=%lu path=%s",
+            (unsigned long)(millis() - navigationStart), selected.c_str());
     const auto appResult = runNativeApp(selected.c_str(), renderer, input);
     if (idleSleepRequested()) return false;
     if (firmwareActionPending) return true;
