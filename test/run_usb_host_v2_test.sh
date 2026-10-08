@@ -82,3 +82,7 @@ python3 "$repo/test/drivers/usb_controller_bulk_drain_source_test.py"
 
 # Execute the actual controller cleanup body with failing IDF boundaries.
 python3 "$repo/test/drivers/controller_quiesce_path_test.py"
+
+# Optional bounded host operations must keep the deployed controller prefix
+# usable and must never substitute the fixed-timeout physical SDK callbacks.
+bash "$repo/test/run_usb_host_deadlines_test.sh"

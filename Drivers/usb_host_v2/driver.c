@@ -1,5 +1,7 @@
 #include "RiscUsbInterruptV1.h"
 #include "RiscUsbDiscoveryDiagnosticsV1.h"
+#include "RiscUsbHostDeadlinesV1.h"
+#include "RiscUsbControllerDeadlinesV1.h"
 
 /* USB-SPECIFIC CODE LIVES IN THIS ELF, never in the compiled core. This host
  * layer owns enumeration publication, device generations, interface arbitration
@@ -23,6 +25,15 @@ static claim_slot claims[RISC_USB_HOST_MAX_CLAIMS];
 static uint64_t sequence;
 static uint8_t descriptor[RISC_USB_CONFIG_LIMIT];
 static bool event_fault;
+static const risc_usb_controller_deadline_api_v1 *timed_controller;
+static bool deadline_retained;
+static uint64_t last_clock;
+static bool timed_claims[RISC_USB_HOST_MAX_CLAIMS];
+static void advertise_deadlines(bool available);
+static int32_t timed_control_claim(void *, uint64_t, uint8_t, uint8_t,
+                                  uint16_t, uint16_t, uint8_t *, uint16_t, uint32_t);
+static int32_t timed_bulk(void *, uint64_t, uint8_t, uint8_t *, const uint8_t *,
+                          size_t, uint32_t, bool);
 
 static bool equal(const char *a, const char *b) {
     if (!a || !b) return false;
@@ -34,13 +45,13 @@ static uint64_t next_token(void) {
     return ++sequence;
 }
 static device_slot *device_for(uint64_t token) {
-    if (!controller || !token || event_fault) return 0;
+    if (!controller || !token || event_fault || deadline_retained) return 0;
     for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
         if (devices[i].present && devices[i].token == token) return &devices[i];
     return 0;
 }
 static claim_slot *claim_for(uint64_t token) {
-    if (!controller || !token || event_fault) return 0;
+    if (!controller || !token || event_fault || deadline_retained) return 0;
     for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i)
         if (claims[i].token == token && !claims[i].closing) return &claims[i];
     return 0;
@@ -64,13 +75,30 @@ static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         !base->control || !base->bulk_read || !base->bulk_write ||
         !base->quiesce) return false;
     controller = api;
+    if (base->struct_size >= sizeof(risc_usb_controller_deadlines_v1)) {
+        const risc_usb_controller_deadlines_v1 *ext =
+            (const risc_usb_controller_deadlines_v1 *)api;
+        const risc_usb_controller_deadline_api_v1 *t = ext->deadlines;
+        if (ext->extension_tag == RISC_USB_CONTROLLER_DEADLINES_TAG_V1 &&
+            ext->extension_version == RISC_USB_CONTROLLER_DEADLINES_API_V1 &&
+            t && t->api_version == RISC_USB_CONTROLLER_DEADLINES_API_V1 &&
+            t->struct_size >= sizeof(*t) && t->now_ms && t->next_event &&
+            t->configuration && t->claim && t->release && t->control &&
+            t->bulk_read && t->bulk_write) {
+            timed_controller = t;
+            last_clock = t->now_ms(base->context);
+        }
+    }
+    advertise_deadlines(timed_controller != 0);
     return true;
 }
 static bool quiesce(void) {
+    if (deadline_retained) return false;
     if (!controller) return true;
     for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i) {
         claim_slot *c = &claims[i];
         if (!c->token) continue;
+        if (timed_claims[i]) return false;
         if (!c->closing || !controller->controller.release(controller->controller.context,
                                                  c->physical_claim)) return false;
         *c = (claim_slot){0};
@@ -85,12 +113,50 @@ static void stop(void) {
     for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
         devices[i] = (device_slot){0};
     controller = 0;
+    timed_controller = 0;
+    last_clock = 0;
+    advertise_deadlines(false);
     event_fault = false; /* Only after physical quiescence, never on a retry. */
     /* sequence intentionally persists across stop/start of this ELF image. */
 }
+static bool apply_event(const risc_usb_controller_event_v1 *event) {
+    if (!event->physical_device ||
+        (event->kind != 1 && event->kind != 2)) {
+        event_fault = true; return false;
+    }
+    size_t found = RISC_USB_HOST_MAX_DEVICES;
+    for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
+        if (devices[i].physical == event->physical_device &&
+            (devices[i].present || has_claim(devices[i].token))) {
+            found = i; break;
+        }
+    if (event->kind == 1) {
+        if (found != RISC_USB_HOST_MAX_DEVICES) {
+            event_fault = true; return false;
+        }
+        size_t empty = RISC_USB_HOST_MAX_DEVICES;
+        for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
+            if (!devices[i].present && !has_claim(devices[i].token)) {
+                empty = i; break;
+            }
+        uint64_t token = next_token();
+        if (empty == RISC_USB_HOST_MAX_DEVICES || !token) {
+            event_fault = true; return false;
+        }
+        devices[empty] = (device_slot){token, event->physical_device, true};
+    } else {
+        if (found == RISC_USB_HOST_MAX_DEVICES || !devices[found].present) {
+            event_fault = true; return false;
+        }
+        devices[found].present = false;
+        /* Old tokens and transfers now fail closed. The class releases
+         * its claims, and the controller drains physical transactions. */
+    }
+    return true;
+}
 static bool poll_devices(void *ctx, size_t max_events, size_t *processed) {
     (void)ctx;
-    if (!controller || event_fault || !processed || !max_events || max_events > 64)
+    if (!controller || event_fault || deadline_retained || !processed || !max_events || max_events > 64)
         return false;
     const risc_usb_controller_api_v1 *base = &controller->controller;
     *processed = 0;
@@ -98,44 +164,16 @@ static bool poll_devices(void *ctx, size_t max_events, size_t *processed) {
         risc_usb_controller_event_v1 event = {0};
         int32_t rc = base->next_event(base->context, &event);
         if (rc == 0) return true;
-        if (rc != 1 || !event.physical_device ||
-            (event.kind != 1 && event.kind != 2)) {
-            event_fault = true; return false;
-        }
-        size_t found = RISC_USB_HOST_MAX_DEVICES;
-        for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
-            if (devices[i].physical == event.physical_device &&
-                (devices[i].present || has_claim(devices[i].token))) {
-                found = i; break;
-            }
-        if (event.kind == 1) {
-            if (found != RISC_USB_HOST_MAX_DEVICES) {
-                event_fault = true; return false;
-            }
-            size_t empty = RISC_USB_HOST_MAX_DEVICES;
-            for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
-                if (!devices[i].present && !has_claim(devices[i].token)) {
-                    empty = i; break;
-                }
-            uint64_t token = next_token();
-            if (empty == RISC_USB_HOST_MAX_DEVICES || !token) {
-                event_fault = true; return false;
-            }
-            devices[empty] = (device_slot){token, event.physical_device, true};
-        } else {
-            if (found == RISC_USB_HOST_MAX_DEVICES || !devices[found].present) {
-                event_fault = true; return false;
-            }
-            devices[found].present = false;
-            /* Old tokens and transfers now fail closed. The class releases
-             * its claims, and the controller drains physical transactions. */
+        if (rc != 1 || !apply_event(&event)) {
+            event_fault = true;
+            return false;
         }
     }
     return true;
 }
 static bool list_devices(void *ctx, uint64_t *out, size_t *count) {
     (void)ctx;
-    if (!controller || event_fault || !count) return false;
+    if (!controller || event_fault || deadline_retained || !count) return false;
     size_t actual = 0;
     for (size_t i = 0; i < RISC_USB_HOST_MAX_DEVICES; ++i)
         if (devices[i].present) ++actual;
@@ -195,18 +233,9 @@ static bool snapshot(void *ctx, risc_usb_device_identity_v1 *out, size_t *count)
     *count = n;
     return true;
 }
-static bool endpoints(uint64_t physical, uint8_t iface, uint8_t alt,
-                      uint16_t *bulk_in, uint16_t *bulk_out,
-                      uint16_t *interrupt_in) {
-    const risc_usb_controller_api_v1 *base = &controller->controller;
-    size_t length = sizeof(descriptor);
-    uint16_t vid = 0, pid = 0;
-    if (!base->configuration(base->context, physical, descriptor,
-                             &length, &vid, &pid) ||
-        length < 9 || length > sizeof(descriptor) ||
-        descriptor[0] < 9 || descriptor[1] != 2 ||
-        ((size_t)descriptor[2] | ((size_t)descriptor[3] << 8)) != length)
-        return false;
+static bool parse_endpoints(size_t length, uint8_t iface, uint8_t alt,
+                            uint16_t *bulk_in, uint16_t *bulk_out,
+                            uint16_t *interrupt_in) {
     bool selected = false, found = false;
     *bulk_in = *bulk_out = *interrupt_in = 0;
     for (size_t pos = 0; pos < length;) {
@@ -248,6 +277,21 @@ static bool endpoints(uint64_t physical, uint8_t iface, uint8_t alt,
     }
     return found;
 }
+static bool endpoints(uint64_t physical, uint8_t iface, uint8_t alt,
+                      uint16_t *bulk_in, uint16_t *bulk_out,
+                      uint16_t *interrupt_in) {
+    const risc_usb_controller_api_v1 *base = &controller->controller;
+    size_t length = sizeof(descriptor);
+    uint16_t vid = 0, pid = 0;
+    if (!base->configuration(base->context, physical, descriptor,
+                             &length, &vid, &pid) ||
+        length < 9 || length > sizeof(descriptor) ||
+        descriptor[0] < 9 || descriptor[1] != 2 ||
+        ((size_t)descriptor[2] | ((size_t)descriptor[3] << 8)) != length)
+        return false;
+    return parse_endpoints(length, iface, alt, bulk_in, bulk_out, interrupt_in);
+}
+
 static bool claim_interface(void *ctx, uint64_t token, uint8_t iface,
                             uint8_t alt, uint64_t *out) {
     (void)ctx;
@@ -287,6 +331,7 @@ static bool release_checked(void *ctx, uint64_t token) {
     for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i) {
         claim_slot *c = &claims[i];
         if (c->token != token) continue;
+        if (deadline_retained || timed_claims[i]) return false;
         c->closing = true;
         if (!controller->controller.release(controller->controller.context, c->physical_claim))
             return false;
@@ -313,7 +358,7 @@ static int32_t control(void *ctx, uint64_t token, uint8_t type,
         for (size_t i = 0; i < RISC_USB_HOST_MAX_CLAIMS; ++i)
             if (claims[i].token && !claims[i].closing &&
                 claims[i].device_token == token && index <= 255u &&
-                claims[i].interface_number == (uint8_t)index) {
+                claims[i].interface_number == (uint8_t)index && !timed_claims[i]) {
                 authorized = true; break;
             }
         if (!authorized) return -1;
@@ -326,6 +371,9 @@ static int32_t control(void *ctx, uint64_t token, uint8_t type,
 static int32_t control_claim(void *ctx, uint64_t token, uint8_t type,
                              uint8_t request, uint16_t value, uint16_t index,
                              uint8_t *payload, uint16_t length, uint32_t timeout) {
+    if (timed_controller)
+        return timed_control_claim(ctx, token, type, request, value, index,
+                                   payload, length, timeout);
     (void)ctx;
     claim_slot *c = claim_for(token);
     if (!c || !device_for(c->device_token) || !timeout ||
@@ -349,6 +397,8 @@ static int32_t control_claim(void *ctx, uint64_t token, uint8_t type,
 }
 static int32_t bulk_read(void *ctx, uint64_t token, uint8_t endpoint,
                          uint8_t *dst, size_t capacity, uint32_t timeout) {
+    if (timed_controller)
+        return timed_bulk(ctx, token, endpoint, dst, 0, capacity, timeout, true);
     (void)ctx;
     claim_slot *c = claim_for(token);
     if (!c || !device_for(c->device_token) || !dst || !capacity ||
@@ -362,6 +412,8 @@ static int32_t bulk_read(void *ctx, uint64_t token, uint8_t endpoint,
 }
 static int32_t bulk_write(void *ctx, uint64_t token, uint8_t endpoint,
                           const uint8_t *src, size_t length, uint32_t timeout) {
+    if (timed_controller)
+        return timed_bulk(ctx, token, endpoint, 0, src, length, timeout, false);
     (void)ctx;
     claim_slot *c = claim_for(token);
     if (!c || !device_for(c->device_token) || !src || !length ||
@@ -395,17 +447,27 @@ static bool diagnostic(void *ctx, char *out, size_t capacity) {
         (const risc_usb_controller_diagnostics_v1 *)controller;
     return extended->diagnostic && extended->diagnostic(controller->controller.context, out, capacity);
 }
-static const risc_usb_host_snapshot_v1 interface = {
+#include "Deadlines.inc"
+static risc_usb_host_deadlines_v1 interface = {
+  {
     {{RISC_USB_HOST_API_V1, sizeof(risc_usb_host_snapshot_v1), 0,
       configuration, claim_interface, release_claim, control,
       bulk_read, bulk_write},
      poll_devices, list_devices, interrupt_read, diagnostic, release_checked, control_claim},
     snapshot
+  }, 0, 0, 0
 };
+static void advertise_deadlines(bool available) {
+    interface.snapshot.discovery.host.struct_size = available ? sizeof(interface) :
+                                                   sizeof(interface.snapshot);
+    interface.extension_tag = available ? RISC_USB_HOST_DEADLINES_TAG_V1 : 0;
+    interface.extension_version = available ? RISC_USB_HOST_DEADLINES_API_V1 : 0;
+    interface.deadlines = available ? &deadline_api : 0;
+}
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     "usb-host-v2", "usb.host", RISC_USB_HOST_API_V1,
-    &interface.discovery.host, start, stop, quiesce
+    &interface.snapshot.discovery.host, start, stop, quiesce
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
