@@ -32,9 +32,12 @@ constexpr uint16_t PANEL_HEIGHT = 480;
 constexpr uint16_t CONTROLLER_HEIGHT = 600;
 constexpr uint16_t GATE_OFFSET = 120;
 constexpr uint16_t ROW_BYTES = PANEL_WIDTH / 8;
-constexpr uint16_t SPI_ROWS_PER_CHUNK = 8;
+// A long transaction no longer weakens the abort path: the side-button ISR
+// raises CS and holds panel reset low independently of the polling SPI call.
+constexpr uint16_t SPI_ROWS_PER_CHUNK = 160;
 constexpr size_t SPI_CHUNK_BYTES = ROW_BYTES * SPI_ROWS_PER_CHUNK;
 constexpr int SPI_CLOCK_HZ = 20000000;
+constexpr int SPI_OVERCLOCK_HZ = 40000000;
 constexpr uint32_t BUSY_ASSERT_TIMEOUT_MS = 100;
 constexpr uint32_t POWER_TIMEOUT_MS = 1500;
 constexpr uint32_t REFRESH_TIMEOUT_MS = 3500;
@@ -84,7 +87,7 @@ constexpr uint8_t STOCK_PREBW[5][LUT_BYTES] = {
     {0x01, 0x06, 0x01, 0x06, 0x06, 0x01, 0x01, 0x01, 0x02, 0x44, 0x00, 0x00, 0x01, 0x01},
 };
 
-enum class Waveform : uint8_t { OtpDu, StockPreBw, GeneratedA2 };
+enum class Waveform : uint8_t { OtpDu, StockPreBw, GeneratedA2, GeneratedAbsoluteA2 };
 enum class Pattern : uint8_t { BinaryGrid, TemporalBayer };
 enum class Transport : uint8_t { LegacyFullStride, CachedWindow };
 
@@ -96,43 +99,47 @@ struct TestMode {
   uint8_t counter_frames;
   Pattern pattern;
   Transport transport;
+  bool spi_overclock;
   uint16_t window_y;
   uint16_t window_h;
   uint16_t frame_count;
 };
 
-// The controller is already at its documented 200-Hz PLL ceiling. The 2x
-// experiment therefore attacks end-to-end frame time: cache rendered planes,
-// transfer only the programmed window, and test shorter Bayer-driven pulses.
+// v0.1.4 established that the cached Bayer modes are visually clean. This
+// matrix attempts another doubling by combining one-frame drive, a stateless
+// absolute LUT that makes DTM1 synchronization unnecessary, shorter gate
+// windows, larger DMA transactions, and one isolated 40-MHz SPI A/B mode.
 constexpr TestMode MODES[] = {
-    {"A2 4-frame binary / legacy 600-row reference", Waveform::GeneratedA2, PLL_FAST, 4, 0,
-     Pattern::BinaryGrid, Transport::LegacyFullStride, 160, 160, 24},
-    {"A2 4-frame Bayer / legacy 600-row reference", Waveform::GeneratedA2, PLL_FAST, 4, 0,
-     Pattern::TemporalBayer, Transport::LegacyFullStride, 160, 160, 24},
-    {"A2 5-frame Bayer / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 5, 0,
-     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
-    {"A2 4-frame Bayer / cached window / 2x transport target", Waveform::GeneratedA2, PLL_FAST, 4, 0,
-     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
-    {"A2 3-frame Bayer / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 3, 0,
-     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
-    {"A2 2-frame Bayer / cached window / 2x waveform rate", Waveform::GeneratedA2, PLL_FAST, 2, 0,
-     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
-    {"A2 4-frame binary / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 4, 0,
-     Pattern::BinaryGrid, Transport::CachedWindow, 160, 160, 32},
-    {"A2 5-frame binary / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 5, 0,
-     Pattern::BinaryGrid, Transport::CachedWindow, 160, 160, 32},
-    {"A2 4-frame Bayer / cached full visible 480 rows", Waveform::GeneratedA2, PLL_FAST, 4, 0,
-     Pattern::TemporalBayer, Transport::CachedWindow, 0, 480, 16},
+    {"A2 2-frame Bayer / differential / cached 160-row reference", Waveform::GeneratedA2, PLL_FAST, 2, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, false, 160, 160, 32},
+    {"A2 1-frame Bayer / differential / cached 160-row", Waveform::GeneratedA2, PLL_FAST, 1, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, false, 160, 160, 32},
+    {"A2 2-frame Bayer / absolute no-sync / cached 160-row", Waveform::GeneratedAbsoluteA2, PLL_FAST, 2, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, false, 160, 160, 32},
+    {"A2 1-frame Bayer / absolute no-sync / cached 160-row", Waveform::GeneratedAbsoluteA2, PLL_FAST, 1, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, false, 160, 160, 32},
+    {"A2 2-frame Bayer / absolute no-sync / cached 80-row", Waveform::GeneratedAbsoluteA2, PLL_FAST, 2, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, false, 200, 80, 40},
+    {"A2 1-frame Bayer / absolute no-sync / cached 80-row / 2x-again target", Waveform::GeneratedAbsoluteA2,
+     PLL_FAST, 1, 0, Pattern::TemporalBayer, Transport::CachedWindow, false, 200, 80, 40},
+    {"A2 1-frame Bayer / absolute no-sync / cached 40-row / max-rate", Waveform::GeneratedAbsoluteA2,
+     PLL_FAST, 1, 0, Pattern::TemporalBayer, Transport::CachedWindow, false, 220, 40, 48},
+    {"A2 1-frame Bayer / absolute no-sync / cached 80-row / 40-MHz SPI", Waveform::GeneratedAbsoluteA2,
+     PLL_FAST, 1, 0, Pattern::TemporalBayer, Transport::CachedWindow, true, 200, 80, 40},
+    {"A2 1-frame Bayer / absolute no-sync / cached full 480 rows", Waveform::GeneratedAbsoluteA2,
+     PLL_FAST, 1, 0, Pattern::TemporalBayer, Transport::CachedWindow, false, 0, 480, 16},
 };
 constexpr size_t MODE_COUNT = sizeof(MODES) / sizeof(MODES[0]);
 static_assert(MODE_COUNT <= 9, "single-key serial mode selection supports at most nine modes");
-constexpr const char* LAB_VERSION = "0.1.4";
+constexpr const char* LAB_VERSION = "0.1.5";
 
 DRAM_ATTR volatile bool abort_requested = false;
 DRAM_ATTR volatile uint32_t abort_pin = UINT32_MAX;
 DRAM_ATTR volatile bool soft_stop_requested = false;
 
 spi_device_handle_t spi_device = nullptr;
+spi_device_handle_t spi_device_nominal = nullptr;
+spi_device_handle_t spi_device_overclock = nullptr;
 uint8_t* dma_buffer = nullptr;
 uint8_t* frame_cache = nullptr;
 size_t frame_cache_stride = 0;
