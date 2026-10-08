@@ -1,14 +1,14 @@
     const uint32_t next_frame = current_frame + 1;
     const int64_t frame_start = esp_timer_get_time();
     const int64_t upload_start = frame_start;
-    if (!stream_plane(CMD_DTM2, next_frame, mode.window_y, mode.window_h)) return false;
+    if (!stream_plane(CMD_DTM2, next_frame, mode.window_y, mode.window_h, mode.pattern)) return false;
     const uint32_t upload_us = static_cast<uint32_t>(esp_timer_get_time() - upload_start);
 
     uint32_t waveform_us = 0;
     if (!begin_refresh(mode, &waveform_us)) return false;
 
     const int64_t sync_start = esp_timer_get_time();
-    if (!stream_plane(CMD_DTM1, next_frame, mode.window_y, mode.window_h)) return false;
+    if (!stream_plane(CMD_DTM1, next_frame, mode.window_y, mode.window_h, mode.pattern)) return false;
     const uint32_t sync_us = static_cast<uint32_t>(esp_timer_get_time() - sync_start);
     const uint32_t total_us = static_cast<uint32_t>(esp_timer_get_time() - frame_start);
     current_frame = next_frame;
@@ -89,6 +89,7 @@ void setup() {
   Serial.println("[X4LAB] LEFT OR RIGHT SIDE BUTTON: immediate controller reset + permanent halt");
   Serial.println("[X4LAB] POWER: start next mode; during a mode, request stop after current refresh");
   Serial.println("[X4LAB] task watchdog retained; IDLE0 is serviced between measured frames");
+  Serial.println("[X4LAB] matrix: 8/7/6/5/4-frame knee, 4+1/4+2 counterpulse, Bayer dither, 5-frame full panel");
 
   configure_output(PIN_LIGHT_COOL, 0);
   configure_output(PIN_LIGHT_WARM, 0);
@@ -102,7 +103,7 @@ void setup() {
   if (!probe_controller()) enter_abort_halt("wrong/unknown display controller");
   if (!initialize_spi()) enter_abort_halt("SPI initialization failed");
   if (!controller_init(PLL_STOCK)) enter_abort_halt("controller initialization failed");
-  if (!clean_baseline(160, 160)) enter_abort_halt("initial clean baseline failed");
+  if (!clean_baseline(160, 160, Pattern::BinaryGrid)) enter_abort_halt("initial clean baseline failed");
 
   Serial.printf("[X4LAB] armed for UC8279 LUT id 0x%02x at %d MHz SPI.\n", panel_lut_id, SPI_CLOCK_HZ / 1000000);
   Serial.printf("[X4LAB] %u modes available. Press POWER or send n; send 1-%u to select; q aborts.\n",
