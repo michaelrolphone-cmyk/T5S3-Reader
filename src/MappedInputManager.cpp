@@ -2,6 +2,7 @@
 
 #include "CrossPointSettings.h"
 #include "GfxRenderer.h"
+#include <Logging.h>
 #include "native/NativeNavigationInput.h"
 #include "native/NativeTouchInput.h"
 #include "native/NativeBatteryGauge.h"
@@ -149,8 +150,18 @@ void MappedInputManager::update() const {
   nativeDeviceDiscoveryTick();
   nativeNavigationConfigure(SETTINGS.externalInputNavigation != 0);
 #endif  // X4 physical controls are boot-owned providers, not external navigation.
+  const uint32_t inputTickStart = millis();
   nativeNavigationTick();
+  const uint32_t navigationElapsed = millis() - inputTickStart;
+  const uint32_t touchTickStart = millis();
   nativeTouchTick();
+#if defined(BOARD_XTEINK_X4_PRO)
+  const uint32_t touchElapsed = millis() - touchTickStart;
+  if (navigationElapsed >= 20 || touchElapsed >= 20) {
+    LOG_INF("X4TIMING", "phase=input-poll navigation_ms=%lu touch_ms=%lu",
+            (unsigned long)navigationElapsed, (unsigned long)touchElapsed);
+  }
+#endif
 #if defined(BOARD_XTEINK_X4_PRO)
   nativeBatteryTick();  // Owner task only; render paths read the copied cache.
 #endif
@@ -182,6 +193,10 @@ bool MappedInputManager::wasTouchTapped(TouchPoint& point, const GfxRenderer& re
   NativeTouchPoint raw;
   if (!nativeTouchGetTap(raw)) return false;
   point = orientTouchPoint(raw, renderer);
+#if defined(BOARD_XTEINK_X4_PRO)
+  LOG_INF("X4TIMING", "phase=touch-tap x=%d y=%d at_ms=%lu",
+          (int)point.x, (int)point.y, (unsigned long)millis());
+#endif
   return true;
 }
 
@@ -196,6 +211,10 @@ bool MappedInputManager::getTouchHold(TouchPoint& point, unsigned long& heldMs, 
   NativeTouchPoint raw;
   if (!nativeTouchGetHold(raw, heldMs)) return false;
   point = orientTouchPoint(raw, renderer);
+#if defined(BOARD_XTEINK_X4_PRO)
+  LOG_INF("X4TIMING", "phase=touch-hold x=%d y=%d held_ms=%lu at_ms=%lu",
+          (int)point.x, (int)point.y, heldMs, (unsigned long)millis());
+#endif
   return true;
 }
 
@@ -204,6 +223,10 @@ bool MappedInputManager::getTouchSwipe(TouchPoint& start, TouchPoint& end, const
   if (!nativeTouchGetSwipe(rawStart, rawEnd)) return false;
   start = orientTouchPoint(rawStart, renderer);
   end = orientTouchPoint(rawEnd, renderer);
+#if defined(BOARD_XTEINK_X4_PRO)
+  LOG_INF("X4TIMING", "phase=touch-swipe x0=%d y0=%d x1=%d y1=%d at_ms=%lu",
+          (int)start.x, (int)start.y, (int)end.x, (int)end.y, (unsigned long)millis());
+#endif
   return true;
 }
 
