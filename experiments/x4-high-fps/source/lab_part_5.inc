@@ -36,8 +36,6 @@
                   static_cast<unsigned long>(waveform_us), static_cast<unsigned long>(sync_us),
                   static_cast<unsigned long>(total_us), static_cast<unsigned long>(fps_x100 / 100),
                   static_cast<unsigned long>(fps_x100 % 100));
-    // loopTask outranks IDLE0. Block outside the measured frame interval so
-    // the task watchdog remains active without contaminating panel timing.
     delay(1);
     check_abort();
   }
@@ -45,15 +43,18 @@
   if (completed != 0) {
     const uint64_t average = sum_total / completed;
     const uint64_t fps_x100 = average == 0 ? 0 : 100000000ULL / average;
-    Serial.printf("[X4LAB] RESULT mode=%u frames=%u avg_upload=%llu us avg_wave=%llu us avg_sync=%llu us "
-                  "avg_total=%llu us avg_fps=%llu.%02llu\n",
-                  static_cast<unsigned>(index + 1), static_cast<unsigned>(completed), sum_upload / completed,
-                  sum_waveform / completed, sum_sync / completed, average, fps_x100 / 100, fps_x100 % 100);
+    Serial.printf("[X4LAB] RESULT mode=%u frames=%u active=800x%u avg_upload=%llu us avg_wave=%llu us "
+                  "avg_sync=%llu us avg_total=%llu us avg_fps=%llu.%02llu\n",
+                  static_cast<unsigned>(index + 1), static_cast<unsigned>(completed),
+                  static_cast<unsigned>(mode.window_h), sum_upload / completed,
+                  sum_waveform / completed, sum_sync / completed, average,
+                  fps_x100 / 100, fps_x100 % 100);
   } else {
     Serial.printf("[X4LAB] mode=%u stopped before first frame\n", static_cast<unsigned>(index + 1));
   }
   release_frame_cache();
   spi_device = spi_device_nominal;
+  if (!restore_full_geometry()) return false;
   while (gpio_get_level(PIN_BTN_POWER) == 0) delay(10);
   return true;
 }
@@ -102,9 +103,9 @@ void setup() {
   Serial.printf("\n[X4LAB] Xteink X4 Pro UC8279 high-FPS standalone laboratory firmware v%s\n", LAB_VERSION);
   Serial.println("[X4LAB] LEFT OR RIGHT SIDE BUTTON: immediate controller reset + permanent halt");
   Serial.println("[X4LAB] POWER: start next mode; during a mode, request stop after current refresh");
-  Serial.println("[X4LAB] task watchdog retained; IDLE0 is serviced between measured frames");
-  Serial.println("[X4LAB] matrix: 2/1-frame Bayer, differential vs absolute no-sync, 160/80/40-row windows");
-  Serial.println("[X4LAB] mode 8 alone overclocks panel SPI to 40 MHz; all other modes remain at 20 MHz");
+  Serial.println("[X4LAB] fixed-area matrix: modes 1-7 all drive the same physical 800x160 region");
+  Serial.println("[X4LAB] x2/x4/x6/x8 are measured targets using compact TRES/GSST and TCON timing");
+  Serial.println("[X4LAB] false BUSY completions under 2ms are rejected and retried, never counted as FPS");
 
   configure_output(PIN_LIGHT_COOL, 0);
   configure_output(PIN_LIGHT_WARM, 0);
