@@ -1,0 +1,72 @@
+name: x4pro-panel 0.2.0 artifact
+
+on:
+  push:
+    branches: [x4pro-panel-0.2.0]
+    paths:
+      - Drivers/x4pro_panel/**
+      - Drivers/x4pro_board/**
+      - sdk/driver/**
+      - scripts/build_x4pro_drivers.py
+      - scripts/install_x4_provider_toolchain.sh
+      - scripts/normalize_xtensa_relocations.py
+      - scripts/validate_xtensa_relative_targets.py
+      - .github/workflows/x4pro-panel-020-build.yml
+  pull_request:
+    paths:
+      - Drivers/x4pro_panel/**
+      - Drivers/x4pro_board/**
+      - sdk/driver/**
+      - scripts/build_x4pro_drivers.py
+      - scripts/install_x4_provider_toolchain.sh
+      - scripts/normalize_xtensa_relocations.py
+      - scripts/validate_xtensa_relative_targets.py
+      - .github/workflows/x4pro-panel-020-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install validator dependency
+        run: python -m pip install pyelftools==0.32
+      - name: Install pinned Xtensa provider toolchain
+        run: bash scripts/install_x4_provider_toolchain.sh
+      - name: Build exact-head driver package
+        env:
+          NATIVE_DRIVER_CC: ${{ runner.temp }}/x4-elf-toolchain/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc
+          RISCRTE_X4_LINK_PROFILE: esp14-no-relax
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          python scripts/build_x4pro_drivers.py --source x4pro_panel
+          test -s dist/experimental/x4pro-panel/driver.elf
+          python - <<'PY'
+          import hashlib, json, pathlib, subprocess
+          root = pathlib.Path('dist/experimental/x4pro-panel')
+          manifest = json.loads((root / 'manifest.json').read_text())
+          assert manifest['id'] == 'x4pro-panel'
+          assert manifest['version'] == '0.2.0'
+          payload = (root / 'driver.elf').read_bytes()
+          assert payload[:7] == b'\x7fELF\x01\x01\x01'
+          assert int.from_bytes(payload[18:20], 'little') == 94
+          assert hashlib.sha256(payload).hexdigest() == manifest['sha256']
+          (root / 'SOURCE_COMMIT.txt').write_text(subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True))
+          (root / 'SHA256SUMS.txt').write_text(f"{manifest['sha256']}  driver.elf\n")
+          print(json.dumps(manifest, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: x4pro-panel-0.2.0-${{ github.event.pull_request.head.sha || github.sha }}
+          path: dist/experimental/x4pro-panel/
+          if-no-files-found: error
+          retention-days: 30

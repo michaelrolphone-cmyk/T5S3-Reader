@@ -67,6 +67,10 @@ def build_one(name):
     output = ROOT / "dist" / "experimental" / manifest["id"]
     output.mkdir(parents=True, exist_ok=True)
     elf = output / "driver.elf"
+    driver_source = source / ("driver_v020.c" if name == "x4pro_panel" else "driver.c")
+    if not driver_source.is_file():
+        raise ValueError(f"Missing driver source: {driver_source}")
+
     # CI run 37048644826 confirmed that pinned Linux Xtensa ld 2.35.1 links
     # the enlarged FAT32 provider at -O2 with relaxation disabled. Keep the
     # workaround scoped; all other providers retain their ordinary flags.
@@ -91,7 +95,7 @@ def build_one(name):
         "-fvisibility=hidden", "-fno-builtin", "-nostdlib", "-nostartfiles", "-shared",
         "-I" + str(ROOT / "sdk/driver"), "-I" + str(ROOT / "Drivers/x4pro_board"),
         "-Wl,--hash-style=sysv", "-Wl,--exclude-libs,ALL", *link_flags,
-        str(source / "driver.c"),
+        str(driver_source),
         *([str(ROOT / "Drivers/storage_fatfs/fatfs/ff.c"),
            str(ROOT / "Drivers/storage_fatfs/fatfs/ffunicode.c")] if storage else []),
         "-lgcc", "-o", str(elf),
