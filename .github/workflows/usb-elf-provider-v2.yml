@@ -94,6 +94,9 @@ on:
       - "scripts/instrument_usb_enumeration.py"
       - "scripts/stage_usb_bounded.py"
       - "test/run_usb_controller_bounded_test.sh"
+      - "test/run_usb_controller_admission_test.sh"
+      - "test/drivers/usb_admission*"
+      - "test/drivers/usb_controller_admission*"
       - "test/drivers/usb_bounded*"
       - "test/drivers/usb_controller_bounded*"
       - "test/drivers/stub_usb_bounded/**"
@@ -213,6 +216,8 @@ jobs:
         run: |
           bash test/run_usb_controller_bounded_test.sh
           SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 bash test/run_usb_controller_bounded_test.sh
+          bash test/run_usb_controller_admission_test.sh
+          SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 bash test/run_usb_controller_admission_test.sh
       - name: Record linked controller ownership references
         run: python scripts/report_u1_target_references.py --profile controller --elf dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output dist/u1-controller-references.json
       - name: Preserve compact controller ownership evidence

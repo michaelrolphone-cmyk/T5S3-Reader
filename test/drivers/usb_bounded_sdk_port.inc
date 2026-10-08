@@ -6,8 +6,16 @@ struct port_obj {
     int num_pipes_idle, num_pipes_queued, state;
     struct { bool conn_dev_ena; } flags;
     void *hal;
+    bool initialized;
+    usb_speed_t speed;
+    const fifo_mps_limits_t *fifo_mps_limits;
 };
+#ifndef RISC_USB_ADMISSION_TEST
 typedef struct { struct { hcd_pipe_handle_t ep_in[15], ep_out[15]; } mux_protected; } device_t;
+static bool risc_hcd_pool_contains(hcd_pipe_handle_t handle) { (void)handle; return false; }
+#else
+static bool risc_hcd_pool_contains(hcd_pipe_handle_t handle);
+#endif
 static bool _unblock_client(client_t *client, bool isr) {
     assert(!check_flush_lock); /* Owned notifications must skip every OS call. */
     (void)isr; client->dynamic.flags.events_pending=1; return false;

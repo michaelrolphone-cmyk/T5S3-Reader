@@ -8,6 +8,7 @@
 #include "EnumerationDiagnostic.h"
 #include "RoleSwitch.h"
 #include "OwnedBulkRequest.h"
+#include "OwnedAdmissionRequest.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <esp_private/usb_phy.h>
@@ -29,11 +30,13 @@ struct Device {
     uint64_t token;
     uint16_t vid, pid;
     bool attached;
+    bool referenceClosed;
 };
 struct Claim {
     uint64_t token, physical_device;
     uint8_t number, alternate;
     bool interfaceReleased;
+    bool native;
 };
 struct Event {
     uint8_t kind, address;
@@ -57,6 +60,11 @@ static bool inFlight, completed;
  * HUB/USBH, claim/release and every reached path have bounded implementations.
  * The legacy entry points below keep their established behavior when idle. */
 static RiscUsbController::OwnedBulkRequest ownedBulk;
+static RiscUsbController::OwnedAdmissionRequest ownedAdmission;
+static uint64_t admissionDevice;
+bool native_admission_guard() {
+    return ownedAdmission.owns_storage() || risc_usb_admission_owns_resources();
+}
 static bool noClientsObserved;
 static Event queue[kEvents];
 static size_t queueHead, queueTail, queueCount;
@@ -93,7 +101,7 @@ bool otherClaims(uint64_t deviceId, uint64_t except) {
 /* Detached unclaimed handles are still owned. A failed close keeps the slot
  * occupied and is retried by later bounded event polls, never reused early. */
 void reapDetachedUnclaimed() {
-    if (!client || inFlight || ownedBulk.owns_storage()) return;
+    if (!client || inFlight || ownedBulk.owns_storage() || native_admission_guard()) return;
     for (auto &d : devices) {
         if (!d.handle || d.attached || claimed(d.token)) continue;
         if (usb_host_device_close(client, d.handle) == ESP_OK) d = {};
@@ -120,7 +128,7 @@ bool start_failure(const char *stage, int code) {
 }
 #include "HostStartup.h"
 bool pump(TickType_t delay) {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     if (!installed || !client) return false;
     uint32_t flags = 0;
     esp_err_t a = usb_host_lib_handle_events(0, &flags);
@@ -186,7 +194,7 @@ bool wait_completion(uint32_t milliseconds) {
 }
 /* Never free a submitted transfer: teardown must obtain its callback first. */
 bool idle_transfer() {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     if (inFlight) return false;
     if (completed) completed = false;
     return transfer != nullptr;
@@ -222,7 +230,7 @@ bool endpoint_mps(Device *d, uint8_t iface, uint8_t alt,
 }
 
 int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
-    if (ownedBulk.owns_storage()) return -1;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return -1;
     if (!out || fault || role.state() == UsbRoleSwitch::State::Off) return -1;
     if (role.state() == UsbRoleSwitch::State::Failed) return 0;
 
@@ -265,7 +273,7 @@ int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
         }
         uint64_t id = token();
         if (!id) { fault = true; return -1; }
-        *freeSlot = {handle, id, descriptor->idVendor, descriptor->idProduct, true};
+        *freeSlot = {handle, id, descriptor->idVendor, descriptor->idProduct, true, false};
         *out = {1, id};
         return 1;
     }
@@ -282,7 +290,7 @@ int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
 }
 bool configuration(void *, uint64_t id, uint8_t *bytes, size_t *size,
                    uint16_t *vid, uint16_t *pid) {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     Device *d = device(id);
     if (!running || !d || !d->attached || !bytes || !size || !vid || !pid)
         return false;
@@ -299,7 +307,7 @@ bool configuration(void *, uint64_t id, uint8_t *bytes, size_t *size,
 }
 bool claim_interface(void *, uint64_t id, uint8_t iface, uint8_t alt,
                      uint64_t *out) {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     Device *d = device(id);
     if (!running || !d || !d->attached || !out) return false;
     Claim *slot = nullptr;
@@ -313,12 +321,12 @@ bool claim_interface(void *, uint64_t id, uint8_t iface, uint8_t alt,
         return false;
     uint64_t assigned = token();
     if (!assigned) { fault = true; return false; }
-    *slot = {assigned, id, iface, alt, false};
+    *slot = {assigned, id, iface, alt, false, false};
     *out = assigned;
     return true;
 }
 bool release_interface(void *, uint64_t id) {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     /* Cleanup must still find an existing physical claim after event parsing
      * has faulted. New operations remain blocked by claim()/device(). */
     Claim *c = nullptr;
@@ -389,7 +397,7 @@ int32_t control(void *, uint64_t id, uint8_t type, uint8_t request,
 int32_t bulk(void *, uint64_t id, uint8_t endpoint,
              uint8_t *dst, const uint8_t *src, size_t length,
              uint32_t timeout, bool reading) {
-    if (ownedBulk.owns_storage()) return -1;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return -1;
     Claim *c = claim(id);
     Device *d = c ? device(c->physical_device) : nullptr;
     uint16_t mps = 0;
@@ -464,10 +472,14 @@ __attribute__((used)) int32_t begin_owned_bulk(uint64_t id, uint8_t ep,
                                              uint32_t budget) {
     if (ownedBulk.owns_storage())
         return ownedBulk.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    if (ownedAdmission.owns_storage() || risc_usb_admission_faulted())
+        return ownedAdmission.retained() || risc_usb_admission_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     Claim *c = claim(id);
     Device *d = c ? device(c->physical_device) : nullptr;
-    if (!running || !d || !d->attached || c->interfaceReleased || !idle_transfer())
+    if (!running || !d || !d->attached || d->referenceClosed || c->interfaceReleased ||
+        ownedAdmission.owns_storage() || risc_usb_admission_faulted() || inFlight || !transfer)
         return RISC_STREAM_INVALID;
+    completed = false;
     OwnedBulkPort port{c};
     return ownedBulk.begin(port, transfer, d->handle, id, ep, source, length, budget);
 }
@@ -480,8 +492,108 @@ __attribute__((used)) int32_t take_owned_bulk(uint64_t id, uint8_t *out, size_t 
     return ownedBulk.take(id, out, size);
 }
 
+/* Allocation is an explicit unqualified prerequisite, never part of a timed
+ * claim/configuration/release call and never selected by a public fallback. */
+__attribute__((used)) esp_err_t prepare_owned_admission() {
+    if (!running || !installed || !client || fault || ownedBulk.owns_storage() ||
+        native_admission_guard() || role.state() != UsbRoleSwitch::State::Host)
+        return ESP_ERR_INVALID_STATE;
+    return risc_usb_admission_prepare();
+}
+__attribute__((used)) int32_t begin_owned_configuration(uint64_t id, uint32_t budget) {
+    if (ownedAdmission.owns_storage()) return ownedAdmission.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    Device *d = device(id);
+    if (!running || !d || !d->attached || d->referenceClosed || ownedBulk.owns_storage() ||
+        risc_usb_admission_faulted()) return RISC_STREAM_INVALID;
+    OwnedBulkPort clock{nullptr};
+    const auto result = ownedAdmission.begin(clock,
+        RiscUsbController::OwnedAdmissionRequest::Kind::Configuration, client, d->handle,
+        id, 0, 0, false, budget);
+    if (result == RISC_STREAM_AGAIN) admissionDevice = id;
+    return result;
+}
+__attribute__((used)) int32_t begin_owned_claim(uint64_t id, uint8_t number,
+                                              uint8_t alternate, uint32_t budget,
+                                              uint64_t *out) {
+    if (!out) return RISC_STREAM_INVALID;
+    *out = 0;
+    if (ownedAdmission.owns_storage() || ownedBulk.owns_storage())
+        return ownedAdmission.retained() || ownedBulk.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    Device *d = device(id);
+    if (!running || !d || !d->attached || d->referenceClosed || !budget || budget > 1000 ||
+        risc_usb_admission_faulted()) return RISC_STREAM_INVALID;
+    Claim *slot = nullptr;
+    for (auto &c : claims) {
+        if (c.token && c.physical_device == id && c.number == number) return RISC_STREAM_BUSY;
+        if (!c.token && !slot) slot = &c;
+    }
+    if (!slot) return RISC_STREAM_LIMIT;
+    uint64_t assigned = token();
+    if (!assigned) return RISC_STREAM_IO;
+    *slot = {assigned, id, number, alternate, false, true};
+    OwnedBulkPort clock{slot};
+    int32_t result = ownedAdmission.begin(clock,
+        RiscUsbController::OwnedAdmissionRequest::Kind::Claim, client, d->handle,
+        assigned, number, alternate, false, budget);
+    if (result != RISC_STREAM_AGAIN) { *slot = {}; return result; }
+    admissionDevice = id; *out = assigned; return result;
+}
+__attribute__((used)) int32_t begin_owned_release(uint64_t id, uint32_t budget) {
+    if (ownedAdmission.owns_storage()) return ownedAdmission.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    if (ownedBulk.owns_storage()) return ownedBulk.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    Claim *c = claim(id);
+    Device *d = c ? device(c->physical_device) : nullptr;
+    if (!c || !d || !c->native || d->referenceClosed) return RISC_STREAM_UNSUPPORTED;
+    OwnedBulkPort clock{c};
+    int32_t result = ownedAdmission.begin(clock,
+        RiscUsbController::OwnedAdmissionRequest::Kind::Release, client, d->handle,
+        id, c->number, c->alternate, !d->attached && !otherClaims(d->token, id), budget);
+    if (result == RISC_STREAM_AGAIN) admissionDevice = d->token;
+    return result;
+}
+__attribute__((used)) int32_t begin_owned_close(uint64_t id, uint32_t budget) {
+    if (ownedAdmission.owns_storage()) return ownedAdmission.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    Device *d = device(id);
+    if (!running || !d || d->referenceClosed || claimed(id) || ownedBulk.owns_storage())
+        return RISC_STREAM_INVALID;
+    OwnedBulkPort clock{nullptr};
+    int32_t result = ownedAdmission.begin(clock,
+        RiscUsbController::OwnedAdmissionRequest::Kind::Close, client, d->handle,
+        id, 0, 0, false, budget);
+    if (result == RISC_STREAM_AGAIN) admissionDevice = id;
+    return result;
+}
+__attribute__((used)) int32_t step_owned_admission() {
+    if (!ownedAdmission.owns_storage()) return RISC_STREAM_CLOSED;
+    OwnedBulkPort clock{nullptr};
+    int32_t result = ownedAdmission.step(clock);
+    if (ownedAdmission.interface_released()) {
+        for (auto &c : claims) if (c.token == ownedAdmission.token()) c.interfaceReleased = true;
+    }
+    if (ownedAdmission.reference_closed()) {
+        for (auto &d : devices) if (d.token == admissionDevice) d.referenceClosed = true;
+    }
+    return result;
+}
+__attribute__((used)) void cancel_owned_admission() { ownedAdmission.cancel(); }
+__attribute__((used)) int32_t take_owned_admission(uint64_t id, uint8_t *out,
+    size_t *size, uint16_t *vid, uint16_t *pid) {
+    const auto kind = ownedAdmission.kind();
+    const bool closed = ownedAdmission.reference_closed();
+    const bool consumable = id && id == ownedAdmission.token() &&
+        ownedAdmission.state() == RiscUsbController::OwnedAdmissionRequest::State::Done;
+    int32_t result = ownedAdmission.take(id, out, size, vid, pid);
+    if (!consumable || ownedAdmission.state() != RiscUsbController::OwnedAdmissionRequest::State::Idle) return result;
+    if ((kind == RiscUsbController::OwnedAdmissionRequest::Kind::Claim && result < 0) ||
+        (kind == RiscUsbController::OwnedAdmissionRequest::Kind::Release && result == RISC_STREAM_OK))
+        for (auto &c : claims) if (c.token == id) c = {};
+    if (closed) for (auto &d : devices) if (d.token == admissionDevice) d = {};
+    admissionDevice = 0;
+    return result;
+}
+
 bool quiesce_host() {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     if (inFlight && !drain_bulk(false)) return false;
     /* A discovery/event fault blocks new work, not verified cleanup. We may
      * release VBUS only after claims, DMA, devices, callbacks and IDF host
@@ -588,6 +700,7 @@ bool quiesce_host() {
         installed = false;
         noClientsObserved = false;
     }
+    if (risc_usb_admission_dispose() != ESP_OK) return false;
     if (!release_host_phy()) return false;
     if (powerLease) {
         if (!power || !power->release_host(power->context, powerLease)) {
@@ -612,7 +725,7 @@ bool quiesce_host() {
     return true;
 }
 bool quiesce(void *) {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     role.stop();
     // Repeated graph cleanup may already have released the chip's I2C claim.
     if (running || installed || phy || phyRouteCaptured || client || transfer || powerLease) {
@@ -631,7 +744,7 @@ bool startup_error(char *destination, size_t capacity) {
     return startupError.copy(destination, capacity);
 }
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
-    if (ownedBulk.owns_storage()) return false;
+    if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     startupError.clear();
     enumerationDiagnostic.clear();
     if (role.state() != UsbRoleSwitch::State::Off || running || installed || phy || phyRouteCaptured || client || transfer || powerLease || fault ||
@@ -690,7 +803,7 @@ struct RolePort {
         return (powerMonitor->flags & RISC_USB_POWER_IDLE_PROBE_REQUIRED) != 0;
     }
     bool busy() const {
-        if (queueCount || inFlight || (USB_DWC.hprt_reg.val & 1u)) return true;
+        if (queueCount || inFlight || native_admission_guard() || (USB_DWC.hprt_reg.val & 1u)) return true;
         for (const auto &d : devices) if (d.attached) return true;
         for (const auto &c : claims) if (c.token) return true;
         return false;
