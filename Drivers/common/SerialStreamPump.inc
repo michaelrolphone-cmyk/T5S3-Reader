@@ -74,6 +74,9 @@ static void poll_streams(uint32_t budget_ms) {
         serial_session *s = &sessions[next_session];
         next_session = (next_session + 1) % RISC_USB_CDC_MAX_SESSIONS;
         if (!s->token || !s->rx || !s->tx || s->failed) continue;
+#ifdef RISC_SERIAL_TAGGED_SESSION
+        if (RISC_SERIAL_TAGGED_SESSION(s)) { RISC_SERIAL_TAGGED_PUMP(s, budget_ms); return; }
+#endif
         if (!flush_rx(s)) return;
         if (!s->rx_size) {
             const int32_t n = read_data(s->token, staging[s - sessions].rx_pending, sizeof(staging[s - sessions].rx_pending), 1);
@@ -116,6 +119,9 @@ static void reconcile_endpoints(const uint64_t *tokens, size_t count) {
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i) {
         serial_session *s = &sessions[i];
         if (!s->token || !s->rx || !s->tx) continue;
+#ifdef RISC_SERIAL_TAGGED_SESSION
+        if (RISC_SERIAL_TAGGED_SESSION(s)) continue;
+#endif
         bool present = false;
         for (size_t j = 0; j < count; ++j) present |= tokens[j] == s->device;
         if (!present) {
