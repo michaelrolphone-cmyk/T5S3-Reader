@@ -92,6 +92,11 @@ on:
       - "scripts/build_gt911_touch.py"
       - "scripts/probe_usb_controller_esp32s3.py"
       - "scripts/instrument_usb_enumeration.py"
+      - "scripts/stage_usb_bounded.py"
+      - "test/run_usb_controller_bounded_test.sh"
+      - "test/drivers/usb_bounded*"
+      - "test/drivers/usb_controller_bounded*"
+      - "test/drivers/stub_usb_bounded/**"
       - "scripts/probe_i2c_esp32s3_v2.py"
       - "scripts/audit_usb_controller_elf.py"
       - "scripts/report_u1_target_references.py"
@@ -204,6 +209,10 @@ jobs:
           pio pkg install -e t5s3-pro
       - name: Compile physical controller and link PIC IDF USB implementation into ELF
         run: python scripts/probe_usb_controller_esp32s3.py --link-experiment
+      - name: Exercise owned bulk requests and exact staged SDK cancellation
+        run: |
+          bash test/run_usb_controller_bounded_test.sh
+          SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 bash test/run_usb_controller_bounded_test.sh
       - name: Record linked controller ownership references
         run: python scripts/report_u1_target_references.py --profile controller --elf dist/experimental/usb-controller-esp32s3/controller-link-experiment.elf --source-head "${{ github.event.pull_request.head.sha || github.sha }}" --output dist/u1-controller-references.json
       - name: Preserve compact controller ownership evidence

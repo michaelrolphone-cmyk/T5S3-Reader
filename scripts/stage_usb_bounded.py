@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""Stage exact v4.4.7 private bounded steps; never edit the SDK source cache.
+
+The original API behavior stays intact; added private fields track event and
+halt custody. Unknown upstream input fails closed before staging.
+"""
+import hashlib
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+ADAPTATION = ROOT / 'Drivers/usb_controller_esp32s3/idf'
+PINNED = {
+    'usb_host.c': 'ecd49ace784afb4bfeed353c001e721ef36a0bec',
+    'hcd_dwc.c': '1aeb3a1a2f6ed1b2cf00f98513f17607af4dd33d',
+}
+
+
+def blob_id(data):
+    return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+
+
+def replace_once(source, before, after):
+    if source.count(before) != 1:
+        raise ValueError('Pinned HCD adaptation anchor changed: ' + before[:80])
+    return source.replace(before, after, 1)
+
+
+def stage(path, output):
+    data = Path(path).read_bytes()
+    name = Path(path).name
+    if name not in PINNED or blob_id(data) != PINNED[name]:
+        raise ValueError('Unexpected ESP-IDF v4.4.7 USB source: ' + str(path))
+    source = data.decode('utf-8')
+    if name == 'usb_host.c':
+        source = replace_once(source,
+            '                uint32_t reserved31:31;',
+            '                uint32_t bounded_owned:1;\n'
+            '                uint32_t reserved30:30;')
+        source = replace_once(source, '        uint32_t num_done_ctrl_xfer;',
+            '        uint32_t num_done_ctrl_xfer;\n        uint32_t bounded_num_messages;')
+        source = replace_once(source,
+            '        if (xQueueSend(client_obj->constant.event_msg_queue, event_msg, 0) == pdTRUE) {\n            HOST_ENTER_CRITICAL();',
+            '        if (xQueueSend(client_obj->constant.event_msg_queue, event_msg, 0) == pdTRUE) {\n'
+            '            HOST_ENTER_CRITICAL();\n            client_obj->dynamic.bounded_num_messages++;')
+        source = replace_once(source, '            assert(queue_ret == pdTRUE);',
+            '            assert(queue_ret == pdTRUE);\n'
+            '            HOST_ENTER_CRITICAL();\n'
+            '            assert(client_obj->dynamic.bounded_num_messages > 0);\n'
+            '            client_obj->dynamic.bounded_num_messages--;\n'
+            '            HOST_EXIT_CRITICAL();')
+        source = replace_once(source,
+            '    bool yield = _unblock_client(client_obj, in_isr);',
+            '    bool yield = false;\n'
+            '    if (ep_obj->dynamic.flags.bounded_owned) {\n'
+            '        client_obj->dynamic.flags.events_pending = 1;\n'
+            '    } else {\n'
+            '        yield = _unblock_client(client_obj, in_isr);\n'
+            '    }')
+        source = replace_once(source,
+            '    ep_obj->dynamic.num_urb_inflight++;',
+            '    ep_obj->dynamic.flags.bounded_owned = 0;\n'
+            '    ep_obj->dynamic.num_urb_inflight++;')
+    if name == 'hcd_dwc.c':
+        source = replace_once(source,
+            '            uint32_t reserved27: 27;',
+            '            uint32_t bounded_halt: 1; // Private try/poll halt custody\n'
+            '            uint32_t reserved26: 26;')
+        source = replace_once(source,
+            '            *yield |= _internal_pipe_event_notify(pipe, true);',
+            '            if (pipe->cs_flags.bounded_halt) {\n'
+            '                pipe->cs_flags.waiting_halt = 0;\n'
+            '            } else {\n'
+            '                *yield |= _internal_pipe_event_notify(pipe, true);\n'
+            '            }')
+        source = replace_once(source,
+            '            pipe->state = HCD_PIPE_STATE_HALTED;\n            //Mark the buffer as done with an error',
+            '            pipe->state = HCD_PIPE_STATE_HALTED;\n'
+            '            if (pipe->cs_flags.bounded_halt) {\n'
+            '                // HAL error decoding requires CHHLTD and clears active.\n'
+            '                pipe->cs_flags.waiting_halt = 0;\n'
+            '                chan_obj->flags.halt_requested = 0;\n'
+            '            }\n'
+            '            //Mark the buffer as done with an error')
+        source = replace_once(source,
+            '    if (pipe->cs_flags.reset_lock) {',
+            '    if (pipe->cs_flags.reset_lock || pipe->cs_flags.bounded_halt) {')
+        source = replace_once(source,
+            '    HCD_CHECK_FROM_CRIT(!pipe->multi_buffer_control.buffer_is_executing\n',
+            '    HCD_CHECK_FROM_CRIT(!pipe->cs_flags.bounded_halt\n'
+            '                        && !pipe->multi_buffer_control.buffer_is_executing\n')
+    suffix = {'usb_host.c': 'host', 'hcd_dwc.c': 'hcd'}[name]
+    source += '\n' + (ADAPTATION / f'bounded_{suffix}.inc').read_text()
+    Path(output).write_text(source)
+    return Path(output)

@@ -51,6 +51,7 @@ bool interrupt_mps(Device *d, const Claim *c, uint8_t endpoint,
 }
 int32_t interrupt_read(void *, uint64_t id, uint8_t endpoint,
                        uint8_t *dst, size_t capacity, uint32_t timeout) {
+    if (ownedBulk.owns_storage()) return -1;
     Claim *c = claim(id);
     Device *d = c ? device(c->physical_device) : nullptr;
     uint16_t packet = 0;
@@ -60,16 +61,19 @@ int32_t interrupt_read(void *, uint64_t id, uint8_t endpoint,
     return read_interrupt(id, d->handle, endpoint, packet, dst, timeout);
 }
 bool release_with_interrupt(void *context, uint64_t id) {
+    if (ownedBulk.owns_storage()) return false;
     for (auto &slot : interrupts) {
         if (slot.claim_id == id && !drain_interrupt(slot)) return false;
     }
     return release_interface(context, id);
 }
 bool quiesce_with_interrupt(void *context) {
+    if (ownedBulk.owns_storage()) return false;
     for (auto &slot : interrupts) if (!drain_interrupt(slot)) return false;
     return quiesce(context);
 }
 bool drain_role_interrupts() {
+    if (ownedBulk.owns_storage()) return false;
     for (auto &slot : interrupts) if (!drain_interrupt(slot)) return false;
     return true;
 }

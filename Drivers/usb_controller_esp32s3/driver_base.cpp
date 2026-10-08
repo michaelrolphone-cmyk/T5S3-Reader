@@ -7,6 +7,7 @@
 #include "ClaimReleasePolicy.h"
 #include "EnumerationDiagnostic.h"
 #include "RoleSwitch.h"
+#include "OwnedBulkRequest.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <esp_private/usb_phy.h>
@@ -52,6 +53,10 @@ static StartupDiagnostic startupError;
 static usb_host_client_handle_t client;
 static usb_transfer_t *transfer;
 static bool inFlight, completed;
+/* Private staged path: no public deadline suffix is advertised until role,
+ * HUB/USBH, claim/release and every reached path have bounded implementations.
+ * The legacy entry points below keep their established behavior when idle. */
+static RiscUsbController::OwnedBulkRequest ownedBulk;
 static bool noClientsObserved;
 static Event queue[kEvents];
 static size_t queueHead, queueTail, queueCount;
@@ -88,7 +93,7 @@ bool otherClaims(uint64_t deviceId, uint64_t except) {
 /* Detached unclaimed handles are still owned. A failed close keeps the slot
  * occupied and is retried by later bounded event polls, never reused early. */
 void reapDetachedUnclaimed() {
-    if (!client || inFlight) return;
+    if (!client || inFlight || ownedBulk.owns_storage()) return;
     for (auto &d : devices) {
         if (!d.handle || d.attached || claimed(d.token)) continue;
         if (usb_host_device_close(client, d.handle) == ESP_OK) d = {};
@@ -115,6 +120,7 @@ bool start_failure(const char *stage, int code) {
 }
 #include "HostStartup.h"
 bool pump(TickType_t delay) {
+    if (ownedBulk.owns_storage()) return false;
     if (!installed || !client) return false;
     uint32_t flags = 0;
     esp_err_t a = usb_host_lib_handle_events(0, &flags);
@@ -180,6 +186,7 @@ bool wait_completion(uint32_t milliseconds) {
 }
 /* Never free a submitted transfer: teardown must obtain its callback first. */
 bool idle_transfer() {
+    if (ownedBulk.owns_storage()) return false;
     if (inFlight) return false;
     if (completed) completed = false;
     return transfer != nullptr;
@@ -215,6 +222,7 @@ bool endpoint_mps(Device *d, uint8_t iface, uint8_t alt,
 }
 
 int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
+    if (ownedBulk.owns_storage()) return -1;
     if (!out || fault || role.state() == UsbRoleSwitch::State::Off) return -1;
     if (role.state() == UsbRoleSwitch::State::Failed) return 0;
 
@@ -274,6 +282,7 @@ int32_t next_event(void *, risc_usb_controller_event_v1 *out) {
 }
 bool configuration(void *, uint64_t id, uint8_t *bytes, size_t *size,
                    uint16_t *vid, uint16_t *pid) {
+    if (ownedBulk.owns_storage()) return false;
     Device *d = device(id);
     if (!running || !d || !d->attached || !bytes || !size || !vid || !pid)
         return false;
@@ -290,6 +299,7 @@ bool configuration(void *, uint64_t id, uint8_t *bytes, size_t *size,
 }
 bool claim_interface(void *, uint64_t id, uint8_t iface, uint8_t alt,
                      uint64_t *out) {
+    if (ownedBulk.owns_storage()) return false;
     Device *d = device(id);
     if (!running || !d || !d->attached || !out) return false;
     Claim *slot = nullptr;
@@ -308,6 +318,7 @@ bool claim_interface(void *, uint64_t id, uint8_t iface, uint8_t alt,
     return true;
 }
 bool release_interface(void *, uint64_t id) {
+    if (ownedBulk.owns_storage()) return false;
     /* Cleanup must still find an existing physical claim after event parsing
      * has faulted. New operations remain blocked by claim()/device(). */
     Claim *c = nullptr;
@@ -378,6 +389,7 @@ int32_t control(void *, uint64_t id, uint8_t type, uint8_t request,
 int32_t bulk(void *, uint64_t id, uint8_t endpoint,
              uint8_t *dst, const uint8_t *src, size_t length,
              uint32_t timeout, bool reading) {
+    if (ownedBulk.owns_storage()) return -1;
     Claim *c = claim(id);
     Device *d = c ? device(c->physical_device) : nullptr;
     uint16_t mps = 0;
@@ -416,7 +428,60 @@ int32_t bulk_write(void *ctx, uint64_t id, uint8_t ep, const uint8_t *src,
     return bulk(ctx, id, ep, nullptr, src, len, timeout, false);
 }
 
+/* Controller-private owner-poll entry points. These are deliberately absent
+ * from every exported capability. Future bounded admission/lifecycle work can
+ * reuse them without placing physical SDK behavior in the host/class ELFs. */
+struct OwnedBulkPort {
+    const Claim *owner;
+    uint64_t now() const {
+        /* The private owner poll samples at least once per tick-counter wrap.
+         * Deadlines are <=1s; wrap-safe accumulation never resets on restart.
+         * This is not advertisement of the full deadline clock contract. */
+        static TickType_t previous;
+        static uint64_t elapsedTicks;
+        const TickType_t current = xTaskGetTickCount();
+        elapsedTicks += static_cast<TickType_t>(current - previous);
+        previous = current;
+        return elapsedTicks * portTICK_PERIOD_MS;
+    }
+    esp_err_t library_idle() const {
+        if (!installed || !client || fault || queueCount ||
+            role.state() != UsbRoleSwitch::State::Host) return ESP_ERR_NOT_FINISHED;
+        return risc_usb_host_library_idle(client);
+    }
+    esp_err_t resolve(usb_device_handle_t d, uint8_t ep, void **out, uint16_t *packet) const {
+        if (!owner) return ESP_ERR_INVALID_STATE;
+        return risc_usb_host_bulk_resolve(client, d, ep, owner->number,
+                                          owner->alternate, out, packet);
+    }
+    esp_err_t submit(void *ep, usb_transfer_t *t) const { return risc_usb_host_bulk_submit(ep, t); }
+    esp_err_t client_step(void *ep, bool *work) const { return risc_usb_host_client_step(client, ep, work); }
+    esp_err_t cancel_step(void *ep) const { return risc_usb_host_bulk_cancel_step(ep); }
+    esp_err_t clear(void *ep) const { return risc_usb_host_bulk_clear(ep); }
+};
+__attribute__((used)) int32_t begin_owned_bulk(uint64_t id, uint8_t ep,
+                                             const uint8_t *source, size_t length,
+                                             uint32_t budget) {
+    if (ownedBulk.owns_storage())
+        return ownedBulk.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    Claim *c = claim(id);
+    Device *d = c ? device(c->physical_device) : nullptr;
+    if (!running || !d || !d->attached || c->interfaceReleased || !idle_transfer())
+        return RISC_STREAM_INVALID;
+    OwnedBulkPort port{c};
+    return ownedBulk.begin(port, transfer, d->handle, id, ep, source, length, budget);
+}
+__attribute__((used)) int32_t step_owned_bulk() {
+    OwnedBulkPort port{claim(ownedBulk.claim_id())};
+    return ownedBulk.step(port);
+}
+__attribute__((used)) void cancel_owned_bulk() { ownedBulk.cancel(); }
+__attribute__((used)) int32_t take_owned_bulk(uint64_t id, uint8_t *out, size_t size) {
+    return ownedBulk.take(id, out, size);
+}
+
 bool quiesce_host() {
+    if (ownedBulk.owns_storage()) return false;
     if (inFlight && !drain_bulk(false)) return false;
     /* A discovery/event fault blocks new work, not verified cleanup. We may
      * release VBUS only after claims, DMA, devices, callbacks and IDF host
@@ -547,6 +612,7 @@ bool quiesce_host() {
     return true;
 }
 bool quiesce(void *) {
+    if (ownedBulk.owns_storage()) return false;
     role.stop();
     // Repeated graph cleanup may already have released the chip's I2C claim.
     if (running || installed || phy || phyRouteCaptured || client || transfer || powerLease) {
@@ -565,6 +631,7 @@ bool startup_error(char *destination, size_t capacity) {
     return startupError.copy(destination, capacity);
 }
 bool start(const risc_provider_dependency_v1 *deps, size_t count) {
+    if (ownedBulk.owns_storage()) return false;
     startupError.clear();
     enumerationDiagnostic.clear();
     if (role.state() != UsbRoleSwitch::State::Off || running || installed || phy || phyRouteCaptured || client || transfer || powerLease || fault ||
