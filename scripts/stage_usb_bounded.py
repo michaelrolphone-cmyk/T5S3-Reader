@@ -12,6 +12,7 @@ ADAPTATION = ROOT / 'Drivers/usb_controller_esp32s3/idf'
 PINNED = {
     'usb_host.c': 'ecd49ace784afb4bfeed353c001e721ef36a0bec',
     'hcd_dwc.c': '1aeb3a1a2f6ed1b2cf00f98513f17607af4dd33d',
+    'usbh.c': '76942870194134dcb5b90269d22291e37db38b8b',
 }
 
 
@@ -32,6 +33,14 @@ def stage(path, output):
         raise ValueError('Unexpected ESP-IDF v4.4.7 USB source: ' + str(path))
     source = data.decode('utf-8')
     if name == 'usb_host.c':
+        source = replace_once(source,
+            'static host_lib_t *p_host_lib_obj = NULL;',
+            'static host_lib_t *p_host_lib_obj = NULL;\n'
+            'static bool risc_native_interface_owned(interface_t *);')
+        source = replace_once(source,
+            '    //Check that all endpoints in the interface are in a state to be freed',
+            '    if (risc_native_interface_owned(intf_obj)) return ESP_ERR_INVALID_STATE;\n\n'
+            '    //Check that all endpoints in the interface are in a state to be freed')
         source = replace_once(source,
             '                uint32_t reserved31:31;',
             '                uint32_t bounded_owned:1;\n'
@@ -62,6 +71,10 @@ def stage(path, output):
             '    ep_obj->dynamic.num_urb_inflight++;')
     if name == 'hcd_dwc.c':
         source = replace_once(source,
+            'esp_err_t hcd_pipe_free(hcd_pipe_handle_t pipe_hdl)\n{',
+            'static bool risc_hcd_pool_contains(hcd_pipe_handle_t);\n\n'
+            'esp_err_t hcd_pipe_free(hcd_pipe_handle_t pipe_hdl)\n{')
+        source = replace_once(source,
             '            uint32_t reserved27: 27;',
             '            uint32_t bounded_halt: 1; // Private try/poll halt custody\n'
             '            uint32_t reserved26: 26;')
@@ -86,9 +99,12 @@ def stage(path, output):
             '    if (pipe->cs_flags.reset_lock || pipe->cs_flags.bounded_halt) {')
         source = replace_once(source,
             '    HCD_CHECK_FROM_CRIT(!pipe->multi_buffer_control.buffer_is_executing\n',
-            '    HCD_CHECK_FROM_CRIT(!pipe->cs_flags.bounded_halt\n'
+            '    HCD_CHECK_FROM_CRIT(!risc_hcd_pool_contains(pipe_hdl)\n'
+            '                        && !pipe->cs_flags.bounded_halt\n'
             '                        && !pipe->multi_buffer_control.buffer_is_executing\n')
-    suffix = {'usb_host.c': 'host', 'hcd_dwc.c': 'hcd'}[name]
-    source += '\n' + (ADAPTATION / f'bounded_{suffix}.inc').read_text()
+    suffixes = {'usb_host.c': ('host', 'host_admission'),
+                'hcd_dwc.c': ('hcd', 'hcd_pool'), 'usbh.c': ('usbh_admission',)}[name]
+    for suffix in suffixes:
+        source += '\n' + (ADAPTATION / f'bounded_{suffix}.inc').read_text()
     Path(output).write_text(source)
     return Path(output)

@@ -24,6 +24,8 @@ struct Claim { uint64_t token; } claims[2];
 struct Device { void *handle; } devices[2];
 static bool inFlight, fault, installed, running, noClientsObserved;
 struct { bool owned=false; bool owns_storage() const { return owned; } } ownedBulk;
+static bool admissionBusy;
+static bool native_admission_guard() { return admissionBusy; }
 static void *client, *transfer, *phy;
 static uint64_t powerLease;
 static unsigned queueHead, queueTail, queueCount;
@@ -33,6 +35,7 @@ static unsigned restored, powerReleases, eventCalls, freeCalls, yields;
 struct { struct { bool sw_hw_usb_phy_sel, sw_usb_phy_sel; } usb_conf; } RTCCNTL;
 #include "PhyRoute.h"
 static bool operation(int n) { stage=n; return fail!=n; }
+static esp_err_t risc_usb_admission_dispose() { return operation(14)?ESP_OK:ERROR; }
 static bool drain_bulk(bool) { if (!operation(1)) return false; inFlight=false; return true; }
 static bool claimed(uint64_t) { return fail==2; }
 static esp_err_t usb_host_device_close(void *, void *) { return operation(3)?ESP_OK:ERROR; }
@@ -92,7 +95,7 @@ static void complete() {
     assert(restored==1 && !queueHead && !queueTail && !queueCount);
 }
 int main() {
-    for (int n=1;n<=13;++n) {
+    for (int n=1;n<=14;++n) {
         reset(); fail=n;
         assert(!quiesce_host());
         assert(!restored && running && phyRouteCaptured);

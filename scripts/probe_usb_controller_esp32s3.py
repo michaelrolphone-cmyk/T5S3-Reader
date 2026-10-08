@@ -148,6 +148,7 @@ def run():
 
     usb, hal, soc, paths = idf_sources(args.idf_source)
     includes = ('-I' + str(usb / 'include'), '-I' + str(usb / 'private_include'),
+                '-I' + str(ROOT / 'Drivers/usb_controller_esp32s3'),
                 '-I' + str(hal / 'include'), '-I' + str(hal / 'esp32s3/include'),
                 '-I' + str(soc), '-I' + str(soc / 'include'))
     objects = [controller]

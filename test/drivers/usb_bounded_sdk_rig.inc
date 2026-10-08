@@ -49,8 +49,8 @@ void rig_reset(void) {
     client.constant.event_callback=message_callback; client.constant.event_msg_queue=&queue;
     queue.item.event=USB_HOST_CLIENT_EVENT_NEW_DEV;
     TAILQ_INSERT_TAIL(&client.dynamic.idle_ep_tailq,&endpoint,dynamic.tailq_entry);
-    descriptor=(usb_ep_desc_t){0x81,USB_TRANSFER_TYPE_BULK,64};
-    intf_descriptor=(usb_intf_desc_t){2,0,1};
+    descriptor=(usb_ep_desc_t){.bEndpointAddress=0x81,.bmAttributes=USB_TRANSFER_TYPE_BULK,.wMaxPacketSize=64};
+    intf_descriptor=(usb_intf_desc_t){.bInterfaceNumber=2,.bAlternateSetting=0,.bNumEndpoints=1};
     interface.constant.intf_desc=&intf_descriptor; interface.constant.client_obj=&client;
     interface.constant.dev_hdl=&device;
     interface.constant.endpoints[0]=&endpoint;
@@ -59,7 +59,7 @@ void rig_reset(void) {
     endpoint.constant.pipe_hdl=&pipe;
     device.mux_protected.ep_in[0]=&pipe; device.mux_protected.ep_out[0]=&pipe;
     pipe.context=&endpoint; pipe.chan_obj=&channel; pipe.port=&port;
-    pipe.ep_char=(usb_dwc_hal_ep_char_t){USB_PRIV_XFER_TYPE_BULK,64,0x81};
+    pipe.ep_char=(usb_dwc_hal_ep_char_t){.type=USB_PRIV_XFER_TYPE_BULK,.mps=64,.bEndpointAddress=0x81};
     pipe.callback=checked_pipe_callback; pipe.callback_arg=&endpoint;
     pipe.state=HCD_PIPE_STATE_ACTIVE; pipe.multi_buffer_control.buffer_num_to_fill=NUM_BUFFERS;
     TAILQ_INIT(&pipe.pending_urb_tailq); TAILQ_INIT(&pipe.done_urb_tailq);
