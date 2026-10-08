@@ -15,6 +15,7 @@ import re
 import shlex
 import subprocess
 from instrument_usb_enumeration import instrument
+from stage_usb_bounded import stage, PINNED
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp'
@@ -69,8 +70,8 @@ def compile_target(argv, entry, source, output, c_compiler=False, extra=()):
         raise RuntimeError('Target compiler did not produce ' + str(output))
 
 
-def idf_sources():
-    checkout = SOURCE_CACHE
+def idf_sources(source_checkout=None):
+    checkout = Path(source_checkout).resolve() if source_checkout else SOURCE_CACHE
     if not (checkout / 'components/usb/usb_host.c').is_file():
         if checkout.exists():
             raise RuntimeError('Incomplete IDF source checkout: ' + str(checkout))
@@ -79,11 +80,14 @@ def idf_sources():
                         '--filter=blob:none', '--sparse',
                         'https://github.com/espressif/esp-idf.git', str(checkout)],
                        cwd=ROOT, check=True)
-    subprocess.run(['git', '-C', str(checkout), 'sparse-checkout', 'set',
-                    'components/usb', 'components/hal', 'components/soc/esp32s3'],
-                   check=True)
+    if not source_checkout:
+        subprocess.run(['git', '-C', str(checkout), 'sparse-checkout', 'set',
+                        'components/usb', 'components/hal', 'components/soc/esp32s3'],
+                       check=True)
     commit = subprocess.check_output(['git', '-C', str(checkout), 'rev-parse',
                                       'HEAD'], text=True).strip()
+    if commit != '38eeba213aa695aabfd6d89aa9f5078dbe5a94c3':
+        raise RuntimeError('USB source checkout is not the pinned ESP-IDF v4.4.7 commit')
     (OUTPUT / 'idf-usb-source.txt').write_text(f'{IDF_TAG} {commit}\n')
     usb = checkout / 'components/usb'
     hal = checkout / 'components/hal'
@@ -112,11 +116,16 @@ def target_mmio_symbols(soc):
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--link-experiment', action='store_true')
+    parser.add_argument('--compile-database', type=Path,
+                        help='Existing PlatformIO ESP32-S3 compilation database')
+    parser.add_argument('--idf-source', type=Path,
+                        help='Existing exact v4.4.7 sparse checkout (never patched in place)')
     args = parser.parse_args()
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    subprocess.run(['pio', 'run', '-e', 't5s3-pro', '-t', 'compiledb'],
-                   cwd=ROOT, check=True)
-    entries = json.loads((ROOT / 'compile_commands.json').read_text())
+    if not args.compile_database:
+        subprocess.run(['pio', 'run', '-e', 't5s3-pro', '-t', 'compiledb'],
+                       cwd=ROOT, check=True)
+    entries = json.loads((args.compile_database or ROOT / 'compile_commands.json').read_text())
     matching = [entry for entry in entries if
                 Path(entry['file']).as_posix().endswith('src/native/NativeUsbBridge.cpp')]
     if len(matching) != 1:
@@ -137,8 +146,9 @@ def run():
         print('Link, import and relocation audit requires --link-experiment', flush=True)
         return
 
-    usb, hal, soc, paths = idf_sources()
+    usb, hal, soc, paths = idf_sources(args.idf_source)
     includes = ('-I' + str(usb / 'include'), '-I' + str(usb / 'private_include'),
+                '-I' + str(ROOT / 'Drivers/usb_controller_esp32s3'),
                 '-I' + str(hal / 'include'), '-I' + str(hal / 'esp32s3/include'),
                 '-I' + str(soc), '-I' + str(soc / 'include'))
     objects = [controller]
@@ -148,6 +158,8 @@ def run():
             staged_hub = OUTPUT / 'hub-enumeration-diagnostics.c'
             staged_hub.write_text(instrument(path.read_text()))
             path = staged_hub
+        elif path.name in PINNED:
+            path = stage(path, OUTPUT / ('bounded-' + path.name))
         compile_target(argv, entry, path, obj, c_compiler=True, extra=includes)
         objects.append(obj)
     phy_gpio = OUTPUT / 'phy-gpio.o'

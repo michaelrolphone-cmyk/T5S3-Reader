@@ -1,9 +1,13 @@
-#include "RiscUsbControllerV1.h"
+#include "RiscStreamSessionProviderV1.h"
+#include "../../sdk/app/RiscSerialStreamSessionV1.h"
+#include <string.h>
+#include "RiscUsbHostDeadlinesV1.h"
 
 /* Installed usb.host owns physical USB. This class ELF owns CP210x vendor
  * controls, descriptor matching and generation-qualified serial sessions. */
 typedef struct {
     uint64_t token, device, claim;
+    bool tagged, retained;
     uint8_t interface_number, alternate, in_ep, out_ep;
     bool disabled;
     bool orphaned; /* Open failed; its session token was never returned. */
@@ -16,7 +20,11 @@ static const risc_usb_host_discovery_v1 *discovery;
 static cp_session sessions[RISC_USB_CDC_MAX_SESSIONS];
 static uint8_t descriptors[RISC_USB_CONFIG_LIMIT];
 static uint64_t generation;
+static bool tagged_fenced;
 typedef cp_session serial_session;
+static void tagged_pump(serial_session *, uint32_t);
+#define RISC_SERIAL_TAGGED_SESSION(s) ((s)->tagged)
+#define RISC_SERIAL_TAGGED_PUMP(s, ms) tagged_pump(s, ms)
 #include "../common/SerialStreamPump.inc"
 
 static bool equal(const char *a, const char *b) {
@@ -125,6 +133,7 @@ static bool attached(uint64_t device, bool *present) {
  * While attached, failed UART disable remains uncertain and pins the claim. */
 static bool close_device(uint64_t token) {
     cp_session *s = lookup(token);
+    if (s && s->tagged) return false;
     if (!s || !discovery) return false;
     close_endpoints(s);
     if (!s->disabled) {
@@ -139,6 +148,7 @@ static bool close_device(uint64_t token) {
     return true;
 }
 static bool quiesce(void) {
+    if (tagged_fenced) return false;
     /* Consumer-owned sessions remain open. Failed-open claims have no caller
      * token, so retry them here with a fixed four-slot work bound. */
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i) {
@@ -148,6 +158,9 @@ static bool quiesce(void) {
     return true;
 }
 static void stop(void) {
+    if (tagged_fenced) return;
+    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
+        if (sessions[i].tagged) return;
     /* A direct stop cannot bypass physical release or discard claim tokens. */
     if (!host) return;
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
@@ -263,6 +276,9 @@ static bool snapshot_devices(risc_serial_device_v1 *out, size_t *inout_count) {
     return true;
 }
 static uint64_t open_device(uint64_t device) {
+    if (tagged_fenced) return 0;
+    for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
+        if (sessions[i].tagged && sessions[i].device == device) return 0;
     if (!host || !device || generation == UINT64_MAX) return 0;
     cp_session *slot = 0;
     for (size_t i = 0; i < RISC_USB_CDC_MAX_SESSIONS; ++i)
@@ -291,6 +307,7 @@ static uint64_t open_device(uint64_t device) {
 static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
                       uint8_t parity, uint8_t stop_bits) {
     cp_session *s = lookup(token);
+    if (s && s->tagged) return false;
     if (!s || s->disabled || s->orphaned || baud < 300 || baud > 3000000 ||
         bits < 5 || bits > 8 || parity > 4 ||
         (stop_bits != 1 && stop_bits != 2)) return false;
@@ -304,6 +321,7 @@ static bool configure(uint64_t token, uint32_t baud, uint8_t bits,
 }
 static bool control_lines(uint64_t token, bool dtr, bool rts) {
     cp_session *s = lookup(token);
+    if (s && s->tagged) return false;
     if (!s || s->disabled || s->orphaned) return false;
     uint16_t value = (uint16_t)(0x0300u | (dtr ? 1u : 0u) |
                                 (rts ? 2u : 0u));
@@ -316,7 +334,7 @@ static int32_t read_data(uint64_t token, uint8_t *dst, size_t capacity,
         capacity > RISC_USB_CONFIG_LIMIT) return -1;
     int32_t n = host->bulk_read(host->context, s->claim, s->in_ep,
                                 dst, capacity, timeout_ms);
-    return n >= 0 && (size_t)n <= capacity ? n : -1;
+    return (s->tagged && n == RISC_STREAM_RETAINED) || (n >= 0 && (size_t)n <= capacity) ? n : -1;
 }
 static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
                           uint32_t timeout_ms) {
@@ -325,20 +343,33 @@ static int32_t write_data(uint64_t token, const uint8_t *src, size_t length,
         length > RISC_USB_CONFIG_LIMIT) return -1;
     int32_t n = host->bulk_write(host->context, s->claim, s->out_ep,
                                  src, length, timeout_ms);
-    return n >= 0 && (size_t)n <= length ? n : -1;
+    return (s->tagged && n == RISC_STREAM_RETAINED) || (n >= 0 && (size_t)n <= length) ? n : -1;
 }
+#define TAGGED_GENERATION generation
+#define TAGGED_CONFIG_BYTES descriptors
+#define TAGGED_IFACE(s) ((s)->interface_number)
+#define TAGGED_ALT(s) ((s)->alternate)
+#define TAGGED_MAX_BAUD 3000000u
+#define TAGGED_LEGACY_ENDPOINTS 1
+#include "../common/SerialTaggedDeadline.inc"
+#include "TaggedVendor.inc"
+#include "../common/SerialTaggedSessions.inc"
+
 static const risc_serial_port_streams_v1 capability = {
     {{{RISC_USB_CDC_API_V1, sizeof(risc_serial_port_streams_v1),
        open_device, configure, control_lines, legacy_read, legacy_write, close_device},
-      probe_device}, snapshot_devices}, endpoints
+      probe_device}, snapshot_devices}, legacy_endpoints
 };
-static const risc_driver_poll_v2 driver = {
-    {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_poll_v2),
+static const risc_driver_stream_sessions_v2 driver = {
+  {
+    {{RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_stream_sessions_v2),
       "usb-cp210x-v2", "serial.port", RISC_USB_CDC_API_V1,
       &capability.inventory.discovery.serial, start, stop, quiesce}, last_error, bind_streams},
-    poll_streams
+    poll_tagged_serial
+  }, RISC_DRIVER_STREAM_SESSIONS_TAG_V1, RISC_DRIVER_STREAM_SESSIONS_VERSION_V1,
+  &tagged_sessions
 };
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.streams.driver : 0;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver.poll.streams.driver : 0;
 }

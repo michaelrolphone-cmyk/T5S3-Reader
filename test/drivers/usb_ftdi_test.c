@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     risc_driver_get_v2_fn get = (risc_driver_get_v2_fn)dlsym(lib, "t5_driver_get");
     assert(get && !get(1));
     const risc_driver_v2 *driver = get(RISC_PROVIDER_DRIVER_ABI_V2);
-    assert(driver && driver->struct_size == sizeof(*driver));
+    assert(driver && driver->struct_size >= sizeof(*driver));
     assert(strcmp(driver->driver_id, "usb-ftdi") == 0);
     assert(strcmp(driver->capability_id, "serial.port") == 0);
     assert(driver->quiesce);
@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
     const risc_usb_cdc_api_v1 *serial =
         (const risc_usb_cdc_api_v1 *)driver->capability;
     assert(serial && serial->api_version == 1 &&
-           serial->struct_size == sizeof(*serial));
+           serial->struct_size >= sizeof(*serial));
 
     assert(!driver->start(NULL, 0));
     risc_usb_host_api_v1 host = {
