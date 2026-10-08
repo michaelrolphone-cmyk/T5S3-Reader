@@ -1,14 +1,23 @@
     const uint32_t next_frame = current_frame + 1;
     const int64_t frame_start = esp_timer_get_time();
     const int64_t upload_start = frame_start;
-    if (!stream_plane(CMD_DTM2, next_frame, mode.window_y, mode.window_h, mode.pattern)) return false;
+    if (!stream_mode_plane(mode, CMD_DTM2, next_frame)) {
+      release_frame_cache();
+      return false;
+    }
     const uint32_t upload_us = static_cast<uint32_t>(esp_timer_get_time() - upload_start);
 
     uint32_t waveform_us = 0;
-    if (!begin_refresh(mode, &waveform_us)) return false;
+    if (!begin_refresh(mode, &waveform_us)) {
+      release_frame_cache();
+      return false;
+    }
 
     const int64_t sync_start = esp_timer_get_time();
-    if (!stream_plane(CMD_DTM1, next_frame, mode.window_y, mode.window_h, mode.pattern)) return false;
+    if (!stream_mode_plane(mode, CMD_DTM1, next_frame)) {
+      release_frame_cache();
+      return false;
+    }
     const uint32_t sync_us = static_cast<uint32_t>(esp_timer_get_time() - sync_start);
     const uint32_t total_us = static_cast<uint32_t>(esp_timer_get_time() - frame_start);
     current_frame = next_frame;
@@ -40,6 +49,7 @@
   } else {
     Serial.printf("[X4LAB] mode=%u stopped before first frame\n", static_cast<unsigned>(index + 1));
   }
+  release_frame_cache();
   while (gpio_get_level(PIN_BTN_POWER) == 0) delay(10);
   return true;
 }
@@ -89,7 +99,8 @@ void setup() {
   Serial.println("[X4LAB] LEFT OR RIGHT SIDE BUTTON: immediate controller reset + permanent halt");
   Serial.println("[X4LAB] POWER: start next mode; during a mode, request stop after current refresh");
   Serial.println("[X4LAB] task watchdog retained; IDLE0 is serviced between measured frames");
-  Serial.println("[X4LAB] matrix: 8/7/6/5/4-frame knee, 4+1/4+2 counterpulse, Bayer dither, 5-frame full panel");
+  Serial.println("[X4LAB] matrix: legacy references, cached partial RAM writes, Bayer 5/4/3/2-frame, full panel");
+  Serial.println("[X4LAB] 2x target uses the documented 200-Hz PLL ceiling plus cached-window transport");
 
   configure_output(PIN_LIGHT_COOL, 0);
   configure_output(PIN_LIGHT_WARM, 0);
