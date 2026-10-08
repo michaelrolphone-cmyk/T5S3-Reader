@@ -110,7 +110,7 @@ constexpr TestMode MODES[] = {
 };
 constexpr size_t MODE_COUNT = sizeof(MODES) / sizeof(MODES[0]);
 static_assert(MODE_COUNT <= 9, "single-key serial mode selection supports at most nine modes");
-constexpr const char* LAB_VERSION = "0.1.1";
+constexpr const char* LAB_VERSION = "0.1.2";
 
 DRAM_ATTR volatile bool abort_requested = false;
 DRAM_ATTR volatile uint32_t abort_pin = UINT32_MAX;
