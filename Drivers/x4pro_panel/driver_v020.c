@@ -35,15 +35,11 @@
 #define stop legacy_stop
 #define quiesce legacy_quiesce
 #define last_error legacy_last_error
-#define api legacy_api
-#define driver legacy_driver
 #define t5_driver_get legacy_t5_driver_get
 #define visibility(value) visibility("hidden")
 #include "driver.c"
 #undef visibility
 #undef t5_driver_get
-#undef driver
-#undef api
 #undef last_error
 #undef quiesce
 #undef stop
