@@ -1,34 +1,51 @@
-# X4 panel clock/sleep adaptation
+# X4 Pro panel driver
 
-Version 0.1.14 keeps the original `display.output@1` prefix. Shared Reader
-`DeskClockSleep` and `DeskClockFaces` remain the clock engine; the six faces,
-retained minute, 30-minute full refresh and timer/button behavior match the
-healthy `firmware-v1.3.53` reference. This ELF implements only panel-specific I/O.
+`x4pro-panel` provides the RiscRTE `display.output` capability for the Xteink X4 Pro. Version 0.2.0 preserves the existing SSD1677 backend and replaces the UC8279 path with the high-refresh architecture validated by X4LAB v0.1.5.
 
-An optional tagged history suffix copies a caller-owned acquired frame into a
-bounded previous-image buffer before normal submit. The clock reconstructs its
-previous minute using the existing renderer. The provider uses old/new pixels
-and byte-aligned clipped damage, with UC8279 gate offset 120 or descending
-SSD1677 gates. Unsupported history falls back to the ordinary full-frame API;
-old providers lacking the explicit quiescent-sleep information flag cannot
-satisfy the new X4 sleep barrier. No controller RAM is assumed valid after reset.
+## 0.2.0 UC8279 operating envelope
 
-The sequences reuse pinned FreeInk `111fdcc7f0176c3ee38391a160ee296bf492dbd8`:
-- [UC8279 refresh/power](https://github.com/Free-Ink/freeink-sdk/blob/111fdcc7f0176c3ee38391a160ee296bf492dbd8/libs/display/FreeInkDisplay/src/driver/Uc8279X4Driver.cpp):
-  full CDI97/TSSET1E; clipped differential CDID7/TSSET5A with PTIN/PTL,
-  post-PON PSR17/4D, DRF and PTOUT. Power-off02 waits idle before DSLP07/A5.
-- [SSD1677](https://github.com/Free-Ink/freeink-sdk/blob/111fdcc7f0176c3ee38391a160ee296bf492dbd8/libs/display/FreeInkDisplay/src/driver/Ssd1677Driver.cpp):
-  full bypass-red/control F7; differential old-red/current-BW control FC;
-  power-off border80/control03/activate20 with 200 ms + bounded BUSY wait,
-  then deep-sleep10/03.
-- RESET GPIO14 is held HIGH because X4 has no switched panel rail. Startup
-  releases only its own hold. Touch and SD pins/rails are never touched here.
+The fast path is admitted only for the double-probed ZHX UC8279 `LUT_VER=0x68` variant. It uses:
 
-Quiescence refuses held/queued/active frames and busy physical transfers.
-Power-off progress is retained, so a failed POF wait retries observation instead
-of blindly sending another POF/DSLP. Acceptance means physical transition is
-finished; final stop makes no new hardware calls. Transfer loops bound work and
-time with real scheduler cooperation. The actual-driver pin model checks full
-and differential register bytes, distinct old/new planes, clipped coordinates,
-POF timeout/retry, single DSLP and RESET hold. Host models/CI are not physical
-current, waveform-quality or wake validation.
+- fixed 20 MHz ESP32-S3 native FSPI transport;
+- the normal 800x600 controller geometry and established 120-row visible offset;
+- ordinary UC8279 partial windows;
+- PLL `0x0E` for clean refresh and `0x0F` for fast refresh;
+- external one-frame and two-frame A2-style LUT profiles;
+- separate logical framebuffer, DTM1-history, and panel-state tracking;
+- bounded one-frame absolute bursts followed by a two-frame settle and DTM1 reseed;
+- validated BUSY assertion/completion timing;
+- automatic OTP clean fallback and fast-mode disable after repeated protocol faults.
+
+The provider continues to expose ordinary MONO1 surfaces. Applications do not select LUTs, clocks, panel geometry, or cleanup sequences.
+
+## Internal refresh profiles
+
+- `OTP_CLEAN`: initial, explicit-clean, unknown-state, or fallback presentation.
+- `DIFF_2F`: quality-oriented differential presentation.
+- `DIFF_1F`: ordinary low-latency differential presentation.
+- `ABS_1F`: bounded repeated-interaction burst with DTM1 synchronization deferred.
+- `ABS_SETTLE_2F`: reinforces the final burst target and restores DTM1 synchronization.
+
+Absolute bursts are limited to eight frames or 600 ms. A long gap, quality request, lifecycle transition, or limit crossing forces settlement. Repeated invalid BUSY cycles disable fast profiles for the remainder of the boot.
+
+## Explicitly excluded destructive paths
+
+The 0.2.0 production candidate contains no code path for the destructive X4LAB v0.1.6 experiments:
+
+- no compact or remapped `TRES`/`GSST` geometry;
+- no reduced or zero TCON timing;
+- no 40/80 MHz production SPI;
+- no undocumented PLL value such as `0x3F`;
+- no application-provided LUT or panel-voltage control.
+
+The v0.1.6 forensic history remains isolated at `quarantine/x4-high-fps-v0.1.6-destructive` and must not be flashed to usable hardware.
+
+## Fault and lifecycle behavior
+
+Every physical refresh requires BUSY_N to begin idle, assert within the profile deadline, remain asserted for a plausible physical interval, and complete before timeout. A missed, stuck, or implausibly short cycle fails the present and invalidates fast panel state.
+
+Before sleep, an active absolute burst is settled and DTM1 is reseeded. The driver then powers the controller off, enters deep sleep, holds panel reset, and treats controller RAM as untrusted after restart.
+
+## Status
+
+Version 0.2.0 is an implementation candidate built at the user's direction without the multi-panel endurance qualification stage described in `docs/X4_UC8279_HIGH_REFRESH_GENERAL_DRIVER_PLAN.md`. Its manifest therefore remains `experimental-unpublished` until hardware integration testing is completed.
