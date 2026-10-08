@@ -14,7 +14,8 @@ void build_a2_lut(uint8_t out[5][LUT_BYTES], uint8_t drive_frames, uint8_t count
   out[1][1] = total;
   out[4][1] = total;
   // BW drives toward black (VSL), WB toward white (VSH). Optional second phase
-  // is an intentionally short opposite-polarity compensation pulse.
+  // remains available for controlled experiments, but the failed 4+1/4+2
+  // counterpulse modes are not present in the v0.1.4 matrix.
   out[2][1] = static_cast<uint8_t>(0x80U | drive_frames);
   out[3][1] = static_cast<uint8_t>(0x40U | drive_frames);
   if (counter_frames != 0) {
@@ -88,6 +89,18 @@ bool clean_baseline(uint16_t active_y, uint16_t active_h, Pattern pattern) {
   return true;
 }
 
+bool stream_mode_plane(const TestMode& mode, uint8_t command, uint32_t frame) {
+  if (mode.transport == Transport::LegacyFullStride) {
+    return stream_plane(command, frame, mode.window_y, mode.window_h, mode.pattern);
+  }
+  const uint8_t* data = cached_frame(frame);
+  if (!data || !set_partial_window(mode.window_y, mode.window_h) ||
+      !stream_cached_plane(command, data, frame_cache_stride)) {
+    return false;
+  }
+  return write_command(CMD_PARTIAL_OUT);
+}
+
 bool run_mode(size_t index) {
   if (index >= MODE_COUNT) return false;
   const TestMode& mode = MODES[index];
@@ -99,8 +112,15 @@ bool run_mode(size_t index) {
   Serial.printf("\n[X4LAB] MODE %u/%u: %s\n", static_cast<unsigned>(index + 1), static_cast<unsigned>(MODE_COUNT),
                 mode.name);
   Serial.println("[X4LAB] EITHER SIDE BUTTON = IMMEDIATE HARD ABORT; power button = stop after current refresh");
+  Serial.printf("[X4LAB] transport=%s rows_sent_per_plane=%u\n",
+                mode.transport == Transport::CachedWindow ? "cached-window" : "legacy-full-stride",
+                static_cast<unsigned>(mode.transport == Transport::CachedWindow ? mode.window_h : CONTROLLER_HEIGHT));
 
-  if (!clean_baseline(mode.window_y, mode.window_h, mode.pattern)) return false;
+  if (!prepare_frame_cache(mode)) return false;
+  if (!clean_baseline(mode.window_y, mode.window_h, mode.pattern)) {
+    release_frame_cache();
+    return false;
+  }
 
   uint64_t sum_total = 0;
   uint64_t sum_waveform = 0;
