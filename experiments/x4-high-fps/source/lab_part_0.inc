@@ -85,6 +85,7 @@ constexpr uint8_t STOCK_PREBW[5][LUT_BYTES] = {
 };
 
 enum class Waveform : uint8_t { OtpDu, StockPreBw, GeneratedA2 };
+enum class Pattern : uint8_t { BinaryGrid, TemporalBayer };
 
 struct TestMode {
   const char* name;
@@ -92,25 +93,38 @@ struct TestMode {
   uint8_t pll;
   uint8_t drive_frames;
   uint8_t counter_frames;
+  Pattern pattern;
   uint16_t window_y;
   uint16_t window_h;
   uint16_t frame_count;
 };
 
+// Hardware results put the useful transition between the clear 8-frame pulse
+// and the ghostier 4-frame pulse. This matrix resolves that knee, tests short
+// opposite-polarity compensation, and measures temporally shifted dithering.
 constexpr TestMode MODES[] = {
-    {"OTP DU / stock PLL / full 480 rows", Waveform::OtpDu, PLL_STOCK, 0, 0, 0, 480, 12},
-    {"OTP DU / fast PLL / full 480 rows", Waveform::OtpDu, PLL_FAST, 0, 0, 0, 480, 12},
-    {"OTP DU / fast PLL / 160-row band", Waveform::OtpDu, PLL_FAST, 0, 0, 160, 160, 20},
-    {"Factory external PREBW / fast PLL / 160-row band", Waveform::StockPreBw, PLL_FAST, 0, 0, 160, 160, 20},
-    {"Generated A2 / 8-frame pulse / 160-row band", Waveform::GeneratedA2, PLL_FAST, 8, 0, 160, 160, 24},
-    {"Generated A2 / 4-frame pulse / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 0, 160, 160, 24},
-    {"Generated A2 / 2-frame pulse / 160-row band", Waveform::GeneratedA2, PLL_FAST, 2, 0, 160, 160, 24},
-    {"Generated A2 / 1-frame pulse / 160-row band", Waveform::GeneratedA2, PLL_FAST, 1, 0, 160, 160, 24},
-    {"Generated A2 / 4-frame pulse / full 480 rows", Waveform::GeneratedA2, PLL_FAST, 4, 0, 0, 480, 16},
+    {"A2 8-frame reference / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 8, 0,
+     Pattern::BinaryGrid, 160, 160, 24},
+    {"A2 7-frame pulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 7, 0,
+     Pattern::BinaryGrid, 160, 160, 24},
+    {"A2 6-frame pulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 6, 0,
+     Pattern::BinaryGrid, 160, 160, 24},
+    {"A2 5-frame pulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 5, 0,
+     Pattern::BinaryGrid, 160, 160, 24},
+    {"A2 4-frame reference / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 0,
+     Pattern::BinaryGrid, 160, 160, 24},
+    {"A2 4+1-frame counterpulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 1,
+     Pattern::BinaryGrid, 160, 160, 24},
+    {"A2 4+2-frame counterpulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 2,
+     Pattern::BinaryGrid, 160, 160, 24},
+    {"A2 4-frame pulse / temporal Bayer gray stress / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 0,
+     Pattern::TemporalBayer, 160, 160, 32},
+    {"A2 5-frame pulse / binary / full 480 rows", Waveform::GeneratedA2, PLL_FAST, 5, 0,
+     Pattern::BinaryGrid, 0, 480, 16},
 };
 constexpr size_t MODE_COUNT = sizeof(MODES) / sizeof(MODES[0]);
 static_assert(MODE_COUNT <= 9, "single-key serial mode selection supports at most nine modes");
-constexpr const char* LAB_VERSION = "0.1.2";
+constexpr const char* LAB_VERSION = "0.1.3";
 
 DRAM_ATTR volatile bool abort_requested = false;
 DRAM_ATTR volatile uint32_t abort_pin = UINT32_MAX;
