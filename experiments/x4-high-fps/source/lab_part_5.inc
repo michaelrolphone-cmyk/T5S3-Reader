@@ -13,12 +13,15 @@
       return false;
     }
 
-    const int64_t sync_start = esp_timer_get_time();
-    if (!stream_mode_plane(mode, CMD_DTM1, next_frame)) {
-      release_frame_cache();
-      return false;
+    uint32_t sync_us = 0;
+    if (mode.waveform != Waveform::GeneratedAbsoluteA2) {
+      const int64_t sync_start = esp_timer_get_time();
+      if (!stream_mode_plane(mode, CMD_DTM1, next_frame)) {
+        release_frame_cache();
+        return false;
+      }
+      sync_us = static_cast<uint32_t>(esp_timer_get_time() - sync_start);
     }
-    const uint32_t sync_us = static_cast<uint32_t>(esp_timer_get_time() - sync_start);
     const uint32_t total_us = static_cast<uint32_t>(esp_timer_get_time() - frame_start);
     current_frame = next_frame;
 
@@ -50,6 +53,7 @@
     Serial.printf("[X4LAB] mode=%u stopped before first frame\n", static_cast<unsigned>(index + 1));
   }
   release_frame_cache();
+  spi_device = spi_device_nominal;
   while (gpio_get_level(PIN_BTN_POWER) == 0) delay(10);
   return true;
 }
@@ -99,8 +103,8 @@ void setup() {
   Serial.println("[X4LAB] LEFT OR RIGHT SIDE BUTTON: immediate controller reset + permanent halt");
   Serial.println("[X4LAB] POWER: start next mode; during a mode, request stop after current refresh");
   Serial.println("[X4LAB] task watchdog retained; IDLE0 is serviced between measured frames");
-  Serial.println("[X4LAB] matrix: legacy references, cached partial RAM writes, Bayer 5/4/3/2-frame, full panel");
-  Serial.println("[X4LAB] 2x target uses the documented 200-Hz PLL ceiling plus cached-window transport");
+  Serial.println("[X4LAB] matrix: 2/1-frame Bayer, differential vs absolute no-sync, 160/80/40-row windows");
+  Serial.println("[X4LAB] mode 8 alone overclocks panel SPI to 40 MHz; all other modes remain at 20 MHz");
 
   configure_output(PIN_LIGHT_COOL, 0);
   configure_output(PIN_LIGHT_WARM, 0);
@@ -116,7 +120,8 @@ void setup() {
   if (!controller_init(PLL_STOCK)) enter_abort_halt("controller initialization failed");
   if (!clean_baseline(160, 160, Pattern::BinaryGrid)) enter_abort_halt("initial clean baseline failed");
 
-  Serial.printf("[X4LAB] armed for UC8279 LUT id 0x%02x at %d MHz SPI.\n", panel_lut_id, SPI_CLOCK_HZ / 1000000);
+  Serial.printf("[X4LAB] armed for UC8279 LUT id 0x%02x at %d MHz nominal SPI.\n", panel_lut_id,
+                SPI_CLOCK_HZ / 1000000);
   Serial.printf("[X4LAB] %u modes available. Press POWER or send n; send 1-%u to select; q aborts.\n",
                 static_cast<unsigned>(MODE_COUNT), static_cast<unsigned>(MODE_COUNT));
 }
