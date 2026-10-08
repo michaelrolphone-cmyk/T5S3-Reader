@@ -13,6 +13,7 @@ cc "${flags[@]}" -I"$repo/sdk/driver" \
   "$repo/test/drivers/usb_cdc_tagged_sessions_test.c" -ldl -o "$build/tagged"
 for scenario in normal legacy-host bad-suffix invalid inventory configure-short claim-fail \
   claim-retained claim-malformed partial-open partial-retained deadline-clean deadline-retained \
+  open-control-retained configure-retained lines-retained read-retained write-retained \
   overrun io-presence call-deadline call-overrun close-deadline close-retained queue-retained disconnect; do
   "$build/tagged" "$build/cdc.so" "$scenario"
 done

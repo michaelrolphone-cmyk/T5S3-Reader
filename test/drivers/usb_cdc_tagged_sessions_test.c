@@ -16,15 +16,17 @@ static int snapshots, configs, claims, controls, releases, publishes, closes, re
 static int fail_claim, fail_release, fail_publish, fail_close, snapshot_mode, control_short;
 static bool over_time, failed_claim_token, claim_retained, physical[2], queue_live[2];
 static bool rx_sent, tx_consumed, forbid_io, configured, error_read;
+static bool retain_control, retain_read, retain_write, lower_retained;
+static unsigned queue_produces, queue_consumes, queue_finishes;
 static uint32_t seen_ms[64]; static char events[128]; static size_t calls;
 static uint8_t received[64], sent[64]; static size_t received_size, sent_size;
 static uint32_t queue_ids[2]; static int32_t terminal[2];
 static void step(char event, uint32_t ms) {
-    assert(calls < sizeof(events) && ms && ms <= 1000);
+    assert(!lower_retained && calls < sizeof(events) && ms && ms <= 1000);
     events[calls] = event; seen_ms[calls++] = ms;
     tick += over_time ? ms + 1 : charge;
 }
-static uint64_t now_ms(void *ctx) { assert(ctx == (void *)1); return tick; }
+static uint64_t now_ms(void *ctx) { assert(ctx == (void *)1 && !lower_retained); return tick; }
 static int32_t snapshot(void *ctx, uint64_t *out, size_t *count, uint32_t ms) {
     assert(ctx == (void *)1 && *count == 8); ++snapshots; step('S', ms);
     if (snapshot_mode == 1) return RISC_STREAM_IO;
@@ -73,16 +75,22 @@ static int32_t control(void *ctx, uint64_t token, uint8_t type, uint8_t request,
         assert(n == 7 && payload && payload[0] == 0 && payload[1] == 0xc2 && payload[2] == 1);
         assert(payload[4] == 0 && payload[5] == 0 && payload[6] == 8); configured = true;
     } else assert(request == 0x22 && value == 3 && !n && !payload);
+    if (retain_control) { lower_retained=true; return RISC_STREAM_RETAINED; }
     return control_short ? (n ? n - 1 : -1) : n;
 }
 static int32_t bulk_read(void *ctx, uint64_t token, uint8_t ep, uint8_t *dst, size_t n, uint32_t ms) {
     assert(ctx == (void *)1 && token == 101 && ep == 0x81 && n == 256 && physical[1] && !forbid_io);
-    ++reads; assert(ms == 1); if (error_read) return -1; if (rx_sent) return 0;
+    ++reads; assert(ms == 1);
+    if (retain_read) { lower_retained=true; return RISC_STREAM_RETAINED; }
+    if (error_read) return -1;
+    if (rx_sent) return 0;
     memcpy(dst, "abcde", 5); rx_sent = true; return 5;
 }
 static int32_t bulk_write(void *ctx, uint64_t token, uint8_t ep, const uint8_t *src, size_t n, uint32_t ms) {
     assert(ctx == (void *)1 && token == 101 && ep == 2 && physical[1] && !forbid_io);
-    ++writes; assert(ms == 1); if (n > max_write) n = max_write;
+    ++writes; assert(ms == 1);
+    if (retain_write) { lower_retained=true; return RISC_STREAM_RETAINED; }
+    if (n > max_write) n = max_write;
     memcpy(sent + sent_size, src, n); sent_size += n; return (int32_t)n;
 }
 static bool poll(void *ctx, size_t maximum, size_t *done) { (void)ctx; (void)maximum; *done = 0; return true; }
@@ -98,18 +106,18 @@ static int32_t publish(uint64_t ctx, const risc_stream_endpoint_v1 *spec, uint32
 }
 static int qslot(uint32_t id) { if (id == queue_ids[0]) return 0; assert(id == queue_ids[1]); return 1; }
 static int32_t produce(uint64_t ctx, uint32_t id, const void *src, uint32_t n, uint32_t *actual) {
-    assert(ctx == 9 && qslot(id) == 0 && queue_live[0]);
+    assert(!lower_retained && ctx == 9 && qslot(id) == 0 && queue_live[0]); ++queue_produces;
     if (n > max_produce) n = max_produce;
     memcpy(received + received_size, src, n); received_size += n; *actual = n; return n ? 0 : 1;
 }
 static int32_t consume(uint64_t ctx, uint32_t id, void *dst, uint32_t capacity, uint32_t *actual) {
-    assert(ctx == 9 && qslot(id) == 1 && queue_live[1] && capacity == 256);
+    assert(!lower_retained && ctx == 9 && qslot(id) == 1 && queue_live[1] && capacity == 256); ++queue_consumes;
     if (tx_consumed) { *actual = 0; return RISC_STREAM_AGAIN; }
     memcpy(dst, "12345", 5); *actual = 5; tx_consumed = true; return 0;
 }
-static int32_t finish(uint64_t ctx, uint32_t id, int32_t why) { assert(ctx == 9); terminal[qslot(id)] = why; return 0; }
+static int32_t finish(uint64_t ctx, uint32_t id, int32_t why) { assert(ctx == 9); ++queue_finishes; terminal[qslot(id)] = why; return 0; }
 static int32_t close_queue(uint64_t ctx, uint32_t id) {
-    assert(ctx == 9 && !physical[0] && !physical[1]); /* physical-first invariant */
+    assert(!lower_retained && ctx == 9 && !physical[0] && !physical[1]); /* physical-first invariant */
     int i = qslot(id); assert(queue_live[i]); ++closes;
     if (closes == fail_close) return RISC_STREAM_BUSY;
     queue_live[i] = false; return 0;
@@ -170,6 +178,10 @@ int main(int argc, char **argv) {
         snapshot_mode = 0; device = 3; clean_failure(RISC_STREAM_DISCONNECTED); assert(!claims);
     } else if (!strcmp(scenario,"configure-short")) {
         control_short = 1; clean_failure(RISC_STREAM_IO); assert(releases == 2 && !publishes);
+    } else if (!strcmp(scenario,"open-control-retained")) {
+        retain_control=true;
+        assert(open_session(250)==RISC_STREAM_RETAINED && opened.session && !opened.rx_endpoint && !opened.tx_endpoint);
+        assert(physical[0] && physical[1] && !releases && !publishes && !queue_finishes); assert_retained();
     } else if (!strcmp(scenario,"claim-fail")) {
         fail_claim = 2; clean_failure(RISC_STREAM_IO); assert(releases == 1);
     } else if (!strcmp(scenario,"claim-retained") || !strcmp(scenario,"claim-malformed")) {
@@ -204,7 +216,28 @@ int main(int argc, char **argv) {
         assert(adapter->call(token+99,&req,sizeof(req),250,0,0,&actual)==RISC_STREAM_CLOSED && !actual);
         assert(adapter->call(token,&req,sizeof(req),250,0,0,&actual)==0 && !actual);
         assert(seen_ms[calls-1]==240);
-        if (!strcmp(scenario,"io-presence")) {
+        if (!strcmp(scenario,"configure-retained") || !strcmp(scenario,"lines-retained") ||
+            !strcmp(scenario,"read-retained") || !strcmp(scenario,"write-retained")) {
+            charge=0; poll_driver->poll(250);
+            assert(received_size==2 && sent_size==2); // Both staging buffers are partial.
+            if (!strcmp(scenario,"configure-retained") || !strcmp(scenario,"lines-retained")) {
+                retain_control=true;
+                if (!strcmp(scenario,"configure-retained")) {
+                    req.operation=RISC_SERIAL_STREAM_CONFIGURE; req.value.config=request.config;
+                }
+                assert(adapter->call(token,&req,sizeof(req),250,0,0,&actual)==RISC_STREAM_RETAINED && !actual);
+            } else if (!strcmp(scenario,"write-retained")) {
+                retain_write=true; poll_driver->poll(250); assert(received_size==4 && sent_size==2);
+            } else {
+                retain_read=true; poll_driver->poll(250); poll_driver->poll(250);
+                assert(received_size==5 && sent_size==4);
+            }
+            assert(lower_retained && physical[0] && physical[1] && !releases && !closes);
+            assert(terminal[0]==RISC_STREAM_RETAINED && terminal[1]==RISC_STREAM_RETAINED && queue_finishes==2);
+            unsigned produced=queue_produces,consumed=queue_consumes,finished=queue_finishes;
+            assert_retained();
+            assert(queue_produces==produced && queue_consumes==consumed && queue_finishes==finished);
+        } else if (!strcmp(scenario,"io-presence")) {
             charge=0; error_read=true; poll_driver->poll(250);
             assert(terminal[0]==RISC_STREAM_IO && terminal[1]==RISC_STREAM_IO);
             req.operation=RISC_SERIAL_STREAM_CHECK_DEVICE; memset(&req.value,0,sizeof(req.value));

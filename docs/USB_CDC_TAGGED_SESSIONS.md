@@ -9,6 +9,8 @@ sessions cannot be configured, closed or adopted through that raw prefix.
 ## Source and version custody
 
 - Isolated implementation base: Reader `aac8c06d3221139084acd0cfc64f7b0ba194a97a`.
+- Production deadline-host integration source:
+  `d780fcbc93d5472eaa0dbc3f153b2f32f0c798e3`.
 - Runtime contract and production queue test source:
   `b587df55298e0bb8e676b3d59ca13679c0267bf7` (0.1.73).
 - The three new generic/session headers are copied byte-for-byte from that
@@ -69,6 +71,16 @@ RETAINED is sticky: quiescence, direct stop and later tagged calls cannot discar
 resources or retry uncertain cleanup. Runtime retains the invocation/provider
 and lower dependencies. Successful provider close only marks reserved queues
 closed; Runtime's matching owner/session reservation retires them afterward.
+Explicit RETAINED from claim-scoped control or bulk I/O is recognized before
+any subsequent clock, data, inventory, control, cleanup or retry operation. Open
+configuration failure retains both claims instead of attempting rollback against
+an already-fenced host. An established session retains its partially copied RX
+and TX bytes. The only subsequent callbacks are the bounded terminal
+`finish(RETAINED)` notifications required for Runtime to observe a void pump's
+failure. If notification cannot acquire the queue lock, local and lower-host
+fences still prevent reopening, cleanup or retry; a later control/close response
+remains RETAINED so Runtime can fence the invocation.
+
 The provider authenticates its own fresh tokens; app invocation/grant ownership
 remains Runtime's responsibility, rather than an app-supplied owner number.
 
@@ -85,13 +97,16 @@ bash test/run_usb_cdc_tagged_sessions_test.sh
 SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 bash test/run_usb_cdc_tagged_sessions_test.sh
 bash test/run_usb_cdc_runtime_queues_test.sh "$RUNTIME"
 SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 bash test/run_usb_cdc_runtime_queues_test.sh "$RUNTIME"
+bash test/run_usb_cdc_host_retained_test.sh "$USB_HOST" "$RUNTIME"
+SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 \
+  bash test/run_usb_cdc_host_retained_test.sh "$USB_HOST" "$RUNTIME"
 PLATFORMIO_SETTING_ENABLE_TELEMETRY=No NATIVE_DRIVER_CC="$CC_XTENSA" \
   python3 scripts/build_usb_cdc_v2.py
 ```
 
 Passed on 2026-10-08:
 
-- Twenty-one deterministic actual-CDC ELF scenarios, normal and ASan/UBSan: valid
+- Twenty-six deterministic actual-CDC ELF scenarios, normal and ASan/UBSan: valid
   open/configuration, missing/truncated/wrong host extension, malformed requests,
   absent/unknown/duplicate/zero/oversized inventory, short configuration, claim
   failures with clean/retained/malformed custody, partial publication and rollback,
@@ -103,6 +118,15 @@ Passed on 2026-10-08:
   copied-byte delivery and wrong-owner rejection; second publication failing at
   real queue capacity without deleting existing endpoints; actual registry-lock
   contention during close preserving both queue allocations after physical close.
+- Eight cases loading both actual CDC and production deadline-host ELFs over
+  Runtime's real queues, normal and ASan/UBSan: explicit control RETAINED during
+  open (no rollback), a rollback release returning RETAINED before/after partial
+  queue publication, baud changes and line changes with partially copied RX/TX;
+  bulk read/write RETAINED while bytes remain queued/staged; and a refused
+  terminal notification caused by real queue-lock contention. The tests enforce
+  no later host callbacks (including the clock), no data/cleanup calls or retry,
+  retained allocations and claims, immediate Runtime fencing when terminal
+  notification succeeds, and refusal to reopen after notification failure.
 - Existing legacy CDC I/O/lifecycle, composite/union/IAD/alternate descriptor and
   ST-LINK VCP fixtures, normal and ASan/UBSan.
 - Existing CH34x, CP210x and FTDI class host fixtures, normal.
@@ -118,14 +142,15 @@ No full firmware rebuild or physical test was performed.
 
 ## Remaining integration
 
-The real `usb.host` and physical controller do not yet implement the new deadline
-suffix. The adapter therefore fails closed on the existing shipping host. A real
-implementation must propagate the single remaining deadline through event polling,
-configuration/claim/controller operations and checked release; preserve uncertain
-DMA/callback/claim custody; and supply a stable monotonic clock. Wrapping fixed
-legacy timeouts does not meet this contract.
+The frozen Reader host does not implement the new deadline suffix; this CDC
+adapter therefore fails closed on that legacy host. The separate production host
+implementation at `d780fcbc93d5472eaa0dbc3f153b2f32f0c798e3` now propagates the
+contract and is covered by the integration tests above. It still requires an
+actual physical controller implementing bounded event/configuration/claim/I/O and
+release operations, with uncertain DMA/callback custody retained and a stable
+monotonic clock. Wrapping fixed legacy waits does not meet that requirement.
 
-CH34x, CP210x and FTDI have no tagged adapter in this slice. End-to-end loading of
+CH34x, CP210x and FTDI tagged adapters are separate from this CDC slice. End-to-end loading of
 the entire paper UI/client, broker, migrated class and a real deadline-capable
 host/controller is still open. The deterministic tests exercise the real CDC
 class and real Runtime queues but simulate USB callbacks. No native PHY lease,

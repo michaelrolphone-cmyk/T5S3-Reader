@@ -33,9 +33,12 @@ static bool valid_config(const risc_serial_stream_config_v1 *c) {
         (c->stop_bits == 1 || c->stop_bits == 2) && !c->flow_control;
 }
 static int32_t retain_tagged(cdc_session *s) {
+    if (s->retained) return RISC_STREAM_RETAINED;
     tagged_fenced = true;
     s->failed = s->retained = true;
-    /* RETAINED is visible even if nobody drains the queues. A failed finish
+    /* Fence before the only permitted follow-up: bounded terminal notification.
+     * No data, inventory, control, cleanup or retry follows a retained result.
+     * RETAINED is visible even if nobody drains the queues. A failed finish
      * keeps IDs and custody; quiesce remains false independently. */
     if (s->rx) (void)streams->finish(streams->context, s->rx, RISC_STREAM_RETAINED);
     if (s->tx) (void)streams->finish(streams->context, s->tx, RISC_STREAM_RETAINED);
@@ -70,7 +73,7 @@ static int32_t tagged_configure(cdc_session *s, const risc_serial_stream_config_
         (uint8_t)(baud >> 24), c->stop_bits == 2 ? 2u : 0u, c->parity, c->data_bits};
     const int32_t n = host_discovery->control_claim(host->context, s->control_claim,
         0x21, 0x20, 0, s->control_interface, payload, 7, ms);
-    if (overrun(d)) return RISC_STREAM_RETAINED;
+    if (n == RISC_STREAM_RETAINED || overrun(d)) return RISC_STREAM_RETAINED;
     return n == 7 ? RISC_STREAM_OK : RISC_STREAM_IO;
 }
 static int32_t cleanup_tagged(cdc_session *s, const cdc_deadline *d) {
@@ -209,7 +212,7 @@ static int32_t call_tagged(uint64_t token, const void *request, uint32_t size, u
         const uint16_t value = (uint16_t)(req.value.lines.dtr | (req.value.lines.rts << 1));
         const int32_t n = host_discovery->control_claim(host->context, s->control_claim,
             0x21, 0x22, value, s->control_interface, 0, 0, left);
-        rc = overrun(&d) ? RISC_STREAM_RETAINED : n == 0 ? RISC_STREAM_OK : RISC_STREAM_IO;
+        rc = n == RISC_STREAM_RETAINED || overrun(&d) ? RISC_STREAM_RETAINED : n == 0 ? RISC_STREAM_OK : RISC_STREAM_IO;
     }
     return rc == RISC_STREAM_RETAINED ? retain_tagged(s) : rc;
 }
@@ -241,7 +244,7 @@ static void tagged_pump(cdc_session *s, uint32_t ms) {
     if (!flushed) return;
     if (!s->rx_size && remaining(&d)) {
         const int32_t n = read_data(s->token, staging[s - sessions].rx_pending, 256, 1);
-        if (overrun(&d)) { retain_tagged(s); return; }
+        if (n == RISC_STREAM_RETAINED || overrun(&d)) { retain_tagged(s); return; }
         if (n < 0 || n > 256) { fail_endpoints(s, RISC_STREAM_IO); return; }
         s->rx_size = (uint32_t)n;
         if (!remaining(&d)) return;
@@ -260,7 +263,7 @@ static void tagged_pump(cdc_session *s, uint32_t ms) {
     if (remaining(&d) && s->tx_size > s->tx_offset) {
         uint32_t nbytes = s->tx_size - s->tx_offset;
         const int32_t n = write_data(s->token, staging[s - sessions].tx_pending + s->tx_offset, nbytes, 1);
-        if (overrun(&d)) { retain_tagged(s); return; }
+        if (n == RISC_STREAM_RETAINED || overrun(&d)) { retain_tagged(s); return; }
         if (n < 0 || (uint32_t)n > nbytes) { fail_endpoints(s, RISC_STREAM_IO); return; }
         s->tx_offset += (uint32_t)n;
         if (s->tx_offset == s->tx_size) s->tx_offset = s->tx_size = 0;
