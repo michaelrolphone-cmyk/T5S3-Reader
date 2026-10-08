@@ -86,6 +86,7 @@ constexpr uint8_t STOCK_PREBW[5][LUT_BYTES] = {
 
 enum class Waveform : uint8_t { OtpDu, StockPreBw, GeneratedA2 };
 enum class Pattern : uint8_t { BinaryGrid, TemporalBayer };
+enum class Transport : uint8_t { LegacyFullStride, CachedWindow };
 
 struct TestMode {
   const char* name;
@@ -94,37 +95,38 @@ struct TestMode {
   uint8_t drive_frames;
   uint8_t counter_frames;
   Pattern pattern;
+  Transport transport;
   uint16_t window_y;
   uint16_t window_h;
   uint16_t frame_count;
 };
 
-// Hardware results put the useful transition between the clear 8-frame pulse
-// and the ghostier 4-frame pulse. This matrix resolves that knee, tests short
-// opposite-polarity compensation, and measures temporally shifted dithering.
+// The controller is already at its documented 200-Hz PLL ceiling. The 2x
+// experiment therefore attacks end-to-end frame time: cache rendered planes,
+// transfer only the programmed window, and test shorter Bayer-driven pulses.
 constexpr TestMode MODES[] = {
-    {"A2 8-frame reference / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 8, 0,
-     Pattern::BinaryGrid, 160, 160, 24},
-    {"A2 7-frame pulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 7, 0,
-     Pattern::BinaryGrid, 160, 160, 24},
-    {"A2 6-frame pulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 6, 0,
-     Pattern::BinaryGrid, 160, 160, 24},
-    {"A2 5-frame pulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 5, 0,
-     Pattern::BinaryGrid, 160, 160, 24},
-    {"A2 4-frame reference / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 0,
-     Pattern::BinaryGrid, 160, 160, 24},
-    {"A2 4+1-frame counterpulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 1,
-     Pattern::BinaryGrid, 160, 160, 24},
-    {"A2 4+2-frame counterpulse / binary / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 2,
-     Pattern::BinaryGrid, 160, 160, 24},
-    {"A2 4-frame pulse / temporal Bayer gray stress / 160-row band", Waveform::GeneratedA2, PLL_FAST, 4, 0,
-     Pattern::TemporalBayer, 160, 160, 32},
-    {"A2 5-frame pulse / binary / full 480 rows", Waveform::GeneratedA2, PLL_FAST, 5, 0,
-     Pattern::BinaryGrid, 0, 480, 16},
+    {"A2 4-frame binary / legacy 600-row reference", Waveform::GeneratedA2, PLL_FAST, 4, 0,
+     Pattern::BinaryGrid, Transport::LegacyFullStride, 160, 160, 24},
+    {"A2 4-frame Bayer / legacy 600-row reference", Waveform::GeneratedA2, PLL_FAST, 4, 0,
+     Pattern::TemporalBayer, Transport::LegacyFullStride, 160, 160, 24},
+    {"A2 5-frame Bayer / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 5, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
+    {"A2 4-frame Bayer / cached window / 2x transport target", Waveform::GeneratedA2, PLL_FAST, 4, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
+    {"A2 3-frame Bayer / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 3, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
+    {"A2 2-frame Bayer / cached window / 2x waveform rate", Waveform::GeneratedA2, PLL_FAST, 2, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, 160, 160, 32},
+    {"A2 4-frame binary / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 4, 0,
+     Pattern::BinaryGrid, Transport::CachedWindow, 160, 160, 32},
+    {"A2 5-frame binary / cached 160-row window", Waveform::GeneratedA2, PLL_FAST, 5, 0,
+     Pattern::BinaryGrid, Transport::CachedWindow, 160, 160, 32},
+    {"A2 4-frame Bayer / cached full visible 480 rows", Waveform::GeneratedA2, PLL_FAST, 4, 0,
+     Pattern::TemporalBayer, Transport::CachedWindow, 0, 480, 16},
 };
 constexpr size_t MODE_COUNT = sizeof(MODES) / sizeof(MODES[0]);
 static_assert(MODE_COUNT <= 9, "single-key serial mode selection supports at most nine modes");
-constexpr const char* LAB_VERSION = "0.1.3";
+constexpr const char* LAB_VERSION = "0.1.4";
 
 DRAM_ATTR volatile bool abort_requested = false;
 DRAM_ATTR volatile uint32_t abort_pin = UINT32_MAX;
@@ -132,5 +134,8 @@ DRAM_ATTR volatile bool soft_stop_requested = false;
 
 spi_device_handle_t spi_device = nullptr;
 uint8_t* dma_buffer = nullptr;
+uint8_t* frame_cache = nullptr;
+size_t frame_cache_stride = 0;
+size_t frame_cache_count = 0;
 bool screen_powered = false;
 uint8_t panel_lut_id = 0;
