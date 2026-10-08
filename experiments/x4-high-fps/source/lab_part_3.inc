@@ -44,21 +44,48 @@ bool wait_refresh(uint32_t timeout_ms, uint32_t* duration_us) {
   return wait_busy_cycle(timeout_ms, "display refresh", duration_us);
 }
 
-uint8_t pattern_byte(uint32_t frame, uint16_t visible_y, uint16_t byte_x, uint16_t active_y, uint16_t active_h) {
+constexpr uint8_t BAYER4[16] = {
+    0, 8, 2, 10,
+    12, 4, 14, 6,
+    3, 11, 1, 9,
+    15, 7, 13, 5,
+};
+
+uint8_t pattern_byte(uint32_t frame, uint16_t visible_y, uint16_t byte_x, uint16_t active_y,
+                     uint16_t active_h, Pattern pattern) {
   if (visible_y < active_y || visible_y >= active_y + active_h) return 0xFF;
   const uint16_t x0 = byte_x * 8;
+  const uint16_t local_y = visible_y - active_y;
   uint8_t value = 0xFF;
   for (uint8_t bit = 0; bit < 8; ++bit) {
     const uint16_t x = x0 + bit;
-    const uint16_t shifted_x = static_cast<uint16_t>((x + frame * 24U) % PANEL_WIDTH);
-    const bool checker = (((shifted_x / 32U) + ((visible_y - active_y) / 24U)) & 1U) == 0;
-    const bool marker = visible_y < active_y + 16U && ((x / 16U) & 1U) == ((frame / 2U) & 1U);
-    if (checker ^ marker) value &= static_cast<uint8_t>(~(0x80U >> bit));
+    bool black = false;
+    if (pattern == Pattern::BinaryGrid) {
+      const uint16_t shifted_x = static_cast<uint16_t>((x + frame * 24U) % PANEL_WIDTH);
+      const bool checker = (((shifted_x / 32U) + (local_y / 24U)) & 1U) == 0;
+      const bool marker = local_y < 16U && ((x / 16U) & 1U) == ((frame / 2U) & 1U);
+      black = checker ^ marker;
+    } else {
+      // A moving triangular gray ramp rendered through a 4x4 Bayer matrix.
+      // The matrix phase rotates every frame so residual charge is distributed
+      // instead of remaining locked to one physical pixel lattice.
+      const uint16_t shifted_x = static_cast<uint16_t>((x + frame * 12U) % PANEL_WIDTH);
+      const uint8_t ramp = static_cast<uint8_t>((static_cast<uint32_t>(shifted_x) * 32U) / PANEL_WIDTH);
+      const uint8_t density = ramp < 16U ? ramp : static_cast<uint8_t>(31U - ramp);
+      const uint8_t phase_x = static_cast<uint8_t>(frame & 3U);
+      const uint8_t phase_y = static_cast<uint8_t>((frame * 3U) & 3U);
+      const uint8_t threshold = BAYER4[(((visible_y + phase_y) & 3U) * 4U) + ((x + phase_x) & 3U)];
+      black = density > threshold;
+      if (local_y < 16U) {
+        black = (((shifted_x / 16U) + frame) & 1U) == 0;
+      }
+    }
+    if (black) value &= static_cast<uint8_t>(~(0x80U >> bit));
   }
   return value;
 }
 
-bool stream_plane(uint8_t command, uint32_t frame, uint16_t active_y, uint16_t active_h) {
+bool stream_plane(uint8_t command, uint32_t frame, uint16_t active_y, uint16_t active_h, Pattern pattern) {
   if (!write_command(command)) return false;
   gpio_set_level(PIN_EPD_DC, 1);
   gpio_set_level(PIN_EPD_CS, 0);
@@ -79,7 +106,7 @@ bool stream_plane(uint8_t command, uint32_t frame, uint16_t active_y, uint16_t a
       } else {
         const uint16_t visible_y = row - GATE_OFFSET;
         for (uint16_t x = 0; x < ROW_BYTES; ++x) {
-          destination[x] = pattern_byte(frame, visible_y, x, active_y, active_h);
+          destination[x] = pattern_byte(frame, visible_y, x, active_y, active_h, pattern);
         }
       }
     }
