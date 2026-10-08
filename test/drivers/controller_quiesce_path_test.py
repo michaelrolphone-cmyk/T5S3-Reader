@@ -23,6 +23,7 @@ constexpr unsigned kTeardownTicks=8;
 struct Claim { uint64_t token; } claims[2];
 struct Device { void *handle; } devices[2];
 static bool inFlight, fault, installed, running, noClientsObserved;
+struct { bool owned=false; bool owns_storage() const { return owned; } } ownedBulk;
 static void *client, *transfer, *phy;
 static uint64_t powerLease;
 static unsigned queueHead, queueTail, queueCount;
@@ -116,6 +117,10 @@ int main() {
         assert(quiesce_host() && powerReleases==released); complete();
     }
     reset(); fault=true;
+    assert(quiesce_host()); complete();
+    reset(); ownedBulk.owned=true;
+    assert(!quiesce_host() && stage==0 && transfer && phy && powerLease);
+    ownedBulk.owned=false;
     assert(quiesce_host()); complete();
     reset(); ticks=UINT32_MAX-3; fail=12;
     assert(!quiesce_host() && eventCalls<=kTeardownTicks && !restored);
