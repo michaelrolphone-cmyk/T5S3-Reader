@@ -24,6 +24,10 @@
                   static_cast<unsigned long>(waveform_us), static_cast<unsigned long>(sync_us),
                   static_cast<unsigned long>(total_us), static_cast<unsigned long>(fps_x100 / 100),
                   static_cast<unsigned long>(fps_x100 % 100));
+    // loopTask outranks IDLE0. Block outside the measured frame interval so
+    // the task watchdog remains active without contaminating panel timing.
+    delay(1);
+    check_abort();
   }
 
   if (completed != 0) {
@@ -84,6 +88,7 @@ void setup() {
   Serial.printf("\n[X4LAB] Xteink X4 Pro UC8279 high-FPS standalone laboratory firmware v%s\n", LAB_VERSION);
   Serial.println("[X4LAB] LEFT OR RIGHT SIDE BUTTON: immediate controller reset + permanent halt");
   Serial.println("[X4LAB] POWER: start next mode; during a mode, request stop after current refresh");
+  Serial.println("[X4LAB] task watchdog retained; IDLE0 is serviced between measured frames");
 
   configure_output(PIN_LIGHT_COOL, 0);
   configure_output(PIN_LIGHT_WARM, 0);
