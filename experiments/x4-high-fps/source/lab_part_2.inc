@@ -124,15 +124,23 @@ bool initialize_spi() {
   device.mode = 0;
   device.spics_io_num = -1;
   device.queue_size = 1;
-  err = spi_bus_add_device(SPI2_HOST, &device, &spi_device);
+  err = spi_bus_add_device(SPI2_HOST, &device, &spi_device_nominal);
   if (err != ESP_OK) {
-    Serial.printf("[X4LAB] spi_bus_add_device failed: %s\n", esp_err_to_name(err));
+    Serial.printf("[X4LAB] nominal spi_bus_add_device failed: %s\n", esp_err_to_name(err));
     return false;
   }
 
+  device.clock_speed_hz = SPI_OVERCLOCK_HZ;
+  err = spi_bus_add_device(SPI2_HOST, &device, &spi_device_overclock);
+  if (err != ESP_OK) {
+    Serial.printf("[X4LAB] overclock spi_bus_add_device failed: %s\n", esp_err_to_name(err));
+    return false;
+  }
+  spi_device = spi_device_nominal;
+
   dma_buffer = static_cast<uint8_t*>(heap_caps_malloc(SPI_CHUNK_BYTES, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
   if (!dma_buffer) {
-    Serial.println("[X4LAB] DMA buffer allocation failed");
+    Serial.printf("[X4LAB] DMA buffer allocation failed bytes=%lu\n", static_cast<unsigned long>(SPI_CHUNK_BYTES));
     return false;
   }
   return true;
