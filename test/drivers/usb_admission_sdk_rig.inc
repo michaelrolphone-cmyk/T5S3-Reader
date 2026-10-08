@@ -134,6 +134,6 @@ void admission_bulk_irq(uint64_t token,unsigned index,unsigned event,int bytes) 
     ((usb_dwc_ll_dma_qtd_t *)buffer->xfer_desc_list)[0].remainder=buffer->urb->transfer.num_bytes-bytes;
     bool yield=false; HCD_ENTER_CRITICAL();
     hcd_pipe_event_t result=_intr_hdlr_chan(p,p->chan_obj,&yield);
+    if(result!=HCD_PIPE_EVENT_NONE) risc_hcd_dispatch_callback(p,result,&yield);
     HCD_EXIT_CRITICAL();
-    if(result!=HCD_PIPE_EVENT_NONE) p->callback(p,result,p->callback_arg,true);
 }

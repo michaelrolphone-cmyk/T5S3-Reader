@@ -9,6 +9,7 @@
 #include "RoleSwitch.h"
 #include "OwnedBulkRequest.h"
 #include "OwnedAdmissionRequest.h"
+#include "OwnedControlRequest.h"
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <esp_private/usb_phy.h>
@@ -61,9 +62,11 @@ static bool inFlight, completed;
  * The legacy entry points below keep their established behavior when idle. */
 static RiscUsbController::OwnedBulkRequest ownedBulk;
 static RiscUsbController::OwnedAdmissionRequest ownedAdmission;
+static RiscUsbController::OwnedControlRequest ownedControl;
 static uint64_t admissionDevice;
 bool native_admission_guard() {
-    return ownedAdmission.owns_storage() || risc_usb_admission_owns_resources();
+    return ownedAdmission.owns_storage() || risc_usb_admission_owns_resources() ||
+        ownedControl.owns_storage() || risc_usb_control_busy();
 }
 static bool noClientsObserved;
 static Event queue[kEvents];
@@ -472,6 +475,8 @@ __attribute__((used)) int32_t begin_owned_bulk(uint64_t id, uint8_t ep,
                                              uint32_t budget) {
     if (ownedBulk.owns_storage())
         return ownedBulk.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    if (ownedControl.owns_storage() || risc_usb_control_busy())
+        return ownedControl.retained() || risc_usb_control_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     if (ownedAdmission.owns_storage() || risc_usb_admission_faulted())
         return ownedAdmission.retained() || risc_usb_admission_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     Claim *c = claim(id);
@@ -492,6 +497,40 @@ __attribute__((used)) int32_t take_owned_bulk(uint64_t id, uint8_t *out, size_t 
     return ownedBulk.take(id, out, size);
 }
 
+struct OwnedControlPort {
+    uint64_t now() const { OwnedBulkPort clock{nullptr}; return clock.now(); }
+    esp_err_t submit(usb_transfer_t *t, uint64_t request) const { return risc_usb_control_submit(client, t, request); }
+    esp_err_t poll(uint64_t request) const { return risc_usb_control_poll(request); }
+    esp_err_t cancel(uint64_t request) const { return risc_usb_control_cancel(request); }
+};
+__attribute__((used)) int32_t begin_owned_control(uint64_t device_id, uint8_t type,
+    uint8_t command, uint16_t value, uint16_t index, const uint8_t *source,
+    uint16_t length, uint32_t budget, uint64_t *out_request) {
+    if (!out_request) return RISC_STREAM_INVALID;
+    *out_request = 0;
+    if (ownedControl.owns_storage() || risc_usb_control_busy())
+        return ownedControl.retained() || risc_usb_control_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    if (ownedBulk.owns_storage() || ownedAdmission.owns_storage())
+        return ownedBulk.retained() || ownedAdmission.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    Device *d = device(device_id);
+    if (!running || !d || !d->attached || d->referenceClosed || inFlight || !transfer ||
+        risc_usb_admission_faulted()) return RISC_STREAM_INVALID;
+    uint64_t assigned = token();
+    if (!assigned) return RISC_STREAM_IO;
+    OwnedControlPort port;
+    int32_t result = ownedControl.begin(port, transfer, d->handle, assigned,
+        type, command, value, index, source, length, budget);
+    if (ownedControl.owns_storage()) { *out_request = assigned; completed = false; }
+    return result;
+}
+__attribute__((used)) int32_t step_owned_control(uint64_t request) {
+    OwnedControlPort port; return ownedControl.step(port, request);
+}
+__attribute__((used)) void cancel_owned_control(uint64_t request) { ownedControl.cancel(request); }
+__attribute__((used)) int32_t take_owned_control(uint64_t request, uint8_t *out, size_t capacity) {
+    return ownedControl.take(request, out, capacity);
+}
+
 /* Allocation is an explicit unqualified prerequisite, never part of a timed
  * claim/configuration/release call and never selected by a public fallback. */
 __attribute__((used)) esp_err_t prepare_owned_admission() {
@@ -501,6 +540,7 @@ __attribute__((used)) esp_err_t prepare_owned_admission() {
     return risc_usb_admission_prepare();
 }
 __attribute__((used)) int32_t begin_owned_configuration(uint64_t id, uint32_t budget) {
+    if (ownedControl.owns_storage() || risc_usb_control_busy()) return ownedControl.retained() || risc_usb_control_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     if (ownedAdmission.owns_storage()) return ownedAdmission.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     Device *d = device(id);
     if (!running || !d || !d->attached || d->referenceClosed || ownedBulk.owns_storage() ||
@@ -515,6 +555,10 @@ __attribute__((used)) int32_t begin_owned_configuration(uint64_t id, uint32_t bu
 __attribute__((used)) int32_t begin_owned_claim(uint64_t id, uint8_t number,
                                               uint8_t alternate, uint32_t budget,
                                               uint64_t *out) {
+    if (ownedControl.owns_storage() || risc_usb_control_busy()) {
+        if (out) *out = 0;
+        return ownedControl.retained() || risc_usb_control_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
+    }
     if (!out) return RISC_STREAM_INVALID;
     *out = 0;
     if (ownedAdmission.owns_storage() || ownedBulk.owns_storage())
@@ -539,6 +583,7 @@ __attribute__((used)) int32_t begin_owned_claim(uint64_t id, uint8_t number,
     admissionDevice = id; *out = assigned; return result;
 }
 __attribute__((used)) int32_t begin_owned_release(uint64_t id, uint32_t budget) {
+    if (ownedControl.owns_storage() || risc_usb_control_busy()) return ownedControl.retained() || risc_usb_control_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     if (ownedAdmission.owns_storage()) return ownedAdmission.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     if (ownedBulk.owns_storage()) return ownedBulk.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     Claim *c = claim(id);
@@ -552,6 +597,7 @@ __attribute__((used)) int32_t begin_owned_release(uint64_t id, uint32_t budget) 
     return result;
 }
 __attribute__((used)) int32_t begin_owned_close(uint64_t id, uint32_t budget) {
+    if (ownedControl.owns_storage() || risc_usb_control_busy()) return ownedControl.retained() || risc_usb_control_faulted() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     if (ownedAdmission.owns_storage()) return ownedAdmission.retained() ? RISC_STREAM_RETAINED : RISC_STREAM_BUSY;
     Device *d = device(id);
     if (!running || !d || d->referenceClosed || claimed(id) || ownedBulk.owns_storage())

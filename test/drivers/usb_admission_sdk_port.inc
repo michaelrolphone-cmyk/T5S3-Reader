@@ -48,7 +48,11 @@ static void usb_dwc_hal_chan_set_ep_char(void *context,usb_dwc_hal_chan_t *chann
 static struct { struct {
     TAILQ_HEAD(dev_idle,device_s) devs_idle_tailq;
     TAILQ_HEAD(dev_pending,device_s) devs_pending_tailq;
-} dynamic; } test_usbh;
+} dynamic;
+#ifdef RISC_USB_CONTROL_TEST
+struct { bool (*notif_cb)(int,bool,void *); void *notif_cb_arg; } constant;
+#endif
+} test_usbh;
 static __typeof__(test_usbh) *p_usbh_obj=&test_usbh;
 static void endpoint_free(usb_device_handle_t device,endpoint_t *ep) { (void)device;(void)ep;abort(); }
 static void interface_free(interface_t *intf) { (void)intf;abort(); }

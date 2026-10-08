@@ -71,13 +71,27 @@ def stage(path, output):
             '    ep_obj->dynamic.num_urb_inflight++;')
     if name == 'hcd_dwc.c':
         source = replace_once(source,
+            '    //Pipe callback and context\n',
+            '    uint32_t bounded_dispatch; // Decoded private callback custody, saturating\n'
+            '    //Pipe callback and context\n')
+        source = replace_once(source,
+            'static void intr_hdlr_main(void *arg)\n{',
+            'static void risc_hcd_dispatch_callback(pipe_t *, hcd_pipe_event_t, bool *);\n\n'
+            'static void intr_hdlr_main(void *arg)\n{')
+        source = replace_once(source,
+            '                HCD_EXIT_CRITICAL_ISR();\n'
+            '                yield |= pipe->callback((hcd_pipe_handle_t)pipe, event, pipe->callback_arg, true);\n'
+            '                HCD_ENTER_CRITICAL_ISR();',
+            '                risc_hcd_dispatch_callback(pipe, event, &yield);')
+        source = replace_once(source,
             'esp_err_t hcd_pipe_free(hcd_pipe_handle_t pipe_hdl)\n{',
             'static bool risc_hcd_pool_contains(hcd_pipe_handle_t);\n\n'
             'esp_err_t hcd_pipe_free(hcd_pipe_handle_t pipe_hdl)\n{')
         source = replace_once(source,
             '            uint32_t reserved27: 27;',
             '            uint32_t bounded_halt: 1; // Private try/poll halt custody\n'
-            '            uint32_t reserved26: 26;')
+            '            uint32_t bounded_control: 1; // Exclusive private EP0 custody\n'
+            '            uint32_t reserved25: 25;')
         source = replace_once(source,
             '            *yield |= _internal_pipe_event_notify(pipe, true);',
             '            if (pipe->cs_flags.bounded_halt) {\n'
@@ -96,14 +110,38 @@ def stage(path, output):
             '            //Mark the buffer as done with an error')
         source = replace_once(source,
             '    if (pipe->cs_flags.reset_lock) {',
-            '    if (pipe->cs_flags.reset_lock || pipe->cs_flags.bounded_halt) {')
+            '    if (pipe->cs_flags.reset_lock || pipe->cs_flags.bounded_halt || pipe->cs_flags.bounded_control) {')
         source = replace_once(source,
             '    HCD_CHECK_FROM_CRIT(!pipe->multi_buffer_control.buffer_is_executing\n',
             '    HCD_CHECK_FROM_CRIT(!risc_hcd_pool_contains(pipe_hdl)\n'
             '                        && !pipe->cs_flags.bounded_halt\n'
+            '                        && !pipe->cs_flags.bounded_control\n'
             '                        && !pipe->multi_buffer_control.buffer_is_executing\n')
-    suffixes = {'usb_host.c': ('host', 'host_admission'),
-                'hcd_dwc.c': ('hcd', 'hcd_pool'), 'usbh.c': ('usbh_admission',)}[name]
+        # Preserve legacy error handling; a private control BNA is a real
+        # halted-channel error, never an asserted/fabricated successful URB.
+        source = replace_once(source,
+            '            _buffer_done(pipe, stop_idx, pipe->last_event, false);\n            //Parse the buffer',
+            '            hcd_pipe_event_t parsed_event = pipe->last_event;\n'
+            '            if (pipe->cs_flags.bounded_control && parsed_event == HCD_PIPE_EVENT_ERROR_URB_NOT_AVAIL)\n'
+            '                parsed_event = HCD_PIPE_EVENT_ERROR_XFER;\n'
+            '            _buffer_done(pipe, stop_idx, parsed_event, false);\n            //Parse the buffer')
+        anchor = '    HCD_CHECK_FROM_CRIT(!pipe->cs_flags.pipe_cmd_processing &&\n'
+        if source.count(anchor) != 4:
+            raise ValueError('Pinned HCD pipe-update guards changed')
+        source = source.replace(anchor,
+            '    HCD_CHECK_FROM_CRIT(!pipe->cs_flags.bounded_control &&\n'
+            '                        !pipe->cs_flags.pipe_cmd_processing &&\n')
+    if name == 'usbh.c':
+        source = replace_once(source, 'static usbh_t *p_usbh_obj = NULL;',
+            'static usbh_t *p_usbh_obj = NULL;\n'
+            'static bool risc_usbh_control_owns(usb_device_handle_t);')
+        source = replace_once(source,
+            '    //Increment the control transfer count first',
+            '    USBH_CHECK_FROM_CRIT(!risc_usbh_control_owns(dev_hdl), ESP_ERR_INVALID_STATE);\n'
+            '    //Increment the control transfer count first')
+    suffixes = {'usb_host.c': ('host', 'host_admission', 'host_control'),
+                'hcd_dwc.c': ('hcd', 'hcd_pool', 'hcd_control'),
+                'usbh.c': ('usbh_admission', 'usbh_control')}[name]
     for suffix in suffixes:
         source += '\n' + (ADAPTATION / f'bounded_{suffix}.inc').read_text()
     Path(output).write_text(source)
