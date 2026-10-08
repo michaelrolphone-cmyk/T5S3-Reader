@@ -70,18 +70,19 @@ bool begin_refresh(const TestMode& mode, uint32_t* waveform_us) {
   return write_command(CMD_PARTIAL_OUT);
 }
 
-bool clean_baseline(uint16_t active_y, uint16_t active_h) {
+bool clean_baseline(uint16_t active_y, uint16_t active_h, Pattern pattern) {
   Serial.println("[X4LAB] establishing OTP full-clean baseline");
   if (!write_register1(CMD_PLL, PLL_STOCK) || !stream_white_plane(CMD_DTM1) ||
-      !stream_plane(CMD_DTM2, 0, active_y, active_h) || !write_register1(CMD_VCOM_DATA_INTERVAL, CDI_FULL) ||
-      !write_register1(CMD_CCSET, CCSET) || !write_register1(CMD_TSSET, TSSET_FULL) || !power_on()) {
+      !stream_plane(CMD_DTM2, 0, active_y, active_h, pattern) ||
+      !write_register1(CMD_VCOM_DATA_INTERVAL, CDI_FULL) || !write_register1(CMD_CCSET, CCSET) ||
+      !write_register1(CMD_TSSET, TSSET_FULL) || !power_on()) {
     return false;
   }
   const uint8_t psr[] = {PSR_OTP, PSR_1};
   if (!write_register(CMD_PANEL_SETTING, psr, sizeof(psr)) || !write_command(CMD_DISPLAY_REFRESH)) return false;
   uint32_t waveform_us = 0;
   if (!wait_refresh(REFRESH_TIMEOUT_MS, &waveform_us)) return false;
-  if (!stream_plane(CMD_DTM1, 0, active_y, active_h)) return false;
+  if (!stream_plane(CMD_DTM1, 0, active_y, active_h, pattern)) return false;
   current_frame = 0;
   Serial.printf("[X4LAB] clean baseline waveform=%lu us\n", static_cast<unsigned long>(waveform_us));
   return true;
@@ -99,7 +100,7 @@ bool run_mode(size_t index) {
                 mode.name);
   Serial.println("[X4LAB] EITHER SIDE BUTTON = IMMEDIATE HARD ABORT; power button = stop after current refresh");
 
-  if (!clean_baseline(mode.window_y, mode.window_h)) return false;
+  if (!clean_baseline(mode.window_y, mode.window_h, mode.pattern)) return false;
 
   uint64_t sum_total = 0;
   uint64_t sum_waveform = 0;
