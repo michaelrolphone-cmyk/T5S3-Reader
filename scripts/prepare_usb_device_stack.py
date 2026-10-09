@@ -47,11 +47,15 @@ def prepare(source,output):
     s+='\n/* Called only after a successful checked DWC core reset and no ISR/task. */\nvoid risc_msc_stack_reset(void) {\n  _usbd_rhport = RHPORT_INVALID;\n  tu_fifo_clear(&_usbd_qdef.ff);\n  tu_varclr(&_usbd_dev);\n  usbd_control_reset();\n}\n'
     p.write_text(s)
     p=output/'class/msc/msc_device.c';s=p.read_text()
-    s=replace(s,'#include \"tusb_option.h\"','#include \"tusb_option.h\"\n#include <stdbool.h>\n#include <stdint.h>\nextern bool risc_msc_command_range(uint32_t,uint32_t);')
+    s=replace(s,'#include \"tusb_option.h\"','#include \"tusb_option.h\"\n#include <stdbool.h>\n#include <stdint.h>\nextern bool risc_msc_command_range(uint32_t,uint32_t);\nextern bool risc_msc_command_valid(const uint8_t*,uint8_t,uint32_t);')
     s=replace(s,'xferred_bytes == sizeof(msc_cbw_t) && p_cbw->signature == MSC_CBW_SIGNATURE',
                   'xferred_bytes == sizeof(msc_cbw_t) && p_cbw->signature == MSC_CBW_SIGNATURE && p_cbw->lun == 0 && p_cbw->cmd_len >= 1 && p_cbw->cmd_len <= 16 && !(p_cbw->dir & 0x7f)')
     s=replace(s,'  return status;\n}',
                   '  if (cbw->cmd_len != 10 || cbw->total_bytes != (uint32_t)block_count * 512u ||\n      (block_count && !risc_msc_command_range(rdwr10_get_lba(cbw->command), block_count)))\n    status = MSC_CSW_STATUS_PHASE_ERROR;\n  return status;\n}')
+    s=replace(s,'      // Read10 or Write10',
+        '      if (!risc_msc_command_valid(p_cbw->command, p_cbw->cmd_len, p_cbw->total_bytes)) {\n        fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);\n        break;\n      }\n      // Read10 or Write10')
+    s=replace(s,'if ( tud_msc_scsi_complete_cb ) tud_msc_scsi_complete_cb(p_cbw->lun, p_cbw->command);',
+        'if (p_csw->status == MSC_CSW_STATUS_PASSED && tud_msc_scsi_complete_cb) tud_msc_scsi_complete_cb(p_cbw->lun, p_cbw->command);')
     p.write_text(s)
     (output/'risc-stack-source.json').write_text(json.dumps({'repository':'https://github.com/hathach/tinyusb','commit':PIN,'source_sha256':hashes,'adaptation':'Reader scripts/prepare_usb_device_stack.py'},indent=2)+'\n')
     return output

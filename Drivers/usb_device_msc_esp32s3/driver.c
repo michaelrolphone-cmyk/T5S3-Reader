@@ -115,6 +115,16 @@ static bool last_error(void *context,char *out,size_t capacity) {
  size_t n=0;if(error)while(error[n] && n+1<capacity){out[n]=error[n];++n;}out[n]=0;
  return leave() && n>0;
 }
+bool risc_msc_command_valid(const uint8_t *command,uint8_t length,uint32_t transfer_bytes) {
+ uint8_t expected;
+ switch(command[0]) {
+  case 0x00:case 0x03:case 0x12:case 0x1a:case 0x1b:case 0x1e:expected=6;break;
+  case 0x23:case 0x25:case 0x28:case 0x2a:case 0x35:expected=10;break;
+  default:return false;
+ }
+ if(length!=expected)return false;
+ return (command[0]!=0x00 && command[0]!=0x1b && command[0]!=0x1e && command[0]!=0x35) || !transfer_bytes;
+}
 bool risc_msc_command_range(uint32_t lba,uint32_t count) {
  return media_token && (uint64_t)lba<blocks && (uint64_t)count<=blocks-lba;
 }

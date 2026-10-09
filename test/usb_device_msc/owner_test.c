@@ -138,6 +138,12 @@ int main(int argc,char**argv){
  else if(!strcmp(s,"prevent-eject")){command(0x1e,0,false,0,0,1);assert(csw(true)==0);command(0x1b,0,false,0,0,2);assert(csw(true)==1&&sd_owned&&!remounts);}
  else if(!strcmp(s,"wrong-sector-size")){command(0x2a,1024,false,0,1,0);assert(ep[1][0].stalled&&!sd_writes);}
  else if(!strcmp(s,"lba-past-capacity")){command(0x2a,1024,false,15,2,0);assert(ep[1][0].stalled&&!sd_writes);}
+ else if(!strcmp(s,"malformed-eject")){
+  command(0x1b,8,true,0,0,2);assert(!sd_syncs&&sd_owned&&!remounts&&ep[1][1].stalled);
+ }
+ else if(!strcmp(s,"short-eject-cdb")){
+  msc_cbw_t cbw={.signature=MSC_CBW_SIGNATURE,.tag=++tag,.lun=0,.cmd_len=1};cbw.command[0]=0x1b;cbw.command[4]=2;complete(1,&cbw,sizeof(cbw));assert(poll()==0);assert(csw(true)==1&&!sd_syncs&&sd_owned&&!remounts);
+ }
  else if(!strcmp(s,"invalid-cbw")){
   msc_cbw_t cbw={.signature=MSC_CBW_SIGNATURE,.lun=1,.cmd_len=17};complete(1,&cbw,sizeof(cbw));assert(poll()==0);assert(ep[1][0].stalled&&ep[1][1].stalled&&!sd_writes&&!sd_reads);
  }
