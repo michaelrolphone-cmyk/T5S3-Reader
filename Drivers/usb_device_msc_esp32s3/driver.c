@@ -16,7 +16,7 @@ static uint64_t phy_token,media_token,session,next_session;
 static uint64_t blocks,reads,writes;
 static uint32_t state=RISC_USB_MSC_IDLE;
 static bool started,busy,poisoned,transport_live,ever_configured,eject_requested,eject_complete,unplugged;
-static bool media_ready,prevent_removal,media_unknown,phy_unknown;
+static bool media_ready,prevent_removal,media_unknown,phy_unknown,faulted;
 static const char *error;
 static bool owner(void) { return phy && phy->is_owner(phy->context); }
 static bool enter(void) {
@@ -24,11 +24,11 @@ static bool enter(void) {
  busy=true;return true;
 }
 static bool leave(void) {
- if(!owner()){poisoned=true;state=RISC_USB_MSC_FAULT_RETAINED;return false;}
+ if(!owner()){poisoned=faulted=true;state=RISC_USB_MSC_FAULT_RETAINED;risc_msc_transport_fault();return false;}
  busy=false;return true;
 }
 static int32_t finish(int32_t result) { return leave()?result:RISC_USB_MSC_RETAINED; }
-static void fault(const char *why) { error=why;state=RISC_USB_MSC_FAULT_RETAINED; }
+static void fault(const char *why) { error=why;faulted=true;state=RISC_USB_MSC_FAULT_RETAINED;risc_msc_transport_fault(); }
 static bool cleanup(void) {
  if(media_unknown || phy_unknown){fault("Ownership has no safe token; restart required");return false;}
  /* No SD remount or native console reclaim until no callback, endpoint, DMA or
@@ -53,7 +53,7 @@ static int32_t begin(void *context,uint64_t *out) {
  (void)context;if(out)*out=0;
  if(!out || !enter())return RISC_USB_MSC_REFUSED;
  if(!started || session || next_session==UINT64_MAX)return finish(RISC_USB_MSC_REFUSED);
- error=NULL;reads=writes=blocks=0;media_ready=false;
+ error=NULL;reads=writes=blocks=0;media_ready=false;faulted=false;
  uint32_t block_size=0;
  const int32_t result=volume->export_begin(volume->sleep.terminal.power.volume.base.context,&media_token,&blocks,&block_size);
  if(result!=RISC_STORAGE_EXPORT_READY) {
@@ -126,9 +126,9 @@ bool risc_msc_command_valid(const uint8_t *command,uint8_t length,uint32_t trans
  return (command[0]!=0x00 && command[0]!=0x1b && command[0]!=0x1e && command[0]!=0x35) || !transfer_bytes;
 }
 bool risc_msc_command_range(uint32_t lba,uint32_t count) {
- return media_token && (uint64_t)lba<blocks && (uint64_t)count<=blocks-lba;
+ return !faulted && media_token && (uint64_t)lba<blocks && (uint64_t)count<=blocks-lba;
 }
-static bool medium(uint8_t lun) { return lun==0 && media_token && state!=RISC_USB_MSC_FAULT_RETAINED && !eject_requested; }
+static bool medium(uint8_t lun) { return lun==0 && media_token && !faulted && state!=RISC_USB_MSC_FAULT_RETAINED && !eject_requested; }
 static bool media_result(int32_t result,const char *reason) {
  if(result==RISC_STORAGE_EXPORT_READY)return true;
  fault(reason);tud_msc_set_sense(0,SCSI_SENSE_MEDIUM_ERROR,0x0c,0);return false;
@@ -155,7 +155,7 @@ int32_t tud_msc_write10_cb(uint8_t lun,uint32_t lba,uint32_t offset,uint8_t *buf
  ++writes;return 512;
 }
 bool tud_msc_start_stop_cb(uint8_t lun,uint8_t power_condition,bool start,bool load_eject) {
- if(lun || power_condition || !media_token)return false;
+ if(faulted || lun || power_condition || !media_token)return false;
  if(start)return !eject_requested;
  if(!load_eject)return true;
  if(prevent_removal){tud_msc_set_sense(lun,SCSI_SENSE_ILLEGAL_REQUEST,0x53,2);return false;}
@@ -177,14 +177,14 @@ int32_t tud_msc_scsi_cb(uint8_t lun,uint8_t const command[16],void *buffer,uint1
  }
  tud_msc_set_sense(lun,SCSI_SENSE_ILLEGAL_REQUEST,0x20,0);return -1;
 }
-void tud_mount_cb(void) { ever_configured=true;state=RISC_USB_MSC_CONNECTED; }
-void tud_umount_cb(void) { if(!unplugged && !eject_requested)state=RISC_USB_MSC_WAITING; }
+void tud_mount_cb(void) { ever_configured=true;if(!faulted)state=RISC_USB_MSC_CONNECTED; }
+void tud_umount_cb(void) { if(!faulted && !unplugged && !eject_requested)state=RISC_USB_MSC_WAITING; }
 void tud_event_hook_cb(uint8_t port,uint32_t event,bool in_isr) {
  (void)port;(void)in_isr;
  if(event==DCD_EVENT_UNPLUGGED)unplugged=true;
 }
-void tud_suspend_cb(bool remote_wakeup) { (void)remote_wakeup;if(!eject_requested)state=RISC_USB_MSC_SUSPENDED; }
-void tud_resume_cb(void) { if(!eject_requested)state=ever_configured?RISC_USB_MSC_CONNECTED:RISC_USB_MSC_WAITING; }
+void tud_suspend_cb(bool remote_wakeup) { (void)remote_wakeup;if(!faulted && !eject_requested)state=RISC_USB_MSC_SUSPENDED; }
+void tud_resume_cb(void) { if(!faulted && !eject_requested)state=ever_configured?RISC_USB_MSC_CONNECTED:RISC_USB_MSC_WAITING; }
 /* Arduino-ESP32's existing default VID/PID pair is deliberately separate
  * from the boot console. A shipping product requires its assigned USB IDs. */
 static const tusb_desc_device_t descriptor={

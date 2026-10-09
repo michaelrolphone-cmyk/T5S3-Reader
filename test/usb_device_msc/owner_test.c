@@ -64,7 +64,7 @@ bool dcd_edpt_xfer(uint8_t p,uint8_t a,uint8_t*b,uint16_t n){
 }
 void dcd_edpt_stall(uint8_t p,uint8_t a){(void)p;ep[slot(a)][a>>7].stalled=true;ep[slot(a)][a>>7].pending=false;}
 void dcd_edpt_clear_stall(uint8_t p,uint8_t a){(void)p;ep[slot(a)][a>>7].stalled=false;}
-bool risc_msc_transport_start(void){assert(sd_owned&&phy_owned);mark('U');usb_live=true;return !fail_start&&tud_init(0);}
+bool risc_msc_transport_start(void){assert(sd_owned&&phy_owned);mark('U');usb_live=true;healthy=true;return !fail_start&&tud_init(0);}
 bool risc_msc_transport_poll(void){assert(usb_live);tud_task_ext(0,false);return healthy;}
 bool risc_msc_transport_stop(void){assert(usb_live);mark('T');if(fail_stop)return false;usb_live=false;risc_msc_stack_reset();return true;}
 void risc_msc_transport_fault(void){healthy=false;}
@@ -154,6 +154,26 @@ int main(int argc,char**argv){
   fail_sync=fail_end=true;command(0x1b,0,false,0,0,2);assert(poll()==-2&&sd_owned&&!remounts);assert(api->end(NULL,token,1)==-2&&sd_owned&&phy_owned);assert(!d->quiesce());return 0;
  }
  else if(!strcmp(s,"lba-overflow")){command(0x28,1024,true,UINT32_MAX,2,0);assert(ep[1][1].stalled&&!sd_reads);}
+ else if(!strcmp(s,"write-queued-reset")||!strcmp(s,"sync-queued-reset")){
+  const bool writing=!strcmp(s,"write-queued-reset");
+  fail_end=true;
+  if(writing){
+   fail_write=true;uint8_t b[512]={0};command(0x2a,512,false,0,1,0);complete(1,b,512);
+  } else {
+   fail_sync=true;msc_cbw_t cbw={.signature=MSC_CBW_SIGNATURE,.tag=++tag,.lun=0,.cmd_len=10};cbw.command[0]=0x35;complete(1,&cbw,sizeof(cbw));
+  }
+  dcd_event_bus_reset(0,TUSB_SPEED_FULL,false);
+  uint8_t configured[8]={0,TUSB_REQ_SET_CONFIGURATION,1,0,0,0,0,0};dcd_event_setup_received(0,configured,false);
+  dcd_event_bus_signal(0,DCD_EVENT_RESUME,false);
+  assert(poll()==-2&&status.state==RISC_USB_MSC_FAULT_RETAINED&&!healthy);
+  const unsigned before_reads=sd_reads,before_writes=sd_writes,before_syncs=sd_syncs;
+  /* Exercise asynchronous callback guards too: no callback may clear the latch. */
+  tud_umount_cb();tud_mount_cb();tud_suspend_cb(false);tud_resume_cb();
+  assert(!tud_msc_start_stop_cb(0,0,false,true));
+  uint8_t b[512]={0},cmd[16]={0x35};assert(tud_msc_read10_cb(0,0,0,b,512)==-1);assert(tud_msc_write10_cb(0,0,0,b,512)==-1);assert(tud_msc_scsi_cb(0,cmd,b,0)==-1);
+  assert(poll()==-2&&status.state==RISC_USB_MSC_FAULT_RETAINED&&sd_reads==before_reads&&sd_writes==before_writes&&sd_syncs==before_syncs);
+  assert(api->end(NULL,token,1)==-2&&sd_owned&&phy_owned&&!usb_live);assert(!d->quiesce());return 0;
+ }
  else if(!strcmp(s,"write-retained")){
   fail_write=true;fail_end=true;uint8_t b[512]={0};command(0x2a,512,false,0,1,0);complete(1,b,512);assert(poll()==-2&&status.state==RISC_USB_MSC_FAULT_RETAINED);assert(sd_writes==1&&sd_owned&&!remounts);
   assert(api->end(NULL,token,1)==-2&&sd_owned&&phy_owned&&!usb_live);assert(!d->quiesce());puts("PASS retained write");return 0;
