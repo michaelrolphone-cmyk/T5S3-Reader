@@ -57,7 +57,9 @@ write and sync callbacks for that session but leaves a healthy USB controller
 servicing bounded protocol work: failed CSW, REQUEST SENSE and BOT reset. Bus
 reset, reconfiguration, suspend and resume never clear that media fault or
 remount the card. Hardware/controller faults and queue overflow independently
-stop all protocol work. Explicit checked cleanup remains the only ownership
+stop all protocol work. An enabled DWC2 IN timeout is explicitly acknowledged
+and latched as a controller fault before any simultaneous completion can be
+reported successful. Explicit checked cleanup remains the only ownership
 return path.
 
 Host eject (`START STOP UNIT` with LoEj=1 and Start=0) checks sync. Local remount
@@ -150,3 +152,9 @@ now check failed status, sense, reset and retained custody. The production pump
 policy also has deterministic ready-packet counts: eight ready 64-byte packets
 require eight old single-pass polls versus one new poll. This scheduling model
 does not establish wire timing or throughput when the next packet is not ready.
+
+A separate register-image regression executes the actual staged DWC2 handler
+with a bulk IN timeout, alone and together with transfer completion. The frozen
+handler left timeout-only input healthy; the corrected handler acknowledges the
+W1C timeout and fails closed without a success event. This source reproduction
+does not show that a timeout occurred during the observed Windows stall.

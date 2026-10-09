@@ -38,6 +38,8 @@ def prepare(source,output):
     s=replace(s,'  dwc2->gahbcfg |= GAHBCFG_GINT;','  dwc2->gahbcfg &= ~(GAHBCFG_GINT | GAHBCFG_DMAEN);')
     s=replace(s,'    do {\n      handle_rxflvl_irq(rhport);\n    } while (dwc2->gotgint & GINTSTS_RXFLVL);',
                   '    for (unsigned budget=0; budget<32u && (dwc2->gintsts & GINTSTS_RXFLVL); ++budget) {\n      handle_rxflvl_irq(rhport);\n    }')
+    s=replace(s,'      // IN XFER complete (entire xfer).',
+        '      // A controller timeout cannot be reported as successful BOT data.\n      if (epin[n].diepint & DIEPINT_TOC) {\n        epin[n].diepint = DIEPINT_TOC; // acknowledge the W1C timeout flag\n        risc_msc_transport_fault();\n        return;\n      }\n      // IN XFER complete (entire xfer).')
     p.write_text(s)
     p=output/'device/usbd.c';s=p.read_text()
     s=replace(s,'#include "tusb_option.h"','#include "tusb_option.h"\n#include "Transport.h"')

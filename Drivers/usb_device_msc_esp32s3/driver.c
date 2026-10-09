@@ -172,7 +172,7 @@ static int32_t diagnostics(void *context,uint64_t token,risc_usb_device_msc_diag
  (void)context;if(!out || out->struct_size<sizeof(*out) || !enter())return RISC_USB_MSC_REFUSED;
  if(!session || token!=session)return finish(RISC_USB_MSC_REFUSED);
  *out=diagnostic;out->struct_size=sizeof(*out);out->blocks_read=reads;out->blocks_written=writes;
- out->flags=(ever_configured?RISC_USB_MSC_DIAG_CONFIGURED:0u) |
+ out->flags=(tud_mounted()?RISC_USB_MSC_DIAG_CONFIGURED:0u) |
   (media_faulted?RISC_USB_MSC_DIAG_MEDIA_FAULT:0u) |
   (transport_live && risc_msc_transport_ok()?RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY:0u) |
   (command_active?RISC_USB_MSC_DIAG_COMMAND_ACTIVE:0u);

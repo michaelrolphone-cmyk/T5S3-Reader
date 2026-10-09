@@ -167,6 +167,8 @@ int main(int argc,char**argv){
   now_ms=10;assert(poll()==0);assert(tail->diagnostics(NULL,token,&info)==0);
   assert(info.last_poll_gap_ms==10&&info.max_poll_gap_ms==10&&!info.last_pump_passes);
   assert((info.flags&(RISC_USB_MSC_DIAG_CONFIGURED|RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY))==(RISC_USB_MSC_DIAG_CONFIGURED|RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY));
+  setup(TUSB_REQ_SET_CONFIGURATION,0);assert(tail->diagnostics(NULL,token,&info)==0&&!(info.flags&RISC_USB_MSC_DIAG_CONFIGURED));
+  setup(TUSB_REQ_SET_CONFIGURATION,1);
   command(0x28,512,true,3,1,0);assert(tail->diagnostics(NULL,token,&info)==0);
   assert(info.commands_started==1&&!info.commands_completed&&info.current_opcode==0x28&&info.current_tag==tag&&info.command_bytes==512&&info.current_lba==3&&info.current_block_count==1&&info.last_io_lba==3&&info.last_io_count==1&&info.last_io_result==0&&info.blocks_read==1);
   assert(info.flags&RISC_USB_MSC_DIAG_COMMAND_ACTIVE);assert(info.command_started_ms==10);

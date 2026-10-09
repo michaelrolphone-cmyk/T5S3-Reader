@@ -8,6 +8,9 @@ flags=(-std=c11 -O1 -g -Wall -Wextra -Werror -Wno-unused-parameter -I"$root/sdk/
 if [[ "${SANITIZE:-0}" == 1 ]]; then flags+=(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer); fi
 "${CC:-cc}" "${flags[@]}" "$root/test/usb_device_msc/pump_test.c" -o "$build/pump"
 ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 timeout 20s "$build/pump"
+"${CC:-cc}" "${flags[@]}" "$root/test/usb_device_msc/dwc_timeout_test.c" \
+ "$build/stack/portable/synopsys/dwc2/dcd_dwc2.c" "$build/stack/common/tusb_fifo.c" -o "$build/dwc-timeout"
+ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 timeout 20s "$build/dwc-timeout"
 "${CC:-cc}" "${flags[@]}" "$root/test/usb_device_msc/owner_test.c" \
  "$root/Drivers/usb_device_msc_esp32s3/driver.c" "$root/Drivers/usb_device_msc_esp32s3/StackDefaults.c" \
  "$build/stack/tusb.c" "$build/stack/common/tusb_fifo.c" "$build/stack/device/usbd.c" \
