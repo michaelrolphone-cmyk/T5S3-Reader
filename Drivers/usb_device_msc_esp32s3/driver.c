@@ -18,8 +18,29 @@ static uint64_t phy_token,media_token,session,next_session;
 static uint64_t blocks,reads,writes;
 static uint32_t state=RISC_USB_MSC_IDLE;
 static bool started,busy,poisoned,transport_live,ever_configured,eject_requested,eject_complete,unplugged;
+static risc_usb_device_msc_diagnostics_v1 diagnostic;
+static uint64_t previous_poll_ms;
+static bool polled,command_active,media_faulted;
 static bool media_ready,prevent_removal,media_unknown,phy_unknown,faulted;
 static const char *error;
+uint64_t risc_msc_now(void) { return clock_api?clock_api->monotonic_ms(clock_api->context):0; }
+static uint64_t elapsed(uint64_t now,uint64_t before) { return now>=before?now-before:0; }
+void risc_msc_command_started(uint8_t opcode,uint32_t tag,uint32_t bytes,uint32_t lba,uint32_t count) {
+ ++diagnostic.commands_started;diagnostic.current_opcode=opcode;diagnostic.current_tag=tag;
+ diagnostic.command_bytes=bytes;diagnostic.current_lba=lba;diagnostic.current_block_count=count;
+ diagnostic.command_started_ms=risc_msc_now();command_active=true;
+}
+void risc_msc_command_completed(uint8_t status) {
+ ++diagnostic.commands_completed;diagnostic.completed_opcode=diagnostic.current_opcode;
+ diagnostic.completed_tag=diagnostic.current_tag;diagnostic.last_csw_status=status;
+ diagnostic.last_command_elapsed_ms=elapsed(risc_msc_now(),diagnostic.command_started_ms);command_active=false;
+}
+void risc_msc_protocol_stall(void) { ++diagnostic.stalls; }
+void risc_msc_pump_report(uint32_t passes) { diagnostic.last_pump_passes=passes; }
+static void record_io(uint32_t lba,uint32_t count,uint64_t before,int32_t result) {
+ diagnostic.last_io_lba=lba;diagnostic.last_io_count=count;diagnostic.last_io_result=result;
+ diagnostic.last_io_elapsed_ms=elapsed(risc_msc_now(),before);
+}
 static bool owner(void) { return phy && phy->is_owner(phy->context); }
 static bool enter(void) {
  if(!owner() || busy || poisoned)return false;
@@ -92,7 +113,8 @@ static int32_t begin(void *context,uint64_t *out) {
  (void)context;if(out)*out=0;
  if(!out || !enter())return RISC_USB_MSC_REFUSED;
  if(!started || session || next_session==UINT64_MAX)return finish(RISC_USB_MSC_REFUSED);
- error=NULL;reads=writes=blocks=0;media_ready=false;faulted=false;
+ error=NULL;reads=writes=blocks=0;media_ready=false;faulted=media_faulted=false;
+ memset(&diagnostic,0,sizeof(diagnostic));polled=command_active=false;previous_poll_ms=0;
  ever_configured=eject_requested=eject_complete=unplugged=prevent_removal=false;
  const int32_t result=preparation->begin_prepare(volume->sleep.terminal.power.volume.base.context,&media_token);
  if(result!=RISC_STORAGE_EXPORT_PREPARING) {
@@ -120,9 +142,15 @@ static int32_t poll(void *context,uint64_t token,risc_usb_device_msc_status_v1 *
  (void)context;
  if(!out || out->struct_size<sizeof(*out) || !enter())return RISC_USB_MSC_REFUSED;
  if(!session || token!=session)return finish(RISC_USB_MSC_REFUSED);
- if(transport_live && state!=RISC_USB_MSC_FAULT_RETAINED) {
+ const uint64_t now=risc_msc_now();
+ diagnostic.last_poll_gap_ms=polled?elapsed(now,previous_poll_ms):0;
+ if(diagnostic.last_poll_gap_ms>diagnostic.max_poll_gap_ms)diagnostic.max_poll_gap_ms=diagnostic.last_poll_gap_ms;
+ previous_poll_ms=now;polled=true;diagnostic.last_pump_passes=0;
+ /* Retained media may answer USB error/recovery requests, never touch SD.
+  * The transport's independent hardware/queue fault latch still stops all work. */
+ if(transport_live) {
   if(!risc_msc_transport_poll())fault("USB controller fault; SD custody retained");
-  if(state!=RISC_USB_MSC_FAULT_RETAINED && (eject_complete || unplugged)) {
+  if(!faulted && (eject_complete || unplugged)) {
    if(cleanup())state=media_ready?(eject_complete?RISC_USB_MSC_EJECTED:RISC_USB_MSC_DISCONNECTED):RISC_USB_MSC_MEDIA_UNAVAILABLE;
   }
  }
@@ -140,6 +168,16 @@ static int32_t end(void *context,uint64_t token,uint32_t reason) {
  if(!cleanup())return finish(RISC_USB_MSC_RETAINED);
  session=0;state=RISC_USB_MSC_IDLE;return finish(RISC_USB_MSC_OK);
 }
+static int32_t diagnostics(void *context,uint64_t token,risc_usb_device_msc_diagnostics_v1 *out) {
+ (void)context;if(!out || out->struct_size<sizeof(*out) || !enter())return RISC_USB_MSC_REFUSED;
+ if(!session || token!=session)return finish(RISC_USB_MSC_REFUSED);
+ *out=diagnostic;out->struct_size=sizeof(*out);out->blocks_read=reads;out->blocks_written=writes;
+ out->flags=(tud_mounted()?RISC_USB_MSC_DIAG_CONFIGURED:0u) |
+  (media_faulted?RISC_USB_MSC_DIAG_MEDIA_FAULT:0u) |
+  (transport_live && risc_msc_transport_ok()?RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY:0u) |
+  (command_active?RISC_USB_MSC_DIAG_COMMAND_ACTIVE:0u);
+ return finish(RISC_USB_MSC_OK);
+}
 static bool last_error(void *context,char *out,size_t capacity) {
  (void)context;if(!out || !capacity || !enter())return false;
  size_t n=0;if(error)while(error[n] && n+1<capacity){out[n]=error[n];++n;}out[n]=0;
@@ -156,12 +194,16 @@ bool risc_msc_command_valid(const uint8_t *command,uint8_t length,uint32_t trans
  return (command[0]!=0x00 && command[0]!=0x1b && command[0]!=0x1e && command[0]!=0x35) || !transfer_bytes;
 }
 bool risc_msc_command_range(uint32_t lba,uint32_t count) {
- return transport_live && !faulted && media_token && (uint64_t)lba<blocks && (uint64_t)count<=blocks-lba;
+ return transport_live && risc_msc_transport_ok() && media_token && (uint64_t)lba<blocks && (uint64_t)count<=blocks-lba;
 }
 static bool medium(uint8_t lun) { return transport_live && lun==0 && media_token && !faulted && state!=RISC_USB_MSC_FAULT_RETAINED && !eject_requested; }
-static bool media_result(int32_t result,const char *reason) {
+static bool media_result(int32_t result,const char *reason,uint8_t sense_code) {
  if(result==RISC_STORAGE_EXPORT_READY)return true;
- fault(reason);tud_msc_set_sense(0,SCSI_SENSE_MEDIUM_ERROR,0x0c,0);return false;
+ /* A storage failure freezes its lease and all further storage callbacks.
+  * Healthy controller custody remains available for failed CSW/sense/reset. */
+ if(!faulted)error=reason;
+ faulted=media_faulted=true;state=RISC_USB_MSC_FAULT_RETAINED;
+ tud_msc_set_sense(0,SCSI_SENSE_MEDIUM_ERROR,sense_code,0);return false;
 }
 void tud_msc_inquiry_cb(uint8_t lun,uint8_t vendor[8],uint8_t product[16],uint8_t revision[4]) {
  (void)lun;memcpy(vendor,"RiscRTE ",8);memcpy(product,"SD Card         ",16);memcpy(revision,"0100",4);
@@ -176,12 +218,18 @@ void tud_msc_capacity_cb(uint8_t lun,uint32_t *count,uint16_t *size) {
 bool tud_msc_is_writable_cb(uint8_t lun) { return medium(lun); }
 int32_t tud_msc_read10_cb(uint8_t lun,uint32_t lba,uint32_t offset,void *buffer,uint32_t length) {
  if(!medium(lun) || !buffer || offset || length!=512 || (uint64_t)lba>=blocks)return -1;
- if(!media_result(volume->export_read(volume->sleep.terminal.power.volume.base.context,media_token,lba,1,buffer),"SD read failed during USB export"))return -1;
+ const uint64_t before=risc_msc_now();
+ const int32_t result=volume->export_read(volume->sleep.terminal.power.volume.base.context,media_token,lba,1,buffer);
+ record_io(lba,1,before,result);
+ if(!media_result(result,"SD read failed during USB export",0x11))return -1;
  ++reads;return 512;
 }
 int32_t tud_msc_write10_cb(uint8_t lun,uint32_t lba,uint32_t offset,uint8_t *buffer,uint32_t length) {
  if(!medium(lun) || !buffer || offset || length!=512 || (uint64_t)lba>=blocks)return -1;
- if(!media_result(volume->export_write(volume->sleep.terminal.power.volume.base.context,media_token,lba,1,buffer),"SD write uncertain; exported card retained"))return -1;
+ const uint64_t before=risc_msc_now();
+ const int32_t result=volume->export_write(volume->sleep.terminal.power.volume.base.context,media_token,lba,1,buffer);
+ record_io(lba,1,before,result);
+ if(!media_result(result,"SD write uncertain; exported card retained",0x0c))return -1;
  ++writes;return 512;
 }
 bool tud_msc_start_stop_cb(uint8_t lun,uint8_t power_condition,bool start,bool load_eject) {
@@ -189,7 +237,10 @@ bool tud_msc_start_stop_cb(uint8_t lun,uint8_t power_condition,bool start,bool l
  if(start)return !eject_requested;
  if(!load_eject)return true;
  if(prevent_removal){tud_msc_set_sense(lun,SCSI_SENSE_ILLEGAL_REQUEST,0x53,2);return false;}
- if(!media_result(volume->export_sync(volume->sleep.terminal.power.volume.base.context,media_token),"SD sync failed during host eject"))return false;
+ const uint64_t before=risc_msc_now();
+ const int32_t result=volume->export_sync(volume->sleep.terminal.power.volume.base.context,media_token);
+ record_io(0,0,before,result);
+ if(!media_result(result,"SD sync failed during host eject",0x0c))return false;
  eject_requested=true;return true;
 }
 void tud_msc_scsi_complete_cb(uint8_t lun,uint8_t const command[16]) {
@@ -199,8 +250,12 @@ int32_t tud_msc_scsi_cb(uint8_t lun,uint8_t const command[16],void *buffer,uint1
  (void)buffer;(void)length;
  if(!medium(lun))return -1;
  switch(command[0]) {
-  case 0x35: /* SYNCHRONIZE CACHE(10), all writes already checked synchronously. */
-   return media_result(volume->export_sync(volume->sleep.terminal.power.volume.base.context,media_token),"SD cache sync failed")?0:-1;
+  case 0x35: { /* SYNCHRONIZE CACHE(10), all writes already checked synchronously. */
+   const uint64_t before=risc_msc_now();
+   const int32_t result=volume->export_sync(volume->sleep.terminal.power.volume.base.context,media_token);
+   record_io(0,0,before,result);
+   return media_result(result,"SD cache sync failed",0x0c)?0:-1;
+  }
   case 0x1e: /* PREVENT/ALLOW MEDIUM REMOVAL */
    if(command[4]&0xfe)break;
    prevent_removal=(command[4]&1)!=0;return 0;
@@ -212,6 +267,7 @@ void tud_umount_cb(void) { if(!faulted && !unplugged && !eject_requested)state=R
 void tud_event_hook_cb(uint8_t port,uint32_t event,bool in_isr) {
  (void)port;(void)in_isr;
  if(event==DCD_EVENT_UNPLUGGED)unplugged=true;
+ if(event==DCD_EVENT_BUS_RESET || event==DCD_EVENT_UNPLUGGED)command_active=false;
 }
 void tud_suspend_cb(bool remote_wakeup) { (void)remote_wakeup;if(!faulted && !eject_requested)state=RISC_USB_MSC_SUSPENDED; }
 void tud_resume_cb(void) { if(!faulted && !eject_requested)state=ever_configured?RISC_USB_MSC_CONNECTED:RISC_USB_MSC_WAITING; }
@@ -262,6 +318,6 @@ static bool quiesce(void) {
  started=false;clock_api=NULL;phy=NULL;volume=NULL;preparation=NULL;return true;
 }
 static void stop(void) {}
-static const risc_usb_device_msc_api_v1_prepare api={{1,sizeof(api),NULL,begin,poll,end,last_error},RISC_USB_MSC_PREPARE_TAG,1,prepare_step};
+static const risc_usb_device_msc_api_v1_diagnostics api={{{1,sizeof(api),NULL,begin,poll,end,last_error},RISC_USB_MSC_PREPARE_TAG,1,prepare_step},RISC_USB_MSC_DIAGNOSTICS_TAG,1,diagnostics};
 static const risc_driver_v2 driver={RISC_PROVIDER_DRIVER_ABI_V2,sizeof(driver),"usb-device-msc-esp32s3",RISC_USB_DEVICE_MSC_CAPABILITY,1,&api,start,stop,quiesce};
 __attribute__((visibility("default"))) const risc_driver_v2 *t5_driver_get(uint32_t abi) { return abi==RISC_PROVIDER_DRIVER_ABI_V2?&driver:NULL; }

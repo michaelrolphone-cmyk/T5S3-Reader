@@ -1,6 +1,6 @@
 # ESP32-S3 SD export as a USB device
 
-`usb-device-msc-esp32s3` 0.1.2 publishes `usb.device.msc@1`. The computer is the
+`usb-device-msc-esp32s3` 0.1.3 publishes `usb.device.msc@1`. The computer is the
 USB host. This is separate from the existing `usb_mass_storage` host class,
 which consumes an attached USB drive. Shared USB implementation stays Reader.
 There are no changes to PR350, Runtime USB protocol code, or a board charger.
@@ -36,8 +36,13 @@ owner task. There are no USB tasks, registered ISRs, DMA, borrowed app callbacks
 heap allocations, native USB imports, or provider-BSS atomics. TinyUSB's bounded
 queue is retained in ELF RAM. Its DWC handler is called directly during `poll`.
 Controller waits have 100,000 CPU-poll bounds; a failure latches an error. Queue
-overflow also faults. One service pass consumes at most 32 hardware FIFO packets
-and 32 queued stack events; SD's existing per-operation bounds/yields apply.
+overflow also faults. An owner poll performs at most 32 ready-work passes, checking a 2 ms admission
+budget before each pass and returning immediately when no hardware or queued
+work is ready. Each pass consumes at most 32 hardware FIFO entries and one
+queued stack event. No sleep is inserted between ready packet/stack passes.
+The app retains responsibility for its scheduler yield after polling. This is
+not a preemptive 2 ms deadline: an already entered synchronous SD operation
+finishes under its existing storage bounds/yields before the pump returns.
 
 ## Host and filesystem behavior
 
@@ -47,7 +52,15 @@ use TinyUSB's BOT/SCSI state machine. Entire read/write geometry is checked
 before the first sector; reserved CBW fields, malformed command lengths,
 nonzero LUNs and non-512-byte command geometry fail closed. Each successful SD
 write is checked synchronously before its USB status is sent. Failed/uncertain
-writes are never retried.
+writes are never retried. A media I/O error permanently freezes further read,
+write and sync callbacks for that session but leaves a healthy USB controller
+servicing bounded protocol work: failed CSW, REQUEST SENSE and BOT reset. Bus
+reset, reconfiguration, suspend and resume never clear that media fault or
+remount the card. Hardware/controller faults and queue overflow independently
+stop all protocol work. An enabled DWC2 IN timeout is explicitly acknowledged
+and latched as a controller fault before any simultaneous completion can be
+reported successful. Explicit checked cleanup remains the only ownership
+return path.
 
 Host eject (`START STOP UNIT` with LoEj=1 and Start=0) checks sync. Local remount
 waits until the successful eject CSW has actually completed, then stops the USB
@@ -121,3 +134,27 @@ SD failure retains the session and prohibits all host admission. Bounded error
 text includes the exact storage result and the first SD/logger failure; the app
 emits it through ordinary diagnostics while the native console is still owned.
 Legacy storage export without the preparation suffix is rejected at activation.
+
+## Protocol diagnostics
+
+The additive, size/tag/version-checked diagnostics suffix returns an owner-task,
+RAM-only snapshot. It exposes command start/completion counters, opcode/tag,
+LBA/block count, requested bytes, latest completed CSW status, actual successful
+block counts, last storage result/LBA/count and elapsed time, poll gaps, stall
+count and the last pump pass count. It neither polls USB nor touches SD. The
+latest completed record can coalesce commands between app snapshots; counter
+deltas make this visible. Configured USB means enumeration completed, not that
+the host mounted a filesystem. No sector contents or credential data are logged.
+
+The regression suite uses the production provider, patched TinyUSB BOT/SCSI and
+fake DCD. Its media-fault tests failed against 0.1.2 before the correction and
+now check failed status, sense, reset and retained custody. The production pump
+policy also has deterministic ready-packet counts: eight ready 64-byte packets
+require eight old single-pass polls versus one new poll. This scheduling model
+does not establish wire timing or throughput when the next packet is not ready.
+
+A separate register-image regression executes the actual staged DWC2 handler
+with a bulk IN timeout, alone and together with transfer completion. The frozen
+handler left timeout-only input healthy; the corrected handler acknowledges the
+W1C timeout and fails closed without a success event. This source reproduction
+does not show that a timeout occurred during the observed Windows stall.
