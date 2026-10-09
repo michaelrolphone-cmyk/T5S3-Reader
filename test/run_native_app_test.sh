@@ -322,6 +322,10 @@ python3 "$repo_dir/test/native_apps/timecard_store_failure_source_test.py"
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/test/native_apps/timecard_store_failure_test.c" -o "$binary"
 "$binary"
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -I"$repo_dir/lib/NativeApps/include" \
+  "$repo_dir/test/native_apps/timecard_manual_time_test.c" -o "$binary"
+"$binary"
 bash "$repo_dir/test/run_serial_launch_contract.sh"
 cc -std=c11 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/gnss_consent_contract_test.c" -o "$binary"
