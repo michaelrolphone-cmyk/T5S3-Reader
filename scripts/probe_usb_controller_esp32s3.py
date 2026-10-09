@@ -114,13 +114,18 @@ def target_mmio_symbols(soc):
 
 
 def run():
+    global OUTPUT
     parser = argparse.ArgumentParser()
     parser.add_argument('--link-experiment', action='store_true')
     parser.add_argument('--compile-database', type=Path,
                         help='Existing PlatformIO ESP32-S3 compilation database')
     parser.add_argument('--idf-source', type=Path,
                         help='Existing exact v4.4.7 sparse checkout (never patched in place)')
+    parser.add_argument('--native-phy-lease', action='store_true',
+                        help='Explicit .24 profile requiring the native PHY lease; does not activate hardware')
     args = parser.parse_args()
+    if args.native_phy_lease:
+        OUTPUT = ROOT / 'dist/experimental/usb-controller-esp32s3-native-phy'
     OUTPUT.mkdir(parents=True, exist_ok=True)
     if not args.compile_database:
         subprocess.run(['pio', 'run', '-e', 't5s3-pro', '-t', 'compiledb'],
@@ -132,8 +137,11 @@ def run():
         raise RuntimeError('Expected exactly one ESP32-S3 USB compilation command')
     entry = matching[0]
     argv = list(entry['arguments']) if 'arguments' in entry else shlex.split(entry['command'])
+    if any('RISC_USB_CONTROLLER_NATIVE_PHY_LEASE' in arg for arg in argv):
+        raise RuntimeError('Select the native PHY profile only with --native-phy-lease, not the compilation database')
     controller = OUTPUT / 'controller.o'
-    compile_target(argv, entry, SOURCE, controller, extra=('-Wall', '-Wextra', '-Werror'))
+    extra = ('-DRISC_USB_CONTROLLER_NATIVE_PHY_LEASE=1',) if args.native_phy_lease else ()
+    compile_target(argv, entry, SOURCE, controller, extra=('-Wall', '-Wextra', '-Werror', *extra))
     compiler = Path(argv[0])
     nm = tool(compiler, 'nm')
     undefined = subprocess.check_output([str(nm), '-u', str(controller)], text=True)
@@ -199,6 +207,10 @@ def run():
     dynamic = subprocess.check_output([str(readelf), '-d', str(elf)], text=True)
     if 'TEXTREL' in dynamic:
         raise RuntimeError('Controller contains text/read-only dynamic relocations')
+    if args.native_phy_lease:
+        manifest = ROOT / 'Drivers/usb_controller_esp32s3/manifest.native-phy.json'
+        (OUTPUT / 'driver.elf').write_bytes(elf.read_bytes())
+        (OUTPUT / 'manifest.json').write_bytes(manifest.read_bytes())
     print('Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS', flush=True)
     print('Unresolved generic OS/CPU imports and loader/board-power path still require validation.', flush=True)
 

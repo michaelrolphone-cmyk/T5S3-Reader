@@ -46,6 +46,27 @@ struct RtcRegisters {
     struct { bool sw_hw_usb_phy_sel, sw_usb_phy_sel; } usb_conf;
 } RTCCNTL;
 #include "../../Drivers/usb_controller_esp32s3/PhyRoute.h"
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+#include "../../Drivers/usb_controller_esp32s3/NativePhyLease.h"
+static RiscUsbController::NativePhyLease nativePhyLease;
+static bool nativeOwned;
+static bool nativeClaimOk=true, nativeClaimPartial;
+static unsigned nativeClaims, nativeReleases;
+static risc_usb_phy_resource_api_v1 nativeApi = {
+    1, sizeof(nativeApi), nullptr, RISC_USB_PHY_ESP32S3_OTG, 0,
+    [](void *) { return true; },
+    [](void *, uint64_t *token) {
+        assert(!nativeOwned && !phyRouteCaptured && !phy && !installed && !powerLease);
+        nativeOwned = nativeClaimOk || nativeClaimPartial;
+        if (nativeOwned) { ++nativeClaims; *token = 99; }
+        return nativeClaimOk;
+    },
+    [](void *, uint64_t token) {
+        assert(nativeOwned && token == 99 && !phyRouteCaptured && !phy && !installed && !powerLease);
+        nativeOwned = false; ++nativeReleases; return true;
+    }
+};
+#endif
 
 static void client_event(const usb_host_client_event_msg_t *, void *) {}
 static bool start_failure(const char *stage, int code) {
@@ -57,6 +78,9 @@ static esp_err_t operation(int expected_step) {
     return step == fail_at ? ESP_ERR_NOT_FOUND : ESP_OK;
 }
 static esp_err_t usb_new_phy(const usb_phy_config_t *config, usb_phy_handle_t *out) {
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    assert(nativeOwned && nativePhyLease.held());
+#endif
     assert(config->controller == USB_PHY_CTRL_OTG && config->target == USB_PHY_TARGET_INT);
     assert(config->otg_mode == USB_OTG_MODE_HOST && config->otg_speed == USB_PHY_SPEED_UNDEFINED);
     assert(!config->gpio_conf && !*out && !powerLease && !power_calls);
@@ -142,6 +166,11 @@ static const risc_usb_vbus_api_v1 *power = &powerApi;
 
 static void reset(bool already_present, int failure) {
     assert(!phy && !client && !transfer && !installed && !powerLease && !phyRouteCaptured);
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    assert(!nativeOwned && !nativePhyLease.held() && nativeClaims == nativeReleases);
+    assert(nativePhyLease.bind(&nativeApi));
+    nativeClaimOk=true;nativeClaimPartial=false;
+#endif
     step = delete_calls = 0; fail_at = failure;
     disconnected = delayed = attach_edge = false;
     host_role = partial_power_failure = zero_power_lease = false;
@@ -167,9 +196,20 @@ static void release_power_after_phy() {
     }
     assert(phyRouteCaptured);
     restore_phy_route();
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    assert(nativePhyLease.release() && !nativeOwned);
+#endif
     assert(!phyRouteCaptured && RTCCNTL.usb_conf.sw_hw_usb_phy_sel && !RTCCNTL.usb_conf.sw_usb_phy_sel);
 }
 int main() {
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    for (bool partial : {false, true}) {
+        reset(true, 0);nativeClaimOk=false;nativeClaimPartial=partial;
+        assert(!start_host_controller() && !step && !phyRouteCaptured && !power_calls);
+        assert(nativePhyLease.held()==partial && nativeOwned==partial);
+        assert(nativePhyLease.release() && !nativeOwned);
+    }
+#endif
     for (unsigned period : {1u, 100u}) {
         tick_ms = period;
         reset(true, 0);
@@ -239,6 +279,9 @@ int main() {
     assert(release_host_phy());
     assert(power->release_host(power->context, powerLease)); powerLease = 0;
     restore_phy_route();
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    assert(nativePhyLease.release() && !nativeOwned);
+#endif
     assert(!phyRouteCaptured && !RTCCNTL.usb_conf.sw_hw_usb_phy_sel && !RTCCNTL.usb_conf.sw_usb_phy_sel);
     puts("USB host role before receiver power; startup failures and retained ownership: PASS");
 }

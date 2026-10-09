@@ -10,6 +10,12 @@
 #include "OwnedBulkRequest.h"
 #include "OwnedAdmissionRequest.h"
 #include "OwnedControlRequest.h"
+#ifndef RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+#define RISC_USB_CONTROLLER_NATIVE_PHY_LEASE 0
+#endif
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+#include "NativePhyLease.h"
+#endif
 #include <usb/usb_host.h>
 #include <esp_intr_alloc.h>
 #include <esp_private/usb_phy.h>
@@ -45,6 +51,9 @@ struct Event {
 };
 static const risc_usb_vbus_api_v1 *power;
 static const risc_usb_vbus_monitor_api_v1 *powerMonitor;
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+static RiscUsbController::NativePhyLease nativePhyLease;
+#endif
 static UsbRoleSwitch role;
 // The HID extension installs its DMA drain before activating this controller.
 static bool (*drainRoleInterrupts)();
@@ -766,6 +775,11 @@ bool quiesce_host() {
             return false;
     }
     restore_phy_route();
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    // All host transfers, IRQs, PHY and VBUS custody are gone, and the mux is
+    // restored. Only now may native diagnostics and lifecycle resume.
+    if (!nativePhyLease.release()) return false;
+#endif
     running = false;
     queueHead = queueTail = queueCount = 0;
     return true;
@@ -774,13 +788,20 @@ bool quiesce(void *) {
     if (ownedBulk.owns_storage() || native_admission_guard()) return false;
     role.stop();
     // Repeated graph cleanup may already have released the chip's I2C claim.
-    if (running || installed || phy || phyRouteCaptured || client || transfer || powerLease) {
+    if (running || installed || phy || phyRouteCaptured || client || transfer || powerLease
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+        || nativePhyLease.held()
+#endif
+    ) {
         if (!quiesce_host()) return false;
     }
     return !power || power->quiesce(power->context);
 }
 void stop() {
     if (!quiesce(nullptr)) return;
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    if (!nativePhyLease.unbind()) return;
+#endif
     power = nullptr;
     powerMonitor = nullptr;
     queueHead = queueTail = queueCount = 0;
@@ -794,8 +815,12 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     startupError.clear();
     enumerationDiagnostic.clear();
     if (role.state() != UsbRoleSwitch::State::Off || running || installed || phy || phyRouteCaptured || client || transfer || powerLease || fault ||
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+        nativePhyLease.held() || !deps || count != 2) {
+#else
         !deps || count != 1 || !equals(deps[0].capability_id, "board.power.vbus") ||
         deps[0].api_version != RISC_USB_VBUS_API_V1 || !deps[0].api) {
+#endif
         startupError.text("dependency/state");
         startupError.number(" count=", static_cast<uint32_t>(count));
         startupError.number(" deps=", deps != nullptr);
@@ -809,7 +834,23 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
         std::printf("USBCTRL start-failed stage=dependency-or-state rc=0\n");
         return false;
     }
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    const risc_usb_vbus_api_v1 *api = nullptr;
+    const risc_usb_phy_resource_api_v1 *native = nullptr;
+    for (size_t i = 0; i < count; ++i) {
+        if (equals(deps[i].capability_id, "board.power.vbus") &&
+            deps[i].api_version == RISC_USB_VBUS_API_V1 && !api)
+            api = static_cast<const risc_usb_vbus_api_v1 *>(deps[i].api);
+        else if (equals(deps[i].capability_id, RISC_USB_PHY_RESOURCE_CAPABILITY) &&
+                 deps[i].api_version == RISC_USB_PHY_RESOURCE_API_V1 && !native)
+            native = static_cast<const risc_usb_phy_resource_api_v1 *>(deps[i].api);
+        else return start_failure("native-phy-dependency", 0);
+    }
+    if (!api || !RiscUsbController::NativePhyLease::valid(native))
+        return start_failure("native-phy-abi", 0);
+#else
     const auto *api = static_cast<const risc_usb_vbus_api_v1 *>(deps[0].api);
+#endif
     if (api->api_version != RISC_USB_VBUS_API_V1 ||
         api->struct_size < sizeof(risc_usb_vbus_monitor_api_v1) || !api->acquire_host ||
         !api->release_host || !api->quiesce) {
@@ -825,6 +866,9 @@ bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     power = api;
     powerMonitor = reinterpret_cast<const risc_usb_vbus_monitor_api_v1 *>(api);
     if (!powerMonitor->input_status) return start_failure("vbus-monitor-abi", 0);
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    if (!nativePhyLease.bind(native)) return start_failure("native-phy-bind", 0);
+#endif
     role.begin(static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS));
     std::printf("USBCTRL stage=role-monitor-started\n");
     return true;
