@@ -193,8 +193,10 @@ bool readAppManifest(const char* path, t5_app_manifest_t& out,
   if (requirements) *requirements = {};
   if (fileTypes) *fileTypes = {};
   if (integrity) *integrity = {};
-  HalFile file = Storage.open(path, O_RDONLY);
-  if (!file.isOpen()) return false;
+  // Volume backends open a known regular file without a separate stat
+  // traversal. Retain the type check for compatibility storage backends.
+  HalFile file;
+  if (!Storage.openFileForRead("APP", path, file)) return false;
   const uint64_t size = !file.isDirectory() ? file.fileSize64() : 0;
   std::unique_ptr<char[]> bytes(size && size <= 2048 ? new (std::nothrow) char[static_cast<size_t>(size)] : nullptr);
   const bool read = bytes && file.read(bytes.get(), static_cast<size_t>(size)) == static_cast<int>(size);

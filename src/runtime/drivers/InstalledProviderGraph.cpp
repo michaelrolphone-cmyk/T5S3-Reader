@@ -1,9 +1,11 @@
+#include "runtime/packages/ProviderAbiProfile.h"
 #include "runtime/packages/PackageCdcSdMigration.h"
 #include "runtime/packages/PackageMutationGate.h"
 #include "InstalledProviderGraph.h"
 #include "native/NativeStreamBridge.h"
 #include "DeviceProviderExecutorV2.h"
 #include "runtime/packages/InstalledCapabilityResolver.h"
+#include "runtime/packages/InstalledProviderRootScan.h"
 #include "runtime/packages/PackageOrdinaryManifest.h"
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageOrdinaryStage.h"
@@ -12,6 +14,7 @@
 #include "runtime/packages/PackageVerificationReceipt.h"
 #include <HalStorage.h>
 #include <Arduino.h>
+#include <Logging.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,10 +38,17 @@ using namespace RuntimePackages;
 constexpr PackageRuntimePolicy kPolicy{
     "xtensa-esp32s3", 2, 8u * 1024u * 1024u, 16u * 1024u * 1024u};
 constexpr size_t kMaxProviders = RuntimeProviders::GraphV2::kMaxModules;
+// Registration depth is an independent termination/memory bound. Adding room
+// for installed modules must not multiply the per-acquisition workspaces.
+constexpr size_t kMaxRegistrationDepth = 16;
 RuntimeProviders::GraphV2* graph = nullptr;
 char pinned[kMaxProviders][96]{};
 size_t pinCount = 0;
 char loadError[160]{};
+struct BootstrapSelection { char id[64]; char capability[64]; uint32_t api; };
+BootstrapSelection bootstrap[16]{};
+size_t bootstrapCount=0;
+bool bootstrapHandoffComplete=true;
 
 struct Root {
     const char* path;
@@ -65,11 +75,52 @@ struct RegistrationFrame {
 };
 
 struct ProviderAncestry {
-    char ids[kMaxProviders][64]{};
+    char ids[kMaxRegistrationDepth][64]{};
     // One heap-owned workspace per acquisition, with a distinct slot for
     // each permitted depth. A child cannot overwrite its parent's paths,
     // requirements or import table. Nothing here outlives registration.
-    RegistrationFrame frames[kMaxProviders]{};
+    RegistrationFrame frames[kMaxRegistrationDepth]{};
+};
+
+// Discovery owns no directory cursor while descending into a dependency.
+// Only matching IDs are retained, in enumeration order; admission rereads the
+// actual package/profile/imports/ELF and keeps its existing source-stamp checks.
+// There is no cross-call cache, including during mutable raw-storage access.
+struct ProviderMatches {
+    struct Match {
+        char id[64]{};
+        const Root* root = nullptr;
+        Match* next = nullptr;
+    };
+    static constexpr size_t kLimit =
+        (sizeof(kRoots) / sizeof(kRoots[0])) * InstalledProviderRootScan::kOrdinaryLimit;
+    Match* first = nullptr;
+    Match* last = nullptr;
+    size_t count = 0;
+    ProviderMatches() = default;
+    ProviderMatches(const ProviderMatches&) = delete;
+    ProviderMatches& operator=(const ProviderMatches&) = delete;
+    ~ProviderMatches() {
+        // Iterative destruction: directory-controlled list length is never
+        // translated into a recursive destructor chain on loopTask's stack.
+        while (first) {
+            Match* next = first->next;
+            delete first;
+            first = next;
+        }
+    }
+    bool append(const Root& root, const char* id) {
+        if (count == kLimit) return false;
+        Match* item = new (std::nothrow) Match{};
+        if (!item) return false;
+        std::strcpy(item->id, id); // caller checked the same 64-byte ID bound
+        item->root = &root;
+        if (last) last->next = item;
+        else first = item;
+        last = item;
+        ++count;
+        return true;
+    }
 };
 
 bool providerFail(const char* stage, const char* identity) {
@@ -79,6 +130,15 @@ bool providerFail(const char* stage, const char* identity) {
     return false;
 }
 
+void traceStage(const char* capability, const char* stage, uint32_t started, bool okay) {
+    // One completion record per existing acquisition stage, never per file,
+    // bus transfer or polling tick. Unsigned subtraction permits millis wrap.
+    (void)capability; (void)stage; (void)started; (void)okay;
+    LOG_INF("PROV", "acquire capability=%s stage=%s elapsed_ms=%lu ok=%d reason=%s",
+            capability, stage, static_cast<unsigned long>(millis() - started),
+            okay ? 1 : 0, okay ? "none" : lastError());
+}
+
 bool pathFor(char (&out)[160], const char* root, const char* id, const char* file) {
     const int length = std::snprintf(out, sizeof(out), "%s/%s/%s", root, id, file);
     return length > 0 && static_cast<size_t>(length) < sizeof(out);
@@ -86,11 +146,8 @@ bool pathFor(char (&out)[160], const char* root, const char* id, const char* fil
 uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
     length = 0;
     if (!Storage.ready() || !name) return nullptr;
-    HalFile file = Storage.open(name, O_RDONLY);
-    if (!file.isOpen() || file.isDirectory()) {
-        if (file.isOpen()) (void)file.close();
-        return nullptr;
-    }
+    HalFile file;
+    if (!Storage.openFileForRead("PROV", name, file)) return nullptr;
     const uint64_t bytes = file.fileSize64();
     if (!bytes || bytes > maximum || bytes > SIZE_MAX - 1u) {
         (void)file.close();
@@ -128,27 +185,11 @@ uint8_t* readFile(const char* name, size_t maximum, size_t& length) {
     length = size;
     return data;
 }
-bool profile(const char* bytes, size_t size, char (&capability)[64], uint32_t& api) {
-    capability[0] = 0;
-    api = 0;
-    constexpr char prefix[] = "os-cpu-abi=1\nprovides=";
-    const size_t prefixSize = sizeof(prefix) - 1;
-    if (!bytes || size <= prefixSize + 7 ||
-        std::memcmp(bytes, prefix, prefixSize)) return false;
-    const char* start = bytes + prefixSize;
-    const char* end = std::strchr(start, '\n');
-    if (!end || end <= start || static_cast<size_t>(end - start) >= sizeof(capability) ||
-        std::strncmp(end, "\napi=", 5)) return false;
-    std::memcpy(capability, start, static_cast<size_t>(end - start));
-    capability[end - start] = 0;
-    const char* number = end + 5;
-    if (*number < '1' || *number > '9') return false;
-    char* tail = nullptr;
-    const unsigned long value = std::strtoul(number, &tail, 10);
-    if (!tail || tail == number || *tail != '\n' || tail[1] ||
-        !value || value > UINT32_MAX) return false;
-    api = static_cast<uint32_t>(value);
-    return true;
+
+
+bool profile(const char* bytes,size_t size,char (&capability)[64],uint32_t& api) {
+    uint32_t revision=0;
+    return parseProviderAbiProfile(bytes,size,revision,capability,api);
 }
 
 bool parseExactImports(uint8_t* bytes, size_t length,
@@ -190,10 +231,12 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
                  const char* expectedCapability, uint32_t expectedApi,
                  const InstalledCapabilitySnapshot* verified,
                  ProviderAncestry& ancestry, size_t depth) {
-    if (!verified || pinCount >= kMaxProviders || !safeId(id) ||
-        !expectedCapability || !expectedApi || depth >= kMaxProviders) return false;
+    if (!verified || !safeId(id) || !expectedCapability || !expectedApi ||
+        depth >= kMaxRegistrationDepth) return false;
+    // A full graph may still reuse a previously validated provider. Capacity
+    // gates only a new registration, never an existing dependency.
     if (destination.hasProvider(id, expectedCapability, expectedApi)) return true;
-    if (destination.hasProviderId(id)) return false;
+    if (pinCount >= kMaxProviders || destination.hasProviderId(id)) return false;
     for (size_t i = 0; i < depth; ++i)
         if (std::strcmp(ancestry.ids[i], id) == 0) return false;
     std::snprintf(ancestry.ids[depth], sizeof(ancestry.ids[depth]), "%s", id);
@@ -245,12 +288,29 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         uint8_t* profileBytes = readFile(name, 191, profileSize);
         if (!profileBytes) break;
         auto& capability = frame.capability;
-        uint32_t api = 0;
+        uint32_t api = 0, osCpuAbi = 0;
         const bool goodProfile = declaredPackageSnapshot(*plan,"provider-abi.v1",profileBytes,profileSize) &&
-            profile(reinterpret_cast<const char*>(profileBytes), profileSize, capability, api);
+            parseProviderAbiProfile(reinterpret_cast<const char*>(profileBytes), profileSize, osCpuAbi, capability, api);
         std::free(profileBytes);
         if (!goodProfile || std::strcmp(capability, expectedCapability) ||
             api != expectedApi) break;
+
+        // Match the digest-bound source manifest too. Legacy metadata lacking
+        // a source manifest can express only revision 1, never ABI 2.
+        bool declaredManifest=false;
+        for(size_t i=0;i<plan->entryCount;++i)
+            if(!std::strcmp(plan->entries[i].name,"manifest.json"))declaredManifest=true;
+        if(declaredManifest) {
+            if(!pathFor(name,root,id,"manifest.json"))break;
+            size_t manifestSize=0;
+            uint8_t* manifest=readFile(name,4096,manifestSize);
+            uint32_t declaredRevision=0;
+            const bool matching=manifest && declaredPackageSnapshot(*plan,"manifest.json",manifest,manifestSize) &&
+                providerManifestOsCpuAbi(reinterpret_cast<const char*>(manifest),manifestSize,declaredRevision) &&
+                declaredRevision==osCpuAbi;
+            std::free(manifest);
+            if(!matching)break;
+        } else if(osCpuAbi!=1)break;
 
         auto& needs = frame.needs;
         bool goodRequirements = plan->requirementCount <= kMaxPackageRequirements;
@@ -294,7 +354,7 @@ bool registerOne(RuntimeProviders::GraphV2& destination,
         candidate.elfLength = elfSize;
         candidate.importedSymbols = symbols;
         candidate.importedSymbolCount = symbolCount;
-        candidate.requiredOsCpuAbi = 1;
+        candidate.requiredOsCpuAbi = osCpuAbi;
         candidate.resourceIdentity = plan->identity;
         candidate.declaredSha256 = executableDigest;
         candidate.packageManifestSha256 = packageManifestSha256;
@@ -316,30 +376,45 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
                         uint32_t* selectedApi, ProviderAncestry& ancestry,
                         size_t depth) {
     if (selectedApi) *selectedApi = 0;
-    if (!verified || !capability || !minimumApi || depth >= kMaxProviders)
+    if (!verified || !capability || !minimumApi || depth >= kMaxRegistrationDepth)
         return false;
     auto& frame = ancestry.frames[depth];
     const uint32_t available = versionInInstalledSnapshot(verified, capability);
     if (available < minimumApi)
         return providerFail("Provider dependency unavailable", capability);
 
-    size_t accepted = 0;
+    loadError[0] = 0;
+
+    ProviderMatches matches;
     for (const Root& root : kRoots) {
         HalFile directory = Storage.open(root.path, O_RDONLY);
         if (!directory.isOpen() || !directory.isDirectory()) {
             if (directory.isOpen()) (void)directory.close();
             continue;
         }
-        for (size_t i = 0; i < 64 && accepted <= 1; ++i) {
+        InstalledProviderRootScan scan;
+        while (true) {
             ordinaryCooperativeYield(1, 1);
-            HalFile item = directory.openNextFile();
-            if (!item.isOpen()) break;
+            HalFile::DirectoryEntry item;
+            if (!directory.readDirectoryEntry(item)) {
+                if (directory.getError()) {
+                    (void)directory.close();
+                    return providerFail("Provider directory read failed", root.path);
+                }
+                break;
+            }
+            const auto classification = scan.observe(item.name, item.isDirectory);
+            if (classification == InstalledProviderRootScan::Entry::Exhausted) {
+                (void)directory.close();
+                return providerFail("Provider directory entry limit exceeded", root.path);
+            }
+            if (classification == InstalledProviderRootScan::Entry::CopyMetadata) continue;
             auto& id = frame.id;
-            const size_t length = item.getName(id, sizeof(id));
-            const bool valid = item.isDirectory() && length && length < sizeof(id) &&
-                               safeId(id);
-            (void)item.close();
+            const size_t length = std::strlen(item.name);
+            const bool valid = item.isDirectory && length && length < sizeof(id) &&
+                               safeId(item.name);
             if (!valid) continue;
+            std::memcpy(id, item.name, length + 1);
             auto& name = frame.name;
             if (!pathFor(name, root.path, id, "provider-abi.v1")) continue;
             size_t profileSize = 0;
@@ -353,13 +428,25 @@ bool registerCapability(RuntimeProviders::GraphV2& destination,
                 std::strcmp(provided, capability) == 0 && api == available;
             std::free(profileBytes);
             if (!matching) continue;
-            if (registerOne(destination, root.path, id, root.kind,
-                            capability, available, verified, ancestry, depth))
-                ++accepted;
+            if (!matches.append(root, id)) {
+                (void)directory.close();
+                return providerFail("Provider candidate allocation failed", capability);
+            }
         }
-        (void)directory.close();
-        if (accepted > 1) break;
+        if (!directory.close()) return providerFail("Provider directory close failed", root.path);
     }
+    // Complete every checked root scan before entering the recursive loader.
+    // At most one root cursor plus the independent package-inspection cursor
+    // is live, regardless of dependency depth or the volume's handle count.
+    size_t accepted = 0;
+    for (const auto* match = matches.first; match && accepted <= 1; match = match->next) {
+        if (registerOne(destination, match->root->path, match->id, match->root->kind,
+                        capability, available, verified, ancestry, depth))
+            ++accepted;
+    }
+    // Preserve a concrete transitive failure already found while registering
+    // this chain, rather than replacing it with the parent's generic name.
+    if (!accepted && loadError[0]) return false;
     if (accepted != 1)
         return providerFail(accepted ? "Provider dependency ambiguous"
                                      : "Provider dependency unavailable",
@@ -406,7 +493,38 @@ void undoPins() {
 }
 } // namespace
 
+bool registerBootstrapPackage(const RuntimePackages::ManagerProviderCandidateV2& candidate, const char* packageRoot) {
+    bootstrapHandoffComplete=false;
+    if (bootstrapCount==16 || !candidate.driverId || !candidate.provides ||
+        std::strlen(candidate.driverId)>=64 || std::strlen(candidate.provides)>=64) return false;
+    for(size_t i=0;i<bootstrapCount;++i)
+        if(!std::strcmp(bootstrap[i].id,candidate.driverId) ||
+           !std::strcmp(bootstrap[i].capability,candidate.provides)) return false;
+    if(!graph) {
+        graph=new(std::nothrow) RuntimeProviders::GraphV2(nativeProviderStreamHost());
+        if(graph) nativeProviderSetOwnerPoll(poll);
+    }
+    if(!graph || !packageRoot || pinCount==kMaxProviders || std::strlen(packageRoot)>=sizeof(pinned[0]) ||
+       !systemPackageUseGate().pin(packageRoot)) return false;
+    if(!DeviceProviderExecutorV2::registerManagerValidated(*graph,candidate)) {
+        (void)systemPackageUseGate().unpin(packageRoot);
+        return false;
+    }
+    std::strcpy(pinned[pinCount++],packageRoot);
+    auto& selected=bootstrap[bootstrapCount++];
+    std::strcpy(selected.id,candidate.driverId);std::strcpy(selected.capability,candidate.provides);
+    selected.api=candidate.providesApi;
+    return true;
+}
+
+bool finishBootstrapHandoff() {
+    if(!graph || !bootstrapCount) return false;
+    bootstrapHandoffComplete=true;
+    return true;
+}
+
 bool prepare() {
+    if(!bootstrapHandoffComplete) return false;
     if (RuntimePackages::cdcMigrationPendingOnSd()) {
         RuntimePackages::ScopedPackageMutation mutation;
         RuntimePackages::Identity recovered{};
@@ -486,21 +604,22 @@ bool nextProvider(const char* capability, uint32_t version, size_t* cursor,
             }
             // One extra probe distinguishes the exact bound from truncation.
             bool complete = false;
-            for (size_t visited = 0; visited <= 64; ++visited) {
+            InstalledProviderRootScan scan;
+            while (true) {
                 ordinaryCooperativeYield(1, 1);
-                HalFile item = directory.openNextFile();
-                if (!item.isOpen()) {
+                HalFile::DirectoryEntry item;
+                if (!directory.readDirectoryEntry(item)) {
                     complete = directory.getError() == 0;
                     break;
                 }
-                if (visited == 64) {
-                    (void)item.close(); break;
-                }
-                const size_t length = item.getName(frame->id, sizeof(frame->id));
-                const bool valid = item.isDirectory() && length &&
-                    length < sizeof(frame->id) && safeId(frame->id);
-                if (!item.close()) { *cursor = SIZE_MAX; break; }
+                const auto classification = scan.observe(item.name, item.isDirectory);
+                if (classification == InstalledProviderRootScan::Entry::Exhausted) break;
+                if (classification == InstalledProviderRootScan::Entry::CopyMetadata) continue;
+                const size_t length = std::strlen(item.name);
+                const bool valid = item.isDirectory && length &&
+                    length < sizeof(frame->id) && safeId(item.name);
                 if (!valid) continue;
+                std::memcpy(frame->id, item.name, length + 1);
                 if (RuntimePackages::cdcLineage(root.kind, frame->id) &&
                     RuntimePackages::cdcMigrationPendingOnSd()) continue;
                 if (count == kMaxProviders ||
@@ -555,7 +674,9 @@ bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out) {
     if (out) *out = {};
     loadError[0] = 0;
-    if (!out || !providerId || !capability || !version || !prepare()) return false;
+    if (!out || !providerId || !capability || !version)
+        return providerFail("Invalid provider acquisition request", providerId);
+    if (!prepare()) return providerFail("Provider preparation failed", providerId);
     if (!graph->hasProvider(providerId, capability, version)) {
         std::unique_ptr<InstalledCapabilitySnapshot,
                         void(*)(InstalledCapabilitySnapshot*)>
@@ -603,6 +724,12 @@ bool release(Lease* lease) {
     if (okay) *lease = {};
     return okay;
 }
+bool copyProviderError(const Lease& lease, char* destination, size_t capacity) {
+    if (!destination || !capacity) return false;
+    destination[0] = 0;
+    return graph && lease.interface && graph->interfaceFor(lease.grant) == lease.interface &&
+           graph->copyProviderError(lease.grant, destination, capacity);
+}
 bool recoverFailedProvider(const char* providerId, const char* capability,
                            uint32_t version) {
     // A grantless failed start can retain the mapped provider and its exact
@@ -614,15 +741,32 @@ bool recoverFailedProvider(const char* providerId, const char* capability,
 bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out) {
     if (out) *out = {};
     loadError[0] = 0;
-    if (!out || !capability || !minimumVersion || !prepare()) return false;
+    if (!out || !capability || !minimumVersion)
+        return providerFail("Invalid capability acquisition request", capability);
+    if (!prepare()) return providerFail("Provider preparation failed", capability);
+    // Board profile selections share this graph with ordinary SD providers.
+    // Never discover a second owner of an already selected boot capability.
+    for(size_t i=0;i<bootstrapCount;++i)
+        if(bootstrap[i].api>=minimumVersion && !std::strcmp(bootstrap[i].capability,capability))
+            return acquire(bootstrap[i].id,capability,bootstrap[i].api,out);
+    uint32_t stageStarted = millis();
     std::unique_ptr<InstalledCapabilitySnapshot, void(*)(InstalledCapabilitySnapshot*)>
         verified(captureInstalledCapabilities(), releaseInstalledCapabilities);
+    if (!verified) providerFail("Provider metadata snapshot failed", capability);
+    traceStage(capability, "inventory", stageStarted, verified != nullptr);
+    if (!verified) return false;
+    stageStarted = millis();
     std::unique_ptr<ProviderAncestry> ancestry(new (std::nothrow) ProviderAncestry{});
     uint32_t selected = 0;
-    if (!verified || !ancestry || !registerCapability(*graph, verified.get(), capability,
-            minimumVersion, &selected, *ancestry, 0)) return false;
+    if (!ancestry) providerFail("Provider registration allocation failed", capability);
+    const bool registered = ancestry && registerCapability(*graph, verified.get(), capability,
+            minimumVersion, &selected, *ancestry, 0);
+    traceStage(capability, "registration", stageStarted, registered);
+    if (!registered) return false;
+    stageStarted = millis();
     const auto grant = graph->acquire(capability, selected);
     const void* interface = graph->interfaceFor(grant);
+    traceStage(capability, "activation", stageStarted, interface != nullptr);
     if (!interface) {
         if (grant.slot && !graph->release(grant)) *out = {grant, nullptr};
         return false;
@@ -630,11 +774,23 @@ bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* o
     *out = {grant, interface};
     return true;
 }
+bool drainExcept(const Lease* retained, size_t count) {
+    if (count > RuntimeProviders::GraphV2::kMaxGrants || (count && !retained)) return false;
+    if (!graph) return count == 0;
+    RuntimeProviders::GrantV2 grants[RuntimeProviders::GraphV2::kMaxGrants]{};
+    for (size_t i = 0; i < count; ++i) {
+        if (!retained[i].interface || graph->interfaceFor(retained[i].grant) != retained[i].interface) return false;
+        grants[i] = retained[i].grant;
+    }
+    return graph->drainExcept(grants, count);
+}
 bool shutdown() {
     if (!graph) return true;
     if (!graph->shutdown()) return false;
     delete graph;
     graph = nullptr;
+    bootstrapCount=0;
+    bootstrapHandoffComplete=true;
     undoPins();
     return true;
 }

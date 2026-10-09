@@ -5,6 +5,9 @@
 #include <cstring>
 #include <thread>
 #include <cstdio>
+#include <array>
+#include <string>
+#include <vector>
 #include <T5HardwareTakeover.h>
 #include <T5VideoApi.h>
 using Clock = std::chrono::steady_clock;
@@ -17,11 +20,27 @@ namespace EpdFontFamily { enum { BOLD }; }
 enum class DisplayPresentMode { Quality, LowLatency, Clean };
 constexpr int UI_12_FONT_ID=0, SMALL_FONT_ID=1;
 struct GfxRenderer {
- enum { BW }; int presents=0;
- int getRenderMode(){return BW;} void setRenderMode(int){}
- void clearScreen(){} int getScreenWidth(){return 540;} int getScreenHeight(){return 960;}
- void fillRoundedRect(int,int,int,int,int,int){}
- void drawCenteredText(int,int,const char*,bool=false,int=0){}
+ enum { BW }; int presents=0, mode=7;
+ std::vector<std::array<int,6>> rectangles;
+ std::vector<std::string> labels;
+ int getRenderMode(){return mode;} void setRenderMode(int value){mode=value;}
+ void clearScreen(){rectangles.clear();labels.clear();}
+ int getScreenWidth(){
+#if defined(BOARD_XTEINK_X4_PRO)
+ return 480;
+#else
+ return 540;
+#endif
+ }
+ int getScreenHeight(){
+#if defined(BOARD_XTEINK_X4_PRO)
+ return 800;
+#else
+ return 960;
+#endif
+ }
+ void fillRoundedRect(int x,int y,int w,int h,int r,int c){rectangles.push_back({x,y,w,h,r,c});}
+ void drawCenteredText(int,int,const char* text,bool=false,int=0){labels.emplace_back(text);}
  void displayBuffer(DisplayPresentMode){++presents;}
  void requestNextRefresh(DisplayPresentMode){}
 };
@@ -65,6 +84,16 @@ void nativeTouchDiscardGestures(){}
 static void join(){if(worker.joinable())worker.join();}
 int main(){
  GfxRenderer renderer;
+ StartupScreen::staticLogo(renderer);
+ assert(renderer.presents==1 && renderer.mode==7 && !StartupScreen::isLoading());
+ assert(stops==0 && ends==0 && !worker.joinable());
+ const int frameX=(renderer.getScreenWidth()-240)/2,frameY=(renderer.getScreenHeight()-320)/2;
+ const std::array<int,4> original[]={{10,14,16,16},{31,14,16,16},{52,14,16,16},{73,14,16,16},
+     {94,14,16,16},{10,38,47,16},{63,38,47,16},{10,62,100,16},{10,86,100,24}};
+ assert(renderer.rectangles.size()==9 && renderer.labels==std::vector<std::string>({"RiscRTE","Starting..."}));
+ for(size_t i=0;i<9;++i)assert((renderer.rectangles[i]==std::array<int,6>{frameX+original[i][0]*2,
+     frameY+original[i][1]*2,original[i][2]*2,original[i][3]*2,4,Color::Black}));
+ renderer.presents=0;
 #if defined(BOARD_T5S3_PRO)
  using namespace StartupScreen;
  // Render all animation phases into a guarded buffer, including complete fade.

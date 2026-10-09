@@ -1,3 +1,6 @@
+#include <RiscFrontlightV1.h>
+#include <RiscGpioExpanderV1.h>
+extern bool beginPlatformBoardProviders();
 #include <HalStorageLifecycle.h>
 #include <SdSpiFault.h>
 #include "BoardT5S3.h"
@@ -13,12 +16,14 @@
 
 namespace BoardT5S3 {
 namespace {
-constexpr uint8_t PCA_REG_INPUT0 = 0x00;
-constexpr uint8_t PCA_REG_OUTPUT0 = 0x02;
-constexpr uint8_t PCA_REG_CONFIG0 = 0x06;
-constexpr uint8_t kBacklightPwmChannel = 0;
-constexpr uint8_t kBacklightPwmResolutionBits = 8;
-constexpr uint32_t kBacklightPwmFrequencyHz = 5000;
+const risc_gpio_expander_api_v1* expander = nullptr;
+uint64_t radioPins = 0, buttonPins = 0;
+bool expanderReady = false;
+uint64_t grantForPin(uint8_t pin) {
+  if (pin == 0) return radioPins;
+  if (pin == 10) return buttonPins;
+  return 0; // Display pins belong exclusively to the TPS/EPD power ELF.
+}
 
 constexpr BatteryProfile kBatteryProfile = {
     .inputLimitMa = 1000,
@@ -45,7 +50,7 @@ bool gaugeInitAttempted = false;
 bool chargerConfigured = false;
 bool bq27220Ready = false;
 BQ27220 bq27220;
-bool backlightInitialized = false;
+const risc_frontlight_api_v1* frontlight = nullptr;
 SemaphoreHandle_t i2cMutex = nullptr;
 
 void prepareTouchControllerForProvider() {
@@ -101,25 +106,6 @@ bool i2cReadReg(uint8_t addr, uint8_t reg, uint8_t* data, size_t len) {
   return true;
 }
 
-bool updatePca9535Bit(uint8_t baseReg, uint8_t pin, bool high) {
-  // PCA9535 bit writes are read-modify-write operations. Keep that pair
-  // atomic, but release the shared bus immediately afterwards so unrelated
-  // clients such as the GT911 touch provider are not starved by display work.
-  ScopedI2CLock lock;
-  const uint8_t port = pin / 8;
-  const uint8_t bit = pin % 8;
-  uint8_t value = 0;
-  if (!i2cReadReg(T5S3_PCA9535_ADDR, baseReg + port, &value, 1)) {
-    return false;
-  }
-  if (high) {
-    value |= static_cast<uint8_t>(1U << bit);
-  } else {
-    value &= static_cast<uint8_t>(~(1U << bit));
-  }
-  return i2cWriteReg(T5S3_PCA9535_ADDR, baseReg + port, &value, 1);
-}
-
 bool readReg16LE(uint8_t addr, uint8_t reg, uint16_t* value) {
   uint8_t data[2] = {0, 0};
   if (!i2cReadReg(addr, reg, data, sizeof(data))) {
@@ -132,18 +118,6 @@ bool readReg16LE(uint8_t addr, uint8_t reg, uint16_t* value) {
 i2c_master_bus_handle_t i2cMasterBusHandle() { return reinterpret_cast<i2c_master_bus_handle_t>(&Wire); }
 
 
-uint8_t backlightDutyForLevel(uint8_t level) {
-  if (level == 0) {
-    return 0;
-  }
-  if (level > 10) {
-    level = 10;
-  }
-
-  const uint32_t levelSquared = static_cast<uint32_t>(level) * static_cast<uint32_t>(level);
-  const uint32_t duty = (levelSquared * 255U + 50U) / 100U;
-  return static_cast<uint8_t>(duty > 255U ? 255U : duty);
-}
 
 bool configureBq27220() {
   if (!bq27220.begin(i2cMasterBusHandle(), T5S3_BQ27220_ADDR, T5S3_I2C_FREQ)) {
@@ -189,45 +163,49 @@ ScopedI2CLock::~ScopedI2CLock() {
 }
 
 void beginI2C() {
+  static bool initialized = false;
+  if (initialized) return;
+  initialized = true;
   ensureI2CMutex();
   Wire.begin(T5S3_SDA, T5S3_SCL);
   Wire.setClock(T5S3_I2C_FREQ);
   Wire.setTimeOut(50);
 }
 
-void initBacklight() {
-  if (backlightInitialized) {
-    return;
-  }
-
-  ledcSetup(kBacklightPwmChannel, kBacklightPwmFrequencyHz, kBacklightPwmResolutionBits);
-  ledcAttachPin(T5S3_BL_EN, kBacklightPwmChannel);
-  backlightInitialized = true;
-  ledcWrite(kBacklightPwmChannel, 0);
+bool attachExpander(const risc_gpio_expander_api_v1* api) {
+  if (expander) return expander == api && expanderReady;
+  if (!api || api->api_version != 1 || api->struct_size < sizeof(*api) ||
+      !api->claim || !api->read || !api->write || !api->release) return false;
+  expander = api;
+  // Retain all partial grants if any configuration is uncertain.
+  expanderReady = api->claim(api->context, 1, 0, 0, &radioPins) &&
+         api->claim(api->context, 0x0400, 0x0400, 0, &buttonPins);
+  return expanderReady;
 }
 
+bool attachFrontlight(const risc_frontlight_api_v1* api) {
+  if (!api || api->api_version != 1 || api->struct_size < sizeof(*api) ||
+      !api->set_level || !api->get_level) return false;
+  frontlight = api;
+  return true;
+}
+void initBacklight() {} // No firmware PWM owner or fallback.
 void setBacklightLevel(uint8_t level) {
-  if (!backlightInitialized) {
-    initBacklight();
-  }
-  ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
+  if (frontlight) (void)frontlight->set_level(frontlight->context, level > 10 ? 10 : level, 10);
 }
-
-void restoreBacklightLevel(uint8_t level) {
-  // The guest may have attached the same GPIO to another LEDC channel.
-  ledcSetup(kBacklightPwmChannel, kBacklightPwmFrequencyHz, kBacklightPwmResolutionBits);
-  ledcAttachPin(T5S3_BL_EN, kBacklightPwmChannel);
-  backlightInitialized = true;
-  ledcWrite(kBacklightPwmChannel, backlightDutyForLevel(level));
-}
+void restoreBacklightLevel(uint8_t level) { setBacklightLevel(level); }
 
 void prepareSdBus() {
   risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
+  // Initial setup precedes providers; later LoRa initialization must not
+  // toggle SD CS during an installed storage session on this shared controller.
+  SPI.begin(T5S3_SPI_SCLK, T5S3_SPI_MISO, T5S3_SPI_MOSI, T5S3_SD_CS);
+  SPI.beginTransaction(SPISettings(400000, MSBFIRST, SPI_MODE0));
   pinMode(T5S3_LORA_CS, OUTPUT);
   digitalWrite(T5S3_LORA_CS, HIGH);
   pinMode(T5S3_SD_CS, OUTPUT);
   digitalWrite(T5S3_SD_CS, HIGH);
-  SPI.begin(T5S3_SPI_SCLK, T5S3_SPI_MISO, T5S3_SPI_MOSI, T5S3_SD_CS);
+  SPI.endTransaction();
 }
 
 void disableGpsLora() {
@@ -247,6 +225,7 @@ void disableGpsLora() {
 
 void begin() {
   beginI2C();
+  if (!beginPlatformBoardProviders()) return;
   prepareTouchControllerForProvider();
   initBacklight();
   setBacklightLevel(0);
@@ -264,14 +243,12 @@ void begin() {
   (void)setPca9535PinMode(PCA9535_IO12_BUTTON, INPUT);
 }
 
+bool prepareForSleep() { return halStoragePrepareForSleep(); }
+
 void deinitForSleep() {
   risc_sd_spi_guard(); // No bus-pin/rail change or automatic sleep after a stall.
-  // Pin the installed owner while SD is still available.
-  (void)BoardPowerPort::prepareShutdown();
   halStorageMediaUnavailable(); // Existing SD bus shutdown invalidates retained metadata.
   setBacklightLevel(0);
-  pinMode(T5S3_BL_EN, OUTPUT);
-  digitalWrite(T5S3_BL_EN, LOW);
   disableGpsLora();
   pinMode(T5S3_SD_CS, INPUT);
   pinMode(T5S3_GPS_RXD, INPUT);
@@ -339,31 +316,30 @@ bool readBatteryState(BatteryState* state) {
 }
 
 bool pca9535Present() {
-  ScopedI2CLock lock;
-  Wire.beginTransmission(T5S3_PCA9535_ADDR);
-  return Wire.endTransmission() == 0;
+  uint16_t levels = 0;
+  return expander && buttonPins && expander->read(expander->context, buttonPins, &levels);
 }
 
 bool setPca9535PinMode(uint8_t pin, uint8_t mode) {
-  const bool inputMode = mode != OUTPUT;
-  return updatePca9535Bit(PCA_REG_CONFIG0, pin, inputMode);
+  // Directions are established atomically by the expander claim, once. No
+  // runtime consumer can alter another consumer's input/output ownership.
+  const uint64_t grant = grantForPin(pin);
+  const bool input = pin == 10 || pin == 14 || pin == 15;
+  return expander && grant && input == (mode != OUTPUT);
 }
 
 bool writePca9535Pin(uint8_t pin, bool high) {
-  return updatePca9535Bit(PCA_REG_OUTPUT0, pin, high);
+  const uint64_t grant = grantForPin(pin);
+  if (!expander || !grant) return false;
+  const uint16_t mask = static_cast<uint16_t>(1u << pin);
+  return expander->write(expander->context, grant, mask, high ? mask : 0);
 }
 
 bool readPca9535Pin(uint8_t pin, bool* high) {
-  if (!high) {
-    return false;
-  }
-  const uint8_t port = pin / 8;
-  const uint8_t bit = pin % 8;
-  uint8_t value = 0;
-  if (!i2cReadReg(T5S3_PCA9535_ADDR, PCA_REG_INPUT0 + port, &value, 1)) {
-    return false;
-  }
-  *high = (value & (1U << bit)) != 0;
+  const uint64_t grant = grantForPin(pin);
+  uint16_t levels = 0;
+  if (!high || !expander || !grant || !expander->read(expander->context, grant, &levels)) return false;
+  *high = (levels & (1u << pin)) != 0;
   return true;
 }
 

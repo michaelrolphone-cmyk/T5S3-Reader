@@ -199,6 +199,18 @@ int main(int argc, char** argv) {
     assert(!BoardPowerPort::shutdown());
     assert(shutdowns == 1 && releases.size() == 1 && !mappings[1].occupied);
     assert(BoardPowerPort::configure()); // A definitely safe rejection is recoverable.
+  } else if (!std::strcmp(scenario, "cancel-retry")) {
+    assert(BoardPowerPort::prepareShutdown());
+    releaseFailures = 1;
+    assert(!BoardPowerPort::cancelShutdown());
+    assert(mappings[1].occupied && mappings[1].pending);
+    assert(!BoardPowerPort::prepareShutdown());
+    assert(!BoardPowerPort::shutdown());
+    assert(BoardPowerPort::cancelShutdown());
+    assert(!mappings[1].occupied && acquisitions == 1 && shutdowns == 0);
+    assert(BoardPowerPort::prepareShutdown());
+    assert(acquisitions == 2);
+    assert(BoardPowerPort::cancelShutdown());
   } else if (!std::strcmp(scenario, "prepare-failure")) {
     acquireFailsWithoutGrant = true;
     assert(!BoardPowerPort::prepareShutdown());

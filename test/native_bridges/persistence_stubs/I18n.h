@@ -18,4 +18,3 @@ class I18n {
   Language language_ = Language::EN;
 };
 #define I18N I18n::getInstance()
-

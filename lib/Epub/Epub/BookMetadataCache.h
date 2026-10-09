@@ -6,6 +6,9 @@
 #include <deque>
 #include <string>
 
+class HalReadBudget;
+class HalWriteBudget;
+
 class BookMetadataCache {
  public:
   struct BookMetadata {
@@ -64,6 +67,12 @@ class BookMetadataCache {
   std::deque<SpineHrefIndexEntry> spineHrefIndex;
   bool useSpineHrefIndex = false;
 
+  // Exact lookup for small spines, bounded independently of TOC/link count.
+  // Keep first-match semantics; the large-book hash index remains unchanged.
+  static constexpr size_t SMALL_SPINE_HREF_BYTES = 8192;
+  std::deque<std::string> smallSpineHrefs;
+  bool useSmallSpineHrefs = false;
+
   // Medium-to-large books benefit from the faster batch/indexed paths well
   // before they hit the "huge EPUB" range.
   static constexpr uint16_t LARGE_SPINE_THRESHOLD = 128;
@@ -78,10 +87,10 @@ class BookMetadataCache {
     return hash;
   }
 
-  uint32_t writeSpineEntry(FsFile& file, const SpineEntry& entry) const;
-  uint32_t writeTocEntry(FsFile& file, const TocEntry& entry) const;
-  SpineEntry readSpineEntry(FsFile& file) const;
-  TocEntry readTocEntry(FsFile& file) const;
+  uint32_t writeSpineEntry(FsFile& file, const SpineEntry& entry, HalWriteBudget* budget = nullptr) const;
+  uint32_t writeTocEntry(FsFile& file, const TocEntry& entry, HalWriteBudget* budget = nullptr) const;
+  SpineEntry readSpineEntry(FsFile& file, HalReadBudget* budget = nullptr) const;
+  TocEntry readTocEntry(FsFile& file, HalReadBudget* budget = nullptr) const;
 
  public:
   BookMetadata coreMetadata;

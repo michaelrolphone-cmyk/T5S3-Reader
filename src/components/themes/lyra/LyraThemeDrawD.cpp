@@ -84,7 +84,7 @@ Rect LyraTheme::drawPopup(const GfxRenderer& renderer, const char* message) cons
   const int textX = x + (w - textWidth) / 2;
   const int textY = y + popupMarginY - 2;
   renderer.drawText(UI_12_FONT_ID, textX, textY, message, false, EpdFontFamily::REGULAR);
-  renderer.displayBuffer();
+  renderer.displayBuffer(DisplayPresentMode::LowLatency, false);
 
   return Rect{x, y, w, h};
 }
@@ -100,5 +100,5 @@ void LyraTheme::fillPopupProgress(const GfxRenderer& renderer, const Rect& layou
 
   renderer.fillRect(barX, barY, fillWidth, barHeight, false);
 
-  renderer.displayBuffer(DisplayPresentMode::LowLatency);
+  renderer.displayBuffer(DisplayPresentMode::LowLatency, false);
 }

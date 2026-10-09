@@ -23,9 +23,21 @@ bool verifyOrdinarySdDirectory(const char* managedDirectory,
 
 // Runtime inspection: manifest, inventory, sizes and ELF headers; no hashing.
 // Installation/update verification above remains independent and mandatory.
+// Exact inert host-copy companions are tolerated only here; they cannot stand
+// in for declared members. Stage/source verification and purge remain strict.
 bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed);
+// Returns the exact plan parsed and checked by this inspection. The caller may
+// reuse it within the same generation-checked operation, never as authorization.
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed,
+    OrdinaryPackagePlan* inspection);
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed,
+    OrdinaryPackagePlan* inspection, OrdinaryInspectionDiagnostic* diagnostic);
 
 // Shared legacy-upgrade adapter. Legacy ABI-1 is accepted only at the exact
 // managed target/backup; ordinary stage/source verification stays independent.

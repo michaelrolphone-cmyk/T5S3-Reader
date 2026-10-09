@@ -6,6 +6,8 @@
 
 #include "BitmapHelpers.h"
 
+class HalReadBudget;
+
 #pragma pack(push, 1)
 struct BmpHeader {
   struct {
@@ -67,7 +69,7 @@ class Bitmap {
   explicit Bitmap(FsFile& file, bool dithering = false) : file(file), dithering(dithering) {}
   ~Bitmap();
   BmpReaderError parseHeaders();
-  BmpReaderError readNextRow(uint8_t* data, uint8_t* rowBuffer) const;
+  BmpReaderError readNextRow(uint8_t* data, uint8_t* rowBuffer, HalReadBudget* readBudget = nullptr) const;
   BmpReaderError rewindToData() const;
   int getWidth() const { return width; }
   int getHeight() const { return height; }

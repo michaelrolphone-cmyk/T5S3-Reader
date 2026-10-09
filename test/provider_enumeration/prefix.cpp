@@ -15,7 +15,9 @@
 #include "runtime/packages/PackageOrdinarySdAdapter.h"
 #include "runtime/packages/PackageCdcSdMigration.h"
 #include "runtime/packages/PackageOrdinaryStage.h"
+#include "runtime/packages/ProviderAbiProfile.h"
 #include "runtime/packages/PackageIdentity.h"
+#include "runtime/packages/InstalledProviderRootScan.h"
 namespace RuntimePackages {
 unsigned inspections = 0;
 bool cdcMigrationPendingOnSd() { return false; } // No CDC lineage in fixture.
@@ -35,7 +37,8 @@ bool inspectInstalledOrdinarySdDirectory(const char* path, const PackageRuntimeP
 }
 using namespace RuntimePackages;
 constexpr PackageRuntimePolicy kPolicy{"xtensa-esp32s3",2,8u*1024u*1024u,16u*1024u*1024u};
-constexpr size_t kMaxProviders = 16;
+constexpr size_t kMaxProviders = TEST_MAX_PROVIDERS;
+constexpr size_t kMaxRegistrationDepth = TEST_REGISTRATION_DEPTH;
 struct Root { const char* path; Kind kind; };
 constexpr Root kRoots[]={{"/Drivers",Kind::Driver},{"/Providers",Kind::Provider},{"/Services",Kind::Service}};
 // Only fields reached by nextProvider; unused acquisition workspaces are omitted.

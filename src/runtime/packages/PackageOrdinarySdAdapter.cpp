@@ -66,38 +66,28 @@ bool sizeOf(const std::string& path, uint64_t& size) {
   size = file.fileSize64();
   return file.close();
 }
-bool readAt(const std::string& path, uint64_t offset,
-            uint8_t* data, size_t length) {
-  if (!data || !length) return false;
-  HalFile file = Storage.open(path.c_str(), O_RDONLY);
-  if (!file.isOpen() || file.isDirectory()) {
-    if (file.isOpen()) (void)file.close();
-    return false;
-  }
-  const uint64_t bytes = file.fileSize64();
-  const bool okay = offset <= bytes && length <= bytes - offset &&
-      file.seek64(offset) && file.read(data, length) == static_cast<int>(length);
-  return file.close() && okay;
-}
 bool readManifest(const char* directory, const char* name,
                   char* buffer, size_t capacity, size_t& length) {
   length = 0;
   if (!directory || !buffer || capacity < kManifestBytes) return false;
   const std::string filename = std::string(directory) + "/" + name;
-  uint64_t bytes = 0;
-  if (!sizeOf(filename, bytes) || !bytes || bytes > capacity) return false;
-  length = static_cast<size_t>(bytes);
-  if (readAt(filename, 0, reinterpret_cast<uint8_t*>(buffer), length)) return true;
-  length = 0;
+  HalFile file;
+  if (!Storage.openFileForRead("PKG", filename.c_str(), file)) return false;
+  const uint64_t bytes = file.fileSize64();
+  const bool okay = bytes && bytes <= capacity && file.read(buffer, static_cast<size_t>(bytes)) == static_cast<int>(bytes);
+  const bool closed = file.close();
+  if (okay && closed) { length = static_cast<size_t>(bytes); return true; }
   return false;
 }
 
 // A partial OWNED stage may lack some declared files. For all other paths a
 // missing manifest plus nonempty directory is ambiguous and never purged.
-bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full, bool managedMetadata = true) {
+bool inventory(const char* root, const OrdinaryPackagePlan& plan, bool full, bool managedMetadata = true,
+               uint64_t* sizes = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr,
+               OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict) {
   if (!root) return false;
-  OrdinarySdTreeOps ops(root);
-  return ordinaryTreeInventory(plan, ops, full, managedMetadata);
+  OrdinarySdTreeOps ops(root, &plan, sizes, diagnostic);
+  return ordinaryTreeInventory(plan, ops, full, managedMetadata, copyMetadata);
 }
 bool purgeKnown(const char* root, const OrdinaryPackagePlan& plan,
                 bool ownedPartial) {
@@ -199,7 +189,9 @@ class SdHash {
 };
 class SdDirectory {
  public:
-  explicit SdDirectory(const char* path) : root_(path) {}
+  explicit SdDirectory(const char* path, OrdinaryInspectionDiagnostic* diagnostic = nullptr,
+                       OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict)
+      : root_(path), diagnostic_(diagnostic), copyMetadata_(copyMetadata) {}
   bool readManifest(char* output, size_t capacity, size_t& length) {
     // Read directly into the caller's heap-owned workspace. The previous
     // second 4 KiB stack buffer overflowed loopTask during nested hashing.
@@ -207,17 +199,32 @@ class SdDirectory {
                                            output, capacity, length);
   }
   bool exactEntries(const OrdinaryPackagePlan& plan) {
-    return inventory(root_.c_str(), plan, true);
+    // Both initial and final exact-tree walks check declared sizes. Reuse
+    // those observations within this verifier instead of reopening each child.
+    validSizes_ = inventory(root_.c_str(), plan, true, true, sizes_, diagnostic_, copyMetadata_);
+    plan_ = &plan;
+    return validSizes_;
   }
   bool entrySize(const char* name, uint64_t& size) {
-    return sizeOf(root_ + "/" + name, size);
+    if (!validSizes_ || !plan_) return false;
+    for (size_t i = 0; i < plan_->entryCount; ++i) {
+      if (std::strcmp(name, plan_->entries[i].name)) continue;
+      size = sizes_[i];
+      return true;
+    }
+    return false;
   }
   bool readAt(const char* name, uint64_t offset, uint8_t* data, size_t length) {
     return reader_.readAt(root_ + "/" + name, offset, data, length);
   }
  private:
+  uint64_t sizes_[kMaxPackageEntries]{};
+  const OrdinaryPackagePlan* plan_ = nullptr;
+  bool validSizes_ = false;
   std::string root_;
   OrdinarySequentialSdReader reader_;
+  OrdinaryInspectionDiagnostic* diagnostic_;
+  OrdinaryCopyMetadata copyMetadata_;
 };
 class SdStage {
  public:
@@ -298,12 +305,28 @@ struct Ops {
   }
 };
 bool verifyCanonical(const char* path, const PackageRuntimePolicy& policy,
-                     uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true) {
+                     uint32_t (*resolver)(const char*), Identity& observed, bool verifyContents = true,
+                     OrdinaryPackagePlan* inspection = nullptr, OrdinaryInspectionDiagnostic* diagnostic = nullptr,
+                     OrdinaryCopyMetadata copyMetadata = OrdinaryCopyMetadata::Strict) {
   if (verifyContents) Storage.invalidateObservations();
-  if (!path || !resolver || !directoryExists(path)) return false;
-  SdDirectory directory(path);
+  // readManifest and both exactEntries passes independently open this same
+  // directory. Avoid a fourth path walk just to repeat its existence/type check.
+  if (!path || !resolver) return false;
+  SdDirectory directory(path, diagnostic, copyMetadata);
   SdHash hash;
   uint8_t io[kOrdinaryIoBytes]{};
+  if (inspection) {
+    std::unique_ptr<char[]> text(new (std::nothrow) char[kManifestBytes]{});
+    size_t length = 0;
+    if (!text) return diagnostic ? diagnostic->fail("manifest-allocation") : false;
+    if (!directory.readManifest(text.get(), kManifestBytes, length))
+      return diagnostic ? diagnostic->fail("manifest-read", kOrdinaryManifestName) : false;
+    if (!parseOrdinaryManifest(text.get(), length, *inspection))
+      return diagnostic ? diagnostic->fail("manifest-parse", kOrdinaryManifestName) : false;
+    if (!verifyOrdinaryDirectory(*inspection, directory, hash, resolver, policy, io, verifyContents, diagnostic)) return false;
+    observed = inspection->identity;
+    return true;
+  }
   return verifyCanonicalOrdinaryDirectory(directory, hash, resolver, policy,
                                           io, observed, verifyContents);
 }
@@ -341,12 +364,26 @@ bool verifyOrdinarySdDirectory(const char* managedDirectory,
 bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
     const PackageRuntimePolicy& policy,
     uint32_t (*resolveCapability)(const char*), Identity& observed) {
+  return inspectInstalledOrdinarySdDirectory(managedDirectory, policy, resolveCapability, observed, nullptr);
+}
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed, OrdinaryPackagePlan* inspection) {
+  return inspectInstalledOrdinarySdDirectory(managedDirectory, policy, resolveCapability, observed, inspection, nullptr);
+}
+bool inspectInstalledOrdinarySdDirectory(const char* managedDirectory,
+    const PackageRuntimePolicy& policy,
+    uint32_t (*resolveCapability)(const char*), Identity& observed, OrdinaryPackagePlan* inspection,
+    OrdinaryInspectionDiagnostic* diagnostic) {
   observed = {};
+  if (diagnostic) *diagnostic = {};
   if (managedDirectory &&
       (!std::strcmp(managedDirectory, kCdcCanonicalRoot) || !std::strcmp(managedDirectory, kCdcAliasRoot)) &&
-      cdcMigrationPendingOnSd()) return false;
-  return Storage.ready() && safeSourcePath(managedDirectory) &&
-      verifyCanonical(managedDirectory, policy, resolveCapability, observed, false);
+      cdcMigrationPendingOnSd()) return diagnostic ? diagnostic->fail("migration-pending") : false;
+  if (!Storage.ready() || !safeSourcePath(managedDirectory))
+    return diagnostic ? diagnostic->fail("storage-or-path") : false;
+  return verifyCanonical(managedDirectory, policy, resolveCapability, observed, false, inspection, diagnostic,
+                         OrdinaryCopyMetadata::InspectInstalled);
 }
 bool verifyManagedOrdinarySdDirectory(const char* path, Kind kind, const char* id,
     const PackageRuntimePolicy& policy, uint32_t (*resolver)(const char*),

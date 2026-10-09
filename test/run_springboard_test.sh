@@ -1,18 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
+python3 "$(dirname "${BASH_SOURCE[0]}")/txt_index/index_test.py" --sanitize
 python3 "$(dirname "${BASH_SOURCE[0]}")/epub_guide/guide_test.py"
 python3 "$(dirname "${BASH_SOURCE[0]}")/epub_container/container_test.py"
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+bash "$repo_dir/test/run_x4pro_i2c_test.sh"
+bash "$repo_dir/test/run_x4pro_battery_test.sh"
+bash "$repo_dir/test/run_native_battery_gauge_test.sh"
+python3 "$repo_dir/test/hal/battery_presentation_test.py"
 python3 "$repo_dir/test/util/url_resolution_test.py" --sanitize
 python3 "$repo_dir/test/recent_books/migration_test.py" --sanitize
 SANITIZE=1 bash "$repo_dir/test/run_language_migration_test.sh"
 XTC_SANITIZE=1 bash "$repo_dir/test/run_xtc_metadata_test.sh"
+python3 "$repo_dir/test/xtc_render/render_test.py"
 python3 "$repo_dir/test/activities/confirmation_touch_test.py"
+PREFIX_SANITIZE=1 python3 "$repo_dir/test/activities/keyboard_prefix_fit_test.py" --enforce-cost
 python3 "$repo_dir/test/epub_toc/path_test.py"
+PREFIX_SANITIZE=1 python3 "$repo_dir/test/epub_prefix_metrics_regression.py"
+TXT_SANITIZE=1 python3 "$repo_dir/test/txt_paging_test.py" --enforce-cost
+python3 "$repo_dir/test/epub_spine_sizes/size_lookup_test.py"
+CXXFLAGS="${CXXFLAGS:-} -fsanitize=address,undefined -fno-omit-frame-pointer" \
+  python3 "$repo_dir/test/epub_opf_index/run_test.py"
+EPUB_SANITIZE=1 python3 "$repo_dir/test/epub_toc_index/index_test.py"
 python3 "$repo_dir/test/epub_paths/normalise_test.py"
 python3 "$repo_dir/test/epub_image_cache/image_cache_test.py" --sanitize
+python3 "$repo_dir/test/epub_image_cache_reads/image_cache_reads_test.py" --sanitize
+python3 "$repo_dir/test/font_style_prewarm/prewarm_test.py" --sanitize --enforce-cost
+python3 "$repo_dir/test/text_page_reads/text_page_reads_test.py" --sanitize
+python3 "$repo_dir/test/text_page_reads/text_page_reads_test.py" --legacy
+python3 "$repo_dir/test/epub_css/selected_stats_test.py"
 binary="$(mktemp)"
 trap 'rm -f "$binary"' EXIT
+# Keep the standalone Board/frontlight fixture linked as the CI provider step is.
+c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/test/bootstrap_store/stubs" \
+  -I"$repo_dir/lib/Board" -I"$repo_dir/lib/Board_X4Pro" -I"$repo_dir/sdk/driver" \
+  "$repo_dir/test/bootstrap_store/frontlight_test.cpp" "$repo_dir/lib/Board_X4Pro/BoardX4Pro.cpp" -o "$binary"
+"$binary"
 python3 "$repo_dir/test/activities/footnotes_viewport_test.py" --sanitize
 python3 "$repo_dir/test/native_apps/hollow_trail_memory_test.py"
 cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$repo_dir/lib/NativeApps/include" \
@@ -57,9 +80,12 @@ done
 python3 "$repo_dir/test/resources/package_driver_bridge_source_test.py"
 python3 "$repo_dir/test/native_apps/native_ui_refresh_contract_test.py"
 python3 "$repo_dir/test/native_apps/home_shortcut_launch_contract_test.py"
+python3 "$repo_dir/test/native_apps/springboard_storage_unavailable_test.py"
 python3 "$repo_dir/test/native_apps/global_home_overlay_contract_test.py"
 python3 "$repo_dir/test/native_apps/global_home_overlay_behavior_test.py"
 python3 "$repo_dir/test/native_apps/required_app_workflow_contract_test.py"
+python3 "$repo_dir/test/native_apps/wifi_settings_workflow_test.py"
+python3 "$repo_dir/test/display/x4_flip_bridge_test.py"
 python3 "$repo_dir/test/native_apps/file_association_contract_test.py"
 EPUB_SANITIZE=1 python3 "$repo_dir/test/epub/external_links_test.py"
 # OTA discovery state belongs to the latest check only, including early errors.

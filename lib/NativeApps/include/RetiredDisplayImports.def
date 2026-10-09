@@ -1,0 +1,7 @@
+/* Physical LCD/GDMA ownership moved to display-epd-video. Legacy apps use
+ * t5_video_get_api (a capability consumer) or ordinary display.output. */
+RISC_RETIRED_DISPLAY_IMPORT(esp_lcd_del_i80_bus)
+RISC_RETIRED_DISPLAY_IMPORT(esp_lcd_new_i80_bus)
+RISC_RETIRED_DISPLAY_IMPORT(esp_lcd_new_panel_io_i80)
+RISC_RETIRED_DISPLAY_IMPORT(esp_lcd_panel_io_del)
+RISC_RETIRED_DISPLAY_IMPORT(esp_lcd_panel_io_tx_color)

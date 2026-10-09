@@ -9,7 +9,10 @@
 static int value = 42;
 static bool started;
 #ifdef FIXTURE_QUIESCE_FAIL_ONCE
-static unsigned quiesce_failures = 1;
+#ifndef FIXTURE_QUIESCE_FAILURES
+#define FIXTURE_QUIESCE_FAILURES 1
+#endif
+static unsigned quiesce_failures = FIXTURE_QUIESCE_FAILURES;
 #endif
 static bool start(const risc_provider_dependency_v1 *deps, size_t count) {
     if (started) return false;
@@ -34,11 +37,28 @@ static bool quiesce(void) {
 #endif
 }
 static void stop(void) { started = false; }
+#ifdef FIXTURE_DIAGNOSTICS
+static bool last_error(char *out, size_t capacity) {
+    static const char text[] = "fixture diagnostic";
+    if (!out || !capacity) return false;
+    ++value;
+    const size_t n = sizeof(text) < capacity ? sizeof(text) : capacity;
+    memcpy(out, text, n);
+    // Deliberately omit NUL on truncation: the generic copied-diagnostic
+    // boundary must terminate within the caller's capacity before logging.
+    return true;
+}
+static const risc_driver_diagnostics_v2 driver = {
+  { RISC_PROVIDER_DRIVER_ABI_V2, sizeof(driver),
+    FIXTURE_ID, FIXTURE_CAPABILITY, 1, &value, start, stop, quiesce }, last_error
+};
+#else
 static const risc_driver_v2 driver = {
     RISC_PROVIDER_DRIVER_ABI_V2, sizeof(risc_driver_v2),
     FIXTURE_ID, FIXTURE_CAPABILITY, 1, &value, start, stop, quiesce
 };
+#endif
 __attribute__((visibility("default")))
 const risc_driver_v2 *t5_driver_get(uint32_t abi) {
-    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? &driver : 0;
+    return abi == RISC_PROVIDER_DRIVER_ABI_V2 ? (const risc_driver_v2 *)&driver : 0;
 }

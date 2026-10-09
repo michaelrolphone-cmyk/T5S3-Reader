@@ -21,6 +21,7 @@ harness=r'''
 #include "runtime/packages/PackageUseGate.h"
 #include "runtime/packages/PackageMutationGate.h"
 namespace RuntimeProviders {struct GraphV2 {explicit GraphV2(void* =nullptr){}};}
+bool bootstrapHandoffComplete=true;
 RuntimeProviders::GraphV2 resident;
 RuntimeProviders::GraphV2 *graph=&resident;
 void* nativeProviderStreamHost(){return nullptr;}
@@ -38,6 +39,9 @@ void measure(const char *name,bool(*call)(),size_t expected) {
 }
 int main(int argc,char**argv){
  assert(argc==2);CdcSdTest::root=argv[1];CdcSdTest::cacheable=true;
+ bootstrapHandoffComplete=false;
+ assert(!post_u1_prepare() && CdcSdTest::directoryOpens==0);
+ bootstrapHandoffComplete=true;
  std::filesystem::create_directories(CdcSdTest::root+"/Drivers");
  for(unsigned i=0;i<128;++i)std::filesystem::create_directories(CdcSdTest::root+"/Drivers/ordinary-"+std::to_string(i));
 #ifdef RUN_PRE_U1

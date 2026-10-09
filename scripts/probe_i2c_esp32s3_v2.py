@@ -6,6 +6,7 @@ physical I2C0 operations from the firmware's single Wire owner. It MUST NOT
 link an independent IDF I2C/GPIO/HAL/ISR implementation or reconfigure pins.
 The dedicated private import is admitted only for i2c-esp32s3-v2.
 """
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -91,6 +92,9 @@ def run():
                 p[4] == 'GLOBAL' and p[6] != 'UND'}
     if exported != {'t5_driver_get'}:
         raise RuntimeError('I2C ELF exports unexpected entry points: ' + repr(exported))
+    payload = output.read_bytes()
+    (OUTPUT / 'manifest.json').write_text(json.dumps(dict(manifest, size_bytes=len(payload),
+        sha256=hashlib.sha256(payload).hexdigest()), indent=2)+'\n')
     print('Installable i2c.bus ELF delegates physical I2C0 to firmware: PASS', flush=True)
     print('Firmware bridge import: ' + BRIDGE, flush=True)
     print('Provider-local serialization: FreeRTOS mutex; relocatable atomics: none', flush=True)

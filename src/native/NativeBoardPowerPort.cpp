@@ -148,7 +148,7 @@ bool externalPower(bool* connected) {
 
 bool prepareShutdown() {
   if (quarantined || shutdownPending) return false;
-  if (preparedShutdownGrant.grant.slot) return true;
+  if (preparedShutdownGrant.grant.slot) return preparedShutdownApi != nullptr;
   // HalDisplay::deepSleep() deinitializes SD after this call. A failed first
   // reservation must not trigger a second driver load from disconnected SD.
   if (shutdownPreparationAttempted) return false;
@@ -162,10 +162,24 @@ bool prepareShutdown() {
   return true;
 }
 
+bool cancelShutdown() {
+  if (quarantined || shutdownPending || !retryRelease()) return false;
+  if (preparedShutdownGrant.grant.slot &&
+      !RuntimeInstalledProviders::release(&preparedShutdownGrant)) {
+    preparedShutdownGrant.interface = nullptr;
+    preparedShutdownApi = nullptr;
+    return false;
+  }
+  preparedShutdownApi = nullptr;
+  shutdownPreparationAttempted = false;
+  return true;
+}
+
 bool shutdown() {
   if (quarantined || shutdownPending || !retryRelease()) return false;
   Session session{};
   if (preparedShutdownGrant.grant.slot) {
+    if (!preparedShutdownApi) return false; // A cancelled pending release has no usable API.
     session.grant = preparedShutdownGrant;
     session.api = preparedShutdownApi;
     preparedShutdownGrant = {};

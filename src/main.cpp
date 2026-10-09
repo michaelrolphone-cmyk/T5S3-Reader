@@ -3,6 +3,10 @@
 void setup() { RuntimeBoot::setup(); }
 void loop() { RuntimeBoot::loop(); }
 #else
+#if defined(BOARD_T5S3_PRO)
+#include <BoardPowerPort.h>
+#endif
+#include "platform/PlatformStorage.h"
 #include <Arduino.h>
 #include <Board.h>
 #include <Epub.h>
@@ -29,6 +33,7 @@ void loop() { RuntimeBoot::loop(); }
 #include "CrossPointState.h"
 #include "DeskClockSleep.h"
 #include "native/NativeAppHost.h"
+#include "native/NativeReaderEntry.h"
 #include "native/InstalledAppPath.h"
 #include "native/NativeStreamBridge.h"
 #include "runtime/boot/DefaultAppSelection.h"
@@ -38,6 +43,9 @@ void loop() { RuntimeBoot::loop(); }
 #include "runtime/packages/InstalledCapabilityResolver.h"
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
+#include "runtime/power/IdleSleepDeadline.h"
+#include "native/NativeBatteryGauge.h"
+#include "native/NativeRtcClock.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
@@ -49,6 +57,10 @@ void loop() { RuntimeBoot::loop(); }
 #include "components/StartupScreen.h"
 #include "fontIds.h"
 #include "util/ButtonNavigator.h"
+#include "util/DebugSerialCommand.h"
+#include "platform/X4DiagnosticBoot.h"
+#include "platform/X4BootPower.h"
+#include "platform/X4BootDiagnostics.h"
 #include "util/ScreenshotUtil.h"
 
 MappedInputManager mappedInputManager(gpio);
@@ -222,9 +234,24 @@ bool suspendInputProvidersForSleep() {
     (void)nativeTouchResume();
     return false;
   }
+  if (!nativeBatterySuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: battery provider has not quiesced");
+    (void)nativeBatteryResume();
+    (void)nativeTouchResume();
+    return false;
+  }
+  if (!nativeRtcSuspend()) {
+    LOG_ERR("INPUT", "Sleep refused: RTC provider has not quiesced");
+    (void)nativeRtcResume();
+    (void)nativeBatteryResume();
+    (void)nativeTouchResume();
+    return false;
+  }
   if (!nativeNavigationSuspend()) {
     LOG_ERR("INPUT", "Sleep refused: navigation/provider graph has not quiesced");
     nativeNavigationResume();
+    (void)nativeRtcResume();
+    (void)nativeBatteryResume();
     (void)nativeTouchResume();
     return false;
   }
@@ -234,11 +261,21 @@ bool suspendInputProvidersForSleep() {
 void resumeInputProvidersAfterSleep() {
   // Bootstrap/navigation first; touch can then join the already healthy graph.
   nativeNavigationResume();
+  (void)nativeRtcResume();
+  (void)nativeBatteryResume();
   (void)nativeTouchResume();
+}
+
+static void resumeAfterSleepRefused() {
+  resumeInputProvidersAfterSleep();
+  Board::restoreBacklightLevel(SETTINGS.backlightLevel);
+  renderer.requestNextRefresh(HalDisplay::FULL_REFRESH);
+  activityManager.goHome();
 }
 
 // Enter deep sleep mode
 void enterDeepSleep() {
+  if (NativeReaderEntry::deferSleep(NativeReaderEntry::Action::Sleep)) return;
   const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
   if (!deskClock && shouldSuppressDeepSleepForDebug()) {
     LOG_DBG("MAIN", "Deep sleep suppressed while serial is connected");
@@ -270,13 +307,14 @@ void enterDeepSleep() {
   }
 
   halTiltSensor.deepSleep();
-  display.deepSleep();
+  if (!display.deepSleep()) { resumeAfterSleepRefused(); return; }
   LOG_DBG("MAIN", "Entering deep sleep");
 
   powerManager.startDeepSleep(gpio);
 }
 
 void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
+  if (NativeReaderEntry::deferSleep(NativeReaderEntry::Action::SleepKeepingScreen, wakeOnTouch)) return;
   HalPowerManager::Lock powerLock;
   if (!suspendInputProvidersForSleep()) return;
   APP_STATE.lastSleepFromReader = APP_STATE.lastSleepFromReader || activityManager.isReaderActivityInStack();
@@ -284,13 +322,14 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 
   Board::setBacklightLevel(0);
   halTiltSensor.deepSleep();
-  display.deepSleep();
+  if (!display.deepSleep()) { resumeAfterSleepRefused(); return; }
   LOG_DBG("MAIN", "Entering deep sleep with current screen preserved, wakeOnTouch=%d", wakeOnTouch ? 1 : 0);
 
   powerManager.startDeepSleep(gpio, wakeOnTouch);
 }
 
 void enterPowerOffKeepingScreen(const char* status) {
+  if (NativeReaderEntry::deferSleep(NativeReaderEntry::Action::PowerOff)) return;
   (void)status;  // Status line intentionally not shown; the sleep screen setting is used instead.
   if (!suspendInputProvidersForSleep()) return;
   {
@@ -303,8 +342,23 @@ void enterPowerOffKeepingScreen(const char* status) {
     // to read (e.g. custom/cover images).
     activityManager.goToSleep(/*poweringOff=*/true);
     Board::setBacklightLevel(0);
-    display.deepSleep();
-    if (Board::capabilities().hasHardPowerOff) {
+#if defined(BOARD_T5S3_PRO)
+    // Only hard power-off needs this reservation. Ordinary sleep must not
+    // introduce another SD-backed grant after its checked graph barrier.
+    const bool powerReserved = BoardPowerPort::prepareShutdown();
+    if (!powerReserved && (!BoardPowerPort::cancelShutdown() || !drainPlatformProvidersForSleep())) {
+      resumeAfterSleepRefused(); return;
+    }
+#else
+    const bool powerReserved = true;
+#endif
+    if (!display.deepSleep()) {
+#if defined(BOARD_T5S3_PRO)
+      (void)BoardPowerPort::cancelShutdown();
+#endif
+      resumeAfterSleepRefused(); return;
+    }
+    if (powerReserved && Board::capabilities().hasHardPowerOff) {
       if (Board::shutdownBatteryPower()) {
         delay(1500);
         LOG_DBG("MAIN", "Battery power shutdown returned; falling back to deep sleep");
@@ -316,14 +370,48 @@ void enterPowerOffKeepingScreen(const char* status) {
     }
   }
 
-  enterDeepSleepKeepingScreen(false);
+  // Display/storage already crossed the one-way barrier. Do not remount,
+  // save files, or attempt another graph drain through the normal entry path.
+  powerManager.startDeepSleep(gpio, false);
 }
 
 // Set by activities (e.g. the reader menu's Shut Down button) to request a full
 // power-off. Consumed at the top of loop() so the battery-cut runs in the main-loop
 // context rather than inside an activity's call stack.
+namespace { IdleSleepDeadline idleSleep; }
+bool idleSleepRequested() { return idleSleep.pending(); }
+void resumeIdleTimer() { idleSleep.activity(static_cast<uint32_t>(millis())); }
+bool serviceIdleSleep(bool userActivity) {
+  const bool deskClock = SETTINGS.sleepScreen == CrossPointSettings::DIGITAL_CLOCK;
+  bool activeWork = activityManager.preventAutoSleep();
+#ifdef ENABLE_SERIAL_LOG
+  activeWork = activeWork || (Serial && !deskClock);
+#endif
+#if defined(BOARD_XTEINK_X4_PRO)
+  // Other X4 sleep/shutdown modes still need their own board implementation.
+  const bool sleepBlocked = !deskClock;
+#else
+  const bool sleepBlocked = gpio.isUsbConnected() && !deskClock;
+#endif
+  if (userActivity || activeWork) powerManager.setPowerSaving(false);
+  const uint32_t now = static_cast<uint32_t>(millis());
+  if (!idleSleep.observe(now, SETTINGS.getSleepTimeoutMs(), userActivity, activeWork)) return false;
+  if (sleepBlocked) {
+    // Preserve the existing USB policy: restart the sleep deadline only when
+    // it expires, without turning a connected cable into continuous activity
+    // or disabling the separate CPU-idle power-saving timer.
+    (void)idleSleep.consume(now);
+    return false;
+  }
+  return true;
+}
+
 bool g_shutdownRequested = false;
 bool g_displayBootFailed = false;
+static bool g_readerStartPending = false;
+static bool g_readerResumeOnBoot = false;
+static bool g_readerDeskClockWake = false;
+static bool g_readerEntryEligible = false;
 void requestShutdown() { g_shutdownRequested = true; }
 
 bool setupDisplayAndFonts() {
@@ -378,6 +466,14 @@ bool setupDisplayAndFonts() {
   return true;
 }
 
+void setupReaderState() {
+  sdFontSystem.begin(renderer);
+  KOREADER_STORE.loadFromFile();
+  OPDS_STORE.loadFromFile();
+  APP_STATE.loadFromFile();
+  RECENT_BOOKS.loadFromFile();
+}
+
 void ensureSdFontLoaded() { sdFontSystem.ensureLoaded(renderer); }
 
 HalDisplay::RefreshMode readerResumeRefreshMode() {
@@ -422,7 +518,69 @@ void logPlatformInputHealth() {
   }
 }
 
+void prepareReaderApplication(bool deskClockUserWake) {
+  const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
+  g_readerResumeOnBoot = resumeReaderOnBoot;
+  g_readerDeskClockWake = deskClockUserWake;
+  g_readerStartPending = true;
+  g_readerEntryEligible = true;
+}
+
+static void startReaderApplication() {
+  if (!g_readerStartPending) return;
+  g_readerStartPending = false;
+  const auto prepareStartupRefresh = [](HalDisplay::RefreshMode refreshMode) {
+    display.suppressInitialFullRefresh();
+    renderer.requestNextRefresh(refreshMode);
+  };
+  if (!g_readerResumeOnBoot) {
+    prepareStartupRefresh(HalDisplay::HALF_REFRESH);
+#if !defined(BOARD_XTEINK_X4_PRO)
+    if (!g_readerDeskClockWake) {
+      RenderLock lock;
+      StartupScreen::armBootFade();
+    }
+#endif
+    // T5 cold boot fades its logo when Home is ready. X4 keeps its static
+    // logo, and a desk-clock user wake proceeds directly into Home.
+    activityManager.goHome();
+  } else {
+    // Clear app state to avoid getting into a boot loop if the epub doesn't load
+    const auto path = APP_STATE.openEpubPath;
+    APP_STATE.openEpubPath = "";
+    APP_STATE.readerActivityLoadCount++;
+    APP_STATE.saveToFile();
+    display.suppressInitialFullRefresh();
+    activityManager.goToReader(path, readerResumeRefreshMode());
+  }
+#ifdef BOARD_XTEINK_X4_PRO
+  // Preserve X4's checked initial render before accepting ordinary input.
+  x4ReaderActivityScheduled();
+  activityManager.requestUpdate(true);
+#endif
+}
+
 void setup() {
+#ifdef BOARD_XTEINK_X4_PRO
+  const bool x4BootPowerReady = x4PrepareBootPower();
+  X4BootDiagnostics::begin(static_cast<uint32_t>(esp_reset_reason()));
+  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::BoardPower);
+  if (!x4BootPowerReady) X4BootDiagnostics::fail("board-alive setup rejected");
+  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::SerialSetup);
+#ifdef ENABLE_SERIAL_LOG
+  Serial.begin(115200);
+  const unsigned long x4SerialStart = millis();
+  while (!Serial && millis() - x4SerialStart < 500) delay(10);
+#endif
+  LOG_INF("X4", "Boot firmware=%s board-alive=%d reset=%d", CROSSPOINT_VERSION, x4BootPowerReady,
+          static_cast<int>(esp_reset_reason()));
+  X4BootDiagnostics::poll(static_cast<bool>(logSerial));
+  if (!x4BootPowerReady) return;
+  X4BootDiagnostics::mark(X4BootDiagnostics::Stage::ClockResume);
+  if (DeskClockSleep::resumeAfterTimerWake()) return;
+  x4DiagnosticSetup(DeskClockSleep::consumeUserWake());
+  return;
+#endif
   t1 = millis();
 
   // Keep large general-purpose allocations out of scarce internal RAM without
@@ -456,7 +614,7 @@ void setup() {
 
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
-  if (!Storage.begin()) {
+  if (!beginPlatformStorage()) {
     LOG_ERR("MAIN", "SD card initialization failed");
     if (!setupDisplayAndFonts()) {
       g_displayBootFailed = true;
@@ -552,11 +710,7 @@ void setup() {
     StartupScreen::boot(renderer);
   }
 
-  sdFontSystem.begin(renderer);
-  KOREADER_STORE.loadFromFile();
-  OPDS_STORE.loadFromFile();
-  APP_STATE.loadFromFile();
-  RECENT_BOOKS.loadFromFile();
+  setupReaderState();
   // Keep provider loading on the normal owner task. The video worker only
   // submits pixels; it cannot contend with SD/module/renderer initialization.
   if (!recoveryFirmwareMode && !HalSystem::isRebootFromPanic()) {
@@ -564,7 +718,6 @@ void setup() {
     mappedInputManager.update();  // Navigation first, then optional touch.
     LOG_INF("MAIN", "Startup services ready in %lu ms", static_cast<unsigned long>(millis() - t1));
   }
-  const bool resumeReaderOnBoot = shouldResumeReaderOnBoot();
   const auto prepareStartupRefresh = [](HalDisplay::RefreshMode refreshMode) {
     display.suppressInitialFullRefresh();
     renderer.requestNextRefresh(refreshMode);
@@ -580,30 +733,20 @@ void setup() {
     prepareStartupRefresh(HalDisplay::HALF_REFRESH);
     // If we rebooted from a panic, go directly to the crash report screen to show the panic info.
     activityManager.goToCrashReport();
-  } else if (!resumeReaderOnBoot) {
-    prepareStartupRefresh(HalDisplay::HALF_REFRESH);
-    if (!deskClockUserWake) {
-      RenderLock lock;
-      StartupScreen::armBootFade();
-    }
-    // A cold boot fades the logo when Home is ready. A desk-clock user wake
-    // has no splash to fade and proceeds directly into Home.
-    activityManager.goHome();
   } else {
-    // Clear app state to avoid getting into a boot loop if the epub doesn't load
-    const auto path = APP_STATE.openEpubPath;
-    APP_STATE.openEpubPath = "";
-    APP_STATE.readerActivityLoadCount++;
-    APP_STATE.saveToFile();
-    display.suppressInitialFullRefresh();
-    activityManager.goToReader(path, readerResumeRefreshMode());
+    // The ELF's first pump enters exactly the previous Home/book destination.
+    // The firmware remains the owner of its ActivityManager and saved state.
+    prepareReaderApplication(deskClockUserWake);
   }
 
   // Ensure we're not still holding the power button before leaving setup
   waitForPowerRelease();
 }
 
-void loop() {
+static void readerApplicationLoop() {
+#ifdef BOARD_XTEINK_X4_PRO
+  if (!x4DiagnosticLoop()) return;
+#endif
   if (g_displayBootFailed) {
     // Do not touch ActivityManager/renderer after failed display bootstrap.
     // Leave the retained image or emergency failure pattern stable for diagnosis.
@@ -611,29 +754,6 @@ void loop() {
     return;
   }
 
-  // One normal app invocation per boot. A missing selector preserves the
-  // embedded paper UI; a damaged/unavailable app falls back without reboot or
-  // repeated hashing/launch attempts. The resolver verifies the installed
-  // package and sidecar before the existing native app host grants anything.
-  static bool defaultAppChecked = false;
-  if (!defaultAppChecked) {
-    defaultAppChecked = true;
-    char artifact[96]{};
-    const auto choice = RuntimeDefaultApp::read(artifact);
-    if (choice == RuntimeDefaultApp::Selection::Ready) {
-      std::string installed;
-      if (resolveInstalledAppPath(artifact, installed)) {
-        LOG_INF("APP", "default start artifact=%s", artifact);
-        const esp_err_t result = runNativeApp(installed.c_str(), renderer, mappedInputManager);
-        LOG_INF("APP", "default returned result=%d", static_cast<int>(result));
-      } else {
-        LOG_ERR("APP", "default unavailable artifact=%s", artifact);
-      }
-      activityManager.goHome();
-    } else if (choice == RuntimeDefaultApp::Selection::Invalid) {
-      LOG_ERR("APP", "default selector invalid; embedded GUI remains available");
-    }
-  }
   static unsigned long maxLoopDuration = 0;
   const unsigned long loopStartTime = millis();
   static unsigned long lastMemPrint = 0;
@@ -644,14 +764,20 @@ void loop() {
   nativeProviderOwnerTick();
   // External power/connection changes allow a new bounded admission attempt.
   // No provider inventory scans on every frame after a failed/missing provider.
+#if !defined(BOARD_XTEINK_X4_PRO)
   if (gpio.wasUsbStateChanged()) nativeNavigationRetry();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+#endif
 
   // Handle a shutdown requested by an activity (e.g. the reader menu Shut Down button).
   if (g_shutdownRequested) {
     g_shutdownRequested = false;
+#if defined(BOARD_XTEINK_X4_PRO)
+    LOG_ERR("MAIN", "Shutdown unavailable: X4 power provider is not integrated");
+#else
     enterPowerOffKeepingScreen("");
     return;
+#endif
   }
 
   renderer.setFadingFix(SETTINGS.fadingFix);
@@ -662,36 +788,32 @@ void loop() {
     lastMemPrint = millis();
   }
 
-  // Handle incoming serial commands,
-  // nb: we use logSerial from logging to avoid deprecation warnings
-  if (logSerial.available() > 0) {
-    String line = logSerial.readStringUntil('\n');
-    if (line.startsWith("CMD:")) {
-      String cmd = line.substring(4);
-      cmd.trim();
-      if (cmd == "SCREENSHOT") {
-        const uint32_t bufferSize = display.getBufferSize();
-        logSerial.printf("SCREENSHOT_START:%d\n", bufferSize);
-        uint8_t* buf = display.getFrameBuffer();
-        logSerial.write(buf, bufferSize);
-        logSerial.printf("SCREENSHOT_END\n");
-      }
-    }
+  // Keep fragmented console input off the blocking UI path. logSerial avoids
+  // the deprecated Serial alias; screenshot transfer itself is unchanged.
+  static DebugSerialCommand serialCommand;
+  if (serialCommand.poll(logSerial, [] { return static_cast<uint32_t>(millis()); })) {
+    const uint32_t bufferSize = display.getBufferSize();
+    logSerial.printf("SCREENSHOT_START:%d\n", bufferSize);
+    uint8_t* buf = display.getFrameBuffer();
+    logSerial.write(buf, bufferSize);
+    logSerial.printf("SCREENSHOT_END\n");
   }
 
   // Check for any user activity (button press or release) or active background work
-  static unsigned long lastActivityTime = millis();
-  if (mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
-      nativeNavigationFrame().buttons || nativeTouchHadActivity() || halTiltSensor.hadActivity() ||
-      activityManager.preventAutoSleep()
-#ifdef ENABLE_SERIAL_LOG
-      || (Serial && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK)
+  if (NativeReaderEntry::consumeResume()) resumeIdleTimer();
+  const bool userActivity = mappedInputManager.wasAnyPressed() || mappedInputManager.wasAnyReleased() ||
+      nativeNavigationFrame().buttons || nativeTouchHadActivity() ||
+#if !defined(BOARD_XTEINK_X4_PRO)
+      halTiltSensor.hadActivity() ||
 #endif
-  ) {
-    lastActivityTime = millis();         // Reset inactivity timer
-    powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
-  }
+      false;
+  (void)serviceIdleSleep(userActivity);
 
+  bool hasHardwareButtonTap = false;
+  auto hardwareButtonTap = MappedInputManager::Button::Up;
+#if !defined(BOARD_XTEINK_X4_PRO)
+  // These legacy GPIO/power adapters are T5/EPD47 hardware operations. X4
+  // input comes from normal provider leases, without a second raw GPIO owner.
   static bool screenshotButtonsReleased = true;
   if (gpio.isPressed(HalGPIO::BTN_POWER) && gpio.isPressed(HalGPIO::BTN_DOWN)) {
     if (screenshotButtonsReleased) {
@@ -706,8 +828,6 @@ void loop() {
     screenshotButtonsReleased = true;
   }
 
-  bool hasHardwareButtonTap = false;
-  auto hardwareButtonTap = MappedInputManager::Button::Up;
   auto queueHardwareButtonTap = [&](const MappedInputManager::Button button) {
     if (!hasHardwareButtonTap) {
       hardwareButtonTap = button;
@@ -778,24 +898,21 @@ void loop() {
     return;
   }
 
-  const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
-  if (millis() - lastActivityTime >= sleepTimeoutMs) {
-    if (gpio.isUsbConnected() && SETTINGS.sleepScreen != CrossPointSettings::DIGITAL_CLOCK) {
-      LOG_DBG("SLP", "Auto sleep skipped after %lu ms of inactivity because USB is connected", sleepTimeoutMs);
-      lastActivityTime = millis();
-    } else {
-      LOG_DBG("SLP", "Auto sleep triggered after %lu ms of inactivity", sleepTimeoutMs);
-      enterDeepSleep();
-      // Desk-clock light sleep returns on user wake; start a fresh idle period.
-      lastActivityTime = millis();
-      return;
-    }
-  }
-
   // Refresh the battery icon when USB is plugged or unplugged.
   // Placed after sleep guards so we never queue a render that won't be processed.
   if (gpio.wasUsbStateChanged()) {
     activityManager.requestUpdate();
+  }
+#endif
+
+  if (idleSleep.pending()) {
+    LOG_DBG("SLP", "Auto sleep triggered after configured idle timeout");
+    // Keep the latch through activity onExit/save/render preparation; no child
+    // may be mapped while the sleep transition is still unwinding the UI.
+    enterDeepSleep();
+    if (NativeReaderEntry::pending()) return;
+    (void)idleSleep.consume(static_cast<uint32_t>(millis())); // Refusal starts a fresh idle period.
+    return;
   }
 
   const unsigned long activityStartTime = millis();
@@ -803,10 +920,11 @@ void loop() {
     mappedInputManager.injectButtonTap(hardwareButtonTap);
   }
   activityManager.loop();
-  if (consumeNativeAppReturn()) lastActivityTime = millis();
+  if (consumeNativeAppReturn()) resumeIdleTimer();
   if (hasHardwareButtonTap) {
     mappedInputManager.clearInjectedButtonTap();
   }
+  if (NativeReaderEntry::pending()) return;
   const unsigned long activityDuration = millis() - activityStartTime;
 
   const unsigned long loopDuration = millis() - loopStartTime;
@@ -824,7 +942,7 @@ void loop() {
     powerManager.setPowerSaving(false);  // Make sure we're at full performance when skipLoopDelay is requested
     yield();                             // Give FreeRTOS a chance to run tasks, but return immediately
   } else {
-    if (millis() - lastActivityTime >= HalPowerManager::IDLE_POWER_SAVING_MS) {
+    if (idleSleep.inactiveFor(static_cast<uint32_t>(millis())) >= HalPowerManager::IDLE_POWER_SAVING_MS) {
       // If we've been inactive for a while, increase the delay to save power
       powerManager.setPowerSaving(true);  // Lower CPU frequency after extended inactivity
       delay(50);
@@ -833,6 +951,64 @@ void loop() {
       delay(10);
     }
   }
+}
+
+static void runReaderSleep(NativeReaderEntry::Action action, bool wakeOnTouch) {
+  switch (action) {
+    case NativeReaderEntry::Action::Sleep:
+      enterDeepSleep();
+      (void)idleSleep.consume(static_cast<uint32_t>(millis()));
+      break;
+    case NativeReaderEntry::Action::SleepKeepingScreen: enterDeepSleepKeepingScreen(wakeOnTouch); break;
+    case NativeReaderEntry::Action::PowerOff: enterPowerOffKeepingScreen(""); break;
+    default: break;
+  }
+}
+
+void loop() {
+#ifdef BOARD_XTEINK_X4_PRO
+  // Boot readiness must not depend on Home's first frame: the ELF's first
+  // pump creates that activity. The ordinary loop still gates input on its
+  // actual successful presentation through x4DiagnosticLoop().
+  if (!x4ReaderStartupReady()) { (void)x4DiagnosticLoop(); return; }
+#endif
+  if (g_displayBootFailed || NativeReaderEntry::blocked()) { delay(250); return; }
+  static bool defaultAppChecked = false;
+  if (!defaultAppChecked) {
+    defaultAppChecked = true;
+    // Recovery and panic handling stay independent of installed applications.
+    if (g_readerEntryEligible) {
+      char artifact[96]{};
+      const auto choice = RuntimeDefaultApp::read(artifact);
+      if (choice == RuntimeDefaultApp::Selection::Absent)
+        std::strcpy(artifact, "default.elf");
+      if (choice != RuntimeDefaultApp::Selection::Invalid) {
+        std::string installed;
+        if (resolveInstalledAppPath(artifact, installed)) {
+          LOG_INF("APP", "default start artifact=%s", artifact);
+          if (!std::strcmp(artifact, "default.elf")) {
+            const bool okay = NativeReaderEntry::run(installed.c_str(), renderer, mappedInputManager,
+                startReaderApplication, readerApplicationLoop, runReaderSleep);
+            LOG_INF("APP", "Reader entry returned okay=%d", static_cast<int>(okay));
+            if (NativeReaderEntry::blocked()) return;
+          } else {
+            startReaderApplication();
+            const auto result = runNativeApp(installed.c_str(), renderer, mappedInputManager);
+            LOG_INF("APP", "default returned result=%d", static_cast<int>(result));
+            activityManager.goHome();
+          }
+        } else if (choice == RuntimeDefaultApp::Selection::Ready) {
+          LOG_ERR("APP", "default unavailable artifact=%s", artifact);
+        }
+      } else {
+        LOG_ERR("APP", "default selector invalid; embedded GUI remains available");
+      }
+    }
+  }
+  // An absent/bad entry is tried once. Preserve the existing recovery GUI and
+  // the original Home/book-resume destination, without an unconditional Home.
+  startReaderApplication();
+  readerApplicationLoop();
 }
 
 #endif // RISCRTE_PROFILE_HEADLESS

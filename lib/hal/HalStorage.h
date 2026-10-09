@@ -8,13 +8,23 @@
 #include <memory>
 #include <string>
 #include <vector>
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+#include "RiscStorageVolumeV1.h"
+#endif
 
 class HalFile;
+class HalReadBudget;
+class HalWriteBudget;
 
 class HalStorage {
  public:
   HalStorage();
   bool begin();
+#if defined(BOARD_XTEINK_X4_PRO) || defined(BOARD_T5S3_PRO)
+  // Borrowed from the platform boot owner; it retains the provider module for the
+  // whole Reader session. No SPI transport or filesystem implementation here.
+  bool bindVolume(const risc_storage_volume_api_v1* volume);
+#endif
   bool ready() const;
   StorageGenerationStamp generation() const;
   bool unchanged(const StorageGenerationStamp& stamp) const;
@@ -32,6 +42,9 @@ class HalStorage {
   // Known media/power transitions mark unavailable without resetting
   // an active filesystem or closing another owner's handles.
   void markUnavailable();
+  bool prepareForSleep();
+  bool cancelSleep();
+  bool commitSleep();
   std::vector<String> listFiles(const char* path = "/", int maxFiles = 200);
   // Read the entire file at `path` into a String. Returns empty string on failure.
   String readFile(const char* path);
@@ -80,6 +93,8 @@ class HalFile : public Print {
   class Impl;
   std::unique_ptr<Impl> impl;
   explicit HalFile(std::unique_ptr<Impl> impl);
+  int readWithBudget(void* buf, size_t count, HalReadBudget* budget);
+  size_t writeWithBudget(const void* buf, size_t count, HalWriteBudget* budget);
 
  public:
   HalFile();
@@ -101,13 +116,27 @@ class HalFile : public Print {
   int available() const;
   size_t position() const;
   int read(void* buf, size_t count);
+  // Same I/O/error contract as read(); the caller owns the budget for this
+  // operation and checkpoints any CPU work between reads. No read-ahead/state.
+  int readCooperatively(void* buf, size_t count, HalReadBudget& budget);
   int read();  // read a single byte
   size_t write(const void* buf, size_t count);
+  // Same writes, mutation/error/lock semantics; explicit operation-local scheduling only.
+  size_t writeCooperatively(const void* buf, size_t count, HalWriteBudget& budget);
   size_t write(uint8_t b) override;
   bool rename(const char* newPath);
   bool isDirectory() const;
   void rewindDirectory();
   bool close();
+  // Metadata cursor: volume backends avoid child opens; legacy SdFat uses
+  // its checked open/close cursor. No child handle escapes this method.
+  // false is clean EOF only when getError() is zero. A failure is sticky.
+  struct DirectoryEntry {
+    char name[128]{};
+    uint64_t size = 0;
+    bool isDirectory = false;
+  };
+  bool readDirectoryEntry(DirectoryEntry& entry);
   HalFile openNextFile();
   // SdFat directory read errors must not be mistaken for clean enumeration end.
   uint8_t getError() const;

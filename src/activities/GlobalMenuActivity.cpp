@@ -13,6 +13,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "runtime/memory/PsramBuffer.h"
+#include "native/NativeTouchInput.h"
 
 namespace {
 constexpr int kPanelMargin = 10;   // gap from the screen edges
@@ -28,6 +29,7 @@ constexpr int kArrowHeight = 18;
 bool hasBacklight() { return Board::capabilities().hasBacklight; }
 
 bool modalShutdownConfirmed(GlobalMenuActivity& menu, GfxRenderer& renderer, MappedInputManager& input) {
+  nativeTouchBeginSurfaceTransition();
   constexpr int margin = 20;
   constexpr int spacing = 30;
   constexpr int fontId = UI_10_FONT_ID;
@@ -288,6 +290,7 @@ GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal(
   if (!hasBacklight()) menu.selectedIndex = BUTTON_SHUTDOWN;
 
   auto redraw = [&] {
+    nativeTouchBeginSurfaceTransition();
     esp_task_wdt_reset();
     // Confirmation clears the whole frame; every overlay redraw starts from the paused app.
     std::memcpy(renderer.getFrameBuffer(), snapshot.data(), renderer.getBufferSize());
@@ -295,6 +298,7 @@ GlobalMenuActivity::ModalResult GlobalMenuActivity::runFirmwareModal(
     esp_task_wdt_reset();
   };
   auto restoreApp = [&] {
+    nativeTouchBeginSurfaceTransition();
     std::memcpy(renderer.getFrameBuffer(), snapshot.data(), renderer.getBufferSize());
     renderer.displayBuffer(DisplayPresentMode::Quality);
   };

@@ -9,7 +9,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_provider_package_inputs_v1 import (  # noqa: E402
-    canonical_manifest, prepare)
+    canonical_manifest, manifest_os_cpu_abi, prepare)
 from generate_privileged_imports_v1 import extract_imports  # noqa: E402
 
 SOURCES = (
@@ -20,10 +20,22 @@ SOURCES = (
      'dist/experimental/i2c-esp32s3-v2/driver.elf', 'i2c.bus'),
     ('Drivers/platform_clock_v1/manifest.json',
      'dist/experimental/platform-clock-v1/driver.elf', 'platform.clock'),
+    ('Drivers/display_epd_video/manifest.json',
+     'dist/experimental/display-epd-video/driver.elf', 'display.output'),
 )
 
 
 def run() -> None:
+    assert manifest_os_cpu_abi({}) == 1
+    assert manifest_os_cpu_abi({'os_cpu_abi': 2}) == 2
+    assert manifest_os_cpu_abi({'os_cpu_abi': 3}) == 3
+    for revision in (None, True, '2', 0, 4, 2.0):
+        try:
+            manifest_os_cpu_abi({'os_cpu_abi': revision})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('invalid ABI revision accepted')
     with tempfile.TemporaryDirectory(prefix='risc-provider-inputs-') as temporary:
         root = Path(temporary)
         for index, (manifest_path, elf_path, expected_capability) in enumerate(SOURCES):
@@ -34,7 +46,7 @@ def run() -> None:
             names = extract_imports(elf)
             assert canonical_manifest(manifest) == (expected_capability, 1)
             assert abi.read_bytes() == (
-                f'os-cpu-abi=1\nprovides={expected_capability}\napi=1\n'.encode('ascii'))
+                f'os-cpu-abi={manifest_os_cpu_abi(json.loads(manifest.read_text()))}\nprovides={expected_capability}\napi=1\n'.encode('ascii'))
             assert imports.read_bytes() == (
                 ''.join(name + '\n' for name in names).encode('ascii'))
             assert 1 <= len(names) <= 128
@@ -78,7 +90,7 @@ def run() -> None:
             pass
         else:
             raise AssertionError('duplicate JSON manifest key accepted')
-        print(f'Physical provider package inputs: 3 real ELFs and '
+        print(f'Physical provider package inputs: 4 real ELFs and '
               f'{len(scenarios) + 1} malformed metadata rejections PASS')
 
 

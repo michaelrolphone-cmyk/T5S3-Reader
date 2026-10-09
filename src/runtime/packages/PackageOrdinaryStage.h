@@ -52,6 +52,25 @@ struct OrdinaryPackagePlan {
   size_t resourceImportCount = 0;
 };
 
+// Optional copied failure context from the work already performed by an
+// inspection. It never changes admission or triggers a diagnostic reread.
+struct OrdinaryInspectionDiagnostic {
+  const char* stage = "none";
+  char entry[128]{};
+  uint32_t detail = 0;
+  bool fail(const char* value, const char* name = nullptr, uint32_t code = 0) {
+    stage = value;
+    detail = code;
+    if (name) {
+      const size_t length = std::strlen(name);
+      const size_t copied = length < sizeof(entry) - 1 ? length : sizeof(entry) - 1;
+      std::memcpy(entry, name, copied);
+      entry[copied] = 0;
+    }
+    return false;
+  }
+};
+
 // CPU0's idle task must run even during repeated synchronous SD operations.
 // Task watchdog resets alone do not service IDLE0. Keep the package algorithm
 // host-testable and yield only on its embedded FreeRTOS implementation.
@@ -224,20 +243,26 @@ template <typename Directory, typename Hash, typename Resolver>
 bool verifyOrdinaryDirectory(const OrdinaryPackagePlan& plan,
     Directory& directory, Hash& hash, Resolver resolver,
     const PackageRuntimePolicy& limits, uint8_t (&io)[kOrdinaryIoBytes],
-    bool verifyContents = true) {
-  if (preflightOrdinaryPackage(plan, limits, resolver) !=
-      PreflightResult::ReadyForContentVerification ||
-      !directory.exactEntries(plan)) return false;
+    bool verifyContents = true, OrdinaryInspectionDiagnostic* diagnostic = nullptr) {
+  auto fail = [&](const char* stage, const char* entry = nullptr, uint32_t detail = 0) {
+    return diagnostic ? diagnostic->fail(stage, entry, detail) : false;
+  };
+  const auto preflight = preflightOrdinaryPackage(plan, limits, resolver);
+  if (preflight != PreflightResult::ReadyForContentVerification)
+    return fail("preflight", nullptr, static_cast<uint32_t>(preflight));
+  if (!directory.exactEntries(plan)) return fail("initial-tree");
   for (size_t i = 0; i < plan.entryCount; ++i) {
     const OrdinaryEntry& entry = plan.entries[i];
     uint64_t size = 0;
-    if (!directory.entrySize(entry.name, size) || size != entry.sizeBytes) return false;
+    if (!directory.entrySize(entry.name, size) || size != entry.sizeBytes)
+      return fail("entry-size", entry.name);
     // Installed-package inspection reads headers only. Integrity is established
     // by installation/update, not by discovery or capability acquisition.
     if (!verifyContents) {
-      if (entry.executable &&
-          (!directory.readAt(entry.name, 0, io, 52) ||
-           !ordinaryElfHeader(io, 52, plan.architecture))) return false;
+      if (entry.executable) {
+        if (!directory.readAt(entry.name, 0, io, 52)) return fail("elf-read", entry.name);
+        if (!ordinaryElfHeader(io, 52, plan.architecture)) return fail("elf-header", entry.name);
+      }
       continue;
     }
     if (!hash.start()) return false;
@@ -255,7 +280,7 @@ bool verifyOrdinaryDirectory(const OrdinaryPackagePlan& plan,
     if (!hash.finish(digest) || !ordinaryDigestEquals(digest, entry.sha256))
       return false;
   }
-  return directory.exactEntries(plan);
+  return directory.exactEntries(plan) || fail("final-tree");
 }
 
 } // namespace RuntimePackages

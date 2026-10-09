@@ -38,6 +38,27 @@ typedef struct {
      * input before rearming. Does not consume foreground-owned input. */
     bool (*reset)(void *context);
 } risc_input_navigation_api_v1;
+
+/* Optional tagged v1 suffix. Older providers retain the unchanged API prefix
+ * and are semantic by default. Only the selected provider may declare that
+ * LEFT/RIGHT represent its physical page-key pair; this is not a board flag. */
+#define RISC_INPUT_NAVIGATION_TRAITS_TAG 0x4e415431u /* NAT1 */
+#define RISC_INPUT_NAVIGATION_TRAITS_VERSION 1u
+#define RISC_INPUT_NAVIGATION_PHYSICAL_PAGE_PAIR 1u
+typedef struct {
+    risc_input_navigation_api_v1 base;
+    uint32_t traits_tag;
+    uint32_t traits_version;
+    uint32_t traits;
+} risc_input_navigation_traits_v1;
+static inline bool risc_input_navigation_has_physical_page_pair(const risc_input_navigation_api_v1 *api) {
+    if (!api || api->api_version != RISC_INPUT_NAVIGATION_API_V1 ||
+        api->struct_size < sizeof(risc_input_navigation_traits_v1)) return false;
+    const risc_input_navigation_traits_v1 *extended = (const risc_input_navigation_traits_v1 *)api;
+    return extended->traits_tag == RISC_INPUT_NAVIGATION_TRAITS_TAG &&
+        extended->traits_version == RISC_INPUT_NAVIGATION_TRAITS_VERSION &&
+        (extended->traits & RISC_INPUT_NAVIGATION_PHYSICAL_PAGE_PAIR) != 0u;
+}
 #ifdef __cplusplus
 }
 #endif

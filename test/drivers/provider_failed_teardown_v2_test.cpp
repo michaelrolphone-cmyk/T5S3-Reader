@@ -9,11 +9,19 @@ int main(int argc, char **argv) {
                             nullptr, 0}));
   const auto grant = graph.acquire("cap.retry", 1);
   assert(grant.slot && graph.interfaceFor(grant));
+  char diagnostic[64]{};
+  const auto* calls = static_cast<const int*>(graph.interfaceFor(grant));
+  assert(*calls == 42 && graph.copyProviderError(grant, diagnostic, sizeof(diagnostic)));
+  assert(*calls == 43);
   // First quiesce fails after the consumer is revoked. Preserve this grant's
   // generation for retry, but never expose an ELF pointer through it again.
   assert(!graph.release(grant));
   assert(!graph.interfaceFor(grant) && graph.liveGrants() == 1);
+  assert(!graph.copyProviderError(grant, diagnostic, sizeof(diagnostic)) && !diagnostic[0]);
+  assert(*calls == 43); // Pending-release grant never invokes a diagnostic callback.
   assert(!graph.shutdown()); // A caller MUST reconcile a failed release.
+  assert(!graph.drainExcept(&grant, 1)); // Retention cannot bless a failed release.
+  assert(!graph.drainExcept(nullptr, 0));
   assert(!graph.acquire("cap.retry", 1).slot); // No regrant while quarantined.
   assert(!graph.addVerified({"unsafe", argv[1], "cap.other", 1, nullptr, 0}));
   assert(graph.release(grant)); // Second quiesce succeeds; unload only NOW.

@@ -9,7 +9,7 @@ cc "${flags[@]}" -DFIXTURE_ID='"fixture-root"' -DFIXTURE_CAPABILITY='"cap.root"'
 cc "${flags[@]}" -DFIXTURE_ID='"fixture-root-alt"' -DFIXTURE_CAPABILITY='"cap.root"' \
   "$repo/test/drivers/provider_graph_fixture.c" -o "$build/root-alt.so"
 cc "${flags[@]}" -DFIXTURE_ID='"fixture-child"' -DFIXTURE_CAPABILITY='"cap.child"' \
-  -DFIXTURE_REQUIRE='"cap.root"' \
+  -DFIXTURE_REQUIRE='"cap.root"' -DFIXTURE_DIAGNOSTICS \
   "$repo/test/drivers/provider_graph_fixture.c" -o "$build/child.so"
 cc "${flags[@]}" -DFIXTURE_ID='"fixture-other"' -DFIXTURE_CAPABILITY='"cap.other"' \
   -DFIXTURE_REQUIRE='"cap.root"' \
@@ -83,7 +83,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
 
 # Failed quiescence revokes grants and does not force-unmap hardware.
 cc "${flags[@]}" -DFIXTURE_ID='"fixture-retry"' \
-  -DFIXTURE_CAPABILITY='"cap.retry"' -DFIXTURE_QUIESCE_FAIL_ONCE \
+  -DFIXTURE_CAPABILITY='"cap.retry"' -DFIXTURE_QUIESCE_FAIL_ONCE -DFIXTURE_DIAGNOSTICS \
   "$repo/test/drivers/provider_graph_fixture.c" -o "$build/retry.so"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo/sdk/driver" \
   -I"$repo/test/drivers/stubs" -I"$repo/src" \

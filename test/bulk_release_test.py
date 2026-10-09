@@ -191,6 +191,13 @@ class DiscoverCandidatesTest(unittest.TestCase):
         self.assertTrue(packaged)
         self.assertEqual(packaged, set(discover_driver_builders(ROOT)))
 
+    def test_x4_driver_release_builds_only_the_selected_source(self):
+        builders = discover_driver_builders(ROOT)
+        self.assertEqual(builders["x4pro-panel"],
+                         [("scripts/build_x4pro_drivers.py", "--source", "x4pro_panel")])
+        self.assertEqual(builders["x4pro-sd"],
+                         [("scripts/build_x4pro_drivers.py", "--source", "x4pro_sd")])
+
     def test_ignores_driver_manifests_outside_canonical_release_packages(self):
         self.provider("gps_nmea", "gps-nmea", "2.0.0", abi=1)
         self.assertNotIn(

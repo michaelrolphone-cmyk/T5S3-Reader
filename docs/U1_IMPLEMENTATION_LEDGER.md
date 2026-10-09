@@ -1581,3 +1581,16 @@ Historical green GitHub workflow `35427506383` ran at old `7bffec3`, NOT these c
 5. Obtain actual matching-head firmware, Xtensa ELFs, apps, imports/relocations, package/catalog, missing/corrupt install and charging/OTG/sleep test evidence. Owner performs hardware qualification only after software completion. U3 owns native I²C/SPI/UART and unrelated peripherals; U4 CAM provisioning.
 
 **Implementation In Progress.**
+
+## SD placement correction (firmware 1.3.79)
+
+Owner rejected ec0c099 internal-flash driver placement for X4/T5S3. Both now
+read/verify ordinary SD generations through an isolated read-only bootstrap,
+copy graph-owned snapshots, check controller release and then activate external
+providers. Real /Drivers roots remain pinned against unsafe replacement.
+The boot-only parser reuses bounded FatFs in read-only/minimal configuration;
+normal driver payloads are unchanged. No flash-driver fallback, partition erase
+or device write. Artifact staging emits SD roots/profiles/Inbox archives.
+See docs/boards/sd-driver-bootstrap.md for constraints and evidence.
+Physical handoff remains untested; prior ec0 results qualify only the rejected
+placement. Separate CI task owns deployment/controller integration.

@@ -4,6 +4,7 @@
 static const t5_video_api_v1* sv_video;
 static t5_app_frame_t sv_frame;
 static uint8_t* sv_pages[3]; // current, previous, next; bounded PSRAM only
+static bool sv_requested;
 static bool sv_enabled,sv_fatal,sv_tracking,sv_dragging,sv_vertical,sv_animating,sv_dirty;
 static bool sv_cached_edit;
 static uint32_t sv_cached_page,sv_started,sv_anim_start,sv_last_submit,sv_blocked_since;
@@ -17,6 +18,7 @@ static void sv_close(void) {
     sv_enabled=false;
 }
 static bool sv_open(void) {
+    if (!sv_requested) return false;
     const size_t required=offsetof(t5_app_api_v1,touch_contact)+sizeof(api->touch_contact);
     if(api->struct_size<required || !api->copy_ui_frame || !api->touch_contact ||
        !api->psram_alloc || !api->psram_free || !api->copy_ui_frame(NULL,0,&sv_frame)) return false;

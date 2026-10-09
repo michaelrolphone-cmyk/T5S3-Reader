@@ -9,12 +9,15 @@
 #include <freertos/task.h>
 
 #include <algorithm>
+#include <cstring>
 #include <string>
 #include <vector>
 
 namespace RuntimePackages {
 
-bool recoverAppInventory() {
+bool recoverAppInventory(StorageGenerationStamp* noBackups) {
+  if (noBackups) *noBackups = {};
+  const auto scanGeneration = Storage.generation();
   if (!Storage.ready()) return false;
   HalFile directory = Storage.open("/Apps", O_RDONLY);
   if (!directory.isOpen() || !directory.isDirectory()) {
@@ -27,26 +30,43 @@ bool recoverAppInventory() {
   std::vector<std::string> candidates;
   candidates.reserve(128);
   bool complete = true;
+  bool foundBackup = false;
   size_t entries = 0;
+  const uint32_t began = millis();
+  uint32_t yielded = began, reported = began;
   for (;;) {
-    HalFile file = directory.openNextFile();
-    if (!file.isOpen()) break;
+    const uint32_t now = millis();
+    if (now - began >= 30000u) { complete = false; break; }
+    if ((entries && (entries & 15u) == 0) || now - yielded >= 8u) {
+      esp_task_wdt_reset(); vTaskDelay(1); yielded = millis();
+    }
+    if (now - reported >= 1000u) {
+      LOG_DBG("APPSTORE", "Recovery scan entries=%u transactions=%u",
+              (unsigned)entries, (unsigned)candidates.size());
+      reported = now;
+    }
+    HalFile::DirectoryEntry entry{};
+    if (!directory.readDirectoryEntry(entry)) {
+      complete = directory.getError() == 0;
+      break;
+    }
     if (++entries > 1024) {
-      file.close();
       complete = false;
       break;
     }
-    char name[160]{};
-    const size_t length = file.getName(name, sizeof(name));
-    const bool isDirectory = file.isDirectory();
-    file.close();
-    if (isDirectory) continue;
-    if (length == 0 || length >= sizeof(name)) {
-      complete = false;
-      break;
+    // Include directories and case variants: a pathname existence check would
+    // also find these on FAT. Reuse this already bounded traversal, not another
+    // per-app directory search. The hint retains no filenames.
+    const size_t nameLength = std::strlen(entry.name);
+    if (nameLength >= 4) {
+      const char* suffix = entry.name + nameLength - 4;
+      if (suffix[0] == '.' && (suffix[1] == 'b' || suffix[1] == 'B') &&
+          (suffix[2] == 'a' || suffix[2] == 'A') && (suffix[3] == 'k' || suffix[3] == 'K'))
+        foundBackup = true;
     }
+    if (entry.isDirectory) continue;
     std::string elf;
-    if (!appRecoveryCandidate(name, elf)) continue;
+    if (!appRecoveryCandidate(entry.name, elf)) continue;
     if (std::find(candidates.begin(), candidates.end(), elf) != candidates.end()) continue;
     if (candidates.size() >= 256) {
       complete = false;
@@ -58,12 +78,14 @@ bool recoverAppInventory() {
       vTaskDelay(1);
     }
   }
-  directory.close();
+  if (!directory.close() || millis() - began >= 30000u) complete = false;
   if (!complete) {
     LOG_ERR("APPSTORE", "App inventory too large or unreadable; refusing partial recovery");
     return false;
   }
 
+  LOG_INF("APPSTORE", "Recovery scan entries=%u transactions=%u ms=%lu",
+          (unsigned)entries, (unsigned)candidates.size(), (unsigned long)(millis()-began));
   bool allRecovered = true;
   for (const auto& elf : candidates) {
     const std::string target = std::string("/Apps/") + elf;
@@ -90,6 +112,8 @@ bool recoverAppInventory() {
     esp_task_wdt_reset();
     vTaskDelay(1);
   }
+  if (noBackups && allRecovered && !foundBackup && Storage.unchanged(scanGeneration))
+    *noBackups = scanGeneration;
   return allRecovered;
 }
 

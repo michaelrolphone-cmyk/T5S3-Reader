@@ -2,6 +2,7 @@
 """Regression checks for HalFile lifetime synchronization."""
 
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,19 +15,26 @@ def between(start: str, end: str) -> str:
     return SOURCE[begin:finish]
 
 
+def t5s3_body(source: str) -> str:
+    # X4's provider handle has no FsFile/SPI transaction. Inspect the legacy
+    # branch's lock order without treating X4's separate cleanup as raw I/O.
+    return re.sub(r"#if defined\(BOARD_XTEINK_X4_PRO\).*?#endif\n", "", source,
+                  flags=re.DOTALL)
+
+
 class HalFileLifetimeContract(unittest.TestCase):
     def test_destructor_destroys_raw_fsfile_under_storage_lock(self):
-        body = between("HalFile::~HalFile()", "HalFile::HalFile(HalFile&&)")
+        body = t5s3_body(between("HalFile::~HalFile()", "HalFile::HalFile(HalFile&&)"))
         self.assertNotIn("= default", body)
         lock = body.index("HalStorage::StorageLock lock;")
         destroy = body.index("impl.reset();")
         self.assertLess(lock, destroy)
 
     def test_move_assignment_destroys_previous_raw_fsfile_under_storage_lock(self):
-        body = between(
+        body = t5s3_body(between(
             "HalFile& HalFile::operator=(HalFile&& other)",
             "HalFile HalStorage::open(",
-        )
+        ))
         self.assertNotIn("= default", body)
         lock = body.index("HalStorage::StorageLock lock;")
         destroy = body.index("impl.reset();")

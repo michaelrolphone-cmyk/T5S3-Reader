@@ -24,6 +24,13 @@ def canonical_capability(value: object) -> bool:
         CAPABILITY.fullmatch(value) is not None)
 
 
+def manifest_os_cpu_abi(manifest: dict) -> int:
+    revision = manifest.get('os_cpu_abi', 1)
+    if type(revision) is not int or revision not in (1, 2, 3):
+        raise ValueError('unsupported OS/CPU ABI revision')
+    return revision
+
+
 def canonical_manifest(path: Path) -> tuple[str, int]:
     if path.stat().st_size > 4096:
         raise ValueError('provider manifest is oversized')
@@ -54,6 +61,7 @@ def canonical_manifest(path: Path) -> tuple[str, int]:
     if manifest.get('architecture') != 'xtensa-esp32s3' or (
         manifest.get('file_name') != 'driver.elf'):
         raise ValueError('unexpected architecture or executable artifact')
+    manifest_os_cpu_abi(manifest)
     provides = manifest.get('provides')
     if not isinstance(provides, list) or len(provides) != 1 or (
         not isinstance(provides[0], dict)):
@@ -84,8 +92,9 @@ def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
     else:
         from generate_privileged_imports_v1 import extract_imports, encode_imports
     capability, api = canonical_manifest(manifest)
+    revision = manifest_os_cpu_abi(json.loads(manifest.read_text(encoding="utf-8")))
     names = extract_imports(elf)  # Both .dynsym and .symtab; zero is legitimate.
-    profile = f'os-cpu-abi=1\nprovides={capability}\napi={api}\n'.encode('ascii')
+    profile = f'os-cpu-abi={revision}\nprovides={capability}\napi={api}\n'.encode('ascii')
     imports = encode_imports(names)
     if len(profile) > 160 or len(imports) > 128 * 128:
         raise ValueError('profile or import resource exceeds provider metadata bounds')
@@ -94,7 +103,7 @@ def prepare(elf: Path, manifest: Path, destination: Path) -> tuple[Path, Path]:
     output_imports = destination / 'privileged-imports.v1'
     output_profile.write_bytes(profile)
     output_imports.write_bytes(imports)
-    print(f'Provider capability: {capability}@{api} (generic ABI 1)')
+    print(f'Provider capability: {capability}@{api} (generic ABI {revision})')
     print(f'Exact linked ELF imports: {len(names)}')
     for label, value in [('ELF', elf), ('provider-abi.v1', output_profile),
                          ('privileged-imports.v1', output_imports)]:

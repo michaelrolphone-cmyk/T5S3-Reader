@@ -11,6 +11,7 @@ struct HalFile {
 };
 struct ManifestTestStorage {
   HalFile open(const char*, int) { return {}; }
+  bool openFileForRead(const char*, const char*, HalFile&) { return false; }
   String readFile(const char*) { return {}; }
 };
 inline ManifestTestStorage Storage;
