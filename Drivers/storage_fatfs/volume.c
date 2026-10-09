@@ -113,7 +113,11 @@ static bool leave(void) {
 }
 static bool enter(void) {
     if (!enter_lifecycle()) return false;
-    if (power_down_prepared) { (void)leave(); return false; }
+    if (power_down_prepared
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+        || STORAGE_VOLUME_ADMISSION_FROZEN()
+#endif
+    ) { (void)leave(); return false; }
     return true;
 }
 static bool enter_ready(void) {
@@ -497,6 +501,9 @@ static bool last_error_api(void *context, char *out, size_t capacity) {
 static bool prepare_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
 #ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
     if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
 #endif
@@ -516,6 +523,9 @@ static bool prepare_power_down(void *context) {
 static bool cancel_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
 #ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
     if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
 #endif
@@ -531,6 +541,9 @@ static bool cancel_power_down(void *context) {
 static bool commit_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
 #ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
     if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
 #endif
@@ -562,6 +575,9 @@ static bool sleep_leave(void) {
 static bool prepare_sleep(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
     if (sleep_state == SLEEP_PREPARED) return sleep_leave();
     if (sleep_state != SLEEP_ACTIVE || power_down_prepared || power_down_committed ||
         !started || io_failed || !transport_idle() || has_handles()) {
@@ -580,6 +596,9 @@ static bool prepare_sleep(void *context) {
 static bool commit_sleep(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
     if (sleep_state == SLEEP_COMMITTED) return sleep_leave();
     if (sleep_state != SLEEP_PREPARED || io_failed || !transport_idle() || has_handles()) {
         (void)sleep_leave(); return false;
@@ -601,6 +620,10 @@ static int32_t resume_sleep(void *context) {
      * not inspect transaction state without owning the operation guard. */
     if (!enter_lifecycle())
         return STORAGE_VOLUME_SLEEP_UNSAFE() ? RISC_STORAGE_SLEEP_RETAINED : RISC_STORAGE_SLEEP_REFUSED;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN())
+        return leave() ? RISC_STORAGE_SLEEP_REFUSED : RISC_STORAGE_SLEEP_RETAINED;
+#endif
     int32_t result;
     if (sleep_state == SLEEP_RETAINED || STORAGE_VOLUME_SLEEP_UNSAFE()) {
         sleep_state = SLEEP_RETAINED;

@@ -60,13 +60,21 @@ static inline void x4pro_pin_release(uint32_t pin) {
     if (index == 8) { reply[3] = 1; reply[4] = 0xaa; }
     if (index == 41) { reply[0] = 0x3f; reply[1] = 0xc0; }
     if (index == 3) { reply[1] = 0x12; reply[2] = 0x34; }
+    if (index == 9) {
+        /* Native CMD9 carries a full R2 CSD, independent of FAT/BPB size. */
+        const uint32_t size = card_sectors / 1024u - 1u;
+        reply[0] = 0x3f; reply[1] = 0x40; reply[6] = 9;
+        reply[8] = (uint8_t)(size >> 16); reply[9] = (uint8_t)(size >> 8);
+        reply[10] = (uint8_t)size;
+        reply[16] = (uint8_t)((risc_sd_crc7(reply + 1, 15) << 1) | 1u);
+    }
     if (index == 17 || index == 24) {
         data_lba = arg;
         if (data_lba >= card_sectors) { card_bad_pin = true; data_lba = 0; }
         if (index == 17) { ++card_reads; read_pending = true; }
         else { write_pending = true; write_at = 0; }
     }
-    reply_count = index == 2 ? 136 : 48; reply_at = 0; reply_active = true;
+    reply_count = index == 2 || index == 9 ? 136 : 48; reply_at = 0; reply_active = true;
     for (unsigned i = 0; i < reply_count; ++i) reply_bits[i] = (reply[i / 8] >> (7 - i % 8)) & 1;
 }
 static inline bool x4pro_pin_read(uint32_t pin) {
