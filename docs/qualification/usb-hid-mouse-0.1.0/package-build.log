@@ -1,0 +1,8 @@
+Provider capability: usb.hid.mouse@1 (generic ABI 1)
+Exact linked ELF imports: 2
+ELF SHA-256: adb4bb40f54c3969e7d8c1c4dd013abcdef3aa3cac1bd058f07d700aeac62bf2
+provider-abi.v1 SHA-256: 6812428de30a362d060590e60ffa41dbffbf5f48adc69e74c03582fa523a89ba
+privileged-imports.v1 SHA-256: a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca
+Unsigned provider metadata generated; SHA-256 is integrity, not authority.
+Installable: usb-hid-mouse@0.1.0 -> driver-usb-hid-mouse-0.1.0-xtensa-esp32s3.rte.zip (usb.hid.mouse@1)
+1 manifest-discovered providers bundled; no ELF activated or firmware flashed.

@@ -1,0 +1,349 @@
+{
+  "source": {
+    "repository": "michaelrolphone-cmyk/T5S3-Reader",
+    "checkout": "/workspace/shared/x4-usb-mouse-provider",
+    "base_commit": "baa9dfd96fd2d8457353ab85e90bf2d089429e54",
+    "commit": "bf997f3d777e644e98c2f885a9c9f4c81e1a0e48",
+    "clean": true,
+    "branch": "feature/usb-hid-mouse",
+    "new_files_and_one_builder_edit": {
+      "Drivers/usb_hid_mouse/Descriptor.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/Drivers/usb_hid_mouse/Descriptor.h",
+        "bytes": 8610,
+        "sha256": "deb700acd68593c6a3114c891bd4e356c6cf0559357d641a74bd517ae68c0c52"
+      },
+      "Drivers/usb_hid_mouse/driver.c": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/Drivers/usb_hid_mouse/driver.c",
+        "bytes": 16994,
+        "sha256": "ab99811114d55066e0877209cee4dee3ac5b3b44223e76e30bd8df2065daa13f"
+      },
+      "Drivers/usb_hid_mouse/manifest.json": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/Drivers/usb_hid_mouse/manifest.json",
+        "bytes": 350,
+        "sha256": "295cef2fe7de2e631a3e81c6067802265d6470521051cbf7f3ebf624e4d303de"
+      },
+      "docs/USB_HID_MOUSE_PROVIDER.md": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/docs/USB_HID_MOUSE_PROVIDER.md",
+        "bytes": 11166,
+        "sha256": "9242a554c506826c876d39a54397c4a9b6ef935fb3bfa74dceb32c53858c62fa"
+      },
+      "scripts/build_usb_hid_common.py": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/scripts/build_usb_hid_common.py",
+        "bytes": 3460,
+        "sha256": "dabaf3f7b48efee62ff0175567a528debd6c7024ca9d5b77c0886c32119726cc"
+      },
+      "scripts/build_usb_hid_mouse.py": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/scripts/build_usb_hid_mouse.py",
+        "bytes": 261,
+        "sha256": "265d08fb4903046e258e609056a1be86656adc78a0aa5337fc4169c662ee8e75"
+      },
+      "sdk/driver/RiscUsbMouseV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscUsbMouseV1.h",
+        "bytes": 3089,
+        "sha256": "bbdf2c8c92adcc23a3a720e51fa630b83f6fa0f0f28853ddab17c1041a37f416"
+      },
+      "test/drivers/usb_hid_mouse_composition_test.c": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/test/drivers/usb_hid_mouse_composition_test.c",
+        "bytes": 6419,
+        "sha256": "f3e0dc65f8084d11ef444397ec801bc5dff9f418bd13218b6ae27b5fb15fbb78"
+      },
+      "test/drivers/usb_hid_mouse_test.c": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/test/drivers/usb_hid_mouse_test.c",
+        "bytes": 19150,
+        "sha256": "80d2dff394d661b526984c3ef80733730337a1852ab798420b5a30e18590f1dd"
+      },
+      "test/run_usb_hid_mouse_test.sh": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/test/run_usb_hid_mouse_test.sh",
+        "bytes": 1067,
+        "sha256": "4dcee178ec8425fade51f76559588b6fef9b76827ee86b56e55066f7d587e3b1"
+      }
+    }
+  },
+  "identity": {
+    "id": "usb-hid-mouse",
+    "old_version": null,
+    "new_version": "0.1.0",
+    "capability": "usb.hid.mouse@1",
+    "driver_abi": 2,
+    "requires": [
+      "usb.hid@1",
+      "platform.clock@1"
+    ],
+    "status": "experimental-unpublished",
+    "version_live_checks": {
+      "checked_at_utc": "2026-10-09",
+      "default_manifest": "Absent (connector contents API 404)",
+      "exact_id_code_search": "No matches",
+      "exact_id_all_pr_search": "No matches",
+      "release_index_url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/release-index/release-index.json",
+      "release_index_blob": "9da276182991cf808625d76b8664f7fa5bb01d5e",
+      "release_index_contains_mouse_id": false
+    }
+  },
+  "target": {
+    "compiler": {
+      "path": "/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc",
+      "bytes": 920432,
+      "sha256": "732bebd44b70a21687ffa3ac5da55edc9b555080ad21cfd74503b2288a143d3f"
+    },
+    "compiler_version": "xtensa-esp32s3-elf-gcc (crosstool-NG esp-2021r2-patch5) 8.4.0",
+    "builder": "scripts/build_usb_hid_common.py via build_usb_hid_mouse.py",
+    "flags": [
+      "-std=c11",
+      "-Os",
+      "-fPIC",
+      "-mtext-section-literals",
+      "-mlongcalls",
+      "-fvisibility=hidden",
+      "-nostdlib",
+      "-nostartfiles",
+      "-shared",
+      "-Wl,--hash-style=sysv",
+      "-Wl,--exclude-libs,ALL",
+      "-lgcc"
+    ],
+    "exact_sdk": {
+      "RiscUsbMouseV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscUsbMouseV1.h",
+        "bytes": 3089,
+        "sha256": "bbdf2c8c92adcc23a3a720e51fa630b83f6fa0f0f28853ddab17c1041a37f416"
+      },
+      "RiscUsbHidV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscUsbHidV1.h",
+        "bytes": 4383,
+        "sha256": "5b5549c4cb718dec55f2aca8bc93f401b2d5a703d30aaa1a78d1bcdd26755b5c"
+      },
+      "RiscUsbControllerV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscUsbControllerV1.h",
+        "bytes": 5032,
+        "sha256": "226f083493085ecdcaa21a7c3bf1c269640b7d1ebaa099e7217fb64124f1dbed"
+      },
+      "RiscUsbProviderV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscUsbProviderV1.h",
+        "bytes": 2226,
+        "sha256": "65bbde81bf4159918392d9525dc0dfd5a075bf028a693d9a4d9981b1cecf516e"
+      },
+      "RiscSerialPortV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscSerialPortV1.h",
+        "bytes": 3336,
+        "sha256": "7f00311161a071c6575be8b65e7aba30ebef7a8f1a45f9c0bf9168bc25e05700"
+      },
+      "RiscProviderV2.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscProviderV2.h",
+        "bytes": 3302,
+        "sha256": "2935d83493a411e19ee98b8c7e805b86f4adf98c6bde66fd031df7cc379bdc17"
+      },
+      "RiscStreamProviderV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscStreamProviderV1.h",
+        "bytes": 1411,
+        "sha256": "0fe306e060321387c816bb70ec4370a501a423f4fe19a20c9be80aa1b98f3432"
+      },
+      "RiscPlatformClockV1.h": {
+        "path": "/workspace/shared/x4-usb-mouse-provider/sdk/driver/RiscPlatformClockV1.h",
+        "bytes": 592,
+        "sha256": "41a12f6529f38731ee874f8bc166e1cf89fe376a1448fe5a4dd4c9abac90e5e2"
+      }
+    },
+    "existing_sdk_headers_equal_recovered_sdk": true,
+    "elf": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/linked/driver.elf",
+      "bytes": 15560,
+      "sha256": "adb4bb40f54c3969e7d8c1c4dd013abcdef3aa3cac1bd058f07d700aeac62bf2"
+    },
+    "header": {
+      "class": 32,
+      "little_endian": true,
+      "machine": "EM_XTENSA",
+      "type": "ET_DYN"
+    },
+    "exports": [
+      "t5_driver_get"
+    ],
+    "imports": [
+      "memcpy",
+      "memset"
+    ],
+    "allocated_sections": {
+      ".hash": {
+        "bytes": 48,
+        "address": 148
+      },
+      ".dynsym": {
+        "bytes": 112,
+        "address": 196
+      },
+      ".dynstr": {
+        "bytes": 53,
+        "address": 308
+      },
+      ".rela.dyn": {
+        "bytes": 372,
+        "address": 364
+      },
+      ".rela.plt": {
+        "bytes": 24,
+        "address": 736
+      },
+      ".text": {
+        "bytes": 7692,
+        "address": 760
+      },
+      ".rodata": {
+        "bytes": 51,
+        "address": 8452
+      },
+      ".got.loc": {
+        "bytes": 88,
+        "address": 8504
+      },
+      ".data.rel.ro": {
+        "bytes": 72,
+        "address": 12688
+      },
+      ".dynamic": {
+        "bytes": 160,
+        "address": 12760
+      },
+      ".got": {
+        "bytes": 4,
+        "address": 12920
+      },
+      ".data": {
+        "bytes": 4,
+        "address": 12924
+      },
+      ".bss": {
+        "bytes": 11376,
+        "address": 12928
+      }
+    },
+    "loader_map": {
+      "relocations_examined": 33,
+      "unmapped_relocations": [],
+      "unmapped_relative_values": [],
+      "absolute_peripheral_relocations": [],
+      "unmapped_executable_sections": []
+    },
+    "deterministic_final_rebuild": true
+  },
+  "artifacts": {
+    "usb-hid-mouse-010.bundle": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/usb-hid-mouse-010.bundle",
+      "bytes": 22766,
+      "sha256": "0e8734d7cb748ce984979b59fd6701f9933da1d92c5222841dde977c399aa34b"
+    },
+    "usb-hid-mouse-010.patch": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/usb-hid-mouse-010.patch",
+      "bytes": 72294,
+      "sha256": "e666854bed27bf06c018a7936b99ea2806ba60a873e9ce43506a7fde82094e0f"
+    },
+    "manifest.json": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/linked/manifest.json",
+      "bytes": 527,
+      "sha256": "4b9a9b6de4b5ff6557266b07ddd741b6f9a0b5025d19272aaf270dccc53cc1c6"
+    },
+    "driver.elf": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/packages/usb-hid-mouse/driver.elf",
+      "bytes": 15560,
+      "sha256": "adb4bb40f54c3969e7d8c1c4dd013abcdef3aa3cac1bd058f07d700aeac62bf2"
+    },
+    "package-catalog.json": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/packages/package-catalog.json",
+      "bytes": 416,
+      "sha256": "8f48ec8601d987af5e9e6b070130f32ae5aa12dc9bcab932a9f33d0debee8de7"
+    },
+    "driver-usb-hid-mouse-0.1.0-xtensa-esp32s3.rte.zip": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/packages/driver-usb-hid-mouse-0.1.0-xtensa-esp32s3.rte.zip",
+      "bytes": 16727,
+      "sha256": "6ff5fddd47273ae9af553636a9a438cb4618a1839ef49ad5a69c144b5a00696e"
+    },
+    "provider-abi.v1": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/packages/usb-hid-mouse/provider-abi.v1",
+      "bytes": 42,
+      "sha256": "6812428de30a362d060590e60ffa41dbffbf5f48adc69e74c03582fa523a89ba"
+    },
+    ".package.json": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/packages/usb-hid-mouse/.package.json",
+      "bytes": 667,
+      "sha256": "624a1a2063c1342a7fdd76e126a68679bd0b29d74a44d278d667ed7370ec5806"
+    },
+    "privileged-imports.v1": {
+      "path": "/workspace/shared/x4-usb-mouse-010-artifacts/packages/usb-hid-mouse/privileged-imports.v1",
+      "bytes": 14,
+      "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca"
+    }
+  },
+  "tests": {
+    "normal_tests": {
+      "path": "/workspace/shared/x4-usb-mouse-010-tests.log",
+      "bytes": 220,
+      "sha256": "197942b6c78af5767526ad899e98a55de2ba2c34a3cbfa63ae517179d846b1ec"
+    },
+    "asan_ubsan": {
+      "path": "/workspace/shared/x4-usb-mouse-010-sanitized.log",
+      "bytes": 220,
+      "sha256": "197942b6c78af5767526ad899e98a55de2ba2c34a3cbfa63ae517179d846b1ec"
+    },
+    "existing_hid_regressions": {
+      "path": "/workspace/shared/x4-usb-mouse-010-existing-hid-regression.log",
+      "bytes": 907,
+      "sha256": "3c43bf6a25e1ba3f5e9b0a033ad470c0b4c25b10ee955b582f88ae5ba28d9966"
+    },
+    "review_regression_failing_before": {
+      "path": "/workspace/shared/x4-usb-mouse-010-priority-failing-before.log",
+      "bytes": 274,
+      "sha256": "da5c021c95cb864ed8c77a2d7278adbb4a6f38298ebd13f1d43e67f675eb5902"
+    },
+    "target_build": {
+      "path": "/workspace/shared/x4-usb-mouse-010-build.log",
+      "bytes": 127,
+      "sha256": "f744528017ff03110bdb009a43f3d562e7889c8a8335109042f998c5458274a9"
+    },
+    "package_build": {
+      "path": "/workspace/shared/x4-usb-mouse-010-package.log",
+      "bytes": 603,
+      "sha256": "6dd0cd44789fe86d87eb9288448524afcad2195e681a5e27620aeffd839a8f5d"
+    },
+    "readelf_audit": {
+      "path": "/workspace/shared/x4-usb-mouse-010-elf-audit.txt",
+      "bytes": 5631,
+      "sha256": "8cbd3a89dbf6446d78bbe2725326d0d5242a8c43c8533d7413b7561a5507ef6c"
+    }
+  },
+  "test_coverage": [
+    "production parser and report apply for every signed width2..16",
+    "valid/malformed/truncated/ambiguous descriptors plus 10000 deterministic malformed inputs",
+    "known/unknown/truncated report IDs",
+    "boot fallback and explicit report protocol",
+    "x/y/wheel/pan and button transitions",
+    "multiple devices/interfaces/subscribers and fairness",
+    "sticky GAP and subscription snapshot baseline",
+    "read/scan/setup failures and disconnect releases",
+    "bounded count/time/backoff/negative cache",
+    "four-mouse exact failed-close token priority (failing before, passing after)",
+    "failed close retry and retained session ownership",
+    "zero dependency calls after terminal retention",
+    "actual raw HID and mouse shared ELF composition including void host release quarantine",
+    "unchanged existing HID/keyboard/gamepad/text/navigation/controller regressions"
+  ],
+  "sanitizer_note": "ASan and UBSan passed. LeakSanitizer disabled because ptrace executor prevents its operation; provider has no heap allocations.",
+  "independent_review": "Parent reviewed production parser, retained-close priority, GAP/snapshot, raw HID composition; identified one exact-token priority issue now fixed with failing-before and passing-after evidence; no further finding reported.",
+  "preservation": {
+    "existing_hid_headers_and_prefixes_unchanged": true,
+    "existing_driver_bytes_unchanged": true,
+    "runtime_core_sources_unchanged": true,
+    "controller_flag_off_sources_unchanged": true,
+    "only_existing_file_edited": "scripts/build_usb_hid_common.py (add source name to tuple; existing flags unchanged)"
+  },
+  "limits": [
+    "No UI cursor or product consumer integration",
+    "No Runtime input-core logic",
+    "Unchanged raw HID close calls void host.release then returns true; lower host must retain quarantine and graph pins",
+    "RETAINED after third false HID close: exact sessions and dependencies stay pinned, zero further dependency calls, no unload/restart",
+    "One mouse application/input report ID; descriptor/report limits in docs/USB_HID_MOUSE_PROVIDER.md",
+    "X4 board.power.vbus root remains unqualified",
+    "No physical host/mouse interoperability or electrical safety qualification",
+    "No publication, installation, product-image change or hardware action"
+  ],
+  "consumer_handoff": "/workspace/shared/x4-usb-mouse-provider/docs/USB_HID_MOUSE_PROVIDER.md"
+}
