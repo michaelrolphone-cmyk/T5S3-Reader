@@ -1,75 +1,96 @@
-# X4 Pro high-FPS panel laboratory
+# X4 Pro UC8279 ghosting and powered-idle laboratory firmware
 
-Standalone firmware for experimentally driving the **UC8279 ZHX** Xteink X4 Pro panel outside the Reader runtime. It does not mount the SD card, load RiscRTE drivers, start touch, or enter the normal application firmware.
+This branch contains **X4LAB v0.1.7**, a standalone diagnostic derived directly from the hardware-validated **v0.1.5** implementation. It tests whether delayed old-image ghosting is caused by powered-idle panel bias, stale DTM1/DTM2 state, the 30-second resident maintenance refresh, or a charge-compensation sequence.
 
-## Physical abort
+It does not boot RiscRTE, mount storage, start touch, or load installed drivers.
 
-**Press either side navigation button at any time.** Both buttons are connected to an IRAM GPIO interrupt. The interrupt immediately:
+## Electrical boundary
 
-1. pulls panel `RST` (GPIO14) LOW;
-2. forces panel `CS` (GPIO13) HIGH;
-3. stops the panel clock/data/DC outputs;
-4. latches an abort flag; and
-5. leaves the firmware permanently halted with reset held LOW until the device is rebooted.
+Every mode remains inside the stable v0.1.5 envelope:
 
-The v0.1.5 transport uses transactions of up to 160 rows. This does not delay the electrical abort: the interrupt raises CS and asserts panel reset independently of the polling SPI transaction. The foreground path also checks the abort between transactions and during every bounded BUSY wait.
+- recognized UC8279 ZHX `LUT_VER` `0x68` or `0x69` only;
+- fixed 800×600 controller geometry with visible gates 120–599;
+- complete visible 800×480 test region in every mode;
+- ordinary full-width partial-window commands;
+- 20 MHz hardware SPI only;
+- PLL values `0x0E` and `0x0F` only;
+- no TCON changes;
+- no compact or remapped `TRES`/`GSST` geometry;
+- no 40/80 MHz panel transport;
+- no `0x3F` PLL probe;
+- no voltage, VCOM, booster, PMIC, or battery changes;
+- no deep-sleep command during the tests.
 
-The **power button** starts the next test mode. During a run it requests a soft stop after the current refresh. USB serial `q`/`x` is another hard-abort path.
+The destructive v0.1.6 scan/timing path is absent and unreachable.
 
-## Controller gate
+The absolute one- and two-frame bank uses the corrected product-driver transition mapping: registers `0x21..0x24` are `0x81, 0x81, 0x41, 0x41` for a one-frame pulse.
 
-The firmware probes `FLG` (`0x71`) and `VER` (`0x70`) twice before enabling hardware SPI. It refuses to run unless both reads agree, BUSY_N reports idle, and `VER[2]` is **0x68 or 0x69**. Those are the ZHX UC8279 LUT IDs this experiment targets. Other controllers, ambiguous reads, and floating-bus results halt with panel reset held LOW.
+## Common sequence
 
-## Operation
+Every mode starts independently:
 
-1. Flash the merged artifact at offset `0x0`.
-2. Open USB serial at 115200 baud.
-3. Reboot without holding the left button; GPIO0 is also a boot strap.
-4. The firmware performs one OTP full-clean baseline and waits.
-5. Press the power button to run the next mode, or send `1` through `9` over serial to select a mode directly.
-6. Press either side button for an immediate hard abort.
+1. reset the controller;
+2. write white across complete 800×600 DTM1 and DTM2 RAM;
+3. perform one stock OTP white clean;
+4. draw a full-visible asymmetric high-contrast pattern;
+5. repeat resident pattern refreshes for 2.3 seconds;
+6. hold that pattern without refresh for 30 seconds;
+7. copy the pattern into DTM1 so it is the explicit OLD plane;
+8. draw an absolute one-frame white clear into DTM2;
+9. repeat resident white refreshes for 2.3 seconds;
+10. apply the selected experiment and observe for 60 seconds.
 
-Modes never advance automatically. Every mode is bounded by a frame count and a 3.5-second refresh timeout. A timeout also resets and halts the panel.
+The high-contrast image contains vertical bars, checkerboards, diagonal fields, asymmetric corner markers, horizontal fiducials, and a narrow white spine. Its inverse and all-white frame are precomputed once. Buffer hashes are printed at boot.
 
-## v0.1.5 test matrix
+No screen update is made during the observation hold except the explicit mode-4 maintenance pulse and the named compensation operations. Progress is reported over serial every five seconds.
 
-| Mode | Waveform/state model | SPI | Updated area | Purpose |
-|---:|---|---:|---|---|
-| 1 | 2-frame Bayer, differential DTM1/DTM2 | 20 MHz | 800×160 | Known-good reference |
-| 2 | 1-frame Bayer, differential DTM1/DTM2 | 20 MHz | 800×160 | Halve waveform duration |
-| 3 | 2-frame Bayer, absolute target drive; no DTM1 sync | 20 MHz | 800×160 | Isolate sync-removal gain |
-| 4 | 1-frame Bayer, absolute target drive; no DTM1 sync | 20 MHz | 800×160 | Combined waveform + sync gain |
-| 5 | 2-frame Bayer, absolute target drive; no DTM1 sync | 20 MHz | 800×80 | Halve gate window |
-| 6 | 1-frame Bayer, absolute target drive; no DTM1 sync | 20 MHz | 800×80 | Primary second-doubling target |
-| 7 | 1-frame Bayer, absolute target drive; no DTM1 sync | 20 MHz | 800×40 | Maximum-rate narrow-band test |
-| 8 | Same as mode 6 | **40 MHz** | 800×80 | Isolated SPI-overclock A/B |
-| 9 | 1-frame Bayer, absolute target drive; no DTM1 sync | 20 MHz | 800×480 | Full-visible-panel stress test |
+## Modes
 
-Modes 3–9 use an **absolute** LUT: both possible old-state entries for a new white pixel drive toward white, and both possible old-state entries for a new black pixel drive toward black. This makes DTM1 irrelevant and removes the post-refresh old-plane upload. Unlike differential A2, unchanged pixels are driven again on every frame, so watch for contrast pumping, background darkening, edge bloom, or cumulative charge artifacts.
+| Mode | Experiment |
+|---:|---|
+| **1** | Leave the panel powered after white settling. No maintenance refresh for 60 seconds. Baseline for powered-idle accumulation. |
+| **2** | Issue `POF` immediately after settling and remain off for 60 seconds. Direct powered-idle A/B comparison. |
+| **3** | After settling, display the complete inverse of the burn pattern for one frame, then white for one frame, and remain powered. This is the requested raw inversion test. |
+| **4** | Remain powered for 60 seconds and issue exactly one resident-image `DRF` at 30 seconds. Determines whether the product-style maintenance pulse corrects, relocates, or reinforces ghosting. |
+| **5** | Rewrite complete DTM1 to white after settling, then remain powered. Isolates stale OLD-plane contribution without changing panel power. |
+| **6** | Rewrite complete DTM1 to white, then issue `POF`. Candidate production idle transition. |
+| **7** | Apply a changed-pixel reverse mask: redisplay the original pattern for one frame, restore white with a two-frame target-ending pulse, synchronize DTM1 to white, and remain powered. |
+| **8** | Apply the same target-ending compensation and DTM1 synchronization, then issue `POF`. Candidate compensation-plus-power-off transition. |
+| **9** | Synchronize DTM1, issue `POF` for 30 seconds, issue `PON` without any PTL/DTM/DRF command, then remain powered for 30 seconds. Measures POF/PON BUSY timing and tests whether analog power-on alone restarts drift. |
 
-Mode 8 is the only 40 MHz SPI mode. All other modes remain at the previously tested 20 MHz rate. No mode changes panel voltage, VCOM, booster voltage, source/gate voltage, PMIC configuration, or battery settings.
+Mode 3 is intentionally different from modes 7–8. It inverts **every** pixel and performs only a one-frame white restoration. Modes 7–8 reverse only the pixels that changed in the pattern-to-white transition and finish with a stronger target-ending white pulse.
+
+## Controls
+
+- **Left or Right side button:** immediate IRAM hard abort. CS is raised, RESET is pulled low, clock/data outputs are stopped, and the firmware permanently halts until reboot.
+- **Power button during a mode:** stop after the current physical refresh. The current panel state is left untouched for inspection.
+- **Power button while ready:** run the next mode.
+- Serial `n` or Space: run the next mode.
+- Serial `1`–`9`: run a selected mode.
+- Serial `s`: soft stop after the current refresh.
+- Serial `q`, `x`, or Escape: hard abort.
+
+Modes never auto-advance. At completion the current image and power state remain untouched. Starting the next mode performs a new reset and OTP white clean.
 
 ## Telemetry
 
-Each frame logs:
+Serial output records:
 
-- DTM2/new-plane upload time;
-- BUSY_N waveform time;
-- DTM1 synchronization time (`0` in absolute modes);
-- total frame time; and
-- instantaneous FPS.
+- every explicit framebuffer refresh and its upload/waveform duration;
+- the tracked DTM1 and DTM2 contents;
+- settling pulse count, elapsed time, average/minimum/maximum BUSY duration;
+- five-second observation markers with power and BUSY state;
+- the exact 30-second maintenance DRF;
+- POF and PON BUSY/total durations;
+- the PON-without-DRF boundary in mode 9;
+- final mode state.
 
-Each completed mode prints averages for the same stages. Frames are precomputed before the timed loop, so rendering and SD I/O are absent from the measured frame interval.
+## Flashing
 
-## Build
+Use the merged image at offset `0x0`.
 
 ```sh
-python -m pip install platformio==6.1.19
-pio run -c platformio.x4lab.ini -e x4-high-fps-lab
+esptool.py --chip esp32s3 write_flash 0x0 x4-high-fps-lab-merged.bin
 ```
 
-Outputs:
-
-- `.pio/build/x4-high-fps-lab/firmware.bin` — application image, offset `0x10000`
-- `.pio/build/x4-high-fps-lab/firmware-merged.bin` — complete flash image, offset `0x0`
-- `.pio/build/x4-high-fps-lab/firmware.elf` — symbols/debugging
+The merged image is a standalone laboratory installation. Preserve any device data that matters before flashing.
