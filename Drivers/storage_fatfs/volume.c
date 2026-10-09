@@ -33,6 +33,12 @@
 #define DIR_SLOTS 8u
 #define OP_BUDGET_MS 15000u
 #define OP_SECTOR_LIMIT 2048u
+#ifndef STORAGE_VOLUME_OPERATION_BUDGET_MS
+#define STORAGE_VOLUME_OPERATION_BUDGET_MS OP_BUDGET_MS
+#endif
+#ifndef STORAGE_VOLUME_OPERATION_SECTOR_LIMIT
+#define STORAGE_VOLUME_OPERATION_SECTOR_LIMIT OP_SECTOR_LIMIT
+#endif
 static FATFS filesystem;
 static uint64_t operation_start;
 static uint32_t operation_steps, operation_sectors;
@@ -136,13 +142,13 @@ int risc_fatfs_checkpoint(void) {
     if ((++operation_steps & 255u) == 0) cooperate(4096);
     else cooperate(0);
     if (operation_steps > 1048576u ||
-        clock_api->monotonic_ms(clock_api->context) - operation_start >= OP_BUDGET_MS) {
+        clock_api->monotonic_ms(clock_api->context) - operation_start >= STORAGE_VOLUME_OPERATION_BUDGET_MS) {
         fail("filesystem operation budget exceeded"); io_failed = true; mounted = false; return 0;
     }
     return 1;
 }
 static bool disk_budget(void) {
-    if (++operation_sectors > OP_SECTOR_LIMIT || !risc_fatfs_checkpoint()) {
+    if (++operation_sectors > STORAGE_VOLUME_OPERATION_SECTOR_LIMIT || !risc_fatfs_checkpoint()) {
         fail("filesystem I/O budget exceeded"); io_failed = true; mounted = false; return false;
     }
     cooperate(0);
