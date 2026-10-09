@@ -1,0 +1,9 @@
+# USB HID mouse 0.1.0 source qualification
+
+The public source commit c334919a05d393b7b3a536fceb117cfbb573a4ef has exactly the same tree as original qualified local commit bf997f3d777e644e98c2f885a9c9f4c81e1a0e48. Its public parent is f99adabdb99562fc3dfada242cc90136c3d553e2; the separate four-file PR467 CI successor bf6ec25d is excluded. This evidence-only successor does not change production sources, tests, package version, SDK or build flags.
+
+The receipt and logs are copied byte-for-byte from the original qualification. Their local paths are archival build provenance, not public download links. The original ELF remains identified by its original source receipt: 15,560 bytes, SHA-256 adb4bb40f54c3969e7d8c1c4dd013abcdef3aa3cac1bd058f07d700aeac62bf2. Source publication did not rebuild or relabel that ELF. No binary release is made here.
+
+Normal production-driver and actual raw-HID/mouse composition tests passed, as did ASan/UBSan and the unchanged existing HID suite. LeakSanitizer was disabled because it cannot operate under this executor's ptrace; address/undefined-behavior checking remained active. The four-mouse retained-close priority regression failed before the fix and passed afterward. The original GCC8 ELF exports only t5_driver_get, imports only memcpy/memset, and passes the loader map audit with 33 sites and no MMIO exceptions.
+
+The unchanged raw HID implementation calls void host.release and then returns true from close. Lower-host quarantine and generic graph lifetime retention remain necessary; this semantic layer cannot infer physical quiescence from that return. X4 board.power.vbus, physical USB interoperability and product consumer/cursor integration remain unqualified or outstanding. See ../../USB_HID_MOUSE_PROVIDER.md for the full consumer contract and bounded descriptor/recovery limitations.

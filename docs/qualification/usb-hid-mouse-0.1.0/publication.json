@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "qualified_original_commit": "bf997f3d777e644e98c2f885a9c9f4c81e1a0e48",
+  "qualified_original_parent": "baa9dfd96fd2d8457353ab85e90bf2d089429e54",
+  "public_source_commit": "c334919a05d393b7b3a536fceb117cfbb573a4ef",
+  "public_source_parent": "f99adabdb99562fc3dfada242cc90136c3d553e2",
+  "identical_source_tree": "c1879781b404b11fd933972dbd1c8ebc8cac989b",
+  "original_elf_sha256": "adb4bb40f54c3969e7d8c1c4dd013abcdef3aa3cac1bd058f07d700aeac62bf2",
+  "original_elf_size": 15560,
+  "original_receipt_sha256": "bf9d42167c859b57e4c0cac1007a897203761111a4d93be34f614486e654c274",
+  "elf_rebuilt_or_relabelled_for_publication": false,
+  "evidence_successor_changes_source": false,
+  "excluded_commit": "bf6ec25d",
+  "publication_scope": "Source and qualification text only; no release, installation, hardware or product image action."
+}

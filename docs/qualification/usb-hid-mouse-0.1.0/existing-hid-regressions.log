@@ -1,0 +1,13 @@
+USB HID class, keyboard and gamepad report subscriptions/disconnect: PASS
+Gamepad feature IDs, unrelated inputs, multiple collections, input delivery and detach: PASS
+XInput discovery, current state, bounded startup retries, hotplug and shutdown: PASS
+USB HID to transport-neutral text translation and lifecycle: PASS
+USB HID unplug-free shutdown: all claims and dependent ELFs released: PASS
+text_editor_core_test: PASS
+text_editor_ui_test: PASS (ordered typing during refresh included)
+Controller persistent interrupt reads, independent endpoints and safe drain: PASS
+USB charging/serial role switching: PASS
+Navigation mapping, semantic text focus, gamepad coexistence and cleanup: PASS
+Navigation focus copied ownership, duplicate grants and rollback: PASS
+Firmware navigation acquisition, retry, focus, polling and sleep lifetime: PASS
+Firmware semantic text input acquisition, focus and cleanup: PASS

@@ -1,0 +1,3 @@
+Retained-close priority removed from production driver in isolated temporary tree.
+Exit code: -6
+before: /tmp/mouse-priority-before-enjnduce/test/drivers/usb_hid_mouse_test.c:295: close_tests: Assertion `!poll(0,1)&&calls==multi_before+1&&last_closed==retained_raw' failed.
