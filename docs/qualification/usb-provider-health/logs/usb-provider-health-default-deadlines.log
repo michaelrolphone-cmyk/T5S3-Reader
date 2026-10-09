@@ -1,0 +1,20 @@
+Host deadline admission and complete legacy prefix: PASS
+Production host deadline scenario events: PASS
+Production host deadline scenario inventory_fault: PASS
+Production host deadline scenario valid: PASS
+Production host deadline scenario partial_setup: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host deadline scenario timeout: PASS
+Production host deadline scenario cancel: PASS
+Production host deadline scenario stale: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host deadline scenario io_timeout: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host deadline scenario scope: PASS
+Production host deadline scenario invalid: PASS

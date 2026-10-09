@@ -1,0 +1,14 @@
+{
+  "repository": "michaelrolphone-cmyk/T5S3-Reader",
+  "original_source": "1214cb1b90fee7aa8a3ef9f21e1f9f2f8358e48c",
+  "public_source": "068450d2b971ca77d653f2ab1d9117cff7335288",
+  "qualified_tree": "efb8396f2574d69f116179542381a53349a97234",
+  "original_parent": "bf997f3d777e644e98c2f885a9c9f4c81e1a0e48",
+  "public_parent": "c334919a05d393b7b3a536fceb117cfbb573a4ef",
+  "parent_tree": "c1879781b404b11fd933972dbd1c8ebc8cac989b",
+  "source_tree_equal": true,
+  "receipt_sha256": "4350965e39a4252a963128d016c25e8cb5cf2c2c0483ec1bebdb1183c0571cfe",
+  "default_identity_sha256": "f2f02509e8fe0ff0fb73b9325dceaa1862fad005a31ab233c1b2b5d76bf84189",
+  "source_delta_files": 42,
+  "publication_effect": "Source and qualification evidence only; no rebuilt or relabeled ELF; no product activation, Runtime ancestry, stopped CI payload or hardware action."
+}

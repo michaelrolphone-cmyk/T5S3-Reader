@@ -6,6 +6,10 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef RISC_TEST_PROVIDER_HEALTH
+#include "RiscProviderHealthV1.h"
+static const risc_provider_health_v1 *health;
+#endif
 
 static const uint8_t config[] = {
     9,2,41,0,2,1,0,0x80,50,
@@ -28,6 +32,16 @@ static const risc_driver_v2 *driver;
 static const risc_usb_host_deadlines_v1 *host;
 static const risc_usb_host_deadline_api_v1 *timed;
 static const risc_usb_host_discovery_v1 *base;
+#ifdef RISC_TEST_PROVIDER_HEALTH
+static void check_health(int32_t expected) {
+    unsigned calls = legacy_calls + event_calls + config_calls + claim_calls + release_calls +
+        control_calls + read_calls + write_calls + quiesce_calls;
+    uint64_t before = ticks;
+    assert(health && health->check() == expected);
+    assert(ticks == before && calls == legacy_calls + event_calls + config_calls + claim_calls +
+        release_calls + control_calls + read_calls + write_calls + quiesce_calls);
+}
+#endif
 static void add(uint32_t kind, uint64_t id) {
     assert(event_tail < 40);
     events[event_tail++] = (risc_usb_controller_event_v1){kind,id};
@@ -133,6 +147,9 @@ static uint64_t claimed(uint64_t d, uint8_t i) {
 }
 static void clean(uint64_t id) { assert(timed->release(NULL,id,100)==RISC_STREAM_OK); }
 static void retained(void) {
+#ifdef RISC_TEST_PROVIDER_HEALTH
+    check_health(RISC_PROVIDER_HEALTH_RETAINED);
+#endif
     unsigned released=release_calls, old=legacy_calls, q=quiesce_calls;
     uint64_t ids[8]={0}; size_t n=8;
     assert(timed->snapshot(NULL,ids,&n,100)==RISC_STREAM_RETAINED);
@@ -148,7 +165,12 @@ int main(int argc, char **argv) {
     _Static_assert(offsetof(risc_usb_controller_deadlines_v1,extension_tag)==sizeof(risc_usb_controller_diagnostics_v1),"controller prefix");
     void *elf=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL); assert(elf);
     risc_driver_get_v2_fn get=(risc_driver_get_v2_fn)dlsym(elf,"t5_driver_get"); assert(get);
-    driver=get(2); assert(driver); host=driver->capability; base=&host->snapshot.discovery;
+    driver=get(2); assert(driver);
+#ifdef RISC_TEST_PROVIDER_HEALTH
+    health = dlsym(elf, "risc_provider_health_v1_descriptor");
+    check_health(RISC_PROVIDER_HEALTH_READY);
+#endif
+    host=driver->capability; base=&host->snapshot.discovery;
     risc_provider_dependency_v1 dep={"usb.controller",1,&controller};
     const char *test=argv[2];
     if (!strcmp(test,"gate")) {
@@ -283,6 +305,9 @@ int main(int argc, char **argv) {
             assert(timed->claim(NULL,d,0,0,&id,20)==RISC_STREAM_IO && !id && !claim_calls);
         } else assert(!"unknown scenario");
     }
+#ifdef RISC_TEST_PROVIDER_HEALTH
+    check_health(!strcmp(test, "inventory_fault") ? RISC_PROVIDER_HEALTH_UNKNOWN : RISC_PROVIDER_HEALTH_READY);
+#endif
     assert(!legacy_calls); assert(driver->quiesce()); driver->stop();
     assert(base->host.struct_size==sizeof(risc_usb_host_snapshot_v1) && !host->deadlines);
     assert(dlclose(elf)==0);

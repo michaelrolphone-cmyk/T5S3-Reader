@@ -1,0 +1,27 @@
+{
+  "health": {
+    "descriptor_symbol": "risc_provider_health_v1_descriptor",
+    "section": ".data.rel.ro",
+    "object_bytes": 12,
+    "api_version": 1,
+    "callback": "0x5a4",
+    "callback_relocations": [
+      [
+        5,
+        0,
+        0
+      ]
+    ],
+    "exports": [
+      "risc_provider_health_v1_descriptor",
+      "t5_driver_get"
+    ]
+  },
+  "mapping": {
+    "relocations_examined": 44,
+    "unmapped_relocations": [],
+    "unmapped_relative_values": [],
+    "absolute_peripheral_relocations": [],
+    "unmapped_executable_sections": []
+  }
+}

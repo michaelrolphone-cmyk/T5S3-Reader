@@ -1,0 +1,4 @@
+{
+  global: t5_driver_get; risc_provider_health_v1_descriptor;
+  local: *;
+};

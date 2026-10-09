@@ -1,0 +1,1449 @@
+{
+  "schema": 1,
+  "sealed_utc": "2026-10-09T15:41:00Z",
+  "status": "local source and artifacts sealed; unpublished; no product activation or device actions",
+  "source": {
+    "worktree": "/workspace/shared/x4-provider-health-handoff",
+    "branch": "feat/usb-provider-health-handoff",
+    "base": "bf997f3d777e644e98c2f885a9c9f4c81e1a0e48",
+    "commit": "1214cb1b90fee7aa8a3ef9f21e1f9f2f8358e48c",
+    "tree": "efb8396f2574d69f116179542381a53349a97234",
+    "clean": true,
+    "changed_files": [
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/.gitignore",
+        "sha256": "daa5b9d8c1f80a57639b047e6693c87d76f8ea44a12823af75a1698fc1267c19",
+        "bytes": 285
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_controller_esp32s3/HealthCheck.inc",
+        "sha256": "5e8b45d0c9870840b5bf7622bc31080813cc8a9603a17a7496ea2b02b33d35e0",
+        "bytes": 3114
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_controller_esp32s3/driver.health.cpp",
+        "sha256": "20ba451345420ff0a8aaf4042d9d16a8da0ceaf018ca250263bca023a68a3ce2",
+        "bytes": 9762
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_controller_esp32s3/exports.health.map",
+        "sha256": "ebe64b5e555054ce826d819c8f5423ee2d5006c966bfc4fda6b978616a491986",
+        "bytes": 78
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_controller_esp32s3/manifest.health.json",
+        "sha256": "d6c0edcd26c946d88c5ea3c9659ea568827c0210dc2df5b4a89612319cc4d8bf",
+        "bytes": 474
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid/driver.health.c",
+        "sha256": "bc6c66f7489ea265926fd50fdf6246b4ea95eaf03a1c99c6ae8aad0f9ca04d2b",
+        "bytes": 610
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid/manifest.health.json",
+        "sha256": "94e001a3e6e06aee2f9fd21bf267edf6c51e7145347105eae67e354b47e6e3cd",
+        "bytes": 347
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_gamepad/driver.health.c",
+        "sha256": "9f90ec85522182c9fa15b6156d6e1616a834d8b3e0593a7c847fa34063ab91c2",
+        "bytes": 2482
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_gamepad/manifest.health.json",
+        "sha256": "b4838ee5b7240c7da73f52ec9c51afaf892d5960076077415864c3ef6680a53f",
+        "bytes": 428
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_keyboard/driver.health.c",
+        "sha256": "2e06804f8611dc560c99f6c4dde466c630fec09b3a898499a6c194d2d5e576b4",
+        "bytes": 2344
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_keyboard/manifest.health.json",
+        "sha256": "51dd2011a9786ac7064ee2d576a7ceaf683da0b312f51c304cefccce10e3c513",
+        "bytes": 364
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_mouse/driver.health.c",
+        "sha256": "c12df26333c03f04609cd51c3abac4b01b97cba0497fac298ae66bf7f2534a30",
+        "bytes": 2540
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_mouse/manifest.health.json",
+        "sha256": "651821408f9b9532783a30aa926cd8185c15c8c3794e81d05de66b2502adf575",
+        "bytes": 424
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_text_input/driver.health.c",
+        "sha256": "2c45cc909860674dbe78e6006399efc5b4b37b585345eacdfe45727bacce3dc7",
+        "bytes": 2392
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_text_input/manifest.health.json",
+        "sha256": "f348ff75424a5336104d7d0118db4a055a15752108d57766e22f17051acd8519",
+        "bytes": 369
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_host_v2/driver.health.c",
+        "sha256": "abe3d9cd01de8be9a6ddb7849ad2ff3a942a99a3e3fcfaa4cfe761544e7f6bd3",
+        "bytes": 2609
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_host_v2/manifest.health.json",
+        "sha256": "1106b125933f9d07e8b34bfcb7f6d290e33f15b636e9e0928ed9c8149eaca6d9",
+        "bytes": 352
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_xinput_gamepad/driver.health.c",
+        "sha256": "f98a60c11a969a6f69500a831502e57aa3cf386f79728fd3f40d08caaa140ebe",
+        "bytes": 571
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_xinput_gamepad/manifest.health.json",
+        "sha256": "af89dba0a430a9589c3d6684544b3f2c4d3309ea50aeabe66ef24c48bcacb93e",
+        "bytes": 435
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/docs/USB_PROVIDER_HEALTH_PROFILES.md",
+        "sha256": "13662dec864c1b8149cb2f902eedef5a124ca1f2d0c6950f623a6c045852072d",
+        "bytes": 11671
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/scripts/audit_provider_health_elf.py",
+        "sha256": "09ab3306a780687845fdfd2be7ba78ed211b560a490a37d4fdc30a6fa10dbada",
+        "bytes": 2985
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/scripts/audit_usb_controller_elf.py",
+        "sha256": "9de5edfb6100213d4d16f0ce186507ff0ac3aec3d3d4720efeddfaff22af9a0b",
+        "bytes": 9603
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/scripts/build_usb_provider_health.py",
+        "sha256": "59a0e09573d48c73ba7a2e17d81bfe0d748c2048f6da3ec832cf658f8e9d7752",
+        "bytes": 4757
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/scripts/probe_usb_controller_esp32s3.py",
+        "sha256": "061cce6c8646e5dfa7d954e250bdbe6132ec25c8187a02e1d2fdb22c3c588563",
+        "bytes": 13132
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/scripts/stage_usb_provider_health.py",
+        "sha256": "d015146c5fbbb9faf0d54e298f1c062c7e1ccc52d07534ed5e944449b13ed411",
+        "bytes": 1480
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/sdk/driver/RiscProviderHealthV1.h",
+        "sha256": "0d36bbac73631765462c79de368469c29cac1b4e85c68cb9c7844e3611804c1f",
+        "bytes": 1139
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/drivers/usb_host_deadlines_test.c",
+        "sha256": "5894ba8558254790577555d12e0e912bdb2a89be142e6669a32f1b3db1f0653d",
+        "bytes": 17394
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/audit_test.py",
+        "sha256": "f250cc1acf400301bf0d1cc349dd9b6227292b4069f39d4b3b06704bba14b0cb",
+        "bytes": 2174
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/controller.cpp",
+        "sha256": "0e28a4557ccb3b663fcedbd1c148ba910adf558a85f3e804da9b7904df7511be",
+        "bytes": 13550
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/default_identity.py",
+        "sha256": "c0d8fe556e8e9049ac479e140e9cfd2a62200418d1439fc1b4cf5480b05b94ff",
+        "bytes": 3273
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/facade.c",
+        "sha256": "d058184775843aadb571cc71ba87d257e2497d3b362ddec6d020358d2bf43353",
+        "bytes": 4268
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stack.c",
+        "sha256": "a7b314f622a33c558a64af25213ce68dd595c8b0db89f598398189dac1c77172",
+        "bytes": 7090
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/esp_intr_alloc.h",
+        "sha256": "805f16fc6b3be37410d30d640f2332bb017684bf93951ce3963eafecf5b57918",
+        "bytes": 45
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/esp_private/usb_phy.h",
+        "sha256": "dad70f3ea1644d338f1e5f94c39157c4e6fe8c61f94a2401bdc0825a2195f8c3",
+        "bytes": 443
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/freertos/FreeRTOS.h",
+        "sha256": "f94e1863c58129e29d6f6ebce1bba5f73a9d7c1182b67562ae5f80667a7fb115",
+        "bytes": 120
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/freertos/task.h",
+        "sha256": "294d71494a596c38eac1f50a966cb3f2234dc1c262739a1ff1d6ef0dd97714b4",
+        "bytes": 96
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/soc/rtc_cntl_struct.h",
+        "sha256": "784bca0f85f5cdca8a20b10a58459a27aed3912667f63e01a3ce2e6b9815313d",
+        "bytes": 116
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/soc/usb_dwc_struct.h",
+        "sha256": "2e956e29fe300597dc4c7e2b88955fa61f97e4f50b12fa110b8f0e94e058391a",
+        "bytes": 111
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/soc/usb_wrap_struct.h",
+        "sha256": "8ce76c8e104431919429bb82f773da0f5d54e9c3b9549c0c28e4b76ac2f061a8",
+        "bytes": 147
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/provider_health/stubs/usb/usb_host.h",
+        "sha256": "8cb407745dd9a59ef8478eedd0da712bde399564db452cd2f94983ed245aa840",
+        "bytes": 3481
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/run_usb_provider_health_runtime_test.sh",
+        "sha256": "398f99705d2a56fb5b1cb06c4e2d4cc03c5c028d9d296aedd2040a5542ebb43f",
+        "bytes": 2610
+      },
+      {
+        "path": "/workspace/shared/x4-provider-health-handoff/test/run_usb_provider_health_test.sh",
+        "sha256": "9bc2766a814c6585ce9eb6b96ebf1ef6af7e60d2daae9a29bc8e8e7bbcef0512",
+        "bytes": 2368
+      }
+    ],
+    "bundle": {
+      "path": "/workspace/shared/usb-provider-health-source.bundle",
+      "sha256": "b09830f1bd45e70b48dcb538ae09b4c34cdd9e2b233bcd6ab0ed4bb7dcd0f7fe",
+      "bytes": 35397
+    },
+    "patch": {
+      "path": "/workspace/shared/usb-provider-health-source.patch",
+      "sha256": "73350c70af9b90d1dbced5e37c0346b89645eea3393ac5358c3869371813e7df",
+      "bytes": 110721
+    },
+    "public_base_source": "c334919a05d393b7b3a536fceb117cfbb573a4ef",
+    "public_base_evidence": "59177418ea746c7605b7b5a5aec501e70bdae80f"
+  },
+  "runtime": {
+    "worktree": "/workspace/shared/runtime-resource-handoff-0194",
+    "source": "51a9a09e15789be4587f59295f89c3e3b5be0c66",
+    "version": "0.1.94",
+    "clean": true,
+    "fixed_header": {
+      "path": "/workspace/shared/x4-provider-health-handoff/sdk/driver/RiscProviderHealthV1.h",
+      "sha256": "0d36bbac73631765462c79de368469c29cac1b4e85c68cb9c7844e3611804c1f",
+      "bytes": 1139
+    }
+  },
+  "toolchain": {
+    "gcc": {
+      "path": "/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc",
+      "sha256": "732bebd44b70a21687ffa3ac5da55edc9b555080ad21cfd74503b2288a143d3f",
+      "bytes": 920432
+    },
+    "gxx": {
+      "path": "/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++",
+      "sha256": "5b30f4eb7c41b7954acd4f183895f03abdb612d8470346436d850208b8be2c98",
+      "bytes": 924528
+    },
+    "version": "xtensa-esp32s3-elf-gcc (crosstool-NG esp-2021r2-patch5) 8.4.0",
+    "python": "/workspace/scratch/c744abbbbd60/watch-build-tools/python/bin/python",
+    "native_cc": "cc (Debian 14.2.0-19) 14.2.0",
+    "idf": {
+      "path": "/workspace/shared/x4-usb-host-idf-v4.4.7",
+      "commit": "38eeba213aa695aabfd6d89aa9f5078dbe5a94c3",
+      "clean": true
+    },
+    "compilation_database": {
+      "path": "/workspace/shared/x4-usb-host-roots-reader/test/target/usb_controller_bounded/compile_commands.json",
+      "sha256": "838e62ae76d3a9993e2d9b9f1cffa6f6ee05a76bd4c5eb201375b61249cdc83e",
+      "bytes": 1552178
+    },
+    "compilation_anchor": {
+      "command": "/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++ -o .pio/build/bounded-controller/src/native/NativeUsbBridge.cpp.o -c -std=gnu++2a -fno-rtti -fno-exceptions -fno-rtti -Os -mlongcalls -ffunction-sections -fdata-sections -Wno-error=unused-function -Wno-error=unused-variable -Wno-error=deprecated-declarations -Wno-unused-parameter -Wno-sign-compare -ggdb -freorder-blocks -Wwrite-strings -fstack-protector -fstrict-volatile-bitfields -Wno-error=unused-but-set-variable -fno-jump-tables -fno-tree-switch-conversion -MMD -DPLATFORMIO=60119 -DARDUINO_ESP32S3_DEV -DARDUINO_USB_MODE=1 -DARDUINO_RUNNING_CORE=1 -DARDUINO_EVENT_RUNNING_CORE=1 -DBOARD_HAS_PSRAM -DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1 -DHAVE_CONFIG_H -DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\" -DUNITY_INCLUDE_CONFIG_H -DWITH_POSIX -D_GNU_SOURCE -DIDF_VER=\\\"v4.4.7-dirty\\\" -DESP_PLATFORM -D_POSIX_READER_WRITER_LOCKS -DARDUINO_ARCH_ESP32 -DESP32 -DF_CPU=240000000L -DARDUINO=10812 -DARDUINO_VARIANT=\\\"esp32s3\\\" \"-DARDUINO_BOARD=\\\"Espressif ESP32-S3-DevKitC-1-N8 (8 MB QD, No PSRAM)\\\"\" -DARDUINO_PARTITION_default -Isrc -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/esp_additions/freertos -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/port/xtensa/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/esp_additions -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32s3 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/port/esp32s3 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/port/esp32s3/private_include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/heap/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/log/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/include/apps -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/include/apps/sntp -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/arch -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/esp32s3/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/platform_port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/include/esp32s3 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/esp32s3 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_common/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/port/soc -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/port/public_compat -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/xtensa/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/xtensa/esp32s3/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/esp32s3/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_pm/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_ringbuf/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/efuse/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/efuse/esp32s3/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/vfs/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_wifi/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/tcpip_adapter/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_phy/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_phy/esp32s3/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_ipc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/app_trace/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_timer/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mbedtls/port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mbedtls/mbedtls/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mbedtls/esp_crt_bundle/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/app_update/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spi_flash/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bootloader_support/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/nvs_flash/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/pthread/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_gdbstub/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_gdbstub/xtensa -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_gdbstub/esp32s3 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espcoredump/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espcoredump/include/port/xtensa -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wpa_supplicant/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wpa_supplicant/port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wpa_supplicant/esp_supplicant/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/ieee802154/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/console -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/asio/asio/asio/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/asio/port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/osi/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/include/esp32c3/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/api/include/api -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/btc/profile/esp/blufi/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/btc/profile/esp/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/host/bluedroid/api/include/api -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_common/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_common/tinycrypt/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_core -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_core/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_core/storage -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/btc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_models/common/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_models/client/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_models/server/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/api/core/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/api/models/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/api -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/cbor/port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/unity/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/unity/unity/src -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/cmock/CMock/src -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/coap/port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/coap/libcoap/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/nghttp/port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/nghttp/nghttp2/lib/includes -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-tls -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-tls/esp-tls-crypto -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_adc_cal/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hid/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/tcp_transport/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_http_client/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_http_server/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_https_ota/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_https_server/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_lcd/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_lcd/interface -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protobuf-c/protobuf-c -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/common -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/security -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/transports -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mdns/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_local_ctrl/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/sdmmc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_serial_slave_link/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_websocket_client/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/expat/expat/expat/lib -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/expat/port/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wear_levelling/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/diskio -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/vfs -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/src -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freemodbus/freemodbus/common/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/idf_test/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/idf_test/include/esp32s3 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/jsmn/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json/cJSON -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/libsodium/libsodium/src/libsodium/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/libsodium/port_include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mqtt/esp-mqtt/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/openssl/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/perfmon/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spiffs/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/usb/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/ulp/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wifi_provisioning/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/rmaker_common/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_diagnostics/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/rtc_store/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_insights/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json_parser/upstream/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json_parser/upstream -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json_generator/upstream -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_schedule/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp_secure_cert_mgr/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rainmaker/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/gpio_button/button/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/qrcode/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/ws2812_led -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/arduino_tinyusb/tinyusb/src -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/arduino_tinyusb/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_littlefs/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/tool -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/typedef -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/image -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/math -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/nn -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/layer -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/detect -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/model_zoo -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp32-camera/driver/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp32-camera/conversions/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/dotprod/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/support/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/support/mem/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/hann/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/blackman/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/blackman_harris/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/blackman_nuttall/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/nuttall/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/flat_top/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/iir/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/fir/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/add/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/sub/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/mul/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/addc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/mulc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/sqrt/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/mul/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/add/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/addc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/mulc/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/sub/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/fft/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/dct/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/conv/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/common/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/mul/test/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/kalman/ekf/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/kalman/ekf_imu13states/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fb_gfx/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_opi/include -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/cores/esp32 -I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/variants/esp32s3 src/native/NativeUsbBridge.cpp",
+      "directory": "/workspace/shared/x4-usb-host-roots-reader/test/target/usb_controller_bounded",
+      "file": "src/native/NativeUsbBridge.cpp",
+      "output": ".pio/build/bounded-controller/src/native/NativeUsbBridge.cpp.o"
+    }
+  },
+  "selection": {
+    "controller_build_argv": [
+      "/workspace/scratch/c744abbbbd60/watch-build-tools/python/bin/python",
+      "scripts/probe_usb_controller_esp32s3.py",
+      "--link-experiment",
+      "--native-phy-lease",
+      "--provider-health",
+      "--compile-database",
+      "/workspace/shared/x4-usb-host-roots-reader/test/target/usb_controller_bounded/compile_commands.json",
+      "--idf-source",
+      "/workspace/shared/x4-usb-host-idf-v4.4.7"
+    ],
+    "controller_compile_argv": [
+      "/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-g++",
+      "-o",
+      "/workspace/shared/x4-provider-health-handoff/dist/provider-health/usb-controller-esp32s3/controller.o",
+      "-c",
+      "-std=gnu++2a",
+      "-fno-rtti",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-Os",
+      "-mlongcalls",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-Wno-error=unused-function",
+      "-Wno-error=unused-variable",
+      "-Wno-error=deprecated-declarations",
+      "-Wno-unused-parameter",
+      "-Wno-sign-compare",
+      "-ggdb",
+      "-freorder-blocks",
+      "-Wwrite-strings",
+      "-fstack-protector",
+      "-fstrict-volatile-bitfields",
+      "-Wno-error=unused-but-set-variable",
+      "-fno-jump-tables",
+      "-fno-tree-switch-conversion",
+      "-MMD",
+      "-DPLATFORMIO=60119",
+      "-DARDUINO_ESP32S3_DEV",
+      "-DARDUINO_USB_MODE=1",
+      "-DARDUINO_RUNNING_CORE=1",
+      "-DARDUINO_EVENT_RUNNING_CORE=1",
+      "-DBOARD_HAS_PSRAM",
+      "-DARDUINO_USB_MODE=1",
+      "-DARDUINO_USB_CDC_ON_BOOT=1",
+      "-DHAVE_CONFIG_H",
+      "-DMBEDTLS_CONFIG_FILE=\"mbedtls/esp_config.h\"",
+      "-DUNITY_INCLUDE_CONFIG_H",
+      "-DWITH_POSIX",
+      "-D_GNU_SOURCE",
+      "-DIDF_VER=\"v4.4.7-dirty\"",
+      "-DESP_PLATFORM",
+      "-D_POSIX_READER_WRITER_LOCKS",
+      "-DARDUINO_ARCH_ESP32",
+      "-DESP32",
+      "-DF_CPU=240000000L",
+      "-DARDUINO=10812",
+      "-DARDUINO_VARIANT=\"esp32s3\"",
+      "-DARDUINO_BOARD=\"Espressif ESP32-S3-DevKitC-1-N8 (8 MB QD, No PSRAM)\"",
+      "-DARDUINO_PARTITION_default",
+      "-Isrc",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/newlib/platform_include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/esp_additions/freertos",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/port/xtensa/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/esp_additions",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32s3",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/port/esp32s3",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/port/esp32s3/private_include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/heap/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/log/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/include/apps",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/include/apps/sntp",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/lwip/src/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/lwip/port/esp32/include/arch",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/soc/esp32s3/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/esp32s3/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/hal/platform_port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/include/esp32s3",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rom/esp32s3",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_common/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/port/soc",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_system/port/public_compat",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/xtensa/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/xtensa/esp32s3/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/driver/esp32s3/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_pm/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_ringbuf/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/efuse/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/efuse/esp32s3/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/vfs/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_wifi/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_event/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_netif/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_eth/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/tcpip_adapter/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_phy/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_phy/esp32s3/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_ipc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/app_trace/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_timer/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mbedtls/port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mbedtls/mbedtls/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mbedtls/esp_crt_bundle/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/app_update/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spi_flash/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bootloader_support/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/nvs_flash/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/pthread/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_gdbstub/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_gdbstub/xtensa",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_gdbstub/esp32s3",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espcoredump/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espcoredump/include/port/xtensa",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wpa_supplicant/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wpa_supplicant/port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wpa_supplicant/esp_supplicant/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/ieee802154/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/console",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/asio/asio/asio/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/asio/port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/osi/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/include/esp32c3/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/api/include/api",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/btc/profile/esp/blufi/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/common/btc/profile/esp/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/host/bluedroid/api/include/api",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_common/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_common/tinycrypt/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_core",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_core/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_core/storage",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/btc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_models/common/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_models/client/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/mesh_models/server/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/api/core/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/api/models/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/bt/esp_ble_mesh/api",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/cbor/port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/unity/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/unity/unity/src",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/cmock/CMock/src",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/coap/port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/coap/libcoap/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/nghttp/port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/nghttp/nghttp2/lib/includes",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-tls",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-tls/esp-tls-crypto",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_adc_cal/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hid/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/tcp_transport/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_http_client/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_http_server/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_https_ota/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_https_server/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_lcd/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_lcd/interface",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protobuf-c/protobuf-c",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/common",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/security",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/protocomm/include/transports",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mdns/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_local_ctrl/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/sdmmc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_serial_slave_link/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_websocket_client/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/expat/expat/expat/lib",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/expat/port/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wear_levelling/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/diskio",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/vfs",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fatfs/src",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freemodbus/freemodbus/common/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/idf_test/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/idf_test/include/esp32s3",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/jsmn/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json/cJSON",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/libsodium/libsodium/src/libsodium/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/libsodium/port_include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/mqtt/esp-mqtt/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/openssl/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/perfmon/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/spiffs/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/usb/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/ulp/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/wifi_provisioning/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/rmaker_common/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_diagnostics/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/rtc_store/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_insights/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json_parser/upstream/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json_parser/upstream",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/json_generator/upstream",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_schedule/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp_secure_cert_mgr/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_rainmaker/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/gpio_button/button/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/qrcode/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/ws2812_led",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/freertos/include/freertos",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/arduino_tinyusb/tinyusb/src",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/arduino_tinyusb/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_littlefs/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/tool",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/typedef",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/image",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/math",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/nn",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/layer",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/detect",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp-dl/include/model_zoo",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp32-camera/driver/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp32-camera/conversions/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/dotprod/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/support/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/support/mem/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/hann/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/blackman/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/blackman_harris/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/blackman_nuttall/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/nuttall/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/windows/flat_top/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/iir/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/fir/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/add/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/sub/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/mul/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/addc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/mulc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/math/sqrt/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/mul/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/add/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/addc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/mulc/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/sub/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/fft/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/dct/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/conv/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/common/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/matrix/mul/test/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/kalman/ekf/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/espressif__esp-dsp/modules/kalman/ekf_imu13states/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/fb_gfx/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/tools/sdk/esp32s3/qio_opi/include",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/cores/esp32",
+      "-I/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/framework-arduinoespressif32/variants/esp32s3",
+      "/workspace/shared/x4-provider-health-handoff/Drivers/usb_controller_esp32s3/driver.health.cpp",
+      "-fPIC",
+      "-fvisibility=hidden",
+      "-I/workspace/shared/x4-provider-health-handoff/sdk/driver",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-DRISC_USB_CONTROLLER_NATIVE_PHY_LEASE=1",
+      "-I/workspace/shared/x4-provider-health-handoff/dist/provider-health/usb-controller-esp32s3",
+      "-I/workspace/shared/x4-provider-health-handoff/Drivers/usb_controller_esp32s3"
+    ],
+    "controller_compile_cwd": "/workspace/shared/x4-usb-host-roots-reader/test/target/usb_controller_bounded",
+    "package_build_argv": [
+      "/workspace/scratch/c744abbbbd60/watch-build-tools/python/bin/python",
+      "scripts/build_usb_provider_health.py",
+      "--cc",
+      "/workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc",
+      "--ids",
+      "usb-controller-esp32s3",
+      "usb-host-v2",
+      "usb-hid",
+      "usb-hid-mouse",
+      "usb-hid-keyboard",
+      "usb-hid-gamepad",
+      "usb-xinput-gamepad",
+      "usb-hid-text-input"
+    ],
+    "class_compile_flags": [
+      "-std=c11",
+      "-Os",
+      "-fPIC",
+      "-mtext-section-literals",
+      "-mlongcalls",
+      "-fvisibility=hidden",
+      "-nostdlib",
+      "-nostartfiles",
+      "-shared",
+      "-Wl,--hash-style=sysv",
+      "-Wl,--exclude-libs,ALL",
+      "-Wl,--version-script,Drivers/usb_controller_esp32s3/exports.health.map",
+      "-lgcc"
+    ],
+    "controller_stage": {
+      "source": "Drivers/usb_controller_esp32s3/driver.cpp",
+      "source_sha256": "d6aeeb7d4fd6a793b7833c5fecfc87e00cc34fff959f58c27cc1b297dd5685c8",
+      "staged_sha256": "0767e01e4db9877e5f967a3d61b60dda5c0c25bc8524e0b32eeef11ef851e3da",
+      "sole_change": "outer t5_driver_get renamed health_controller_original_get"
+    },
+    "live_version_reservation": {
+      "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-version-reservation.json",
+      "sha256": "441195a02efad2a672d7cf74352f6144690b0abe204022ba3626df568c5e2ca3",
+      "bytes": 16754
+    },
+    "catalog": {
+      "path": "/workspace/shared/usb-provider-health-artifacts/selected/package-catalog.json",
+      "sha256": "292718cbee14266e86baf6ead35aedc57232858ed9c75ca187319d317d7913fe",
+      "bytes": 2868
+    },
+    "profiles": [
+      {
+        "id": "usb-controller-esp32s3",
+        "version": "0.1.25",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_controller_esp32s3/manifest.health.json",
+          "sha256": "d6c0edcd26c946d88c5ea3c9659ea568827c0210dc2df5b4a89612319cc4d8bf",
+          "bytes": 474
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-controller-esp32s3/driver.elf",
+          "sha256": "9451ede799d85e8e8671de8c70fefae50788c39f05511fee91c94294ce883d5f",
+          "bytes": 964508
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-controller-esp32s3/manifest.json",
+          "sha256": "d6c0edcd26c946d88c5ea3c9659ea568827c0210dc2df5b4a89612319cc4d8bf",
+          "bytes": 474
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-controller-esp32s3/.package.json",
+          "sha256": "8e5a37b773e7a41006f3827cdf8f9223727407b1c29ecdb36f6bd0b6b06f8154",
+          "bytes": 836
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-controller-esp32s3-0.1.25-xtensa-esp32s3.rte.zip",
+          "sha256": "5a5034b7360ce8a51bf8b1ee4a2418e61f1b86f5569f604f34f1db982c471f05",
+          "bytes": 967208
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-controller-esp32s3/provider-abi.v1",
+          "sha256": "45267b2e246bdb6a0ff9639d3fed88e0be35f54841d191273a6d96312bc2796e",
+          "bytes": 43
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-controller-esp32s3/privileged-imports.v1",
+          "sha256": "c4afa934bdd799046a244e94f82c2d202f72f7010c419c86c6f62095ded168fe",
+          "bytes": 801
+        },
+        "requires": [
+          {
+            "capability": "board.power.vbus",
+            "api": 1
+          },
+          {
+            "capability": "platform.usb.phy.resource",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "usb.controller",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-controller-esp32s3-audit.json",
+          "sha256": "0ad76bb703a5e3e21fbc92050ea2f580bccf767750e03724e2a2d4522ae8ad48",
+          "bytes": 4951
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0x45c0",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      },
+      {
+        "id": "usb-host-v2",
+        "version": "0.1.7",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_host_v2/manifest.health.json",
+          "sha256": "1106b125933f9d07e8b34bfcb7f6d290e33f15b636e9e0928ed9c8149eaca6d9",
+          "bytes": 352
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-host-v2/driver.elf",
+          "sha256": "48c426cf5c16c8a01d7f1f54f579df2a109fd271681f39430a25a1dbad7af40c",
+          "bytes": 16676
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-host-v2/manifest.json",
+          "sha256": "1106b125933f9d07e8b34bfcb7f6d290e33f15b636e9e0928ed9c8149eaca6d9",
+          "bytes": 352
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-host-v2/.package.json",
+          "sha256": "bd1febbf0162c1954d8f6ee17ce91113c4ef0e535117cbf202ab9e02cb975edb",
+          "bytes": 764
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-host-v2-0.1.7-xtensa-esp32s3.rte.zip",
+          "sha256": "7be2460e230e9fe075de3f6d4f2e1d1c477fa99bda2fc55d0bdeabb77da04cc5",
+          "bytes": 18382
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-host-v2/provider-abi.v1",
+          "sha256": "270e93fd7526e0193fa8670e18410c96b2b081b202823448bba14bdf5ef5faa9",
+          "bytes": 37
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-host-v2/privileged-imports.v1",
+          "sha256": "1591d47dab39b502bcc6e3e65dc1d466fb29f53433054fe5046f432ab4a6d16d",
+          "bytes": 7
+        },
+        "requires": [
+          {
+            "capability": "usb.controller",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "usb.host",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-host-v2-audit.json",
+          "sha256": "95637a5d8fff8337f0410b97559daa6f54fd769552c91138bee6a4c40f92231d",
+          "bytes": 563
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0xe68",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      },
+      {
+        "id": "usb-hid",
+        "version": "0.1.3",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid/manifest.health.json",
+          "sha256": "94e001a3e6e06aee2f9fd21bf267edf6c51e7145347105eae67e354b47e6e3cd",
+          "bytes": 347
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid/driver.elf",
+          "sha256": "d4140a64dce51ccaa3ae755f4a1923ee8ef12d87b5d672c27ed98f5cec6fa99f",
+          "bytes": 7540
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid/manifest.json",
+          "sha256": "94e001a3e6e06aee2f9fd21bf267edf6c51e7145347105eae67e354b47e6e3cd",
+          "bytes": 347
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid/.package.json",
+          "sha256": "69b093abe71b953e7e3fe9dcd1b18e48ed8dbb1ad804d3bc39c3933cb646f0be",
+          "bytes": 754
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-hid-0.1.3-xtensa-esp32s3.rte.zip",
+          "sha256": "7fc03d0d299caf874cd2bd2ea49dc2273c97a1be4e11e880492102719fbdc808",
+          "bytes": 9237
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid/provider-abi.v1",
+          "sha256": "1c7cb1cf375e55ae85b5c9cb3981969fb89fe5f36678609df90640c48a3fe53b",
+          "bytes": 36
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid/privileged-imports.v1",
+          "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+          "bytes": 14
+        },
+        "requires": [
+          {
+            "capability": "usb.host",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "usb.hid",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-hid-audit.json",
+          "sha256": "9149104d7748ad98f3c25287216f89b53d3c7c00ba9112a520ceaf272ec31518",
+          "bytes": 563
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0x2f8",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      },
+      {
+        "id": "usb-hid-mouse",
+        "version": "0.1.1",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_mouse/manifest.health.json",
+          "sha256": "651821408f9b9532783a30aa926cd8185c15c8c3794e81d05de66b2502adf575",
+          "bytes": 424
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-mouse/driver.elf",
+          "sha256": "8adf30b2e6937de887831ab1ac89cc55de642ec48f5a1237eeecbfd7a0176359",
+          "bytes": 19936
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-mouse/manifest.json",
+          "sha256": "651821408f9b9532783a30aa926cd8185c15c8c3794e81d05de66b2502adf575",
+          "bytes": 424
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-mouse/.package.json",
+          "sha256": "bbdee20876921c12345547b8f688912effc6f3f1d37981831384217f238a4c76",
+          "bytes": 804
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-hid-mouse-0.1.1-xtensa-esp32s3.rte.zip",
+          "sha256": "31b3ab750369b5d97918a962191f78d3f63f286f4395e00ba9d1631d06851b7a",
+          "bytes": 21766
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-mouse/provider-abi.v1",
+          "sha256": "6812428de30a362d060590e60ffa41dbffbf5f48adc69e74c03582fa523a89ba",
+          "bytes": 42
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-mouse/privileged-imports.v1",
+          "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+          "bytes": 14
+        },
+        "requires": [
+          {
+            "capability": "usb.hid",
+            "api": 1
+          },
+          {
+            "capability": "platform.clock",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "usb.hid.mouse",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-hid-mouse-audit.json",
+          "sha256": "4818596b6b93e493d0ce671e51ebd451b07c0d237f329dd5b6841a548e68ba28",
+          "bytes": 563
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0x544",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      },
+      {
+        "id": "usb-hid-keyboard",
+        "version": "0.1.2",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_keyboard/manifest.health.json",
+          "sha256": "51dd2011a9786ac7064ee2d576a7ceaf683da0b312f51c304cefccce10e3c513",
+          "bytes": 364
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-keyboard/driver.elf",
+          "sha256": "8f38404ecb3ae2300294d2273af53bd25ef7811f54ee07f26df90df36421131b",
+          "bytes": 9116
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-keyboard/manifest.json",
+          "sha256": "51dd2011a9786ac7064ee2d576a7ceaf683da0b312f51c304cefccce10e3c513",
+          "bytes": 364
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-keyboard/.package.json",
+          "sha256": "8cc05fa64d003bff1d4989a83810108195940e9a64466f03aa33c82ec7fdd792",
+          "bytes": 762
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-hid-keyboard-0.1.2-xtensa-esp32s3.rte.zip",
+          "sha256": "4e05521b576cbfda3de7dbf81857849021191d061f5551968c4e288e4bd94d06",
+          "bytes": 10847
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-keyboard/provider-abi.v1",
+          "sha256": "d9354efb9bae9d9d834a85ae18899184a348f02290dbe1286575db7cf1122080",
+          "bytes": 45
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-keyboard/privileged-imports.v1",
+          "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+          "bytes": 14
+        },
+        "requires": [
+          {
+            "capability": "usb.hid",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "usb.hid.keyboard",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-hid-keyboard-audit.json",
+          "sha256": "f0927e82bf7dcf87bc3475dd05f1074247472b6c3203e08bdc5d16b5bc6d773a",
+          "bytes": 563
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0x490",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      },
+      {
+        "id": "usb-hid-gamepad",
+        "version": "0.1.5",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_gamepad/manifest.health.json",
+          "sha256": "b4838ee5b7240c7da73f52ec9c51afaf892d5960076077415864c3ef6680a53f",
+          "bytes": 428
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-gamepad/driver.elf",
+          "sha256": "64c82ff6b82729ec170d364e9d3fd56da6879ff281a003e44b868cf55cbfeaa4",
+          "bytes": 15360
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-gamepad/manifest.json",
+          "sha256": "b4838ee5b7240c7da73f52ec9c51afaf892d5960076077415864c3ef6680a53f",
+          "bytes": 428
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-gamepad/.package.json",
+          "sha256": "99cb79fc2b98ded55ee44c44aa8e6ab4c04853475ad72bedee5204289297b71c",
+          "bytes": 806
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-hid-gamepad-0.1.5-xtensa-esp32s3.rte.zip",
+          "sha256": "15f4bb978e3d16afb0fa7e539e86cc2787b9e9c852ca91730b7f7a2d79bffc13",
+          "bytes": 17198
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-gamepad/provider-abi.v1",
+          "sha256": "6b5f0f4c7e97304a917e44e9dad87ee2b61419ccaef74217efd1fbbd918b85bf",
+          "bytes": 44
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-gamepad/privileged-imports.v1",
+          "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+          "bytes": 14
+        },
+        "requires": [
+          {
+            "capability": "usb.hid",
+            "api": 1
+          },
+          {
+            "capability": "platform.clock",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "usb.hid.gamepad",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-hid-gamepad-audit.json",
+          "sha256": "749d343a92c4e11a826f43c636feca42e108d9973ef50f1ae3b4f02ac2a2bf15",
+          "bytes": 563
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0x958",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      },
+      {
+        "id": "usb-xinput-gamepad",
+        "version": "0.1.4",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_xinput_gamepad/manifest.health.json",
+          "sha256": "af89dba0a430a9589c3d6684544b3f2c4d3309ea50aeabe66ef24c48bcacb93e",
+          "bytes": 435
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-xinput-gamepad/driver.elf",
+          "sha256": "b2d63f2f1dd3bb09bbf37e171f79dc46b111a4d9893b98ebdd72c87b9d8f719d",
+          "bytes": 11208
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-xinput-gamepad/manifest.json",
+          "sha256": "af89dba0a430a9589c3d6684544b3f2c4d3309ea50aeabe66ef24c48bcacb93e",
+          "bytes": 435
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-xinput-gamepad/.package.json",
+          "sha256": "447f0f642bf8a39f4d75c2a1079fc2ebf832f4770496db90966b72b1e1adab9f",
+          "bytes": 810
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-xinput-gamepad-0.1.4-xtensa-esp32s3.rte.zip",
+          "sha256": "ffaf180d4f626fd5a0d13d56f506f1ba91baf91ec8047790b94cd95c48fd06b7",
+          "bytes": 13060
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-xinput-gamepad/provider-abi.v1",
+          "sha256": "34a80c48f2d2cef60c5578a4a1f1ec14906876a54cda5196a81aea39838c237c",
+          "bytes": 47
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-xinput-gamepad/privileged-imports.v1",
+          "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+          "bytes": 14
+        },
+        "requires": [
+          {
+            "capability": "usb.host",
+            "api": 1
+          },
+          {
+            "capability": "platform.clock",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "usb.xinput.gamepad",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-xinput-gamepad-audit.json",
+          "sha256": "2ac0ed30b3561dfdcd471ff11f4ef111d1b2076925fc665dd6510f8836e61aa0",
+          "bytes": 563
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0x5a4",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      },
+      {
+        "id": "usb-hid-text-input",
+        "version": "0.1.1",
+        "source_manifest": {
+          "path": "/workspace/shared/x4-provider-health-handoff/Drivers/usb_hid_text_input/manifest.health.json",
+          "sha256": "f348ff75424a5336104d7d0118db4a055a15752108d57766e22f17051acd8519",
+          "bytes": 369
+        },
+        "elf": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-text-input/driver.elf",
+          "sha256": "447fbeab894241885227e632632bf4b5f6cf88e562e84a246455c1d81dac4425",
+          "bytes": 9364
+        },
+        "manifest": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-text-input/manifest.json",
+          "sha256": "f348ff75424a5336104d7d0118db4a055a15752108d57766e22f17051acd8519",
+          "bytes": 369
+        },
+        "package": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-text-input/.package.json",
+          "sha256": "fc1d9c80bcd2c90a87b4636e7f0584a6d59e174e076e0fbf3f4e7d9fcc5e54b4",
+          "bytes": 773
+        },
+        "archive": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/driver-usb-hid-text-input-0.1.1-xtensa-esp32s3.rte.zip",
+          "sha256": "84b6c7e08e83f6e23f87af495c18b865047fcdd71b9ff07dba8eddb9e2a1d333",
+          "bytes": 11105
+        },
+        "provider_abi": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-text-input/provider-abi.v1",
+          "sha256": "e7b64f42da084d97a5bf4a047efe24f4dca9425d4fd4513f8d83e5d1aec51ff3",
+          "bytes": 39
+        },
+        "privileged_imports": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/packages/usb-hid-text-input/privileged-imports.v1",
+          "sha256": "a46fff766cb063bc348b3e7a6670e4a48c5c9201f0da92e73a67670229be7cca",
+          "bytes": 14
+        },
+        "requires": [
+          {
+            "capability": "usb.hid.keyboard",
+            "api": 1
+          }
+        ],
+        "provides": [
+          {
+            "capability": "input.text",
+            "api": 1
+          }
+        ],
+        "audit": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/selected/usb-hid-text-input-audit.json",
+          "sha256": "8f6131371b2a26227a760c80a8704696af002cd8d7200f4b5c89981eb68b176a",
+          "bytes": 563
+        },
+        "health_mapping": {
+          "descriptor_symbol": "risc_provider_health_v1_descriptor",
+          "section": ".data.rel.ro",
+          "object_bytes": 12,
+          "api_version": 1,
+          "callback": "0x5b8",
+          "callback_relocations": [
+            [
+              5,
+              0,
+              0
+            ]
+          ],
+          "exports": [
+            "risc_provider_health_v1_descriptor",
+            "t5_driver_get"
+          ]
+        }
+      }
+    ]
+  },
+  "validation": {
+    "tests": [
+      {
+        "name": "real Reader stack and actual controller",
+        "command": "bash test/run_usb_provider_health_test.sh",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-stack-normal.log",
+          "sha256": "fd9129e027f07a904fe901e17f6189879ab5e9fa2b0e6488dcda63a6c03a02a1",
+          "bytes": 8873
+        },
+        "cases": {
+          "real_stack": 2,
+          "actual_controller": 18,
+          "facade": 4,
+          "real_host_deadline": 20
+        }
+      },
+      {
+        "name": "real Reader stack and actual controller ASan/UBSan",
+        "command": "SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 bash test/run_usb_provider_health_test.sh",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-stack-sanitized.log",
+          "sha256": "fd9129e027f07a904fe901e17f6189879ab5e9fa2b0e6488dcda63a6c03a02a1",
+          "bytes": 8873
+        },
+        "sanitizer_flags": [
+          "-fsanitize=address,undefined",
+          "-fno-sanitize-recover=all",
+          "-fno-omit-frame-pointer"
+        ],
+        "leak_detection_disabled_reason": "Terminal retained scenarios intentionally retain unsafe mappings and storage."
+      },
+      {
+        "name": "Runtime .94 production host/HID integration",
+        "command": "USB_HEALTH_RUNTIME_SOURCE=/workspace/shared/runtime-resource-handoff-0194 bash test/run_usb_provider_health_runtime_test.sh",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-runtime-normal.log",
+          "sha256": "32759adb9b1254a58ace11aadf94728664a3adb61663b048d1e6ef69efdcd6d6",
+          "bytes": 348
+        },
+        "cases": [
+          "actual-ready",
+          "actual-retained",
+          "actual-unknown"
+        ]
+      },
+      {
+        "name": "Runtime .94 production host/HID integration ASan/UBSan",
+        "command": "SANITIZE=1 ASAN_OPTIONS=detect_leaks=0 USB_HEALTH_RUNTIME_SOURCE=/workspace/shared/runtime-resource-handoff-0194 bash test/run_usb_provider_health_runtime_test.sh",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-runtime-sanitized.log",
+          "sha256": "32759adb9b1254a58ace11aadf94728664a3adb61663b048d1e6ef69efdcd6d6",
+          "bytes": 348
+        }
+      },
+      {
+        "name": "target native PHY controller",
+        "command": "/workspace/scratch/c744abbbbd60/watch-build-tools/python/bin/python scripts/probe_usb_controller_esp32s3.py --link-experiment --native-phy-lease --provider-health --compile-database /workspace/shared/x4-usb-host-roots-reader/test/target/usb_controller_bounded/compile_commands.json --idf-source /workspace/shared/x4-usb-host-idf-v4.4.7",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-controller-build.log",
+          "sha256": "947d9124852e5e972acd321719255dcba3bd6decf9aca70381b7fa38000fd2e2",
+          "bytes": 222
+        }
+      },
+      {
+        "name": "target selected packages and strict descriptor/import/relocation audits",
+        "command": "/workspace/scratch/c744abbbbd60/watch-build-tools/python/bin/python scripts/build_usb_provider_health.py --cc /workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc --ids usb-controller-esp32s3 usb-host-v2 usb-hid usb-hid-mouse usb-hid-keyboard usb-hid-gamepad usb-xinput-gamepad usb-hid-text-input",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-target.log",
+          "sha256": "b5332c6d48fa109016314fd3d8bdbf493f3a1cb5504cfa7a6817cb9a09254dd4",
+          "bytes": 3695
+        }
+      },
+      {
+        "name": "malformed real controller and mouse target descriptors",
+        "command": "/workspace/scratch/c744abbbbd60/watch-build-tools/python/bin/python test/provider_health/audit_test.py dist/provider-health/packages/usb-controller-esp32s3/driver.elf dist/provider-health/packages/usb-hid-mouse/driver.elf",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-audit-negative.log",
+          "sha256": "1da204f5bbf085ef06106d6c20bd942275d4195ba5ec9633248efaf19e40f06c",
+          "bytes": 204
+        },
+        "negative_controls": 16
+      },
+      {
+        "name": "ordinary host deadline",
+        "command": "bash test/run_usb_host_deadlines_test.sh",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-default-deadlines.log",
+          "sha256": "2d6292fbc04f1b746eddfeb1d28c39abb5ceb7204fc36af3139e588e1185e73d",
+          "bytes": 960
+        }
+      },
+      {
+        "name": "ordinary HID/navigation/text",
+        "command": "bash test/run_usb_hid_test.sh",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-default-hid.log",
+          "sha256": "3c43bf6a25e1ba3f5e9b0a033ad470c0b4c25b10ee955b582f88ae5ba28d9966",
+          "bytes": 907
+        }
+      },
+      {
+        "name": "ordinary mouse",
+        "command": "bash test/run_usb_hid_mouse_test.sh",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-default-mouse.log",
+          "sha256": "197942b6c78af5767526ad899e98a55de2ba2c34a3cbfa63ae517179d846b1ec",
+          "bytes": 220
+        }
+      },
+      {
+        "name": "complete original/current ELF byte identity",
+        "command": "/workspace/scratch/c744abbbbd60/watch-build-tools/python/bin/python test/provider_health/default_identity.py --cc /workspace/scratch/c744abbbbd60/watch-build-tools/platformio-core/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc --compile-database /workspace/shared/x4-usb-host-roots-reader/test/target/usb_controller_bounded/compile_commands.json --idf-source /workspace/shared/x4-usb-host-idf-v4.4.7 --receipt /workspace/shared/usb-provider-health-default-identity.json",
+        "cwd": "/workspace/shared/x4-provider-health-handoff",
+        "result": "PASS",
+        "exit_code": 0,
+        "log": {
+          "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-default-identity.log",
+          "sha256": "06ce625cf36792474d8c296048c72060041193c829b5dafd70c5af3a122d77e9",
+          "bytes": 2875
+        }
+      }
+    ],
+    "default_identity": {
+      "baseline": "bf997f3d777e644e98c2f885a9c9f4c81e1a0e48",
+      "checked_original_files": 215,
+      "profiles": [
+        {
+          "profile": "usb-host-v2",
+          "sha256": "11c04d91739a242b24825a53cb169979cb19d57b2ca88f45f3d335d0da09788c",
+          "bytes": 14340,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-hid",
+          "sha256": "b50db48b09c71a1f4a0f5885526657ba8f4324e5ccef4a28e0e2ed7908b12ffb",
+          "bytes": 7380,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-hid-keyboard",
+          "sha256": "4c9f55b63b89c7464d386401acd955df6ea3d96fb58933c13c7f1fdabe02691e",
+          "bytes": 8444,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-hid-mouse",
+          "sha256": "adb4bb40f54c3969e7d8c1c4dd013abcdef3aa3cac1bd058f07d700aeac62bf2",
+          "bytes": 15560,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-hid-gamepad",
+          "sha256": "2d543f6a04e5b94192f732c64f2f5a436861e2a569f05fb4c6617ae7267db86c",
+          "bytes": 14444,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-xinput-gamepad",
+          "sha256": "e2cee3355937d7815fb5685598cd2411c7d508bb36424f00636ec7495f654c26",
+          "bytes": 11088,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-hid-text-input",
+          "sha256": "4517479937a60c267414d662ed5dc72233bfa6ce47a0e8199010d91473f800c9",
+          "bytes": 8692,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-controller-esp32s3",
+          "sha256": "6472827fe626ffaf5f49278aaf5cbb9976c31049db39f91226a32a86cd1c604c",
+          "bytes": 940348,
+          "full_elf_identical": true
+        },
+        {
+          "profile": "usb-controller-esp32s3-native-phy",
+          "sha256": "059beedabe24dc3d00b6178cd43eddb58d3408b83b3bfb63a350d349e13c7f35",
+          "bytes": 944228,
+          "full_elf_identical": true
+        }
+      ]
+    },
+    "default_identity_receipt": {
+      "path": "/workspace/shared/usb-provider-health-artifacts/evidence/usb-provider-health-default-identity.json",
+      "sha256": "f2f02509e8fe0ff0fb73b9325dceaa1862fad005a31ab233c1b2b5d76bf84189",
+      "bytes": 1823
+    },
+    "final_source_check": "215 original tracked Driver/SDK files byte-identical; fixed header byte-identical; all eight package manifests, entries, zip contents, catalog hashes exact; nine preserved default ELF hashes exact; git diff --check passed; no generated dist committed"
+  },
+  "proof_boundary": {
+    "full_active_component_required": true,
+    "remaining_elf_health": [
+      "platform-clock-v1",
+      "qualified VBUS root plus its actual I2C/profile dependencies",
+      "every other active forward/reverse/sibling consumer including navigation and serial/storage classes"
+    ],
+    "remaining_integration": [
+      "Qualified physical X4 VBUS source/sense topology",
+      "Runtime import/admission and explicit selected package binding",
+      "Exact surviving owner/dependency grants outside departing invocation",
+      "Bounded external owner pump for host/role/classes with keyboard/text order, gamepad state and mouse GAP recovery"
+    ],
+    "controller_target_admission": "47 imports compatible with scoped privileged OS/CPU v1, 905 supported mapped relocations; ordinary package admission, resident firmware strong-symbol linking and physical board unverified",
+    "power": "Only T5S3 BQ25896 source is present; it does not qualify physical X4 VBUS; no invented GPIO/root or powered-host claim",
+    "hardware_validation": false,
+    "published": false,
+    "product_adopted": false
+  }
+}
