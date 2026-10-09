@@ -3,47 +3,45 @@
 #include "../source/lab_part_1.inc"
 #include "../source/lab_part_2.inc"
 
-bool guarded_wait_busy_cycle(uint32_t timeout_ms, const char* stage, uint32_t* duration_us);
-bool guarded_wait_refresh(uint32_t timeout_ms, uint32_t* duration_us);
-
-// Preserve the stable v0.1.5 polling implementation under private names.
+// Rename the stable v0.1.5 wait implementations while preserving the exact
+// split-token boundary between lab_part_2 and lab_part_3.
 #define wait_busy_cycle x4lab_raw_wait_busy_cycle
 #define wait_refresh x4lab_raw_wait_refresh
 #include "../source/lab_part_3.inc"
 #undef wait_refresh
 #undef wait_busy_cycle
 
-// ghost_part_4 begins by closing set_partial_window(), whose definition is split
-// across include files. Its hardware waits resolve to the guarded declarations.
-#define wait_busy_cycle guarded_wait_busy_cycle
-#define wait_refresh guarded_wait_refresh
+// lab_part_3 ends inside set_partial_window(); ghost_part_4 begins by closing
+// it. Function-like macros emit no tokens at this boundary and wrap each later
+// hardware wait at its call site, rejecting the false 1-2 us completions seen
+// in earlier laboratory runs.
+#define wait_busy_cycle(timeout_ms, stage, duration_us)                                                   \
+  ([&]() -> bool {                                                                                        \
+    uint32_t x4lab_measured_us = 0;                                                                       \
+    if (!x4lab_raw_wait_busy_cycle((timeout_ms), (stage), &x4lab_measured_us)) return false;              \
+    if (x4lab_measured_us < 1000U) {                                                                      \
+      Serial.printf("[X4LAB] REJECTED implausibly short BUSY cycle: stage=%s duration=%lu us\\n",       \
+                    (stage), static_cast<unsigned long>(x4lab_measured_us));                              \
+      return false;                                                                                        \
+    }                                                                                                      \
+    if ((duration_us) != nullptr) *(duration_us) = x4lab_measured_us;                                     \
+    return true;                                                                                           \
+  }())
+#define wait_refresh(timeout_ms, duration_us)                                                              \
+  ([&]() -> bool {                                                                                        \
+    uint32_t x4lab_measured_us = 0;                                                                       \
+    if (!x4lab_raw_wait_refresh((timeout_ms), &x4lab_measured_us)) return false;                          \
+    if (x4lab_measured_us < 5000U) {                                                                      \
+      Serial.printf("[X4LAB] REJECTED implausibly short DRF BUSY cycle: duration=%lu us\\n",            \
+                    static_cast<unsigned long>(x4lab_measured_us));                                       \
+      return false;                                                                                        \
+    }                                                                                                      \
+    if ((duration_us) != nullptr) *(duration_us) = x4lab_measured_us;                                     \
+    return true;                                                                                           \
+  }())
 #include "../source/ghost_part_4.inc"
 #undef wait_refresh
 #undef wait_busy_cycle
-
-bool guarded_wait_busy_cycle(uint32_t timeout_ms, const char* stage, uint32_t* duration_us) {
-  uint32_t measured = 0;
-  if (!x4lab_raw_wait_busy_cycle(timeout_ms, stage, &measured)) return false;
-  if (measured < 1000U) {
-    Serial.printf("[X4LAB] REJECTED implausibly short BUSY cycle: stage=%s duration=%lu us\n", stage,
-                  static_cast<unsigned long>(measured));
-    return false;
-  }
-  if (duration_us) *duration_us = measured;
-  return true;
-}
-
-bool guarded_wait_refresh(uint32_t timeout_ms, uint32_t* duration_us) {
-  uint32_t measured = 0;
-  if (!x4lab_raw_wait_refresh(timeout_ms, &measured)) return false;
-  if (measured < 5000U) {
-    Serial.printf("[X4LAB] REJECTED implausibly short DRF BUSY cycle: duration=%lu us\n",
-                  static_cast<unsigned long>(measured));
-    return false;
-  }
-  if (duration_us) *duration_us = measured;
-  return true;
-}
 
 #include "../source/ghost_part_5.inc"
 #endif  // X4_HIGH_FPS_LAB
