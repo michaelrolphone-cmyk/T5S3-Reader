@@ -33,6 +33,12 @@
 #define DIR_SLOTS 8u
 #define OP_BUDGET_MS 15000u
 #define OP_SECTOR_LIMIT 2048u
+#ifndef STORAGE_VOLUME_OPERATION_BUDGET_MS
+#define STORAGE_VOLUME_OPERATION_BUDGET_MS OP_BUDGET_MS
+#endif
+#ifndef STORAGE_VOLUME_OPERATION_SECTOR_LIMIT
+#define STORAGE_VOLUME_OPERATION_SECTOR_LIMIT OP_SECTOR_LIMIT
+#endif
 static FATFS filesystem;
 static uint64_t operation_start;
 static uint32_t operation_steps, operation_sectors;
@@ -113,7 +119,11 @@ static bool leave(void) {
 }
 static bool enter(void) {
     if (!enter_lifecycle()) return false;
-    if (power_down_prepared) { (void)leave(); return false; }
+    if (power_down_prepared
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+        || STORAGE_VOLUME_ADMISSION_FROZEN()
+#endif
+    ) { (void)leave(); return false; }
     return true;
 }
 static bool enter_ready(void) {
@@ -132,13 +142,13 @@ int risc_fatfs_checkpoint(void) {
     if ((++operation_steps & 255u) == 0) cooperate(4096);
     else cooperate(0);
     if (operation_steps > 1048576u ||
-        clock_api->monotonic_ms(clock_api->context) - operation_start >= OP_BUDGET_MS) {
+        clock_api->monotonic_ms(clock_api->context) - operation_start >= STORAGE_VOLUME_OPERATION_BUDGET_MS) {
         fail("filesystem operation budget exceeded"); io_failed = true; mounted = false; return 0;
     }
     return 1;
 }
 static bool disk_budget(void) {
-    if (++operation_sectors > OP_SECTOR_LIMIT || !risc_fatfs_checkpoint()) {
+    if (++operation_sectors > STORAGE_VOLUME_OPERATION_SECTOR_LIMIT || !risc_fatfs_checkpoint()) {
         fail("filesystem I/O budget exceeded"); io_failed = true; mounted = false; return false;
     }
     cooperate(0);
@@ -497,6 +507,9 @@ static bool last_error_api(void *context, char *out, size_t capacity) {
 static bool prepare_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
 #ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
     if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
 #endif
@@ -516,6 +529,9 @@ static bool prepare_power_down(void *context) {
 static bool cancel_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
 #ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
     if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
 #endif
@@ -531,6 +547,9 @@ static bool cancel_power_down(void *context) {
 static bool commit_power_down(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
 #ifdef STORAGE_VOLUME_HAS_SLEEP_RECOVERY
     if (sleep_state != SLEEP_ACTIVE) { (void)leave(); return false; }
 #endif
@@ -562,6 +581,9 @@ static bool sleep_leave(void) {
 static bool prepare_sleep(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
     if (sleep_state == SLEEP_PREPARED) return sleep_leave();
     if (sleep_state != SLEEP_ACTIVE || power_down_prepared || power_down_committed ||
         !started || io_failed || !transport_idle() || has_handles()) {
@@ -580,6 +602,9 @@ static bool prepare_sleep(void *context) {
 static bool commit_sleep(void *context) {
     (void)context;
     if (!enter_lifecycle()) return false;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN()) { (void)leave(); return false; }
+#endif
     if (sleep_state == SLEEP_COMMITTED) return sleep_leave();
     if (sleep_state != SLEEP_PREPARED || io_failed || !transport_idle() || has_handles()) {
         (void)sleep_leave(); return false;
@@ -601,6 +626,10 @@ static int32_t resume_sleep(void *context) {
      * not inspect transaction state without owning the operation guard. */
     if (!enter_lifecycle())
         return STORAGE_VOLUME_SLEEP_UNSAFE() ? RISC_STORAGE_SLEEP_RETAINED : RISC_STORAGE_SLEEP_REFUSED;
+#ifdef STORAGE_VOLUME_ADMISSION_FROZEN
+    if (STORAGE_VOLUME_ADMISSION_FROZEN())
+        return leave() ? RISC_STORAGE_SLEEP_REFUSED : RISC_STORAGE_SLEEP_RETAINED;
+#endif
     int32_t result;
     if (sleep_state == SLEEP_RETAINED || STORAGE_VOLUME_SLEEP_UNSAFE()) {
         sleep_state = SLEEP_RETAINED;

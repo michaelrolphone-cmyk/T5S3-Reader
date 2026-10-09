@@ -1,0 +1,9 @@
+#pragma once
+#include <stdbool.h>
+#include <stdint.h>
+bool risc_msc_transport_start(void);
+bool risc_msc_transport_poll(void);
+bool risc_msc_transport_stop(void);
+void risc_msc_transport_fault(void);
+bool risc_msc_transport_ok(void);
+void risc_msc_stack_reset(void);
