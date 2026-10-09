@@ -41,7 +41,7 @@ def classify_imports(imports, exported, privileged=(), loader_public=()):
     }
 
 
-def audit(path):
+def audit(path, provider_health=False):
     if not path.is_file():
         raise FileNotFoundError('Build physical controller first: ' + str(path))
     mapping = audit_loader_map(path)
@@ -95,6 +95,10 @@ def audit(path):
                        (tag.entry.d_tag == 'DT_FLAGS' and tag.entry.d_val & 4)
                        for tag in dynamic.iter_tags()))
         allowed_symbols = {'t5_driver_get', '__bss_start', '_edata', '_end'}
+        if provider_health:
+            from audit_provider_health_elf import audit as audit_health
+            audit_health(path)
+            allowed_symbols.add('risc_provider_health_v1_descriptor')
         unexpected_exports = sorted({sym.name for sym in dynsym.iter_symbols()
                                      if sym.name and sym['st_shndx'] != 'SHN_UNDEF' and
                                      sym['st_info']['bind'] == 'STB_GLOBAL'} - allowed_symbols)
@@ -135,8 +139,10 @@ def main():
     parser.add_argument('elf', nargs='?', type=Path, default=DEFAULT_ELF)
     parser.add_argument('--strict', action='store_true',
                         help='fail when scoped ABI imports or relocations are incompatible')
+    parser.add_argument('--provider-health', action='store_true',
+                        help='validate and admit the explicitly selected const health descriptor')
     args = parser.parse_args()
-    result = audit(args.elf)
+    result = audit(args.elf, args.provider_health)
     output = args.elf.parent / 'controller-loader-audit.json'
     output.write_text(json.dumps(result, indent=2) + '\n')
     print('Physical controller loader audit:', result['status'], flush=True)

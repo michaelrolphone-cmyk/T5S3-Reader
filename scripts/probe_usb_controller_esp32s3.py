@@ -114,7 +114,7 @@ def target_mmio_symbols(soc):
 
 
 def run():
-    global OUTPUT
+    global OUTPUT, SOURCE, EXPORT_MAP
     parser = argparse.ArgumentParser()
     parser.add_argument('--link-experiment', action='store_true')
     parser.add_argument('--compile-database', type=Path,
@@ -123,9 +123,17 @@ def run():
                         help='Existing exact v4.4.7 sparse checkout (never patched in place)')
     parser.add_argument('--native-phy-lease', action='store_true',
                         help='Explicit .24 profile requiring the native PHY lease; does not activate hardware')
+    parser.add_argument('--provider-health', action='store_true',
+                        help='Explicit .25 readonly health profile; requires --native-phy-lease')
     args = parser.parse_args()
+    if args.provider_health and not args.native_phy_lease:
+        parser.error('--provider-health requires --native-phy-lease')
     if args.native_phy_lease:
         OUTPUT = ROOT / 'dist/experimental/usb-controller-esp32s3-native-phy'
+    if args.provider_health:
+        SOURCE = ROOT / 'Drivers/usb_controller_esp32s3/driver.health.cpp'
+        EXPORT_MAP = ROOT / 'Drivers/usb_controller_esp32s3/exports.health.map'
+        OUTPUT = ROOT / 'dist/provider-health/usb-controller-esp32s3'
     OUTPUT.mkdir(parents=True, exist_ok=True)
     if not args.compile_database:
         subprocess.run(['pio', 'run', '-e', 't5s3-pro', '-t', 'compiledb'],
@@ -139,8 +147,13 @@ def run():
     argv = list(entry['arguments']) if 'arguments' in entry else shlex.split(entry['command'])
     if any('RISC_USB_CONTROLLER_NATIVE_PHY_LEASE' in arg for arg in argv):
         raise RuntimeError('Select the native PHY profile only with --native-phy-lease, not the compilation database')
+    if args.provider_health:
+        from stage_usb_provider_health import stage as stage_health
+        stage_health(OUTPUT)
     controller = OUTPUT / 'controller.o'
     extra = ('-DRISC_USB_CONTROLLER_NATIVE_PHY_LEASE=1',) if args.native_phy_lease else ()
+    if args.provider_health:
+        extra += ('-I' + str(OUTPUT), '-I' + str(ROOT / 'Drivers/usb_controller_esp32s3'))
     compile_target(argv, entry, SOURCE, controller, extra=('-Wall', '-Wextra', '-Werror', *extra))
     compiler = Path(argv[0])
     nm = tool(compiler, 'nm')
@@ -202,13 +215,16 @@ def run():
     defined = subprocess.check_output([str(nm), '-D', '--defined-only', str(elf)], text=True)
     extra_symbols = {line.split()[-1] for line in defined.splitlines()} - {
         't5_driver_get', '__bss_start', '_edata', '_end'}
+    if args.provider_health:
+        extra_symbols.discard('risc_provider_health_v1_descriptor')
     if extra_symbols:
         raise RuntimeError('Unexpected exported ELF data: ' + repr(extra_symbols))
     dynamic = subprocess.check_output([str(readelf), '-d', str(elf)], text=True)
     if 'TEXTREL' in dynamic:
         raise RuntimeError('Controller contains text/read-only dynamic relocations')
     if args.native_phy_lease:
-        manifest = ROOT / 'Drivers/usb_controller_esp32s3/manifest.native-phy.json'
+        manifest = ROOT / 'Drivers/usb_controller_esp32s3' / (
+            'manifest.health.json' if args.provider_health else 'manifest.native-phy.json')
         (OUTPUT / 'driver.elf').write_bytes(elf.read_bytes())
         (OUTPUT / 'manifest.json').write_bytes(manifest.read_bytes())
     print('Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS', flush=True)
