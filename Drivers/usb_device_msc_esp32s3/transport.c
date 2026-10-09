@@ -15,6 +15,7 @@
 #include "device/dcd.h"
 #include "portable/synopsys/dwc2/dwc2_type.h"
 #include "Transport.h"
+#include "OwnerPump.h"
 #include "../usb_controller_esp32s3/PhyRoute.h"
 static bool healthy=true,live,saved_clock;
 static uint32_t saved_wrap,saved_test,saved_inputs[4];
@@ -62,13 +63,18 @@ bool risc_msc_transport_start(void) {
  r->gahbcfg&=~(GAHBCFG_GINT|GAHBCFG_DMAEN);
  return !(r->gintsts&GINTSTS_CMOD) && healthy;
 }
+static bool pump_ready(void) {
+ return (regs()->gintsts&regs()->gintmsk)!=0 || tud_task_event_ready();
+}
+static void pump_hardware(void) {
+ if(regs()->gintsts&GINTSTS_MMIS){healthy=false;return;}
+ dcd_int_handler(0);
+}
+static void pump_event(void) { tud_task_ext(0,false); }
 bool risc_msc_transport_poll(void) {
  if(!live || !healthy)return false;
  if(regs()->gintsts&GINTSTS_MMIS){healthy=false;return false;}
- /* Hardware interrupt handler is invoked synchronously, never registered as
-  * an ISR. One bounded hardware pass then at most32 queued stack events. */
- dcd_int_handler(0);
- if(healthy)tud_task_ext(0,false);
+ (void)risc_msc_owner_pump(pump_ready,pump_hardware,pump_event);
  return healthy;
 }
 bool risc_msc_transport_stop(void) {

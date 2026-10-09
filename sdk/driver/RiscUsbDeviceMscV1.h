@@ -80,6 +80,35 @@ static inline const risc_usb_device_msc_api_v1_prepare *risc_usb_device_msc_prep
     const risc_usb_device_msc_api_v1_prepare *p=(const risc_usb_device_msc_api_v1_prepare *)api;
     return p->prepare_tag==RISC_USB_MSC_PREPARE_TAG && p->prepare_version==1 && p->prepare_step?p:NULL;
 }
+/* Owner-task RAM-only diagnostics; neither polls nor performs storage I/O.
+ * Counts restart per session. Completed fields identify the latest acknowledged
+ * CSW; count deltas expose commands coalesced between client snapshots. */
+#define RISC_USB_MSC_DIAGNOSTICS_TAG UINT32_C(0x554d4431)
+enum {
+    RISC_USB_MSC_DIAG_CONFIGURED=1u, RISC_USB_MSC_DIAG_MEDIA_FAULT=2u,
+    RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY=4u, RISC_USB_MSC_DIAG_COMMAND_ACTIVE=8u
+};
+typedef struct {
+    uint32_t struct_size, flags;
+    uint64_t commands_started, commands_completed, blocks_read, blocks_written;
+    uint64_t command_started_ms, last_command_elapsed_ms, last_io_elapsed_ms;
+    uint64_t last_poll_gap_ms, max_poll_gap_ms;
+    uint32_t current_opcode, current_tag, command_bytes, current_lba, current_block_count;
+    uint32_t completed_opcode, completed_tag, last_csw_status;
+    int32_t last_io_result;
+    uint32_t last_io_lba, last_io_count, stalls, last_pump_passes;
+} risc_usb_device_msc_diagnostics_v1;
+typedef struct {
+    risc_usb_device_msc_api_v1_prepare base;
+    uint32_t diagnostics_tag, diagnostics_version;
+    int32_t (*diagnostics)(void *context, uint64_t token, risc_usb_device_msc_diagnostics_v1 *out);
+} risc_usb_device_msc_api_v1_diagnostics;
+static inline const risc_usb_device_msc_api_v1_diagnostics *risc_usb_device_msc_diagnostics(
+    const risc_usb_device_msc_api_v1 *api) {
+    if(!risc_usb_device_msc_prepare(api) || api->struct_size<sizeof(risc_usb_device_msc_api_v1_diagnostics))return NULL;
+    const risc_usb_device_msc_api_v1_diagnostics *p=(const risc_usb_device_msc_api_v1_diagnostics *)api;
+    return p->diagnostics_tag==RISC_USB_MSC_DIAGNOSTICS_TAG && p->diagnostics_version==1 && p->diagnostics?p:NULL;
+}
 #ifdef __cplusplus
 }
 #endif

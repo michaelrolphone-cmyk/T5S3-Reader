@@ -12,9 +12,10 @@
 #include "RiscProviderV2.h"
 #include "RiscPlatformClockV1.h"
 #include "Transport.h"
+#include "OwnerPump.h"
 extern const risc_driver_v2 *t5_driver_get(uint32_t);
 static bool is_owner=true,sd_owned,phy_owned,usb_live,healthy=true;
-static bool fail_claim,retain_claim,fail_start,fail_stop,fail_release,fail_sync,fail_end,fail_write,refuse_begin;
+static bool fail_claim,retain_claim,fail_start,fail_stop,fail_release,fail_sync,fail_end,fail_write,fail_read,refuse_begin;
 static bool absent_end,retained_begin,no_media_token,no_phy_token;
 static uint64_t media_generation=1;
 static unsigned sd_reads,sd_writes,sd_syncs,remounts;
@@ -26,7 +27,7 @@ static int32_t sd_begin(void*c,uint64_t*t,uint64_t*n,uint32_t*z){
  (void)c;*t=0;*n=0;*z=0;if(retained_begin)return -2;if(refuse_begin)return -1;assert(!sd_owned);sd_owned=true;mark('M');*t=no_media_token?0:++media_generation;*n=16;*z=512;return 0;
 }
 static int32_t sd_read(void*c,uint64_t t,uint64_t lba,uint32_t n,void*b){
- (void)c;sd_check(t);assert(usb_live && lba<16 && n==1);++sd_reads;memcpy(b,disk[lba],512);return 0;
+ (void)c;sd_check(t);assert(usb_live && lba<16 && n==1);++sd_reads;if(fail_read)return -2;memcpy(b,disk[lba],512);return 0;
 }
 static int32_t sd_write(void*c,uint64_t t,uint64_t lba,uint32_t n,const void*b){
  (void)c;sd_check(t);assert(usb_live && lba<16 && n==1);++sd_writes;if(fail_write)return -2;memcpy(disk[lba],b,512);return 0;
@@ -38,7 +39,8 @@ static int32_t zero(void*c){(void)c;return 0;}
 static bool owner(void*c){(void)c;return is_owner;}
 static bool claim(void*c,uint64_t*t){(void)c;assert(sd_owned && !phy_owned);*t=0;mark('P');if(fail_claim&&!retain_claim)return false;phy_owned=true;*t=no_phy_token?0:9;return !fail_claim;}
 static bool release(void*c,uint64_t t){(void)c;assert(!sd_owned && !usb_live && phy_owned && t==9);mark('R');if(fail_release)return false;phy_owned=false;return true;}
-static uint64_t now(void*c){(void)c;return 0;}
+static uint64_t now_ms;
+static uint64_t now(void*c){(void)c;return now_ms;}
 static void sleep_ms(void*c,uint32_t ms){(void)c;assert(phy_owned && sd_owned && ms==30);}
 static unsigned pending_steps,prepare_calls;
 static int32_t prepare_result;
@@ -71,7 +73,10 @@ bool dcd_edpt_xfer(uint8_t p,uint8_t a,uint8_t*b,uint16_t n){
 void dcd_edpt_stall(uint8_t p,uint8_t a){(void)p;ep[slot(a)][a>>7].stalled=true;ep[slot(a)][a>>7].pending=false;}
 void dcd_edpt_clear_stall(uint8_t p,uint8_t a){(void)p;ep[slot(a)][a>>7].stalled=false;}
 bool risc_msc_transport_start(void){assert(sd_owned&&phy_owned);mark('U');usb_live=true;healthy=true;return !fail_start&&tud_init(0);}
-bool risc_msc_transport_poll(void){assert(usb_live);tud_task_ext(0,false);return healthy;}
+static bool pump_ready(void){return tud_task_event_ready();}
+static void pump_hardware(void){}
+static void pump_event(void){tud_task_ext(0,false);}
+bool risc_msc_transport_poll(void){assert(usb_live);(void)risc_msc_owner_pump(pump_ready,pump_hardware,pump_event);return healthy;}
 bool risc_msc_transport_stop(void){assert(usb_live);mark('T');if(fail_stop)return false;usb_live=false;risc_msc_stack_reset();return true;}
 void risc_msc_transport_fault(void){healthy=false;}
 bool risc_msc_transport_ok(void){return healthy;}
@@ -100,6 +105,11 @@ static void command(uint8_t op,uint32_t bytes,bool input,uint32_t lba,uint16_t c
 static unsigned csw(bool finish){
  assert(ep[1][1].pending&&ep[1][1].length==13);msc_csw_t c;memcpy(&c,ep[1][1].buffer,sizeof(c));assert(c.signature==MSC_CSW_SIGNATURE&&c.tag==tag);
  if(finish){complete(0x81,NULL,13);(void)poll();}return c.status;
+}
+static void retained_control(uint8_t type,uint8_t request,uint16_t value,uint16_t index){
+ uint8_t bytes[8]={type,request,(uint8_t)value,(uint8_t)(value>>8),(uint8_t)index,(uint8_t)(index>>8),0,0};
+ dcd_event_setup_received(0,bytes,false);assert(poll()==-2);
+ assert(ep[0][1].pending&&ep[0][1].length==0);complete(0x80,NULL,0);assert(poll()==-2);
 }
 static void connect_provider(void){
  const risc_driver_v2*d=t5_driver_get(2);assert(d&&!t5_driver_get(1));api=d->capability;
@@ -146,7 +156,58 @@ int main(int argc,char**argv){
  if(!strcmp(s,"nonowner")){is_owner=false;assert(poll()==-1);assert(api->end(NULL,token,0)==-1);is_owner=true;assert(api->end(NULL,token,0)==0);assert(d->quiesce());return 0;}
  if(!strcmp(s,"cancel-waiting")){assert(api->end(NULL,token,0)==0);assert(strcmp(trace,"MPUTER")==0);assert(poll()==-1);assert(d->quiesce());return 0;}
  configure();
- if(!strcmp(s,"suspend")){dcd_event_bus_signal(0,DCD_EVENT_SUSPEND,false);assert(poll()==0&&status.state==RISC_USB_MSC_SUSPENDED);assert(sd_owned&&phy_owned&&!remounts);assert(api->end(NULL,token,0)==-1);dcd_event_bus_signal(0,DCD_EVENT_RESUME,false);assert(poll()==0&&status.state==RISC_USB_MSC_CONNECTED);}
+ if(!strcmp(s,"diagnostics")){
+  const risc_usb_device_msc_api_v1_diagnostics *tail=risc_usb_device_msc_diagnostics(api);assert(tail);
+  risc_usb_device_msc_diagnostics_v1 info={.struct_size=sizeof(info)};
+  risc_usb_device_msc_api_v1_diagnostics copy=*tail;
+  copy.base.base.struct_size=sizeof(copy.base);assert(!risc_usb_device_msc_diagnostics(&copy.base.base));
+  copy=*tail;copy.diagnostics_tag=0;assert(!risc_usb_device_msc_diagnostics(&copy.base.base));
+  copy=*tail;copy.diagnostics_version=2;assert(!risc_usb_device_msc_diagnostics(&copy.base.base));
+  assert(tail->diagnostics(NULL,token+1,&info)==-1);
+  now_ms=10;assert(poll()==0);assert(tail->diagnostics(NULL,token,&info)==0);
+  assert(info.last_poll_gap_ms==10&&info.max_poll_gap_ms==10&&!info.last_pump_passes);
+  assert((info.flags&(RISC_USB_MSC_DIAG_CONFIGURED|RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY))==(RISC_USB_MSC_DIAG_CONFIGURED|RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY));
+  command(0x28,512,true,3,1,0);assert(tail->diagnostics(NULL,token,&info)==0);
+  assert(info.commands_started==1&&!info.commands_completed&&info.current_opcode==0x28&&info.current_tag==tag&&info.command_bytes==512&&info.current_lba==3&&info.current_block_count==1&&info.last_io_lba==3&&info.last_io_count==1&&info.last_io_result==0&&info.blocks_read==1);
+  assert(info.flags&RISC_USB_MSC_DIAG_COMMAND_ACTIVE);assert(info.command_started_ms==10);
+  now_ms=13;complete(0x81,NULL,512);assert(poll()==0);assert(csw(true)==0);assert(tail->diagnostics(NULL,token,&info)==0);
+  assert(info.commands_completed==1&&info.completed_opcode==0x28&&info.completed_tag==tag&&info.last_csw_status==0&&info.last_command_elapsed_ms==3&&!(info.flags&RISC_USB_MSC_DIAG_COMMAND_ACTIVE));
+ }
+ else if(!strcmp(s,"controller-fault-protocol")){
+  risc_msc_transport_fault();unsigned before=sd_reads;command(0x28,512,true,0,1,0);
+  assert(poll()==-2&&!healthy&&sd_reads==before&&!ep[1][1].pending&&sd_owned&&phy_owned);
+  const risc_usb_device_msc_api_v1_diagnostics *tail=risc_usb_device_msc_diagnostics(api);
+  risc_usb_device_msc_diagnostics_v1 info={.struct_size=sizeof(info)};assert(tail->diagnostics(NULL,token,&info)==0);
+  assert(!(info.flags&RISC_USB_MSC_DIAG_CONTROLLER_HEALTHY)&&!info.commands_started&&!info.last_pump_passes);
+  assert(api->end(NULL,token,1)==0);assert(d->quiesce());puts("PASS controller fault stops protocol and SD work");return 0;
+ }
+ else if(!strcmp(s,"read-error-protocol")||!strcmp(s,"write-error-protocol")||!strcmp(s,"sync-error-protocol")){
+  const bool reading=!strcmp(s,"read-error-protocol"),writing=!strcmp(s,"write-error-protocol");
+  fail_end=true;fail_read=reading;fail_write=writing;fail_sync=!reading&&!writing;
+  if(reading)command(0x28,512,true,0,1,0);
+  else if(writing){uint8_t block[512]={0};command(0x2a,512,false,0,1,0);complete(1,block,512);assert(poll()==-2);}
+  else command(0x35,0,false,0,0,0);
+  assert(status.state==RISC_USB_MSC_FAULT_RETAINED&&healthy&&sd_owned&&phy_owned&&!remounts);
+  const unsigned before_reads=sd_reads,before_writes=sd_writes,before_syncs=sd_syncs;
+  if(reading){assert(ep[1][1].stalled);retained_control(2,TUSB_REQ_CLEAR_FEATURE,TUSB_REQ_FEATURE_EDPT_HALT,0x81);}
+  assert(csw(true)==MSC_CSW_STATUS_FAILED);
+  command(0x03,18,true,0,0,18);assert(ep[1][1].pending&&ep[1][1].length==18);
+  assert((ep[1][1].buffer[2]&15)==SCSI_SENSE_MEDIUM_ERROR);
+  complete(0x81,NULL,18);assert(poll()==-2);assert(csw(true)==MSC_CSW_STATUS_PASSED);
+  retained_control(0x21,MSC_REQ_RESET,0,0);
+  retained_control(2,TUSB_REQ_CLEAR_FEATURE,TUSB_REQ_FEATURE_EDPT_HALT,0x81);
+  retained_control(2,TUSB_REQ_CLEAR_FEATURE,TUSB_REQ_FEATURE_EDPT_HALT,0x01);
+  retained_control(0,TUSB_REQ_SET_CONFIGURATION,0,0);
+  retained_control(0,TUSB_REQ_SET_CONFIGURATION,1,0);
+  dcd_event_bus_signal(0,DCD_EVENT_SUSPEND,false);dcd_event_bus_signal(0,DCD_EVENT_RESUME,false);
+  assert(poll()==-2&&status.state==RISC_USB_MSC_FAULT_RETAINED&&healthy);
+  command(0x28,512,true,1,1,0);assert(ep[1][1].stalled);
+  retained_control(2,TUSB_REQ_CLEAR_FEATURE,TUSB_REQ_FEATURE_EDPT_HALT,0x81);assert(csw(true)!=MSC_CSW_STATUS_PASSED);
+  assert(sd_reads==before_reads&&sd_writes==before_writes&&sd_syncs==before_syncs&&!remounts&&sd_owned&&phy_owned);
+  assert(api->end(NULL,token,1)==-2&&!usb_live&&sd_owned&&phy_owned&&!d->quiesce());
+  printf("PASS %s: SD failure -> failed CSW -> sense -> reset; media remains frozen\n",s);return 0;
+ }
+ else if(!strcmp(s,"suspend")){dcd_event_bus_signal(0,DCD_EVENT_SUSPEND,false);assert(poll()==0&&status.state==RISC_USB_MSC_SUSPENDED);assert(sd_owned&&phy_owned&&!remounts);assert(api->end(NULL,token,0)==-1);dcd_event_bus_signal(0,DCD_EVENT_RESUME,false);assert(poll()==0&&status.state==RISC_USB_MSC_CONNECTED);}
  else if(!strcmp(s,"unconfigure")){setup(TUSB_REQ_SET_CONFIGURATION,0);assert(sd_owned&&!remounts&&status.state==RISC_USB_MSC_WAITING);assert(api->end(NULL,token,0)==-1);}
  else if(!strcmp(s,"disconnect")){dcd_event_bus_signal(0,DCD_EVENT_UNPLUGGED,false);assert(poll()==0&&status.state==RISC_USB_MSC_DISCONNECTED);assert(!sd_owned&&!phy_owned&&remounts==1);}
  else if(!strcmp(s,"read-write")){
@@ -186,10 +247,11 @@ int main(int argc,char**argv){
   } else {
    fail_sync=true;msc_cbw_t cbw={.signature=MSC_CBW_SIGNATURE,.tag=++tag,.lun=0,.cmd_len=10};cbw.command[0]=0x35;complete(1,&cbw,sizeof(cbw));
   }
+  assert(poll()==-2&&healthy);memset(ep,0,sizeof(ep));
   dcd_event_bus_reset(0,TUSB_SPEED_FULL,false);
   uint8_t configured[8]={0,TUSB_REQ_SET_CONFIGURATION,1,0,0,0,0,0};dcd_event_setup_received(0,configured,false);
   dcd_event_bus_signal(0,DCD_EVENT_RESUME,false);
-  assert(poll()==-2&&status.state==RISC_USB_MSC_FAULT_RETAINED&&!healthy);
+  assert(poll()==-2&&status.state==RISC_USB_MSC_FAULT_RETAINED&&healthy);
   const unsigned before_reads=sd_reads,before_writes=sd_writes,before_syncs=sd_syncs;
   /* Exercise asynchronous callback guards too: no callback may clear the latch. */
   tud_umount_cb();tud_mount_cb();tud_suspend_cb(false);tud_resume_cb();
