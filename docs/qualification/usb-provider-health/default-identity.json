@@ -1,0 +1,60 @@
+{
+  "baseline": "bf997f3d777e644e98c2f885a9c9f4c81e1a0e48",
+  "checked_original_files": 215,
+  "profiles": [
+    {
+      "profile": "usb-host-v2",
+      "sha256": "11c04d91739a242b24825a53cb169979cb19d57b2ca88f45f3d335d0da09788c",
+      "bytes": 14340,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-hid",
+      "sha256": "b50db48b09c71a1f4a0f5885526657ba8f4324e5ccef4a28e0e2ed7908b12ffb",
+      "bytes": 7380,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-hid-keyboard",
+      "sha256": "4c9f55b63b89c7464d386401acd955df6ea3d96fb58933c13c7f1fdabe02691e",
+      "bytes": 8444,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-hid-mouse",
+      "sha256": "adb4bb40f54c3969e7d8c1c4dd013abcdef3aa3cac1bd058f07d700aeac62bf2",
+      "bytes": 15560,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-hid-gamepad",
+      "sha256": "2d543f6a04e5b94192f732c64f2f5a436861e2a569f05fb4c6617ae7267db86c",
+      "bytes": 14444,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-xinput-gamepad",
+      "sha256": "e2cee3355937d7815fb5685598cd2411c7d508bb36424f00636ec7495f654c26",
+      "bytes": 11088,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-hid-text-input",
+      "sha256": "4517479937a60c267414d662ed5dc72233bfa6ce47a0e8199010d91473f800c9",
+      "bytes": 8692,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-controller-esp32s3",
+      "sha256": "6472827fe626ffaf5f49278aaf5cbb9976c31049db39f91226a32a86cd1c604c",
+      "bytes": 940348,
+      "full_elf_identical": true
+    },
+    {
+      "profile": "usb-controller-esp32s3-native-phy",
+      "sha256": "059beedabe24dc3d00b6178cd43eddb58d3408b83b3bfb63a350d349e13c7f35",
+      "bytes": 944228,
+      "full_elf_identical": true
+    }
+  ]
+}

@@ -1,0 +1,184 @@
+{
+  "health": {
+    "descriptor_symbol": "risc_provider_health_v1_descriptor",
+    "section": ".data.rel.ro",
+    "object_bytes": 12,
+    "api_version": 1,
+    "callback": "0x45c0",
+    "callback_relocations": [
+      [
+        5,
+        0,
+        0
+      ]
+    ],
+    "exports": [
+      "risc_provider_health_v1_descriptor",
+      "t5_driver_get"
+    ],
+    "controller": {
+      "binary": "driver.elf",
+      "format_supported": true,
+      "relocations_examined": 905,
+      "unsupported_relocations": [],
+      "text_relocations": false,
+      "unexpected_exports": [],
+      "temporary_native_compat_privileged_overlap": [
+        "__stack_chk_fail",
+        "__stack_chk_guard",
+        "abort",
+        "esp_intr_free",
+        "heap_caps_calloc",
+        "heap_caps_free",
+        "heap_caps_malloc",
+        "ulTaskGenericNotifyTake",
+        "vPortExitCritical",
+        "vTaskDelay",
+        "xPortEnterCriticalTimeout",
+        "xTaskGetCurrentTaskHandle"
+      ],
+      "resolved_by_current_firmware": [
+        "__stack_chk_fail",
+        "__stack_chk_guard",
+        "abort",
+        "calloc",
+        "esp_intr_free",
+        "free",
+        "heap_caps_calloc",
+        "heap_caps_free",
+        "heap_caps_malloc",
+        "malloc",
+        "memcpy",
+        "memset",
+        "printf",
+        "putchar",
+        "puts",
+        "strcmp",
+        "ulTaskGenericNotifyTake",
+        "vPortExitCritical",
+        "vTaskDelay",
+        "xPortEnterCriticalTimeout",
+        "xTaskGetCurrentTaskHandle"
+      ],
+      "missing_current_firmware_exports": [
+        "__assert_func",
+        "_esp_error_check_failed",
+        "esp_intr_alloc",
+        "esp_intr_disable",
+        "esp_intr_enable",
+        "esp_log_default_level",
+        "esp_log_timestamp",
+        "esp_log_write",
+        "esp_rom_gpio_connect_in_signal",
+        "esp_rom_gpio_connect_out_signal",
+        "esp_rom_gpio_pad_select_gpio",
+        "esp_rom_gpio_pad_unhold",
+        "esp_rom_printf",
+        "heap_caps_aligned_calloc",
+        "uxQueueMessagesWaiting",
+        "vPortEvaluateYieldFromISR",
+        "vQueueDelete",
+        "vTaskGenericNotifyGiveFromISR",
+        "xPortInIsrContext",
+        "xQueueCreateMutex",
+        "xQueueGenericCreate",
+        "xQueueGenericSend",
+        "xQueueGiveFromISR",
+        "xQueueReceive",
+        "xQueueSemaphoreTake",
+        "xTaskGetTickCount"
+      ],
+      "resolved_by_privileged_os_cpu_v1": [
+        "__assert_func",
+        "_esp_error_check_failed",
+        "esp_intr_alloc",
+        "esp_intr_disable",
+        "esp_intr_enable",
+        "esp_log_default_level",
+        "esp_log_timestamp",
+        "esp_log_write",
+        "esp_rom_gpio_connect_in_signal",
+        "esp_rom_gpio_connect_out_signal",
+        "esp_rom_gpio_pad_select_gpio",
+        "esp_rom_gpio_pad_unhold",
+        "esp_rom_printf",
+        "heap_caps_aligned_calloc",
+        "uxQueueMessagesWaiting",
+        "vPortEvaluateYieldFromISR",
+        "vQueueDelete",
+        "vTaskGenericNotifyGiveFromISR",
+        "xPortInIsrContext",
+        "xQueueCreateMutex",
+        "xQueueGenericCreate",
+        "xQueueGenericSend",
+        "xQueueGiveFromISR",
+        "xQueueReceive",
+        "xQueueSemaphoreTake",
+        "xTaskGetTickCount"
+      ],
+      "missing_privileged_os_cpu_v1": [],
+      "rejected_by_private_loader_import_preflight": [],
+      "forbidden_usb_or_firmware_api_imports": [],
+      "unmapped_relocations": [],
+      "unmapped_relative_values": [],
+      "absolute_peripheral_relocations": [
+        {
+          "offset": "0x3474",
+          "address": "0x60080000"
+        },
+        {
+          "offset": "0x3550",
+          "address": "0x60008000"
+        },
+        {
+          "offset": "0x35fc",
+          "address": "0x60039000"
+        },
+        {
+          "offset": "0x409c",
+          "address": "0x600c0000"
+        },
+        {
+          "offset": "0x413c",
+          "address": "0x60038000"
+        }
+      ],
+      "unmapped_executable_sections": [],
+      "current_loader_abi_compatible": false,
+      "privileged_os_cpu_v1_import_compatible": true,
+      "ordinary_package_admission_verified": false,
+      "firmware_strong_symbol_link_confirmed": false,
+      "physical_board_validated": false,
+      "installable": false,
+      "status": "scoped-imports-compatible-admission-unverified"
+    }
+  },
+  "mapping": {
+    "relocations_examined": 905,
+    "unmapped_relocations": [],
+    "unmapped_relative_values": [],
+    "absolute_peripheral_relocations": [
+      {
+        "offset": "0x3474",
+        "address": "0x60080000"
+      },
+      {
+        "offset": "0x3550",
+        "address": "0x60008000"
+      },
+      {
+        "offset": "0x35fc",
+        "address": "0x60039000"
+      },
+      {
+        "offset": "0x409c",
+        "address": "0x600c0000"
+      },
+      {
+        "offset": "0x413c",
+        "address": "0x60038000"
+      }
+    ],
+    "unmapped_executable_sections": []
+  }
+}

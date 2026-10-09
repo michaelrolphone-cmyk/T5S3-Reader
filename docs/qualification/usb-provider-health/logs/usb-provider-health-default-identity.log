@@ -1,0 +1,27 @@
+U1 USB host arbitration ELF built: /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-host-v2/driver.elf; physical controller required
+U1 USB host arbitration ELF built: /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-host-v2/driver.elf; physical controller required
+USB input class ELF built: usb-hid -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid/driver.elf
+USB input class ELF built: usb-hid -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid/driver.elf
+USB input class ELF built: usb-hid-keyboard -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-keyboard/driver.elf
+USB input class ELF built: usb-hid-keyboard -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-keyboard/driver.elf
+USB input class ELF built: usb-hid-mouse -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-mouse/driver.elf
+USB input class ELF built: usb-hid-mouse -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-mouse/driver.elf
+USB input class ELF built: usb-hid-gamepad -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-gamepad/driver.elf
+USB input class ELF built: usb-hid-gamepad -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-gamepad/driver.elf
+USB input class ELF built: usb-xinput-gamepad -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-xinput-gamepad/driver.elf
+USB input class ELF built: usb-xinput-gamepad -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-xinput-gamepad/driver.elf
+USB input class ELF built: usb-hid-text-input -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-text-input/driver.elf
+USB input class ELF built: usb-hid-text-input -> /workspace/shared/x4-provider-health-handoff/dist/experimental/usb-hid-text-input/driver.elf
+Physical controller compiled against ESP32-S3 IDF: PASS
+Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS
+Unresolved generic OS/CPU imports and loader/board-power path still require validation.
+Physical controller compiled against ESP32-S3 IDF: PASS
+Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS
+Unresolved generic OS/CPU imports and loader/board-power path still require validation.
+Physical controller compiled against ESP32-S3 IDF: PASS
+Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS
+Unresolved generic OS/CPU imports and loader/board-power path still require validation.
+Physical controller compiled against ESP32-S3 IDF: PASS
+Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS
+Unresolved generic OS/CPU imports and loader/board-power path still require validation.
+Full flag-off ELF byte identity: all nine original profiles PASS

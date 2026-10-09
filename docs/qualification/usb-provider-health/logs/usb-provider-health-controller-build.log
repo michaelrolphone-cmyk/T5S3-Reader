@@ -1,0 +1,3 @@
+Physical controller compiled against ESP32-S3 IDF: PASS
+Physical controller + PIC-built IDF USB/PHY/SOC + owned PHY GPIO linked: PASS
+Unresolved generic OS/CPU imports and loader/board-power path still require validation.

@@ -1,0 +1,197 @@
+Real host/HID keyboard/mouse/gamepad/XInput/text: live copied state READY, subscriptions, normal quiesce and readonly checks PASS
+Real host/raw HID/mouse: semantic close success hides exact failed physical claim; terminal health, no observer I/O PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL stage=vbus-released
+Full controller native-PHY startup, armed owned interrupt DMA, reversible owned request and checked shutdown health PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL stage=vbus-released
+Full controller native-PHY startup, armed owned interrupt DMA, reversible owned request and checked shutdown health PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Actual copied-control submit deadline: BUSY to sticky RETAINED PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Actual copied-bulk submit deadline: BUSY to sticky RETAINED PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Actual admission reference-close with deferred native custody: BUSY to RETAINED PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL cleanup-failed stage=outstanding-claim
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL stage=vbus-released
+Full controller native-PHY startup, armed owned interrupt DMA, reversible owned request and checked shutdown health PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Full controller event overflow: UNKNOWN without observer I/O PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Full controller failed release/drain: exact PHY/power/DMA retention and readonly terminal health PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Full controller failed release/drain: exact PHY/power/DMA retention and readonly terminal health PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL stage=vbus-released
+Full controller native-PHY startup, armed owned interrupt DMA, reversible owned request and checked shutdown health PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Real device-open token exhaustion loses record: RETAINED PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL stage=vbus-released
+Post-open descriptor rejection closes exact unassigned handle: READY PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Real interface-claim token exhaustion loses record: RETAINED PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+Pre-admission request token exhaustion: UNKNOWN with no custody loss PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL stage=vbus-released
+Full controller unwrapped cleanup tail/fault precedence: RETAINED without further native calls PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL cleanup-failed stage=vbus-release
+Full controller unwrapped cleanup tail/fault precedence: RETAINED without further native calls PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=no-clients
+USBCTRL stage=phy-released
+USBCTRL stage=vbus-released
+Full controller unwrapped cleanup tail/fault precedence: RETAINED without further native calls PASS
+USBCTRL stage=role-monitor-started
+USBCTRL stage=phy-held-disconnected
+USBCTRL stage=usb-host-installed
+USBCTRL stage=client-registered
+USBCTRL stage=vbus-acquired-after-host-ready
+USBCTRL stage=phy-connection-enabled
+USBCTRL role=USB HOST; CONTROLLER DISCOVERY
+USBCTRL stage=faulted-controller-quiesce
+USBCTRL cleanup-failed stage=no-clients-timeout
+Full controller unwrapped cleanup tail/fault precedence: RETAINED without further native calls PASS
+Actual semantic dependency facade: original context, no active-start overwrite, false cleanup sticky despite legacy retry PASS
+Actual semantic dependency facade: original context, no active-start overwrite, false cleanup sticky despite legacy retry PASS
+Actual semantic dependency facade: original context, no active-start overwrite, false cleanup sticky despite legacy retry PASS
+Actual semantic dependency facade: original context, no active-start overwrite, false cleanup sticky despite legacy retry PASS
+Host deadline admission and complete legacy prefix: PASS
+Production host deadline scenario events: PASS
+Production host deadline scenario inventory_fault: PASS
+Production host deadline scenario valid: PASS
+Production host deadline scenario partial_setup: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host deadline scenario timeout: PASS
+Production host deadline scenario cancel: PASS
+Production host deadline scenario stale: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host deadline scenario io_timeout: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host sticky retained custody: PASS
+Production host deadline scenario scope: PASS
+Production host deadline scenario invalid: PASS
