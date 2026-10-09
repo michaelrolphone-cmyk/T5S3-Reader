@@ -33,6 +33,7 @@ typedef uint64_t risc_storage_export_token_t;
 enum {
     RISC_STORAGE_EXPORT_READY = 0,
     RISC_STORAGE_EXPORT_MEDIA_UNAVAILABLE = 1,
+    RISC_STORAGE_EXPORT_PREPARING = 2,
     RISC_STORAGE_EXPORT_REFUSED = -1,
     RISC_STORAGE_EXPORT_RETAINED = -2
 };
@@ -56,6 +57,30 @@ static inline const risc_storage_volume_api_v1_export *risc_storage_volume_expor
     return p->export_tag == RISC_STORAGE_EXPORT_TAG && p->export_version == 1u &&
         p->export_begin && p->export_read && p->export_write && p->export_sync &&
         p->export_end ? p : NULL;
+}
+/* Append-only checked preparation lease. begin_prepare freezes local
+ * admission and ordinary log drains without exposing raw media. A nonzero
+ * token remains owned through PREPARING and READY; export_end can cancel it
+ * between closed transactions. prepare_step performs at most one durable log
+ * transaction, or sync/unmount handoff. PREPARING never permits raw I/O.
+ * Each step has its own 15-second hard transaction bound; there is no shared
+ * backlog deadline that can abort a later transaction. Existing synchronous
+ * export_begin may refuse a pending trace tail; preparation-aware consumers
+ * use this suffix. REFUSED never proves a nonzero token was consumed.
+ */
+#define RISC_STORAGE_EXPORT_PREPARE_TAG UINT32_C(0x53585031)
+typedef struct {
+    risc_storage_volume_api_v1_export base;
+    uint32_t prepare_tag, prepare_version;
+    int32_t (*begin_prepare)(void *context, risc_storage_export_token_t *token);
+    int32_t (*prepare_step)(void *context, risc_storage_export_token_t token,
+                           uint64_t *block_count, uint32_t *block_size);
+} risc_storage_volume_api_v1_export_prepare;
+static inline const risc_storage_volume_api_v1_export_prepare *risc_storage_volume_export_prepare(
+    const risc_storage_volume_api_v1 *api) {
+    if(!risc_storage_volume_export(api) || api->struct_size<sizeof(risc_storage_volume_api_v1_export_prepare))return NULL;
+    const risc_storage_volume_api_v1_export_prepare *p=(const risc_storage_volume_api_v1_export_prepare *)api;
+    return p->prepare_tag==RISC_STORAGE_EXPORT_PREPARE_TAG && p->prepare_version==1 && p->begin_prepare && p->prepare_step?p:NULL;
 }
 #ifdef __cplusplus
 }

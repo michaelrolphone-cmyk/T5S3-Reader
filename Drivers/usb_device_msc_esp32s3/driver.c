@@ -12,6 +12,8 @@
 static const risc_platform_clock_api_v1 *clock_api;
 static const risc_usb_phy_resource_api_v1 *phy;
 static const risc_storage_volume_api_v1_export *volume;
+static const risc_storage_volume_api_v1_export_prepare *preparation;
+static char storage_detail[240];
 static uint64_t phy_token,media_token,session,next_session;
 static uint64_t blocks,reads,writes;
 static uint32_t state=RISC_USB_MSC_IDLE;
@@ -49,31 +51,31 @@ static bool cleanup(void) {
  }
  return true;
 }
-static int32_t begin(void *context,uint64_t *out) {
- (void)context;if(out)*out=0;
- if(!out || !enter())return RISC_USB_MSC_REFUSED;
- if(!started || session || next_session==UINT64_MAX)return finish(RISC_USB_MSC_REFUSED);
- error=NULL;reads=writes=blocks=0;media_ready=false;faulted=false;
- uint32_t block_size=0;
- const int32_t result=volume->export_begin(volume->sleep.terminal.power.volume.base.context,&media_token,&blocks,&block_size);
- if(result!=RISC_STORAGE_EXPORT_READY) {
-  if(media_token || result==RISC_STORAGE_EXPORT_RETAINED){media_unknown=!media_token;session=++next_session;*out=session;fault("SD ownership retained; USB export refused");return finish(RISC_USB_MSC_RETAINED);}
-  error="Close local files and retry with a ready SD card";return finish(RISC_USB_MSC_REFUSED);
- }
- session=++next_session;*out=session;
- if(!media_token){media_unknown=true;fault("SD returned invalid ownership token");return finish(RISC_USB_MSC_RETAINED);}
- if(!blocks || blocks>UINT32_MAX || block_size!=512u) {
+static void storage_error(int32_t result) {
+ const char *prefix="SD export result=";size_t n=0;
+ while(prefix[n]){storage_detail[n]=prefix[n];++n;}
+ uint32_t magnitude=result<0?0u-(uint32_t)result:(uint32_t)result;
+ if(result<0)storage_detail[n++]='-';
+ char digits[10];unsigned count=0;do{digits[count++]=(char)('0'+magnitude%10u);magnitude/=10u;}while(magnitude);
+ while(count)storage_detail[n++]=digits[--count];
+ storage_detail[n++]=':';storage_detail[n++]=' ';storage_detail[n]=0;
+ const risc_storage_volume_api_v1 *v=&volume->sleep.terminal.power.volume.base;
+ if(v->last_error)v->last_error(v->context,storage_detail+n,sizeof(storage_detail)-n);
+ storage_detail[sizeof(storage_detail)-1]=0;error=storage_detail;
+}
+static int32_t activate(uint32_t size) {
+ if(!blocks || blocks>UINT32_MAX || size!=512u) {
   error="SD geometry unsupported by USB READ CAPACITY(10)";
-  if(!cleanup())return finish(RISC_USB_MSC_RETAINED);
-  session=0;*out=0;return finish(RISC_USB_MSC_REFUSED);
+  if(!cleanup())return RISC_USB_MSC_RETAINED;
+  state=RISC_USB_MSC_MEDIA_UNAVAILABLE;return RISC_USB_MSC_OK;
  }
  const bool claimed=phy->claim(phy->context,&phy_token);
- if(claimed && !phy_token){phy_unknown=true;fault("USB PHY returned invalid ownership token");return finish(RISC_USB_MSC_RETAINED);}
+ if(claimed && !phy_token){phy_unknown=true;fault("USB PHY returned invalid ownership token");return RISC_USB_MSC_RETAINED;}
  if(!claimed) {
   error="USB PHY is unavailable";
-  if(phy_token){fault("USB PHY claim retained");return finish(RISC_USB_MSC_RETAINED);}
-  if(!cleanup())return finish(RISC_USB_MSC_RETAINED);
-  session=0;*out=0;return finish(RISC_USB_MSC_REFUSED);
+  if(phy_token){fault("USB PHY claim retained");return RISC_USB_MSC_RETAINED;}
+  if(!cleanup())return RISC_USB_MSC_RETAINED;
+  state=RISC_USB_MSC_MEDIA_UNAVAILABLE;return RISC_USB_MSC_OK;
  }
  ever_configured=eject_requested=eject_complete=unplugged=prevent_removal=false;
  /* Logical disconnect interval also covers a computer attached before boot. */
@@ -81,10 +83,38 @@ static int32_t begin(void *context,uint64_t *out) {
  transport_live=true;
  if(!risc_msc_transport_start()) {
   error="USB controller start failed";
-  if(!cleanup())return finish(RISC_USB_MSC_RETAINED);
-  session=0;*out=0;return finish(RISC_USB_MSC_IO_ERROR);
+  if(!cleanup())return RISC_USB_MSC_RETAINED;
+  state=RISC_USB_MSC_MEDIA_UNAVAILABLE;return RISC_USB_MSC_OK;
  }
- state=RISC_USB_MSC_WAITING;return finish(RISC_USB_MSC_OK);
+ state=RISC_USB_MSC_WAITING;return RISC_USB_MSC_OK;
+}
+static int32_t begin(void *context,uint64_t *out) {
+ (void)context;if(out)*out=0;
+ if(!out || !enter())return RISC_USB_MSC_REFUSED;
+ if(!started || session || next_session==UINT64_MAX)return finish(RISC_USB_MSC_REFUSED);
+ error=NULL;reads=writes=blocks=0;media_ready=false;faulted=false;
+ ever_configured=eject_requested=eject_complete=unplugged=prevent_removal=false;
+ const int32_t result=preparation->begin_prepare(volume->sleep.terminal.power.volume.base.context,&media_token);
+ if(result!=RISC_STORAGE_EXPORT_PREPARING) {
+  storage_error(result);
+  if(media_token || result==RISC_STORAGE_EXPORT_RETAINED){media_unknown=!media_token;session=++next_session;*out=session;fault(error);return finish(RISC_USB_MSC_RETAINED);}
+  return finish(RISC_USB_MSC_REFUSED);
+ }
+ session=++next_session;*out=session;
+ if(!media_token){media_unknown=true;fault("SD returned invalid preparation token");return finish(RISC_USB_MSC_RETAINED);}
+ state=RISC_USB_MSC_PREPARING;return finish(RISC_USB_MSC_OK);
+}
+static int32_t prepare_step(void *context,uint64_t token) {
+ (void)context;if(!enter())return RISC_USB_MSC_REFUSED;
+ if(!session || token!=session || state!=RISC_USB_MSC_PREPARING)return finish(RISC_USB_MSC_REFUSED);
+ uint32_t size=0;
+ const int32_t result=preparation->prepare_step(volume->sleep.terminal.power.volume.base.context,media_token,&blocks,&size);
+ if(result==RISC_STORAGE_EXPORT_PREPARING)return finish(RISC_USB_MSC_OK);
+ if(result==RISC_STORAGE_EXPORT_READY)return finish(activate(size));
+ storage_error(result);
+ if(result==RISC_STORAGE_EXPORT_RETAINED){fault(error);return finish(RISC_USB_MSC_RETAINED);}
+ if(!cleanup())return finish(RISC_USB_MSC_RETAINED);
+ state=RISC_USB_MSC_MEDIA_UNAVAILABLE;return finish(RISC_USB_MSC_OK);
 }
 static int32_t poll(void *context,uint64_t token,risc_usb_device_msc_status_v1 *out) {
  (void)context;
@@ -126,9 +156,9 @@ bool risc_msc_command_valid(const uint8_t *command,uint8_t length,uint32_t trans
  return (command[0]!=0x00 && command[0]!=0x1b && command[0]!=0x1e && command[0]!=0x35) || !transfer_bytes;
 }
 bool risc_msc_command_range(uint32_t lba,uint32_t count) {
- return !faulted && media_token && (uint64_t)lba<blocks && (uint64_t)count<=blocks-lba;
+ return transport_live && !faulted && media_token && (uint64_t)lba<blocks && (uint64_t)count<=blocks-lba;
 }
-static bool medium(uint8_t lun) { return lun==0 && media_token && !faulted && state!=RISC_USB_MSC_FAULT_RETAINED && !eject_requested; }
+static bool medium(uint8_t lun) { return transport_live && lun==0 && media_token && !faulted && state!=RISC_USB_MSC_FAULT_RETAINED && !eject_requested; }
 static bool media_result(int32_t result,const char *reason) {
  if(result==RISC_STORAGE_EXPORT_READY)return true;
  fault(reason);tud_msc_set_sense(0,SCSI_SENSE_MEDIUM_ERROR,0x0c,0);return false;
@@ -210,28 +240,28 @@ static bool start(const risc_provider_dependency_v1 *deps,size_t count) {
  if(started || poisoned || !deps || count!=3)return false;
  const risc_platform_clock_api_v1 *c=NULL;
  const risc_usb_phy_resource_api_v1 *p=NULL;
- const risc_storage_volume_api_v1_export *v=NULL;
+ const risc_storage_volume_api_v1_export_prepare *v=NULL;
  for(size_t i=0;i<count;++i) {
   if(!deps[i].capability_id || deps[i].api_version!=1 || !deps[i].api)return false;
   const char *id=deps[i].capability_id;
   if(!strcmp(id,"platform.clock") && !c)c=deps[i].api;
   else if(!strcmp(id,RISC_USB_PHY_RESOURCE_CAPABILITY) && !p)p=deps[i].api;
-  else if(!strcmp(id,"storage.volume") && !v)v=risc_storage_volume_export(deps[i].api);
+  else if(!strcmp(id,"storage.volume") && !v)v=risc_storage_volume_export_prepare(deps[i].api);
   else return false;
  }
  if(!c || c->api_version!=1 || c->struct_size<sizeof(*c) || !c->sleep_ms || !c->monotonic_ms ||
     !p || p->api_version!=1 || p->struct_size<sizeof(*p) || p->controller_kind!=RISC_USB_PHY_ESP32S3_OTG || p->reserved ||
     !p->is_owner || !p->claim || !p->release || !v || !p->is_owner(p->context))return false;
- clock_api=c;phy=p;volume=v;started=true;return true;
+ clock_api=c;phy=p;preparation=v;volume=&v->base;started=true;return true;
 }
 static bool quiesce(void) {
  if(!started)return !session && !transport_live && !media_token && !phy_token;
  if(!enter())return false;
  if(session || transport_live || media_token || phy_token){(void)leave();return false;}
  if(!leave())return false;
- started=false;clock_api=NULL;phy=NULL;volume=NULL;return true;
+ started=false;clock_api=NULL;phy=NULL;volume=NULL;preparation=NULL;return true;
 }
 static void stop(void) {}
-static const risc_usb_device_msc_api_v1 api={1,sizeof(api),NULL,begin,poll,end,last_error};
+static const risc_usb_device_msc_api_v1_prepare api={{1,sizeof(api),NULL,begin,poll,end,last_error},RISC_USB_MSC_PREPARE_TAG,1,prepare_step};
 static const risc_driver_v2 driver={RISC_PROVIDER_DRIVER_ABI_V2,sizeof(driver),"usb-device-msc-esp32s3",RISC_USB_DEVICE_MSC_CAPABILITY,1,&api,start,stop,quiesce};
 __attribute__((visibility("default"))) const risc_driver_v2 *t5_driver_get(uint32_t abi) { return abi==RISC_PROVIDER_DRIVER_ABI_V2?&driver:NULL; }

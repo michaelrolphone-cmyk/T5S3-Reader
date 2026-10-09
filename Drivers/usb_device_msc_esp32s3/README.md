@@ -1,6 +1,6 @@
 # ESP32-S3 SD export as a USB device
 
-`usb-device-msc-esp32s3` 0.1.0 publishes `usb.device.msc@1`. The computer is the
+`usb-device-msc-esp32s3` 0.1.2 publishes `usb.device.msc@1`. The computer is the
 USB host. This is separate from the existing `usb_mass_storage` host class,
 which consumes an attached USB drive. Shared USB implementation stays Reader.
 There are no changes to PR350, Runtime USB protocol code, or a board charger.
@@ -20,9 +20,12 @@ The ordinary ABI2 singleton has three explicit dependencies:
   logging flush/pause, zero-file/directory admission, checked sync/unmount,
   physical CSD capacity, raw blocks and checked local remount/logging resume.
 
-Package registration/start does not activate the PHY or export the card. Only
-`begin` performs the handoff. It acquires SD first, then the native PHY lease,
-then starts the device controller. Cleanup reverses all fallible custody:
+Package registration/start does not activate the PHY or export the card. `begin` acquires a PREPARING SD lease only. The tagged preparation suffix
+advances one complete log transaction per explicit step. Ordinary `poll` does
+no SD or USB work while preparing, so display/input waits can remain responsive.
+The app settles its preparation frame before each step and processes Cancel
+first. Only after the SD provider reports READY does the MSC provider claim the
+native PHY and start the controller. Cleanup reverses all fallible custody:
 stop/reset USB and clear its queue; sync/remount SD; release native PHY. A failed
 stage does not release later dependencies. Retained custody with no token is
 terminal until reset. Local handles are refused, never silently closed.
@@ -100,3 +103,21 @@ Host tests drive production TinyUSB control, BOT, SCSI and provider lifecycle
 through a fake DCD, including actual packet read/write/eject. They do not model
 electrical behavior, interrupt timing, USB enumeration on a computer, or X4
 throughput. A target build is not hardware qualification; no flashing is done.
+
+## Transaction-safe preparation
+
+The append-only SDK suffixes preserve the v1 table prefixes. A preparation token
+freezes local admission and ordinary log drains. Its source high-water mark is
+captured before the app can emit new preparation diagnostics. Later trace text
+stays pending for local drainage after cancellation/eject; it cannot keep the
+current export preparation alive indefinitely. Each explicit SD prepare step
+uses the existing 15-second hard transaction guard, at most one <=4095-byte
+append and checked close, or final media sync and FatFs unregister. No total
+backlog deadline aborts a later open transaction. Poll never advances preparation.
+
+Clean preparation refusal attempts checked cancellation and reports
+MEDIA_UNAVAILABLE with a final session acknowledgment still required. Uncertain
+SD failure retains the session and prohibits all host admission. Bounded error
+text includes the exact storage result and the first SD/logger failure; the app
+emits it through ordinary diagnostics while the native console is still owned.
+Legacy storage export without the preparation suffix is rejected at activation.

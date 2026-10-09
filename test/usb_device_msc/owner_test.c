@@ -40,9 +40,15 @@ static bool claim(void*c,uint64_t*t){(void)c;assert(sd_owned && !phy_owned);*t=0
 static bool release(void*c,uint64_t t){(void)c;assert(!sd_owned && !usb_live && phy_owned && t==9);mark('R');if(fail_release)return false;phy_owned=false;return true;}
 static uint64_t now(void*c){(void)c;return 0;}
 static void sleep_ms(void*c,uint32_t ms){(void)c;assert(phy_owned && sd_owned && ms==30);}
-static risc_storage_volume_api_v1_export volume={
- .sleep={.terminal={.power={.volume={.base={.api_version=1,.struct_size=sizeof(volume)}},.prepare_power_down=yes,.cancel_power_down=yes},.extension_tag=RISC_STORAGE_POWER_COMMIT_TAG,.extension_version=1,.commit_power_down=yes},.sleep_tag=RISC_STORAGE_SLEEP_TAG,.sleep_version=1,.prepare_sleep=yes,.commit_sleep=yes,.resume_sleep=zero},
- .export_tag=RISC_STORAGE_EXPORT_TAG,.export_version=1,.export_begin=sd_begin,.export_read=sd_read,.export_write=sd_write,.export_sync=sd_sync,.export_end=sd_end
+static unsigned pending_steps,prepare_calls;
+static int32_t prepare_result;
+static int32_t sd_prepare_begin(void*c,uint64_t*t){uint64_t n;uint32_t z;int32_t r=sd_begin(c,t,&n,&z);return r?r:RISC_STORAGE_EXPORT_PREPARING;}
+static int32_t sd_prepare_step(void*c,uint64_t t,uint64_t*n,uint32_t*z){(void)c;sd_check(t);assert(!usb_live && !phy_owned);++prepare_calls;if(prepare_result)return prepare_result;if(pending_steps){--pending_steps;return RISC_STORAGE_EXPORT_PREPARING;}*n=16;*z=512;return 0;}
+static bool sd_error(void*c,char*out,size_t capacity){(void)c;const char*s="fixture SD close failure";size_t n=strlen(s);if(n>=capacity)n=capacity-1;memcpy(out,s,n);out[n]=0;return true;}
+static risc_storage_volume_api_v1_export_prepare volume={.base={
+ .sleep={.terminal={.power={.volume={.base={.api_version=1,.struct_size=sizeof(volume),.last_error=sd_error}},.prepare_power_down=yes,.cancel_power_down=yes},.extension_tag=RISC_STORAGE_POWER_COMMIT_TAG,.extension_version=1,.commit_power_down=yes},.sleep_tag=RISC_STORAGE_SLEEP_TAG,.sleep_version=1,.prepare_sleep=yes,.commit_sleep=yes,.resume_sleep=zero},
+ .export_tag=RISC_STORAGE_EXPORT_TAG,.export_version=1,.export_begin=sd_begin,.export_read=sd_read,.export_write=sd_write,.export_sync=sd_sync,.export_end=sd_end},
+ .prepare_tag=RISC_STORAGE_EXPORT_PREPARE_TAG,.prepare_version=1,.begin_prepare=sd_prepare_begin,.prepare_step=sd_prepare_step
 };
 static risc_usb_phy_resource_api_v1 phy={1,sizeof(phy),NULL,RISC_USB_PHY_ESP32S3_OTG,0,owner,claim,release};
 static const risc_platform_clock_api_v1 clock_api={1,sizeof(clock_api),NULL,now,sleep_ms};
@@ -98,7 +104,8 @@ static unsigned csw(bool finish){
 static void connect_provider(void){
  const risc_driver_v2*d=t5_driver_get(2);assert(d&&!t5_driver_get(1));api=d->capability;
  risc_provider_dependency_v1 deps[]={{"platform.clock",1,&clock_api},{RISC_USB_PHY_RESOURCE_CAPABILITY,1,&phy},{"storage.volume",1,&volume}};
- assert(d->start(deps,3));assert(api->begin(NULL,&token)==0&&token);assert(strcmp(trace,"MPU")==0);
+ assert(d->start(deps,3));assert(api->begin(NULL,&token)==0&&token);assert(poll()==0 && status.state==RISC_USB_MSC_PREPARING && !phy_owned);
+ assert(risc_usb_device_msc_prepare(api)->prepare_step(NULL,token)==0);assert(strcmp(trace,"MPU")==0);
 }
 int main(int argc,char**argv){
  assert(argc==2);const char*s=argv[1];
@@ -109,14 +116,31 @@ int main(int argc,char**argv){
  if(!strcmp(s,"begin-retained-zero")||!strcmp(s,"bad-sd-token")||!strcmp(s,"bad-phy-token")) {
   retained_begin=!strcmp(s,"begin-retained-zero");no_media_token=!strcmp(s,"bad-sd-token");no_phy_token=!strcmp(s,"bad-phy-token");api=d->capability;
   risc_provider_dependency_v1 deps[]={{"platform.clock",1,&clock_api},{RISC_USB_PHY_RESOURCE_CAPABILITY,1,&phy},{"storage.volume",1,&volume}};assert(d->start(deps,3));
-  assert(api->begin(NULL,&token)==-2&&token);assert(poll()==-2);assert(api->end(NULL,token,1)==-2&&!usb_live&&!remounts);assert(!d->quiesce());return 0;
+  int32_t result=api->begin(NULL,&token);if(no_phy_token){assert(result==0);result=risc_usb_device_msc_prepare(api)->prepare_step(NULL,token);}
+  assert(result==-2&&token);assert(poll()==-2);assert(api->end(NULL,token,1)==-2&&!usb_live&&!remounts);assert(!d->quiesce());return 0;
  }
  if(!strcmp(s,"phy-refused")||!strcmp(s,"start-failed")||!strcmp(s,"phy-retained")){
   fail_claim=strncmp(s,"phy-",4)==0;retain_claim=!strcmp(s,"phy-retained");fail_start=!strcmp(s,"start-failed");api=d->capability;
-  risc_provider_dependency_v1 deps[]={{"platform.clock",1,&clock_api},{RISC_USB_PHY_RESOURCE_CAPABILITY,1,&phy},{"storage.volume",1,&volume}};assert(d->start(deps,3));int r=api->begin(NULL,&token);
+  risc_provider_dependency_v1 deps[]={{"platform.clock",1,&clock_api},{RISC_USB_PHY_RESOURCE_CAPABILITY,1,&phy},{"storage.volume",1,&volume}};assert(d->start(deps,3));assert(api->begin(NULL,&token)==0 && token);int r=risc_usb_device_msc_prepare(api)->prepare_step(NULL,token);
   if(retain_claim){assert(r==-2&&token&&sd_owned&&phy_owned&&!d->quiesce());assert(api->end(NULL,token,0)==0);}
-  else {assert(r<0&&!token&&!sd_owned&&!phy_owned);assert(strcmp(trace,fail_start?"MPUTER":"MPE")==0);}
+  else {assert(r==0&&token&&!sd_owned&&!phy_owned);assert(poll()==0 && status.state==RISC_USB_MSC_MEDIA_UNAVAILABLE);assert(api->end(NULL,token,0)==0);assert(strcmp(trace,fail_start?"MPUTER":"MPE")==0);}
   assert(d->quiesce());return 0;
+ }
+ if(!strncmp(s,"prepare-",8)) {
+  api=d->capability;risc_provider_dependency_v1 deps[]={{"platform.clock",1,&clock_api},{RISC_USB_PHY_RESOURCE_CAPABILITY,1,&phy},{"storage.volume",1,&volume}};
+  assert(d->start(deps,3));assert(api->begin(NULL,&token)==0 && token);pending_steps=2;
+  const risc_usb_device_msc_api_v1_prepare *p=risc_usb_device_msc_prepare(api);assert(p);
+  for(unsigned i=0;i<30;++i)assert(poll()==0 && status.state==RISC_USB_MSC_PREPARING);
+  assert(!prepare_calls && !phy_owned && !usb_live);
+  if(!strcmp(s,"prepare-cancel")){assert(api->end(NULL,token,0)==0 && !sd_owned && !phy_owned && !usb_live && !prepare_calls);assert(d->quiesce());return 0;}
+  if(!strcmp(s,"prepare-refused"))prepare_result=-1;
+  if(!strcmp(s,"prepare-retained")){prepare_result=-2;fail_end=true;}
+  int32_t result=p->prepare_step(NULL,token);
+  if(prepare_result){char text[128];assert(api->last_error(NULL,text,sizeof(text)) && strstr(text,"fixture SD close failure"));assert(poll()==result);
+   if(prepare_result==-2){assert(result==-2 && sd_owned && !d->quiesce());assert(api->end(NULL,token,0)==-2);}
+   else {assert(!result && status.state==RISC_USB_MSC_MEDIA_UNAVAILABLE && !sd_owned);assert(api->end(NULL,token,0)==0 && d->quiesce());}return 0;
+  }
+  assert(!result && prepare_calls==1 && !phy_owned);assert(p->prepare_step(NULL,token)==0 && !phy_owned);assert(p->prepare_step(NULL,token)==0 && phy_owned);assert(poll()==0 && status.state==RISC_USB_MSC_WAITING);assert(api->end(NULL,token,0)==0 && d->quiesce());return 0;
  }
  connect_provider();assert(!d->quiesce());
  if(!strcmp(s,"nonowner")){is_owner=false;assert(poll()==-1);assert(api->end(NULL,token,0)==-1);is_owner=true;assert(api->end(NULL,token,0)==0);assert(d->quiesce());return 0;}
@@ -148,7 +172,7 @@ int main(int argc,char**argv){
   msc_cbw_t cbw={.signature=MSC_CBW_SIGNATURE,.lun=1,.cmd_len=17};complete(1,&cbw,sizeof(cbw));assert(poll()==0);assert(ep[1][0].stalled&&ep[1][1].stalled&&!sd_writes&&!sd_reads);
  }
  else if(!strcmp(s,"repeat")){
-  uint64_t old=token;assert(api->end(NULL,token,1)==0);assert(api->begin(NULL,&token)==0&&token!=old);assert(api->end(NULL,old,1)==-1);configure();
+  uint64_t old=token;assert(api->end(NULL,token,1)==0);assert(api->begin(NULL,&token)==0&&token!=old);assert(risc_usb_device_msc_prepare(api)->prepare_step(NULL,token)==0);assert(api->end(NULL,old,1)==-1);configure();
  }
  else if(!strcmp(s,"eject-sync-retained")){
   fail_sync=fail_end=true;command(0x1b,0,false,0,0,2);assert(poll()==-2&&sd_owned&&!remounts);assert(api->end(NULL,token,1)==-2&&sd_owned&&phy_owned);assert(!d->quiesce());return 0;
