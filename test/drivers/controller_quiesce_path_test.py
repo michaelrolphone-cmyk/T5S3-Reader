@@ -4,12 +4,15 @@
 This is cleanup ordering/retention evidence, not USB electrical execution.
 """
 from pathlib import Path
+import os
 import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 source = (ROOT / 'Drivers/usb_controller_esp32s3/driver_base.cpp').read_text()
-body = 'bool quiesce_host() {' + source.split('bool quiesce_host() {', 1)[1].split('bool quiesce(void *)', 1)[0]
+body = 'bool quiesce_host() {' + source.split('bool quiesce_host() {', 1)[1].split('bool startup_error(', 1)[0]
+hid = (ROOT / 'Drivers/usb_controller_esp32s3/driver.cpp').read_text()
+body += 'bool quiesce_with_interrupt(void *context) {' + hid.split('bool quiesce_with_interrupt(void *context) {', 1)[1].split('bool start_with_role(', 1)[0]
 preamble = r'''
 #include <cassert>
 #include <cstdint>
@@ -26,6 +29,9 @@ static bool inFlight, fault, installed, running, noClientsObserved;
 struct { bool owned=false; bool owns_storage() const { return owned; } } ownedBulk;
 static bool admissionBusy;
 static bool native_admission_guard() { return admissionBusy; }
+struct { void stop(){} } role;
+struct Interrupt { bool blocked=false; } interrupts[2];
+static bool drain_interrupt(Interrupt& slot) { return !slot.blocked; }
 static void *client, *transfer, *phy;
 static uint64_t powerLease;
 static unsigned queueHead, queueTail, queueCount;
@@ -71,16 +77,30 @@ static bool release_power(void *, uint64_t token) {
     return operation(11);
 }
 static int32_t input_status(void *) { assert(!powerLease && !phy); return monitorStatus; }
-static risc_usb_vbus_api_v1 powerApi = {RISC_USB_VBUS_API_V1, sizeof(powerApi), nullptr, nullptr, release_power, nullptr};
+static risc_usb_vbus_api_v1 powerApi = {RISC_USB_VBUS_API_V1, sizeof(powerApi), nullptr, nullptr, release_power, [](void*){return true;}};
 static risc_usb_vbus_monitor_api_v1 monitorApi = {powerApi, input_status, 0};
 static const risc_usb_vbus_api_v1 *power=&powerApi;
 static const risc_usb_vbus_monitor_api_v1 *powerMonitor=&monitorApi;
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+#include "NativePhyLease.h"
+static RiscUsbController::NativePhyLease nativePhyLease;
+static unsigned nativeReleases;
+static bool nativeClaimOk=true,nativeClaimPartial=false;
+static risc_usb_phy_resource_api_v1 nativeApi={1,sizeof(nativeApi),nullptr,1,0,
+    [](void*){return true;},
+    [](void*,uint64_t*out){*out=(nativeClaimOk||nativeClaimPartial)?91:0;return nativeClaimOk;},
+    [](void*,uint64_t token){
+        assert(token==91 && !installed && !phy && !client && !transfer && !powerLease && !inFlight && !phyRouteCaptured);
+        ++nativeReleases;return fail!=15;
+    }};
+#endif
 '''
 # Keep the production register restoration while observing its call boundary.
 preamble += '\nstatic void checked_restore() {\n assert(!phy && !installed && !client && !transfer && !powerLease && !inFlight);\n ++restored; restore_phy_route();\n}\n#define restore_phy_route checked_restore\n'
 main = r'''
 #undef restore_phy_route
 static void reset() {
+    power=&powerApi;powerMonitor=&monitorApi;
     inFlight=installed=running=true; fault=false; noClientsObserved=false;
     client=transfer=phy=&ticks; devices[0].handle=&ticks; devices[1].handle=&ticks;
     claims[0]={}; claims[1]={}; powerLease=42;
@@ -88,16 +108,28 @@ static void reset() {
     restored=powerReleases=eventCalls=freeCalls=yields=0;
     monitorStatus=RISC_USB_POWER_ABSENT;
     RTCCNTL.usb_conf={true,false}; capture_phy_route(); RTCCNTL.usb_conf={true,true};
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    assert(!nativePhyLease.held());
+    nativeClaimOk=true;nativeClaimPartial=false;
+    assert(nativePhyLease.bind(&nativeApi) && nativePhyLease.claim());
+    nativeReleases=0;
+#endif
 }
 static void complete() {
     assert(!running && !installed && !client && !transfer && !phy && !powerLease);
     assert(!phyRouteCaptured && !RTCCNTL.usb_conf.sw_usb_phy_sel);
     assert(restored==1 && !queueHead && !queueTail && !queueCount);
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    assert(!nativePhyLease.held() && nativeReleases==1);
+#endif
 }
 int main() {
     for (int n=1;n<=14;++n) {
         reset(); fail=n;
         assert(!quiesce_host());
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+        assert(nativePhyLease.held() && !nativeReleases);
+#endif
         assert(!restored && running && phyRouteCaptured);
         assert(RTCCNTL.usb_conf.sw_usb_phy_sel && queueCount==1);
         if(n<=4) assert(transfer);
@@ -128,6 +160,32 @@ int main() {
     reset(); ticks=UINT32_MAX-3; fail=12;
     assert(!quiesce_host() && eventCalls<=kTeardownTicks && !restored);
     fail=0; assert(quiesce_host()); complete();
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    reset(); fail=15;
+    assert(!quiesce_host() && nativePhyLease.held() && running && nativeReleases==1);
+    assert(!phyRouteCaptured && !phy && !installed && !powerLease);
+    fail=0;
+    assert(quiesce_host() && !nativePhyLease.held() && !running && nativeReleases==2);
+    assert(nativePhyLease.unbind());
+    // Actual HID quiescence must preserve the native token on an interrupt
+    // drain failure, before entering the host teardown body at all.
+    reset();interrupts[0].blocked=true;
+    assert(!quiesce_with_interrupt(nullptr) && nativePhyLease.held() && stage==0 && !nativeReleases);
+    interrupts[0].blocked=false;
+    assert(quiesce_with_interrupt(nullptr));complete();
+    // A failed native claim with a retained token has no host/PHY/VBUS state.
+    // The actual outer quiesce must still notice and retire that token.
+    for(bool partial:{false,true}) {
+        reset();assert(quiesce(nullptr));
+        nativeClaimOk=false;nativeClaimPartial=partial;nativeReleases=0;
+        assert(!nativePhyLease.claim() && nativePhyLease.held()==partial);
+        assert(!running && !installed && !phy && !phyRouteCaptured && !client && !transfer && !powerLease);
+        fail=partial?15:0;
+        assert(quiesce(nullptr)==!partial);
+        if(partial){assert(nativePhyLease.held());fail=0;assert(quiesce(nullptr));}
+        assert(!nativePhyLease.held());stop();assert(!nativePhyLease.claim());
+    }
+#endif
     puts("Production controller teardown: failure retention, retry, bounds, source-off and PHY restore PASS");
 }
 '''
@@ -135,6 +193,8 @@ with tempfile.TemporaryDirectory() as tmp:
     path = Path(tmp)
     (path/'test.cpp').write_text('#include <initializer_list>\n'+preamble+body+main)
     subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                    *(['-DRISC_USB_CONTROLLER_NATIVE_PHY_LEASE=1'] if os.environ.get('USB_CONTROLLER_NATIVE_PHY_LEASE')=='1' else []),
+                    *(['-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie'] if os.environ.get('SANITIZE')=='1' else []),
                     '-I'+str(ROOT/'sdk/driver'), '-I'+str(ROOT/'Drivers/usb_controller_esp32s3'),
                     str(path/'test.cpp'), '-o', str(path/'test')], check=True)
     subprocess.run([str(path/'test')], check=True, timeout=10)

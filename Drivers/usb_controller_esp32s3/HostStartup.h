@@ -7,6 +7,11 @@
  * Holding the host's receive detector disconnected cannot correct what the
  * receiver already saw. No periodic resets or power cycling are needed. */
 bool start_host_controller(bool (*acquire)(void *, uint32_t, uint64_t *) = nullptr) {
+#if RISC_USB_CONTROLLER_NATIVE_PHY_LEASE
+    // Claim before touching the shared route, PHY or host. A false claim may
+    // still retain a token; quiescence must return that exact token safely.
+    if (!nativePhyLease.claim()) return start_failure("native-phy-claim", 0);
+#endif
     capture_phy_route();
     usb_phy_config_t phyConfig = {};
     phyConfig.controller = USB_PHY_CTRL_OTG;
