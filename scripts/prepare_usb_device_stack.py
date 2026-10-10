@@ -39,7 +39,7 @@ def prepare(source,output):
     s=replace(s,'    do {\n      handle_rxflvl_irq(rhport);\n    } while (dwc2->gotgint & GINTSTS_RXFLVL);',
                   '    for (unsigned budget=0; budget<32u && (dwc2->gintsts & GINTSTS_RXFLVL); ++budget) {\n      handle_rxflvl_irq(rhport);\n    }')
     s=replace(s,'      // IN XFER complete (entire xfer).',
-        '      // A controller timeout cannot be reported as successful BOT data.\n      if (epin[n].diepint & DIEPINT_TOC) {\n        epin[n].diepint = DIEPINT_TOC; // acknowledge the W1C timeout flag\n        risc_msc_transport_fault();\n        return;\n      }\n      // IN XFER complete (entire xfer).')
+        '      // A controller timeout cannot be reported as successful BOT data.\n      if (epin[n].diepint & DIEPINT_TOC) {\n        epin[n].diepint = DIEPINT_TOC; // acknowledge the W1C timeout flag\n        risc_msc_timeout(2u);\n        risc_msc_transport_fault();\n        return;\n      }\n      // IN XFER complete (entire xfer).')
     p.write_text(s)
     p=output/'device/usbd.c';s=p.read_text()
     s=replace(s,'#include "tusb_option.h"','#include "tusb_option.h"\n#include "Transport.h"')
@@ -51,13 +51,22 @@ def prepare(source,output):
     p.write_text(s)
     p=output/'class/msc/msc_device.c';s=p.read_text()
     s=replace(s,'#include \"tusb_option.h\"','#include \"tusb_option.h\"\n#include \"Transport.h\"\n#include <stdbool.h>\n#include <stdint.h>\nextern bool risc_msc_command_range(uint32_t,uint32_t);\nextern bool risc_msc_command_valid(const uint8_t*,uint8_t,uint32_t);')
+    # Class reset and deconfiguration abort BOT without completing a CSW.
+    # Keep the owner-pump activity latch consistent with actual stack state.
+    for reset in ('void mscd_reset(uint8_t rhport)', 'static void proc_bot_reset(mscd_interface_t* p_msc)'):
+        s=replace(s,reset+'\n{',reset+'\n{\n  risc_msc_command_abort('+('2u' if reset.startswith('void') else '1u')+');')
     s=replace(s,'xferred_bytes == sizeof(msc_cbw_t) && p_cbw->signature == MSC_CBW_SIGNATURE',
                   'xferred_bytes == sizeof(msc_cbw_t) && p_cbw->signature == MSC_CBW_SIGNATURE && p_cbw->lun == 0 && p_cbw->cmd_len >= 1 && p_cbw->cmd_len <= 16 && !(p_cbw->dir & 0x7f)')
     s=replace(s,'  return status;\n}',
                   '  if (cbw->cmd_len != 10 || cbw->total_bytes != (uint32_t)block_count * 512u ||\n      (block_count && !risc_msc_command_range(rdwr10_get_lba(cbw->command), block_count)))\n    status = MSC_CSW_STATUS_PHASE_ERROR;\n  return status;\n}')
     s=replace(s,'      /*------------- Parse command and prepare DATA -------------*/',
         '      risc_msc_command_started(p_cbw->command[0], p_cbw->tag, p_cbw->total_bytes,\n        (p_cbw->command[0]==SCSI_CMD_READ_10 || p_cbw->command[0]==SCSI_CMD_WRITE_10)?rdwr10_get_lba(p_cbw->command):0,\n        (p_cbw->command[0]==SCSI_CMD_READ_10 || p_cbw->command[0]==SCSI_CMD_WRITE_10)?rdwr10_get_blockcount(p_cbw):0);\n      /*------------- Parse command and prepare DATA -------------*/')
-    s=replace(s,'        switch(p_cbw->command[0])','        risc_msc_command_completed(p_csw->status);\n        switch(p_cbw->command[0])')
+    s=replace(s,'        switch(p_cbw->command[0])','        risc_msc_command_progress(p_msc->xferred_len,p_csw->data_residue);\n        risc_msc_command_completed(p_csw->status);\n        switch(p_cbw->command[0])')
+    for update in ('p_msc->xferred_len += xferred_bytes;', 'p_msc->xferred_len += (uint16_t) nbytes;'):
+        if update not in s: raise ValueError('Missing TinyUSB progress update')
+        s=s.replace(update,update+'\n    risc_msc_command_progress(p_msc->xferred_len,p_msc->cbw.total_bytes-p_msc->xferred_len);')
+    s=replace(s,'  _mscd_itf.sense_key           = sense_key;',
+        '  risc_msc_sense(sense_key,add_sense_code,add_sense_qualifier);\n  _mscd_itf.sense_key           = sense_key;')
     for comment in ('// set sense', '// Set sense'):
         s=replace(s,comment+'\n    set_sense_medium_not_present(p_cbw->lun);',comment+'\n    if (p_msc->sense_key == 0) set_sense_medium_not_present(p_cbw->lun);')
     s=replace(s,'      // Read10 or Write10',

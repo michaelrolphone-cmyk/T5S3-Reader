@@ -98,6 +98,26 @@ typedef struct {
     int32_t last_io_result;
     uint32_t last_io_lba, last_io_count, stalls, last_pump_passes;
 } risc_usb_device_msc_diagnostics_v1;
+/* Optional diagnostics record suffix. Set base.struct_size=sizeof(v2), then
+ * inspect returned size. An old provider copies only v1. Actual BOT bytes are
+ * distinct from successful SD blocks; WRITE data can be received before a media
+ * failure. Timeout counters describe device/controller waits, not host timers.
+ * This does not infer safe removal from suspend, deconfigure or bus reset. */
+#define RISC_USB_MSC_DIAGNOSTICS_V2 2u
+enum { RISC_USB_MSC_ABORT_BOT=1, RISC_USB_MSC_ABORT_STACK=2,
+       RISC_USB_MSC_ABORT_BUS=3, RISC_USB_MSC_ABORT_UNPLUG=4 };
+enum { RISC_USB_MSC_TIMEOUT_REGISTER=1, RISC_USB_MSC_TIMEOUT_IN=2 };
+typedef struct {
+    risc_usb_device_msc_diagnostics_v1 base;
+    uint32_t transferred_bytes,residue,completed_lba,completed_blocks;
+    uint32_t completed_requested,completed_transferred,completed_residue;
+    uint32_t sense_key,sense_asc,sense_ascq,last_sense_key,last_sense_asc,last_sense_ascq;
+    uint32_t sense_opcode,sense_lba,aborts,last_abort,timeouts,last_timeout;
+    uint64_t timeout_ms,total_command_ms,max_command_ms,total_io_ms,max_io_ms;
+    uint32_t resets,unconfigures,suspends,resumes,start_stop_flags,eject_requested,eject_complete;
+    uint32_t data_opcode,data_lba,data_requested,data_transferred,data_residue;
+    uint64_t data_elapsed_ms;
+} risc_usb_device_msc_diagnostics_v2;
 typedef struct {
     risc_usb_device_msc_api_v1_prepare base;
     uint32_t diagnostics_tag, diagnostics_version;

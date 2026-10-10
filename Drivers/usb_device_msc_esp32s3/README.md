@@ -158,3 +158,38 @@ with a bulk IN timeout, alone and together with transfer completion. The frozen
 handler left timeout-only input healthy; the corrected handler acknowledges the
 W1C timeout and fails closed without a success event. This source reproduction
 does not show that a timeout occurred during the observed Windows stall.
+
+## Active-command inter-packet service (0.1.4)
+
+Full-speed 64-byte packets are separated by host-token/FIFO gaps. Previously,
+`OwnerPump.h` returned at the first gap even with READ10/WRITE10/CSW active;
+the caller then slept, turning each packet gap into a scheduler wait. The pump
+now waits for the next masked controller/stack event only while a BOT command
+is active. No new thread, interrupt, DMA, raw mounted access, buffer, retry or
+native change is introduced.
+
+Each call remains bounded by 32 serviced passes and 2 ms before admitting the
+next pass. A separate 8,192-probe ceiling bounds a nonadvancing clock; rollback
+returns immediately. Inactive idle does no busy-wait. A controller fault stops
+service. Bus reset/unplug clear activity via the event hook; BOT class reset
+and deconfiguration clear it from their actual TinyUSB reset routines without
+inventing a successful CSW or releasing SD custody.
+The caller still yields. An already entered synchronous SD callback retains
+its own timeout, as before; this patch does not make that timeout preemptible.
+
+`test/run_usb_device_msc_test.sh` includes delayed packets, idle, paused host,
+clock rollback/freeze, delayed reset/unplug and controller fault/MMIO cases.
+The deterministic 64 KiB model at 65 microseconds per packet and a 1 ms caller
+sleep changes from 1,024 pump calls / 1,028,096 modeled microseconds to 34 calls /
+100,005 modeled microseconds. These are synthetic scheduling counts, not a
+hardware throughput measurement or proof of the observed Windows hang's cause.
+
+`test/run_usb_directory_test.sh` joins the real provider/TinyUSB to an external
+X4 0.2.13 SD fixture and real FatFs. Set `TINYUSB_SOURCE`, `RISCRTE_READER_ROOT`,
+`X4_SD_FIXTURE_ROOT` (the selected X4 minimal/test directory) and `X4_SD_SDK_ROOT`
+(the prepared SDK); `X4_SD_DRIVER_SOURCE` optionally selects an exact SD source.
+It creates a RAM-backed partitioned FAT32 volume through mounted file APIs,
+closes/unmounts it, reads 322 entries and 962 LFN slots over 81 fragmented
+clusters via USB READ10, exercises 64 KiB/high-LBA reads, checks exclusive
+ownership and a whole-image hash, then remounts and verifies file bytes.
+Physical USB, native SD timing and Windows remain hardware qualification work.

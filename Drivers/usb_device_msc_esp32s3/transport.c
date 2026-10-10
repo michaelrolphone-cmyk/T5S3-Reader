@@ -36,7 +36,7 @@ void risc_msc_transport_fault(void) { healthy=false; }
 bool risc_msc_transport_ok(void) { return healthy; }
 static bool wait_bits(volatile uint32_t *reg,uint32_t mask,bool set) {
  for(unsigned i=0;i<100000u;++i)if(((*reg&mask)!=0)==set)return true;
- healthy=false;return false;
+ risc_msc_timeout(1u);healthy=false;return false;
 }
 bool risc_msc_transport_start(void) {
  if(live || phyRouteCaptured)return false;

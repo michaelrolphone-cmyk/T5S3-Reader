@@ -73,7 +73,15 @@ bool dcd_edpt_xfer(uint8_t p,uint8_t a,uint8_t*b,uint16_t n){
 void dcd_edpt_stall(uint8_t p,uint8_t a){(void)p;ep[slot(a)][a>>7].stalled=true;ep[slot(a)][a>>7].pending=false;}
 void dcd_edpt_clear_stall(uint8_t p,uint8_t a){(void)p;ep[slot(a)][a>>7].stalled=false;}
 bool risc_msc_transport_start(void){assert(sd_owned&&phy_owned);mark('U');usb_live=true;healthy=true;return !fail_start&&tud_init(0);}
-static bool pump_ready(void){return tud_task_event_ready();}
+static unsigned delayed_bus_event,empty_gap_probes;
+static bool pump_ready(void){
+ if(delayed_bus_event && !tud_task_event_ready() && ++empty_gap_probes==4) {
+  unsigned event=delayed_bus_event;delayed_bus_event=0;
+  if(event==DCD_EVENT_BUS_RESET){memset(ep,0,sizeof(ep));dcd_event_bus_reset(0,TUSB_SPEED_FULL,false);}
+  else dcd_event_bus_signal(0,event,false);
+ }
+ return tud_task_event_ready();
+}
 static void pump_hardware(void){}
 static void pump_event(void){tud_task_ext(0,false);}
 bool risc_msc_transport_poll(void){assert(usb_live);(void)risc_msc_owner_pump(pump_ready,pump_hardware,pump_event);return healthy;}
@@ -156,7 +164,71 @@ int main(int argc,char**argv){
  if(!strcmp(s,"nonowner")){is_owner=false;assert(poll()==-1);assert(api->end(NULL,token,0)==-1);is_owner=true;assert(api->end(NULL,token,0)==0);assert(d->quiesce());return 0;}
  if(!strcmp(s,"cancel-waiting")){assert(api->end(NULL,token,0)==0);assert(strcmp(trace,"MPUTER")==0);assert(poll()==-1);assert(d->quiesce());return 0;}
  configure();
- if(!strcmp(s,"diagnostics")){
+ if(!strcmp(s,"diagnostics-v2")) {
+  const risc_usb_device_msc_api_v1_diagnostics *diag=risc_usb_device_msc_diagnostics(api);
+  struct {risc_usb_device_msc_diagnostics_v1 info;uint64_t guard;} old={.info={.struct_size=sizeof(old.info)},.guard=UINT64_C(0xdeadbeef12345678)};
+  assert(diag->diagnostics(NULL,token,&old.info)==0 && old.guard==UINT64_C(0xdeadbeef12345678));
+  risc_usb_device_msc_diagnostics_v2 info={.base={.struct_size=sizeof(info)}};
+  command(0x28,2048,true,3,4,0);assert(diag->diagnostics(NULL,token,&info.base)==0);
+  assert(info.base.struct_size==sizeof(info) && info.transferred_bytes==0 && info.residue==2048);
+  for(unsigned i=0;i<4;++i){now_ms+=3;complete(0x81,NULL,512);assert(poll()==0);assert(diag->diagnostics(NULL,token,&info.base)==0);assert(info.transferred_bytes==(i+1)*512 && info.residue==(3-i)*512);}
+  assert(csw(true)==0);assert(diag->diagnostics(NULL,token,&info.base)==0);
+  assert(info.completed_requested==2048 && info.completed_transferred==2048 && !info.completed_residue && info.completed_lba==3 && info.completed_blocks==4);
+  assert(info.data_opcode==0x28 && info.data_lba==3 && info.data_transferred==2048 && info.data_elapsed_ms==12);
+  command(0x28,512,true,9,1,0);setup(TUSB_REQ_SET_CONFIGURATION,0);
+  assert(diag->diagnostics(NULL,token,&info.base)==0 && info.aborts==1 && info.last_abort==RISC_USB_MSC_ABORT_STACK && info.base.commands_completed==1);
+  setup(TUSB_REQ_SET_CONFIGURATION,1);command(0x1b,0,false,0,0,2);assert(csw(true)==0);assert(poll()==0);
+  assert(diag->diagnostics(NULL,token,&info.base)==0 && info.eject_requested && info.eject_complete && info.start_stop_flags==2);
+  assert(info.data_opcode==0x28 && info.data_lba==9 && info.data_requested==512 && info.data_transferred==0 && info.data_residue==512);
+  assert(api->end(NULL,token,0)==0 && d->quiesce());puts("PASS v2 actual multi-sector BOT progress, old-prefix canary, reset abort and eject retention");return 0;
+ }
+ else if(!strcmp(s,"class-reset-abort") || !strcmp(s,"unconfigure-abort")) {
+  command(0x28,4096,true,0,8,0);assert(risc_msc_command_pending() && sd_reads==1);
+  if(!strcmp(s,"class-reset-abort")) {
+   uint8_t reset[8]={0x21,MSC_REQ_RESET,0,0,0,0,0,0};
+   dcd_event_setup_received(0,reset,false);assert(poll()==0);
+   assert(ep[0][1].pending && ep[0][1].length==0);complete(0x80,NULL,0);assert(poll()==0);
+  } else setup(TUSB_REQ_SET_CONFIGURATION,0);
+  assert(!risc_msc_command_pending() && sd_reads==1 && sd_owned && phy_owned && !remounts && healthy);
+  const risc_usb_device_msc_api_v1_diagnostics *diag=risc_usb_device_msc_diagnostics(api);
+  risc_usb_device_msc_diagnostics_v1 info={.struct_size=sizeof(info)};
+  assert(poll()==0 && diag->diagnostics(NULL,token,&info)==0);
+  assert(info.commands_started==1 && !info.commands_completed && !info.last_pump_passes && !(info.flags&RISC_USB_MSC_DIAG_COMMAND_ACTIVE));
+  if(tud_mounted())setup(TUSB_REQ_SET_CONFIGURATION,0);
+  setup(TUSB_REQ_SET_CONFIGURATION,1);
+  command(0x28,512,true,3,1,0);assert(ep[1][1].length==512);complete(0x81,NULL,512);assert(poll()==0);assert(csw(true)==0 && !risc_msc_command_pending());
+  assert(diag->diagnostics(NULL,token,&info)==0 && info.commands_started==2 && info.commands_completed==1);
+  assert(api->end(NULL,token,RISC_USB_MSC_END_CABLE_REMOVED)==0 && d->quiesce());
+  printf("PASS %s: abort clears activity without CSW/custody change; idle zero-work and later read succeeds\n",s);return 0;
+ }
+ else if(!strcmp(s,"reset-during-gap") || !strcmp(s,"unplug-during-gap")) {
+  command(0x28,4096,true,0,8,0);assert(risc_msc_command_pending() && sd_reads==1);
+  delayed_bus_event=!strcmp(s,"reset-during-gap")?DCD_EVENT_BUS_RESET:DCD_EVENT_UNPLUGGED;
+  empty_gap_probes=0;assert(poll()==0);
+  assert(!risc_msc_command_pending() && !delayed_bus_event && empty_gap_probes==4 && sd_reads==1 && healthy);
+  if(!strcmp(s,"reset-during-gap")) {
+   assert(sd_owned && phy_owned && !remounts);configure();
+   command(0x28,512,true,3,1,0);assert(ep[1][1].length==512);complete(0x81,NULL,512);assert(poll()==0);assert(csw(true)==0 && !risc_msc_command_pending());
+  } else assert(status.state==RISC_USB_MSC_DISCONNECTED && !sd_owned && !phy_owned && remounts==1);
+  assert(api->end(NULL,token,RISC_USB_MSC_END_CABLE_REMOVED)==0);assert(d->quiesce());
+  printf("PASS %s: delayed event handled in same active pump; no stale SD read\n",s);return 0;
+ }
+ else if(!strcmp(s,"unsupported-sense")) {
+  msc_cbw_t cbw={.signature=MSC_CBW_SIGNATURE,.tag=++tag,.total_bytes=192,.dir=0x80,.lun=0,.cmd_len=10};
+  cbw.command[0]=0x5a;cbw.command[2]=0x3f;cbw.command[8]=192; /* MODE SENSE(10) optional host probe */
+  complete(1,&cbw,sizeof(cbw));assert(poll()==0);assert(ep[1][1].stalled);
+  uint8_t clear[8]={2,TUSB_REQ_CLEAR_FEATURE,0,0,0x81,0,0,0};
+  dcd_event_setup_received(0,clear,false);assert(poll()==0);complete(0x80,NULL,0);assert(poll()==0);
+  assert(csw(true)==MSC_CSW_STATUS_FAILED);
+  command(0x03,18,true,0,0,18);assert(ep[1][1].pending && ep[1][1].length==18);
+  printf("MODE SENSE(10) rejection sense=%u asc=%u ascq=%u\n",ep[1][1].buffer[2]&15,ep[1][1].buffer[12],ep[1][1].buffer[13]);fflush(stdout);
+  assert((ep[1][1].buffer[2]&15)==SCSI_SENSE_ILLEGAL_REQUEST && ep[1][1].buffer[12]==0x20);
+  complete(0x81,NULL,18);assert(poll()==0);assert(csw(true)==0);
+  command(0x28,512,true,3,1,0);assert(ep[1][1].length==512);complete(0x81,NULL,512);assert(poll()==0);assert(csw(true)==0);
+  assert(sd_reads==1 && !sd_writes && sd_owned && !remounts && healthy);
+  puts("PASS unsupported host probe -> explicit illegal request -> later READ10 succeeds");
+ }
+ else if(!strcmp(s,"diagnostics")){
   const risc_usb_device_msc_api_v1_diagnostics *tail=risc_usb_device_msc_diagnostics(api);assert(tail);
   risc_usb_device_msc_diagnostics_v1 info={.struct_size=sizeof(info)};
   risc_usb_device_msc_api_v1_diagnostics copy=*tail;
@@ -273,4 +345,5 @@ int main(int argc,char**argv){
  else if(!strcmp(s,"stale")){assert(api->end(NULL,token+1,1)==-1&&sd_owned);}
  else assert(!"unknown scenario");
  assert(api->end(NULL,token,1)==0&&!sd_owned&&!phy_owned&&!usb_live);assert(poll()==-1);assert(d->quiesce());printf("PASS %s\n",s);
+ return 0;
 }

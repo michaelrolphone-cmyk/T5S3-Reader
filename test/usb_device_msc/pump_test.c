@@ -9,6 +9,7 @@ static unsigned elapsed_per_pass,fault_after;
 static bool healthy=true,never_idle;
 uint64_t risc_msc_now(void){return now_ms;}
 bool risc_msc_transport_ok(void){return healthy;}
+bool risc_msc_command_pending(void){return false;}
 void risc_msc_pump_report(uint32_t passes){++report_calls;reported=passes;}
 static bool ready(void){return pending||never_idle;}
 static void hardware(void){++hardware_calls;if(pending){--pending;++packets;}if(fault_after&&hardware_calls==fault_after)healthy=false;}
