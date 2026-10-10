@@ -1,30 +1,30 @@
-# X4 Pro UC8279 visual contrast laboratory v0.1.8
+# X4 Pro UC8279 focused directional-balance laboratory v0.1.9
 
-Standalone firmware for subjective, side-by-side evaluation of first-transition
-contrast on the Xteink X4 Pro. It is derived from the hardware-tested X4LAB
-v0.1.5 electrical and geometry path and does not boot RiscRTE.
+Standalone firmware for narrowing the remaining first-transition contrast problem on the Xteink X4 Pro after the v0.1.8 visual matrix.
 
-The matrix is designed for unaided visual inspection. A fixed 800×80 witness
-band simultaneously shows:
+The prior device run established several useful constraints:
 
-- a black target teleporting across a white background in the upper half; and
-- a white target teleporting across a black background in the lower half.
+- complementary directional **2+2** was the strongest moving witness;
+- maximum kick followed by a GND hold was visible but weaker;
+- VCOM offsets at the high end of the sweep darkened the complete display;
+- broad simultaneous transition loads degraded white erasure toward gray;
+- short source/gate timing remained active, while the combined long-TCON/17-Hsync mode produced no motion.
 
-The targets jump between non-overlapping positions. This prevents the apparent
-contrast gain that a sliding square receives when several consecutive frames
-redrive overlapping pixels. Density modes instead toggle centered rectangles of
-64, 400, or 800 pixels so rail/load sensitivity can be judged with identical
-scan geometry.
+This matrix therefore fixes VCOM at the factory value and the documented PLL at 200 Hz, updates only the actual horizontal changed region, and isolates pulse asymmetry, source-rail direction, transition-load segmentation, split-direction refreshes, recharge gaps, TCON, and CDI.
 
-## Electrical boundary
+It does not boot RiscRTE, mount storage, start touch, or load installed applications.
 
-Common to every mode:
+## Electrical and geometry boundary
+
+All modes retain the proven laboratory foundation:
 
 - recognized UC8279 ZHX LUT ID `0x68` or `0x69` only;
 - normal 800×600 controller geometry;
 - visible rows at gate offset 120;
 - 20 MHz panel SPI;
-- ordinary PTIN/PTL windows;
+- ordinary PTIN/PTL addressing;
+- documented 200 Hz PLL only;
+- factory VCOM only;
 - bounded BUSY assertion and completion waits;
 - a stock OTP baseline before every candidate;
 - no compact TRES/GSST remapping;
@@ -32,89 +32,139 @@ Common to every mode:
 - no undocumented PLL values;
 - no PMIC or battery changes.
 
-Some modes deliberately exercise documented source-voltage, VCOM, TCON, and
-CDI controls. They are experiments, not production recommendations.
+The source-rail modes use documented ±14 V and ±15 V settings. They are characterization experiments, not production defaults.
 
-## Hard abort
+## Immediate abort
 
-Either side button immediately raises CS, asserts the EPD reset line low,
-stops clock/data output, and permanently halts until reboot. USB serial `q`,
-`x`, or Escape invokes the same path.
+Either side button immediately raises EPD CS, asserts EPD RESET low, stops clock/data output, and permanently halts until reboot. USB serial `q`, `x`, or Escape invokes the same path.
 
-The power button starts the next mode. During a mode it requests stop after the
-current physical refresh completes.
+The power button starts the next mode. During a mode it requests a stop after the current logical frame; a segmented or split-direction logical frame may contain more than one physical DRF.
 
-## Matrix
+## Witness geometry
+
+The active witness is an 800×80 band:
+
+- upper half: black target on white;
+- lower half: white target on black.
+
+Teleport modes bounce between adjacent non-overlapping target positions. The union of the old and new positions is exactly 160 pixels wide, so the controller updates a realistic narrow changed rectangle rather than scanning all 800 columns. The geometry prevents repeated overlap from making a weak first transition appear stronger.
+
+Density modes toggle centered 400- or 800-pixel regions. Segmented variants divide the same logical transition into narrower physical windows so supply/load effects can be compared without changing the final image.
+
+## 25-mode matrix
+
+### Directional pulse balance
 
 | Mode | Key | Experiment |
 |---:|:---:|---|
-| 1 | `1` | Current corrected two-frame absolute A2 reference, 200 Hz, ±14 V |
-| 2 | `2` | Conventional two-frame differential A2 with VCOM-DC reference |
-| 3 | `3` | Complementary directional overdrive, one frame per direction |
-| 4 | `4` | Complementary directional overdrive, two frames per direction |
-| 5 | `5` | Maximum directional kick followed by symetric GND hold |
-| 6 | `6` | Maximum kick followed by VDHR intermediate hold |
-| 7 | `7` | Reduced reverse activation followed by maximum directional kick |
-| 8 | `8` | Complementary directional waveform at 100 Hz |
-| 9 | `9` | Complementary directional waveform at 130 Hz |
-| 10| `a`| Complementary directional waveform at 150 Hz |
-| 11 | `b` | Symmetric ±12.6 V source rails |
-| 12 | `c` | Symmetric ±15.0 V source rails |
-| 13 | `d` | VDH +15.0 V, VDL ∋14.0 V |
-| 14 | `e`| VDH +14.0 V, VDL ∋15.0 V |
-| 15 | `f` | ±15 V with VCOM DC ∋1.50 V |
-| 16 | `g` | ±15 V with VCOM DC ∋2.00 V |
-| 17 | `h` | ±15 V with VCOM DC ∋2.50 V |
-| 18 | `i` | ±15 V with VCOM DC ∋3.00 V |
-| 19 | `j` | 64-pixel transition-density load |
-| 20 | `k` | 400-pixel transition-density load |
-| 21 | `l` | 800-pixel transition-density load |
-| 22 | `m` | Minimum documented gate/source non-overlap and 2-Hsync CDI |
-| 23 | `n` | Longer gate/source non-overlap and 17-Hsync CDI |
-| 24 | `o` | Temporal Bayer grayscale stress using complementary drive |
-| 25 | `p` | Teleporting one-pixel edge/checker stress |
+| 1 | `1` | Complementary 2 black phases + 2 white phases, ±14 V reference |
+| 2 | `2` | 1 black + 2 white phases, ±14 V |
+| 3 | `3` | 1 black + 3 white phases, ±14 V |
+| 4 | `4` | 1 black + 4 white phases, ±14 V |
+| 5 | `5` | 2 black + 3 white phases, ±14 V |
+| 6 | `6` | 2 black + 4 white phases, ±14 V |
+| 7 | `7` | Prior maximum-kick + symmetric GND-hold reference, ±14 V |
+| 8 | `8` | 1+2 plus one additional black→white GND-hold phase, ±14 V |
 
-Mode 3 matches the complementary two-phase architecture used by the current
-panel-driver experiment. Modes 5–7 test different ways to spend more useful
-field within a small number of phases rather than merely repeating the same
-absolute pulse.
+Modes 2–6 determine whether the best v0.1.8 result can be made faster by spending fewer phases on white→black and more on the weaker black→white direction.
 
-## What to record by eye
+### Directional source-rail contribution
 
-For every mode, note these separately:
+| Mode | Key | Experiment |
+|---:|:---:|---|
+| 9 | `9` | 1+2, VDH +15 V / VDL −14 V |
+| 10 | `a` | 1+2, VDH +14 V / VDL −15 V |
+| 11 | `b` | 1+2, symmetric ±15 V |
+| 12 | `c` | 1+3, symmetric ±15 V |
+| 13 | `d` | 2+2, symmetric ±15 V |
 
-1. **Black first appearance:** how dark the upper target is at its first new
-   location rather than after several frames.
-2. **White first erasure:** how cleanly the lower target becomes white at its
-   first new location.
-3. **Trailing residue:** whether the prior target location remains visible.
-4. **Motion completeness:** whether each position is visibly rendered or the
-   target appears to jump over faint intermediate positions.
-5. **Direction imbalance:** whether white→black is materially stronger than
-   black→white or vice versa.
-6. **Background stability:** whether unchanged white or black areas
-   are disturbed by the waveform.
-7. **Post-run relaxation:** inspect the retained final frame before starting
-   the next mode.
+Compare the upper and lower witnesses separately. These modes determine which rail strengthens the weak black→white transition and whether added voltage is more useful than another phase.
 
-For modes 19–21, compare contrast as the number of simultaneously transitioning
-columns rises. A contrast decline with increasing transition density would be
-consistent with high-voltage rail or source-driver loading.
+### Transition-density segmentation
 
-For modes 15–18, identify the VCOM value that best balances both transition
-directions; do not judge only the darkest black.
+| Mode | Key | Experiment |
+|---:|:---:|---|
+| 14 | `e` | 400-pixel transition in one combined window, 1+2 |
+| 15 | `f` | Same 400-pixel transition as two 200-pixel windows, 1+2 |
+| 16 | `g` | 800-pixel transition in one combined window, 1+2 |
+| 17 | `h` | Same 800-pixel transition as two 400-pixel windows, 1+2 |
+| 18 | `i` | Same 800-pixel transition as four 200-pixel windows, 1+2 |
+| 19 | `j` | Four 200-pixel windows with a 2 ms recharge gap between segments |
+
+The final logical image is identical within each comparison. Better contrast after segmentation would support a high-voltage rail/source-driver loading explanation.
+
+### Separate directional DRFs and recharge
+
+| Mode | Key | Experiment |
+|---:|:---:|---|
+| 20 | `k` | 400-pixel transition; white→black and black→white in separate DRFs, no gap |
+| 21 | `l` | Same split-direction sequence with a 3 ms recharge gap |
+
+These determine whether simultaneous opposite-direction source loading is suppressing white erasure and whether a short booster-recharge interval helps.
+
+### Independent timing variables
+
+| Mode | Key | Experiment |
+|---:|:---:|---|
+| 22 | `m` | Default TCON with short 2-Hsync CDI |
+| 23 | `n` | Minimum TCON with default CDI |
+| 24 | `o` | Default TCON with long 17-Hsync CDI |
+| 25 | `p` | Long TCON with default CDI |
+
+The prior failed timing mode changed TCON and CDI together. These four modes isolate each variable.
+
+## What to record
+
+For every mode, note:
+
+1. **Black first appearance:** darkness at the first new location.
+2. **White first erasure:** how fully black becomes white on the first update.
+3. **Old-location residue:** whether the previous black or white target remains.
+4. **Motion completeness:** whether every target position is visibly rendered.
+5. **Directional balance:** relative strength of white→black and black→white.
+6. **Background stability:** whether unchanged white or black shifts or becomes dusty.
+7. **Post-run relaxation:** change in the retained image before another mode begins.
+8. **Cadence:** whether added contrast is worth the visible reduction in motion rate.
+
+For segmented modes, inspect seams at segment boundaries as well as contrast. For split-direction modes, note whether the two halves appear temporally separated.
+
+A compact report format is:
+
+```text
+Mode:
+Black first frame:
+White first frame:
+Old-location residue:
+Motion completeness:
+Background/seams:
+Post-run relaxation:
+Overall rank:
+```
+
+## Suggested order
+
+```text
+1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
+2 → 9 → 10 → 11 → 12 → 13
+14 → 15
+16 → 17 → 18 → 19
+20 → 21
+22 → 23 → 24 → 25
+```
+
+This starts from the known 2+2 winner, narrows the asymmetric pulse knee, then evaluates voltage, loading, segmentation, split-direction execution, and finally timing.
 
 ## Controls
 
 - **POWER while ready:** run the next mode.
-- **POWER during a mode:** stop after the current physical refresh.
+- **POWER during a mode:** stop after the current logical frame.
 - **Serial `n` or Space:** run the next mode.
-- **Serial `1`–`9`, `a`–`p`:** select a mode.
-- **LEFT or RIGHT:** immediate electrical hard abort.
+- **Serial `1`–`9`, `a`–`p`:** select a mode directly.
+- **LEFT or RIGHT side button:** immediate electrical hard abort.
 - **Serial `q`, `x`, or Escape:** immediate hard abort.
+- **Serial speed:** 115200 baud.
 
-Serial speed is 115200 baud. Modes never auto-advance. The final image remains
-on the glass for inspection until another mode is started.
+Modes never auto-advance. The final image remains on the glass for inspection until another mode begins.
 
 ## Build and flash
 
