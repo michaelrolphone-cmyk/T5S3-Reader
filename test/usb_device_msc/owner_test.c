@@ -27,10 +27,10 @@ static int32_t sd_begin(void*c,uint64_t*t,uint64_t*n,uint32_t*z){
  (void)c;*t=0;*n=0;*z=0;if(retained_begin)return -2;if(refuse_begin)return -1;assert(!sd_owned);sd_owned=true;mark('M');*t=no_media_token?0:++media_generation;*n=16;*z=512;return 0;
 }
 static int32_t sd_read(void*c,uint64_t t,uint64_t lba,uint32_t n,void*b){
- (void)c;sd_check(t);assert(usb_live && lba<16 && n==1);++sd_reads;if(fail_read)return -2;memcpy(b,disk[lba],512);return 0;
+ (void)c;sd_check(t);assert(usb_live && lba<16 && n && n<=8 && n<=16-lba);++sd_reads;if(fail_read)return -2;memcpy(b,disk[lba],n*512);return 0;
 }
 static int32_t sd_write(void*c,uint64_t t,uint64_t lba,uint32_t n,const void*b){
- (void)c;sd_check(t);assert(usb_live && lba<16 && n==1);++sd_writes;if(fail_write)return -2;memcpy(disk[lba],b,512);return 0;
+ (void)c;sd_check(t);assert(usb_live && lba<16 && n && n<=8 && n<=16-lba);++sd_writes;if(fail_write)return -2;memcpy(disk[lba],b,n*512);return 0;
 }
 static int32_t sd_sync(void*c,uint64_t t){(void)c;sd_check(t);++sd_syncs;return fail_sync?-2:0;}
 static int32_t sd_end(void*c,uint64_t t){(void)c;sd_check(t);assert(!usb_live);mark('E');if(fail_end)return -2;sd_owned=false;++remounts;return absent_end?1:0;}
@@ -171,7 +171,7 @@ int main(int argc,char**argv){
   risc_usb_device_msc_diagnostics_v2 info={.base={.struct_size=sizeof(info)}};
   command(0x28,2048,true,3,4,0);assert(diag->diagnostics(NULL,token,&info.base)==0);
   assert(info.base.struct_size==sizeof(info) && info.transferred_bytes==0 && info.residue==2048);
-  for(unsigned i=0;i<4;++i){now_ms+=3;complete(0x81,NULL,512);assert(poll()==0);assert(diag->diagnostics(NULL,token,&info.base)==0);assert(info.transferred_bytes==(i+1)*512 && info.residue==(3-i)*512);}
+  for(unsigned done=0;done<2048;){unsigned n=ep[1][1].length;assert(n && n<=2048-done);now_ms+=3*(n/512);complete(0x81,NULL,n);done+=n;assert(poll()==0);assert(diag->diagnostics(NULL,token,&info.base)==0);assert(info.transferred_bytes==done && info.residue==2048-done);}
   assert(csw(true)==0);assert(diag->diagnostics(NULL,token,&info.base)==0);
   assert(info.completed_requested==2048 && info.completed_transferred==2048 && !info.completed_residue && info.completed_lba==3 && info.completed_blocks==4);
   assert(info.data_opcode==0x28 && info.data_lba==3 && info.data_transferred==2048 && info.data_elapsed_ms==12);

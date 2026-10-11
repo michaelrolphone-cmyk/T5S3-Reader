@@ -252,21 +252,32 @@ void tud_msc_capacity_cb(uint8_t lun,uint32_t *count,uint16_t *size) {
  *count=medium(lun)?(uint32_t)blocks:0;*size=512;
 }
 bool tud_msc_is_writable_cb(uint8_t lun) { return medium(lun); }
+/* Class chunks remain whole sectors, including the final shorter chunk.
+ * Reject partial sectors before touching media; never pad an incomplete USB
+ * write or read-modify-write bytes the host did not send. Unaligned pointers
+ * are permitted by the generic export API (native backend owns its DMA copy). */
+static uint32_t transfer_blocks(uint32_t lba,uint32_t offset,const void *buffer,uint32_t length) {
+ if(!buffer || offset || !length || length%512u || length>RISC_STORAGE_EXPORT_BLOCKS_MAX*512u)return 0;
+ const uint32_t count=length/512u;
+ return (uint64_t)lba<blocks && count<=blocks-lba?count:0;
+}
 int32_t tud_msc_read10_cb(uint8_t lun,uint32_t lba,uint32_t offset,void *buffer,uint32_t length) {
- if(!medium(lun) || !buffer || offset || length!=512 || (uint64_t)lba>=blocks)return -1;
+ const uint32_t count=transfer_blocks(lba,offset,buffer,length);
+ if(!medium(lun) || !count)return -1;
  const uint64_t before=risc_msc_now();
- const int32_t result=volume->export_read(volume->sleep.terminal.power.volume.base.context,media_token,lba,1,buffer);
- record_io(lba,1,before,result);
+ const int32_t result=volume->export_read(volume->sleep.terminal.power.volume.base.context,media_token,lba,count,buffer);
+ record_io(lba,count,before,result);
  if(!media_result(result,"SD read failed during USB export",0x11))return -1;
- ++reads;return 512;
+ reads+=count;return (int32_t)length;
 }
 int32_t tud_msc_write10_cb(uint8_t lun,uint32_t lba,uint32_t offset,uint8_t *buffer,uint32_t length) {
- if(!medium(lun) || !buffer || offset || length!=512 || (uint64_t)lba>=blocks)return -1;
+ const uint32_t count=transfer_blocks(lba,offset,buffer,length);
+ if(!medium(lun) || !count)return -1;
  const uint64_t before=risc_msc_now();
- const int32_t result=volume->export_write(volume->sleep.terminal.power.volume.base.context,media_token,lba,1,buffer);
- record_io(lba,1,before,result);
+ const int32_t result=volume->export_write(volume->sleep.terminal.power.volume.base.context,media_token,lba,count,buffer);
+ record_io(lba,count,before,result);
  if(!media_result(result,"SD write uncertain; exported card retained",0x0c))return -1;
- ++writes;return 512;
+ writes+=count;return (int32_t)length;
 }
 bool tud_msc_start_stop_cb(uint8_t lun,uint8_t power_condition,bool start,bool load_eject) {
  extended.start_stop_flags=(uint32_t)start|((uint32_t)load_eject<<1)|((uint32_t)power_condition<<8);

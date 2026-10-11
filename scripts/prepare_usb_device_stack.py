@@ -69,6 +69,11 @@ def prepare(source,output):
         '  risc_msc_sense(sense_key,add_sense_code,add_sense_qualifier);\n  _mscd_itf.sense_key           = sense_key;')
     for comment in ('// set sense', '// Set sense'):
         s=replace(s,comment+'\n    set_sense_medium_not_present(p_cbw->lun);',comment+'\n    if (p_msc->sense_key == 0) set_sense_medium_not_present(p_cbw->lun);')
+    # Never commit a short/failed OUT chunk, even when its short size happens
+    # to be sector-aligned. Nor report a short/failed IN chunk as completed.
+    # A final command chunk smaller than the class buffer remains valid.
+    s=replace(s,'    case MSC_STAGE_DATA:\n',
+        '    case MSC_STAGE_DATA:\n      if ((p_cbw->command[0] == SCSI_CMD_READ_10 || p_cbw->command[0] == SCSI_CMD_WRITE_10) &&\n          (event != XFER_RESULT_SUCCESS || xferred_bytes != tu_min32(sizeof(_mscd_buf), p_cbw->total_bytes-p_msc->xferred_len))) {\n        fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_PHASE_ERROR);\n        break;\n      }\n')
     s=replace(s,'      // Read10 or Write10',
         '      if (!risc_msc_command_valid(p_cbw->command, p_cbw->cmd_len, p_cbw->total_bytes)) {\n        fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);\n        break;\n      }\n      // Read10 or Write10')
     s=replace(s,'if ( tud_msc_scsi_complete_cb ) tud_msc_scsi_complete_cb(p_cbw->lun, p_cbw->command);',
