@@ -294,6 +294,16 @@ int main(int argc,char**argv){
   absent_end=!strcmp(s,"eject-no-fs");command(0x1b,0,false,0,0,2);assert(csw(false)==0&&sd_owned&&phy_owned&&!remounts);
   complete(0x81,NULL,13);assert(poll()==0);assert(status.state==(absent_end?RISC_USB_MSC_MEDIA_UNAVAILABLE:RISC_USB_MSC_EJECTED));assert(!sd_owned&&!phy_owned&&remounts==1&&sd_syncs==1);
  }
+ else if(!strcmp(s,"eject-stop-retry")){
+  fail_stop=true;command(0x1b,0,false,0,0,2);
+  assert(csw(false)==0 && sd_owned && phy_owned && !remounts);
+  complete(0x81,NULL,13);assert(poll()==-2 && status.state==RISC_USB_MSC_FAULT_RETAINED);
+  assert(usb_live && sd_owned && phy_owned && !remounts && !d->quiesce());
+  assert(api->end(NULL,token,0)==-2 && !remounts);
+  fail_stop=false;assert(api->end(NULL,token,0)==0);
+  assert(!usb_live && !sd_owned && !phy_owned && remounts==1 && sd_syncs==1);
+  assert(poll()==-1 && d->quiesce());puts("PASS eject-stop-retry");return 0;
+ }
  else if(!strcmp(s,"prevent-eject")){command(0x1e,0,false,0,0,1);assert(csw(true)==0);command(0x1b,0,false,0,0,2);assert(csw(true)==1&&sd_owned&&!remounts);}
  else if(!strcmp(s,"wrong-sector-size")){command(0x2a,1024,false,0,1,0);assert(ep[1][0].stalled&&!sd_writes);}
  else if(!strcmp(s,"lba-past-capacity")){command(0x2a,1024,false,15,2,0);assert(ep[1][0].stalled&&!sd_writes);}
@@ -338,8 +348,8 @@ int main(int argc,char**argv){
   fail_write=true;fail_end=true;uint8_t b[512]={0};command(0x2a,512,false,0,1,0);complete(1,b,512);assert(poll()==-2&&status.state==RISC_USB_MSC_FAULT_RETAINED);assert(sd_writes==1&&sd_owned&&!remounts);
   assert(api->end(NULL,token,1)==-2&&sd_owned&&phy_owned&&!usb_live);assert(!d->quiesce());puts("PASS retained write");return 0;
  }
- else if(!strcmp(s,"stop-retained")){fail_stop=true;assert(api->end(NULL,token,1)==-2&&usb_live&&sd_owned&&phy_owned&&!remounts);assert(!d->quiesce());return 0;}
- else if(!strcmp(s,"remount-retained")){fail_end=true;assert(api->end(NULL,token,1)==-2&&!usb_live&&sd_owned&&phy_owned&&!remounts);assert(!d->quiesce());return 0;}
+ else if(!strcmp(s,"stop-retained")){fail_stop=true;assert(api->end(NULL,token,1)==-2&&usb_live&&sd_owned&&phy_owned&&!remounts);assert(!d->quiesce());fail_stop=false;}
+ else if(!strcmp(s,"remount-retained")){fail_end=true;assert(api->end(NULL,token,1)==-2&&!usb_live&&sd_owned&&phy_owned&&!remounts);assert(!d->quiesce());fail_end=false;}
  else if(!strcmp(s,"phy-release-retained")){fail_release=true;assert(api->end(NULL,token,1)==-2&&!usb_live&&!sd_owned&&phy_owned&&remounts==1);assert(!d->quiesce());fail_release=false;}
  else if(!strcmp(s,"queue-overflow")){for(unsigned i=0;i<40;++i)dcd_event_bus_signal(0,DCD_EVENT_RESUME,false);assert(!healthy&&poll()==-2&&sd_owned&&!remounts);}
  else if(!strcmp(s,"stale")){assert(api->end(NULL,token+1,1)==-1&&sd_owned);}

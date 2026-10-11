@@ -94,7 +94,12 @@ bool risc_msc_transport_stop(void) {
  USB_WRAP.otg_conf.val=saved_wrap;USB_WRAP.test_conf.val=saved_test;
  for(unsigned i=0;i<4;++i)GPIO.func_in_sel_cfg[input_signal[i]].val=saved_inputs[i];
  restore_phy_route();
- if(USB_WRAP.otg_conf.val!=saved_wrap || USB_WRAP.test_conf.val!=saved_test ||
+ /* IDF v4.4.7: test_conf[3:0] are writable controls; [6:4] are live
+  * read-only PHY receive status. A line-state change is not a failed restore.
+  * Still require every saved control bit to match before releasing custody. */
+ const uint32_t test_control_mask=0x0fu;
+ if(USB_WRAP.otg_conf.val!=saved_wrap ||
+    (USB_WRAP.test_conf.val&test_control_mask)!=(saved_test&test_control_mask) ||
     RTCCNTL.usb_conf.sw_hw_usb_phy_sel!=savedPhyOverride || RTCCNTL.usb_conf.sw_usb_phy_sel!=savedPhySelect) {
   phyRouteCaptured=true;return false;
  }
