@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 PIN='1eb6ce784ca9b8acbbe43dba9f1d9c26c2e80eb0' # upstream 0.16.0
-SOURCES=('common/tusb_common.h','tusb.c','common/tusb_fifo.c','device/usbd.c','device/usbd_control.c',
+SOURCES=('tusb.c','common/tusb_fifo.c','device/usbd.c','device/usbd_control.c',
          'class/msc/msc_device.c','portable/synopsys/dwc2/dcd_dwc2.c')
 def replace(s,a,b):
     if s.count(a)!=1: raise ValueError('Pinned TinyUSB patch anchor changed: '+a[:80])
@@ -19,7 +19,7 @@ def prepare(source,output):
     if subprocess.check_output(['git','-C',str(source),'status','--porcelain','--','src'],text=True).strip():
         raise ValueError('TinyUSB source has local edits')
     shutil.copytree(source/'src',output)
-    hashes={p:hashlib.sha256((source/'src'/p).read_bytes()).hexdigest() for p in SOURCES}
+    hashes={p:hashlib.sha256((source/'src'/p).read_bytes()).hexdigest() for p in (*SOURCES,'common/tusb_common.h')}
     # Native unaligned access does not make a misaligned C integer dereference
     # defined. Preserve the optimized memcpy form on permissive host CPUs;
     # Xtensa continues to use TinyUSB's existing packed strict-alignment path.
