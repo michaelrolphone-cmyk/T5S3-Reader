@@ -128,6 +128,11 @@ static void connect_provider(void){
 int main(int argc,char**argv){
  assert(argc==2);const char*s=argv[1];
  const risc_driver_v2*d=t5_driver_get(2);
+ if(!strcmp(s,"export-without-sleep")){
+  volume.base.sleep.sleep_tag=0;volume.base.sleep.prepare_sleep=NULL;volume.base.sleep.terminal.extension_tag=0;
+  assert(!risc_storage_volume_sleep(&volume.base.sleep.terminal.power.volume.base));
+  connect_provider();assert(api->end(NULL,token,RISC_USB_MSC_END_CANCEL_WAITING)==0);assert(!phy_owned&&!sd_owned&&!usb_live&&d->quiesce());puts("Generic export without unrelated sleep tail PASS");return 0;
+ }
  if(!strcmp(s,"begin-refused")){
   refuse_begin=true;api=d->capability;risc_provider_dependency_v1 deps[]={{"platform.clock",1,&clock_api},{RISC_USB_PHY_RESOURCE_CAPABILITY,1,&phy},{"storage.volume",1,&volume}};assert(d->start(deps,3));assert(api->begin(NULL,&token)==-1&&!token&&!trace_size);assert(d->quiesce());return 0;
  }

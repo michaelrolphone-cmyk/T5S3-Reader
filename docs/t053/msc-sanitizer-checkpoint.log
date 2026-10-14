@@ -1,0 +1,21 @@
+PASS sector scheduling model: 8 ready packets required 8 old polls; new pump requires 1 poll, 8 passes
+PASS idle returns with zero hardware/events
+PASS continuous-ready capped at 32 passes
+PASS elapsed admission budget stops at 2 ms
+PASS slow in-flight callback admits no further pass
+PASS hardware fault suppresses stack work
+PASS pre-existing controller fault admits zero work
+64 KiB delayed-packet model packets=1024 polls=34 elapsed_us=100005
+PASS inactive idle does not busy-poll
+PASS host pause returns at 2 ms admission deadline
+PASS frozen clock has finite no-progress probe budget
+PASS controller fault admits no traffic
+PASS clock rollback admits no work
+PASS fault after delayed packet suppresses stack work and exits
+PASS actual DWC2 bulk IN timeout latches controller fault without completion
+PASS simultaneous timeout/completion never reports transfer success
+PASS initially empty active pump observes delayed masked MMIO event through actual DWC2 handler
+/tmp/tmp.b1iTLquR0b/stack/common/tusb_common.h:264:10: runtime error: load of misaligned address 0xaaaacba8db11 for type 'const uint32_t', which requires 4 byte alignment
+0xaaaacba8db11: note: pointer points here
+ 00 0a 28  00 00 00 00 03 00 00 04  00 00 00 00 00 00 00 00  55 53 42 53 01 00 00 00  00 00 00 00 00
+              ^ 
