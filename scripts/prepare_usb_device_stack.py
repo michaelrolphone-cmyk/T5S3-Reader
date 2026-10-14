@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 PIN='1eb6ce784ca9b8acbbe43dba9f1d9c26c2e80eb0' # upstream 0.16.0
-SOURCES=('tusb.c','common/tusb_fifo.c','device/usbd.c','device/usbd_control.c',
+SOURCES=('common/tusb_common.h','tusb.c','common/tusb_fifo.c','device/usbd.c','device/usbd_control.c',
          'class/msc/msc_device.c','portable/synopsys/dwc2/dcd_dwc2.c')
 def replace(s,a,b):
     if s.count(a)!=1: raise ValueError('Pinned TinyUSB patch anchor changed: '+a[:80])
@@ -20,6 +20,16 @@ def prepare(source,output):
         raise ValueError('TinyUSB source has local edits')
     shutil.copytree(source/'src',output)
     hashes={p:hashlib.sha256((source/'src'/p).read_bytes()).hexdigest() for p in SOURCES}
+    # Native unaligned access does not make a misaligned C integer dereference
+    # defined. Preserve the optimized memcpy form on permissive host CPUs;
+    # Xtensa continues to use TinyUSB's existing packed strict-alignment path.
+    p=output/'common/tusb_common.h';s=p.read_text()
+    for bits in (16,32):
+        s=replace(s, f'  return *((uint{bits}_t const *) mem);',
+            f'  uint{bits}_t value; memcpy(&value, mem, sizeof(value)); return value;')
+        s=replace(s, f'  *((uint{bits}_t *) mem) = value;',
+            '  memcpy(mem, &value, sizeof(value));')
+    p.write_text(s)
     p=output/'portable/synopsys/dwc2/dcd_dwc2.c';s=p.read_text()
     s=replace(s,'#include "dwc2_esp32.h"','#include "dwc2_owner.h"')
     patches={

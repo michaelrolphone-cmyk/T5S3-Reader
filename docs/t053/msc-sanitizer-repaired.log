@@ -1,0 +1,52 @@
+PASS sector scheduling model: 8 ready packets required 8 old polls; new pump requires 1 poll, 8 passes
+PASS idle returns with zero hardware/events
+PASS continuous-ready capped at 32 passes
+PASS elapsed admission budget stops at 2 ms
+PASS slow in-flight callback admits no further pass
+PASS hardware fault suppresses stack work
+PASS pre-existing controller fault admits zero work
+64 KiB delayed-packet model packets=1024 polls=34 elapsed_us=100005
+PASS inactive idle does not busy-poll
+PASS host pause returns at 2 ms admission deadline
+PASS frozen clock has finite no-progress probe budget
+PASS controller fault admits no traffic
+PASS clock rollback admits no work
+PASS fault after delayed packet suppresses stack work and exits
+PASS actual DWC2 bulk IN timeout latches controller fault without completion
+PASS simultaneous timeout/completion never reports transfer success
+PASS initially empty active pump observes delayed masked MMIO event through actual DWC2 handler
+Generic export without unrelated sleep tail PASS
+PASS v2 actual multi-sector BOT progress, old-prefix canary, reset abort and eject retention
+PASS class-reset-abort: abort clears activity without CSW/custody change; idle zero-work and later read succeeds
+PASS unconfigure-abort: abort clears activity without CSW/custody change; idle zero-work and later read succeeds
+PASS reset-during-gap: delayed event handled in same active pump; no stale SD read
+PASS unplug-during-gap: delayed event handled in same active pump; no stale SD read
+MODE SENSE(10) rejection sense=5 asc=32 ascq=0
+PASS unsupported host probe -> explicit illegal request -> later READ10 succeeds
+PASS unsupported-sense
+PASS diagnostics
+PASS controller fault stops protocol and SD work
+PASS read-error-protocol: SD failure -> failed CSW -> sense -> reset; media remains frozen
+PASS write-error-protocol: SD failure -> failed CSW -> sense -> reset; media remains frozen
+PASS sync-error-protocol: SD failure -> failed CSW -> sense -> reset; media remains frozen
+PASS malformed-eject
+PASS short-eject-cdb
+PASS lba-past-capacity
+PASS invalid-cbw
+PASS repeat
+PASS eject-stop-retry
+PASS suspend
+PASS unconfigure
+PASS disconnect
+PASS read-write
+PASS eject
+PASS eject-no-fs
+PASS prevent-eject
+PASS wrong-sector-size
+PASS lba-overflow
+PASS retained write
+PASS stop-retained
+PASS remount-retained
+PASS phy-release-retained
+PASS queue-overflow
+PASS stale
