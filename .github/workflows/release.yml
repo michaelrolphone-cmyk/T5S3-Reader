@@ -31,6 +31,7 @@ jobs:
     name: Scan versions and plan releases
     runs-on: ubuntu-latest
     outputs:
+      source_only: ${{ steps.intent.outputs.source_only }}
       firmware: ${{ steps.outputs.outputs.firmware }}
       apps: ${{ steps.outputs.outputs.apps }}
       drivers: ${{ steps.outputs.outputs.drivers }}
@@ -45,7 +46,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Check the exact one-promotion source-only intent
+        id: intent
+        env:
+          PROMOTION_BEFORE: ${{ github.event.before }}
+        run: python scripts/check_source_only_promotion.py --audit-file "$RUNNER_TEMP/source-promotion.json" --plan-file "$RUNNER_TEMP/release-plan.json" --github-output "$GITHUB_OUTPUT"
       - name: Compare source versions with the release index
+        if: steps.intent.outputs.source_only != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python scripts/publish_updated_packages.py --plan-only --plan-file "$RUNNER_TEMP/release-plan.json"
@@ -66,7 +73,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rte-release-plan
-          path: ${{ runner.temp }}/release-plan.json
+          path: |
+            ${{ runner.temp }}/release-plan.json
+            ${{ runner.temp }}/source-promotion.json
           if-no-files-found: error
           retention-days: 1
 
@@ -321,7 +330,7 @@ jobs:
     name: Publish releases and update the index
     timeout-minutes: 30
     needs: [plan, build_firmware, build_apps, build_drivers, build_services, build_providers]
-    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.firmware != 'true' || needs.build_firmware.result == 'success') && (needs.plan.outputs.apps != 'true' || needs.build_apps.result == 'success') && (needs.plan.outputs.drivers != 'true' || needs.build_drivers.result == 'success') && (needs.plan.outputs.services != 'true' || needs.build_services.result == 'success') && (needs.plan.outputs.providers != 'true' || needs.build_providers.result == 'success') }}
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.source_only != 'true' && (needs.plan.outputs.firmware != 'true' || needs.build_firmware.result == 'success') && (needs.plan.outputs.apps != 'true' || needs.build_apps.result == 'success') && (needs.plan.outputs.drivers != 'true' || needs.build_drivers.result == 'success') && (needs.plan.outputs.services != 'true' || needs.build_services.result == 'success') && (needs.plan.outputs.providers != 'true' || needs.build_providers.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

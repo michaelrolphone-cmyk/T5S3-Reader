@@ -20,6 +20,10 @@ jobs:
           python-version: '3.11'
       - name: Install ELF inspection dependency
         run: python -m pip install pyelftools==0.32
+      - name: Verify source-only promotion and standalone package routing
+        run: |
+          python -B test/source_only_promotion_test.py
+          python -B test/bulk_release_test.py
       - name: Install SDK 6.1 compiler only, without Arduino or PlatformIO
         shell: bash
         run: |

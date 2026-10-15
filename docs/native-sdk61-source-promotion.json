@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "repository": "michaelrolphone-cmyk/T5S3-Reader",
+  "branch": "master",
+  "expected_before": "b5a9887e16ce04baecdfa8366ff7d67a2a22c3cc",
+  "source_sha": "40ee294e8d16280f14bbe56a92103e6038a316ea",
+  "intent": "source-only-sdk61-promotion"
+}
