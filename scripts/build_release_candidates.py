@@ -66,11 +66,33 @@ def discover_module_sources(root: Path) -> list[dict]:
     return sources
 
 
+def discover_release_module_sources(root: Path) -> list[dict]:
+    """Validate all sources, then retain only independently releasable modules.
+
+    Device MSC is qualified by its explicit pinned-TinyUSB builder for product
+    composition. It has no ordinary standalone release recipe or replacement
+    authority. Keep this one reviewed ownership boundary out of automatic
+    release discovery without weakening source/manifest validation.
+    """
+    sources = discover_module_sources(root)
+    releasable = []
+    for item in sources:
+        if item['id'] == 'usb-device-msc-esp32s3':
+            if (item['metadata']['type'] != 'driver'
+                    or item['source'].relative_to(root).as_posix()
+                    != 'Drivers/usb_device_msc_esp32s3/manifest.json'
+                    or (item['capability'], item['api']) != ('usb.device.msc', 1)):
+                raise ValueError('source-only device MSC identity/source boundary changed')
+            continue
+        releasable.append(item)
+    return releasable
+
+
 def discover_module_builders(root: Path, kind: str) -> dict[str, list[tuple[str, ...]]]:
     if kind not in ('driver', 'service', 'provider'):
         raise ValueError('invalid module build kind')
     builders = {}
-    for item in discover_module_sources(root):
+    for item in discover_release_module_sources(root):
         if item['metadata']['type'] != kind:
             continue
         if item['resources_only']:

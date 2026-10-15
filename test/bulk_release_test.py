@@ -182,14 +182,70 @@ class DiscoverCandidatesTest(unittest.TestCase):
 
     def test_release_builder_covers_every_packaged_driver(self):
         # Derive coverage independently from every current ABI-2 source;
-        # a newly added provider must not need a second hard-coded ID table.
+        # only the explicitly source-only device-MSC composition is excluded.
+        # Other newly added providers do not need a second hard-coded ID table.
         packaged = set()
         for path in (ROOT / "Drivers").glob("*/manifest.json"):
             manifest = json.loads(path.read_text())
             if manifest.get("type") == "driver" and manifest.get("driver_abi") == 2:
                 packaged.add(manifest["id"])
         self.assertTrue(packaged)
-        self.assertEqual(packaged, set(discover_driver_builders(ROOT)))
+        self.assertIn('usb-device-msc-esp32s3', packaged)
+        self.assertEqual(packaged - {'usb-device-msc-esp32s3'},
+                         set(discover_driver_builders(ROOT)))
+
+    def source_only_msc(self):
+        source = self.provider('usb_device_msc_esp32s3', 'usb-device-msc-esp32s3', '0.1.8')
+        manifest = json.loads((ROOT / 'Drivers/usb_device_msc_esp32s3/manifest.json').read_text())
+        (source / 'manifest.json').write_text(json.dumps(manifest))
+        (self.root / 'scripts/build_usb_device_msc_esp32s3.py').unlink()
+        return source
+
+    def test_source_only_msc_is_validated_but_never_automatically_released(self):
+        expected = discover_candidates(self.root, self.current_index())
+        self.source_only_msc()
+        self.assertIn('usb-device-msc-esp32s3',
+                      {item['id'] for item in release_builder.discover_module_sources(self.root)})
+        self.assertNotIn('usb-device-msc-esp32s3', discover_driver_builders(self.root))
+        self.assertEqual(discover_candidates(self.root, self.current_index()), expected)
+        self.assertTrue((ROOT / 'scripts/build_usb_device_msc.py').is_file())
+
+    def test_source_only_msc_cannot_be_injected_into_an_ordinary_build_plan(self):
+        self.source_only_msc()
+        with patch.object(release_builder, 'ROOT', self.root), \
+                patch.object(release_builder, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'no source builder'):
+                release_builder.build_drivers([
+                    {'product': 'drivers', 'id': 'usb-device-msc-esp32s3', 'version': '0.1.8'}])
+            run.assert_not_called()
+
+    def test_source_only_msc_does_not_hide_invalid_or_duplicate_manifests(self):
+        source = self.source_only_msc()
+        manifest_path = source / 'manifest.json'
+        original = manifest_path.read_text()
+        manifest = json.loads(original)
+        manifest['version'] = 'invalid'
+        manifest_path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'invalid numeric package version'):
+            discover_candidates(self.root, self.current_index())
+        manifest_path.write_text(original)
+        self.provider('duplicate_msc', 'usb-device-msc-esp32s3', '0.1.8')
+        with self.assertRaisesRegex(ValueError, 'duplicate ABI-v2 package identity'):
+            discover_candidates(self.root, self.current_index())
+
+    def test_source_only_msc_exclusion_requires_the_exact_source_and_capability(self):
+        source = self.source_only_msc()
+        path = source / 'manifest.json'
+        manifest = json.loads(path.read_text())
+        manifest['provides'] = [{'capability': 'test.other', 'api': 1}]
+        path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'identity/source boundary changed'):
+            discover_candidates(self.root, self.current_index())
+        manifest['provides'] = [{'capability': 'usb.device.msc', 'api': 1}]
+        path.write_text(json.dumps(manifest))
+        source.rename(source.with_name('renamed_msc'))
+        with self.assertRaisesRegex(ValueError, 'identity/source boundary changed'):
+            discover_candidates(self.root, self.current_index())
 
     def test_x4_driver_release_builds_only_the_selected_source(self):
         builders = discover_driver_builders(ROOT)

@@ -6,6 +6,16 @@ payloads. The package manifest, public capability ABI, provider/transport source
 TinyUSB adaptation and existing lifecycle behavior remain unchanged. No Runtime
 exports or private import authority are added.
 
+Automatic standalone release discovery excludes this exact package identity,
+source path and `usb.device.msc@1` capability after validating the full source
+graph. The shared release planner still validates its manifest and rejects
+duplicates, malformed sources and changed ownership. It does not invent an
+ordinary `build_usb_device_msc_esp32s3.py` recipe or publish this source-only
+component. Other supported packages keep their existing release behavior.
+The explicit `scripts/build_usb_device_msc.py` native/historical build and the
+separately qualified product composition remain unchanged. An ordinary release
+plan that explicitly injects this package is rejected before its builder runs.
+
 ## Selected source and replay boundary
 
 The selected later Wave provider CI at Waveshare commit

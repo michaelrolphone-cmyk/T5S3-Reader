@@ -15,13 +15,13 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .build_release_candidates import discover_module_builders, discover_module_sources
+    from .build_release_candidates import discover_module_builders, discover_release_module_sources
     from .generate_provider_package_inputs_v1 import canonical_manifest
     from .package_resource_source import resource_source
     from .build_release_record import build_record, app_source
     from .update_release_index import serialize_index, update_index, version_tuple
 except ImportError:
-    from build_release_candidates import discover_module_builders, discover_module_sources
+    from build_release_candidates import discover_module_builders, discover_release_module_sources
     from generate_provider_package_inputs_v1 import canonical_manifest
     from package_resource_source import resource_source
     from build_release_record import build_record, app_source
@@ -101,7 +101,7 @@ def discover_candidates(root: Path, index: dict[str, Any]) -> list[dict[str, str
     for kind in ('driver', 'service', 'provider'):
         builders = discover_module_builders(root, kind)
         released = indexed_versions(index, kind + 's')
-        for item in discover_module_sources(root):
+        for item in discover_release_module_sources(root):
             manifest = item['metadata']
             if manifest['type'] != kind:
                 continue
