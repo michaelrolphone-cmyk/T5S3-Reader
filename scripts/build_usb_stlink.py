@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build the installable ST-LINK V2/V2.1/V3 USB probe ELF."""
+from native_toolchain import compiler_path as resolve_compiler
 import hashlib
 import json
 import os
@@ -26,10 +27,7 @@ def build(cc=None):
     if any(manifest.get(k) != v for k, v in required.items()):
         raise ValueError("Invalid ST-LINK manifest")
 
-    cc = cc or os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
-    if not cc:
-        core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
-        cc = str(core / "packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc")
+    cc = resolve_compiler(cc, environment="NATIVE_DRIVER_CC")
 
     OUTPUT.mkdir(parents=True, exist_ok=True)
     elf = OUTPUT / "driver.elf"

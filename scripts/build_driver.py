@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build GPS driver independently of firmware and package installable/release assets."""
+from native_toolchain import compiler_path as resolve_compiler
 import argparse
 import hashlib
 import json
@@ -37,10 +38,7 @@ def write_release_catalog(directory: Path) -> Path:
 def build(output, cc=None):
     source = ROOT / "Drivers/gps_nmea"
     manifest = validate_manifest(read_json((source / "manifest.json").read_bytes()))
-    cc = cc or os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
-    if not cc:
-        core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
-        cc = str(core / "packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc")
+    cc = resolve_compiler(cc, environment="NATIVE_DRIVER_CC")
     output.mkdir(parents=True, exist_ok=True)
     elf = output / "driver.elf"
     subprocess.run([cc, "-std=c11", "-Os", "-fPIC", "-mtext-section-literals", "-mlongcalls",

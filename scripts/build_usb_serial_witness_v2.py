@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build the U1 fourth-class installability witness ELF."""
+from native_toolchain import compiler_path as resolve_compiler
 import hashlib
 import json
 import os
@@ -25,10 +26,7 @@ def build(cc=None):
     }
     if any(manifest.get(key) != value for key, value in required.items()):
         raise ValueError("Invalid U1 fourth-class witness manifest")
-    cc = cc or os.environ.get("NATIVE_DRIVER_CC") or shutil.which("xtensa-esp32s3-elf-gcc")
-    if not cc:
-        core = Path(os.environ.get("PLATFORMIO_CORE_DIR", Path.home() / ".platformio"))
-        cc = str(core / "packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc")
+    cc = resolve_compiler(cc, environment="NATIVE_DRIVER_CC")
     OUTPUT.mkdir(parents=True, exist_ok=True)
     elf = OUTPUT / "driver.elf"
     subprocess.run([

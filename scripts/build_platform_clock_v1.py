@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a real generic clock ELF from existing OS libc primitives, not a firmware proxy."""
+from native_toolchain import compiler_path as resolve_compiler
 import hashlib
 import json
 import os
@@ -25,10 +26,17 @@ def build(cc=None):
     }
     if any(manifest.get(k) != v for k, v in required.items()):
         raise ValueError('Invalid platform-clock driver manifest')
-    cc = cc or os.environ.get('NATIVE_DRIVER_CC') or shutil.which('xtensa-esp32s3-elf-gcc')
-    if not cc:
-        core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
-        cc = str(core / 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc')
+    cc = resolve_compiler(cc, environment="NATIVE_DRIVER_CC")
+    # GCC15's stock __udivdi3 archive member crashes the Xtensa shared linker.
+    # Reuse the source-owned hidden PIC helper already used by native apps.
+    # The legacy target-specific GCC8 release recipe stays byte-identical.
+    support = []
+    includes = []
+    if subprocess.check_output([cc, '-dumpmachine'], text=True).strip() == 'xtensa-esp-elf':
+        support = [str(ROOT / 'lib/NativeApps/src/UnsignedDivisionCompat.c')]
+        # Runtime's ordinary clock_gettime export remains the frozen time32
+        # ABI even though the native SDK6 libc uses a 16-byte timespec.
+        includes = ['-I' + str(ROOT / 'sdk/compat/elf-time32')]
     OUTPUT.mkdir(parents=True, exist_ok=True)
     elf = OUTPUT / 'driver.elf'
     # The pinned GCC 14 Linux linker also crashes with relaxed clock literals.
@@ -41,9 +49,9 @@ def build(cc=None):
         cc, '-std=c11', '-D_DEFAULT_SOURCE', '-D_USE_LONG_TIME_T', *link_flags, '-fPIC',
         '-mtext-section-literals', '-mlongcalls', '-fvisibility=hidden',
         '-nostdlib', '-nostartfiles', '-shared',
-        '-I' + str(ROOT / 'sdk/driver'),
+        *includes, '-I' + str(ROOT / 'sdk/driver'),
         '-Wl,--hash-style=sysv', '-Wl,--exclude-libs,ALL',
-        str(SOURCE / 'driver.c'), '-lgcc', '-o', str(elf),
+        str(SOURCE / 'driver.c'), *support, '-lgcc', '-o', str(elf),
     ], check=True)
     # This specific Xtensa linker sometimes appends two literal all-zero
     # R_XTENSA_NONE entries after the real dynamic relocations. The native

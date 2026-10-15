@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build a native C app with the SAME Xtensa S3 compiler used by this firmware."""
+from native_toolchain import compiler_path as resolve_compiler
 import argparse
 import os
 import pathlib
@@ -18,10 +19,7 @@ args = parser.parse_args()
 manifest = None
 if args.require_manifest or args.source.with_suffix('.json').exists():
     manifest = validate_manifest(args.source, args.output)
-cc = args.cc or shutil.which('xtensa-esp32s3-elf-gcc')
-if not cc:
-    core = pathlib.Path(os.environ.get('PLATFORMIO_CORE_DIR', pathlib.Path.home() / '.platformio'))
-    cc = str(core / 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc')
+cc = resolve_compiler(args.cc)
 args.output.parent.mkdir(parents=True, exist_ok=True)
 
 # Keep ELF linkage restricted. Pulling in the stock libgcc archive resolved

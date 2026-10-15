@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build an independently installable HID or XInput class ELF."""
 from __future__ import annotations
+from native_toolchain import compiler_path as resolve_compiler
 
 import hashlib
 import json
@@ -32,10 +33,7 @@ def build(source_name: str, identity: str, dependency: str | tuple[str, ...], ca
     }
     if any(manifest.get(k) != v for k, v in expected.items()) or not isinstance(manifest.get('version'), str):
         raise ValueError(f'invalid input class source manifest {source}')
-    cc = cc or os.environ.get('NATIVE_DRIVER_CC') or shutil.which('xtensa-esp32s3-elf-gcc')
-    if not cc:
-        core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
-        cc = str(core / 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc')
+    cc = resolve_compiler(cc, environment="NATIVE_DRIVER_CC")
     output = ROOT / 'dist/experimental' / identity
     output.mkdir(parents=True, exist_ok=True)
     elf = output / 'driver.elf'

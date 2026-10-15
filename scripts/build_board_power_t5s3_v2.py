@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build reusable BQ25896 ELF and separate T5S3 profile (legacy command name)."""
+from native_toolchain import compiler_path as resolve_compiler
 import argparse
 import hashlib
 import json
@@ -23,10 +24,7 @@ def build_provider(source, output, identity, dependencies, capability, cc=None):
     }
     if any(manifest.get(key) != value for key, value in required.items()):
         raise ValueError('Invalid board power package dependencies or identity')
-    cc = cc or os.environ.get('NATIVE_DRIVER_CC') or shutil.which('xtensa-esp32s3-elf-gcc')
-    if not cc:
-        core = Path(os.environ.get('PLATFORMIO_CORE_DIR', Path.home() / '.platformio'))
-        cc = str(core / 'packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-gcc')
+    cc = resolve_compiler(cc, environment="NATIVE_DRIVER_CC")
     output.mkdir(parents=True, exist_ok=True)
     elf = output / 'driver.elf'
     subprocess.run([
