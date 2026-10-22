@@ -376,6 +376,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -fsanitize=address,
 "$binary"
 python3 "$repo_dir/test/native_apps/elf_owned_admission_test.py"
 python3 "$repo_dir/test/native_apps/sd_vfs_lock_test.py"
+python3 "$repo_dir/test/native_apps/selected_volume_vfs_test.py"
 c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$repo_dir/test/native_storage_stubs" -I"$repo_dir/lib/NativeApps/include" \
   -I"$repo_dir/src/native" -I"$repo_dir/src" \
