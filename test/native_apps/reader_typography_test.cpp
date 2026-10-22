@@ -110,9 +110,12 @@ int main() {
     reset(); readerClock=5000;
     clearResult(result); assert(!nativeReaderPage(resources,&q,&result,0)); assertCleared(result);
     assert(loads==0 && prepared.empty() && detachedCount==0);
-    reset(); readerClock=UINT32_MAX-100;
+    reset(); readerClock=UINT32_MAX-1;
     assert(nativeReaderPage(&q,&result));
-    assert(loads==1 && result.line_height==12);
+    assert(loads==1 && result.line_height==12 && readerClock<5000);
+    reset(); readerClock=UINT32_MAX-1; loadTime=5000;
+    clearResult(result); assert(!nativeReaderPage(&q,&result)); assertCleared(result);
+    assert(loads==1 && readerClock<5000 && prepared.empty() && detachedCount==0);
 
     // Metric preparation remains cooperative and never splits UTF-8, even at
     // a 240-byte chunk boundary. Body registration precedes the detached copy.
