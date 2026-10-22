@@ -43,12 +43,12 @@ inline esp_err_t esp_vfs_register(const char*,const esp_vfs_t* v,void*) {capture
 #include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
-namespace Probe {inline unsigned fileCalls=0,closed=0;inline bool closeFail=false;}
+namespace Probe {inline unsigned fileCalls=0,closed=0;inline bool closeFail=false,legacyUnavailable=false,legacyLockDenied=false;}
 class HalFile {
  bool open_=false; size_t position_=0;
  public:
  HalFile()=default; explicit HalFile(bool opened):open_(opened){}
- bool isOpen() const {++Probe::fileCalls;return open_;}
+ bool isOpen() const {++Probe::fileCalls;return open_&&!Probe::legacyUnavailable&&!Probe::legacyLockDenied;}
  explicit operator bool() const {return isOpen();}
  bool isDirectory() const {++Probe::fileCalls;return false;}
  uint64_t fileSize64() const {++Probe::fileCalls;return 64;}

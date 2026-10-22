@@ -88,6 +88,20 @@ int main(int argc,char**) {
   assert(native_app_unregister_volume_vfs(api)==ESP_ERR_INVALID_STATE);
   puts("Selected volume rejected-open cleanup: retained handle and binding PASS");return 0;
  }
+ // A legacy handle is still owned when isOpen() cannot observe readiness.
+ // It must never alias a newly opened selected-volume descriptor.
+ for(bool* unavailable:{&Probe::legacyUnavailable,&Probe::legacyLockDenied}) {
+  assert(sd.open("/Apps/legacy.elf",O_RDONLY,0)==0);
+  *unavailable=true;
+  assert(chosen.open("/Apps/demo.elf",O_RDONLY,0)==1);
+  char byte=0;const unsigned selectedCalls=a.calls;
+  assert(sd.read(0,&byte,1)==-1&&errno==EBADF);
+  assert(sd.close(0)==-1&&errno==EBADF);
+  assert(a.calls==selectedCalls); // No operation switched providers.
+  *unavailable=false;
+  assert(sd.read(0,&byte,1)==1&&byte==0x42);
+  assert(sd.close(0)==0&&chosen.close(1)==0);
+ }
  for(int flags:{O_WRONLY,O_RDWR,O_RDONLY|O_CREAT,O_RDONLY|O_TRUNC,O_RDONLY|O_APPEND})
   assert(chosen.open("/Apps/demo.elf",flags,0)==-1&&errno==EROFS);
  a.directory=true;assert(chosen.open("/Apps/demo.elf",O_RDONLY,0)==-1&&errno==ENOENT);a.directory=false;

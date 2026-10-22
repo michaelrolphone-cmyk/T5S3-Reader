@@ -15,6 +15,10 @@
 namespace {
 constexpr int kSlots = 4;
 HalFile files[kSlots];
+// isOpen() also observes media readiness and a fallible inner lock. It cannot
+// establish that an unavailable legacy handle has released its VFS slot.
+bool legacyOwned[kSlots]{};
+bool legacyAdmitted[kSlots]{};
 // One explicitly supplied binding. It is immutable while registered, including
 // when failed cleanup has retained a handle that was never returned to libc.
 const risc_storage_volume_api_v1_ext* selected = nullptr;
@@ -34,10 +38,10 @@ struct Lock {
   ~Lock() { if (held) xSemaphoreGive(mutex); }
   explicit operator bool() const { return held; }
 };
-bool occupied(int fd) { return selectedFiles[fd] || files[fd].isOpen(); }
+bool occupied(int fd) { return selectedFiles[fd] || legacyOwned[fd]; }
 bool validFd(int fd) {
   return fd >= 0 && fd < kSlots &&
-         (selectedFiles[fd] ? selectedAdmitted[fd] : files[fd].isOpen());
+         (selectedFiles[fd] ? selectedAdmitted[fd] : legacyAdmitted[fd] && files[fd].isOpen());
 }
 bool readOnly(int flags) {
   return (flags & O_ACCMODE) == O_RDONLY && !(flags & (O_CREAT | O_TRUNC | O_APPEND));
@@ -47,6 +51,12 @@ bool selectedInfo(int fd, uint64_t& size, uint64_t& offset) {
          selected->file_info(selected->base.context, selectedFiles[fd], &size, &offset) &&
          !selected->handle_error(selected->base.context, selectedFiles[fd], false) &&
          size >= 52 && size <= 8u * 1024u * 1024u && offset <= INT32_MAX;
+}
+bool closeLegacy(int fd) {
+  if (!files[fd].close()) return false;
+  legacyOwned[fd] = false;
+  legacyAdmitted[fd] = false;
+  return true;
 }
 bool closeSelected(int fd) {
   if (!selected->base.file_close(selected->base.context, selectedFiles[fd], true)) return false;
@@ -93,16 +103,18 @@ int openFile(const char* path, int flags, int) {
   for (int i = 0; i < kSlots; ++i) {
     if (occupied(i)) continue;
     files[i] = Storage.open(path, O_RDONLY);
+    legacyOwned[i] = true;
     if (!files[i] || files[i].isDirectory()) {
-      files[i].close();
+      (void)closeLegacy(i);
       errno = ENOENT;
       return -1;
     }
     if (files[i].fileSize64() < 52 || files[i].fileSize64() > 8u * 1024u * 1024u) {
-      files[i].close();
+      (void)closeLegacy(i);
       errno = EFBIG;
       return -1;
     }
+    legacyAdmitted[i] = true;
     return i;
   }
   errno = EMFILE;
@@ -158,7 +170,7 @@ int closeFile(int fd) {
   Lock lock;
   if (!lock) { errno = ETIMEDOUT; return -1; }
   if (!validFd(fd)) { errno = EBADF; return -1; }
-  const bool ok = selectedFiles[fd] ? closeSelected(fd) : files[fd].close();
+  const bool ok = selectedFiles[fd] ? closeSelected(fd) : closeLegacy(fd);
   if (!ok) errno = EIO;
   return ok ? 0 : -1;
 }
