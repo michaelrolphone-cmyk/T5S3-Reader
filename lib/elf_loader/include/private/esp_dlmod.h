@@ -12,6 +12,7 @@
 #include <sys/queue.h>
 
 #include "private/elf_types.h"
+#include "private/esp_elf_owned_fd.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,6 +70,10 @@ esp_elf_t *dlmod_relocate(const char *path);
  *         (existing entry or relocation error).
  */
 struct dlmod_slist_t *dlmod_insert(const char *path, const char *name);
+
+/* Consumes fd on every path; unlike dlmod_insert, never reuses a module. */
+struct dlmod_slist_t *dlmod_insert_owned_fd(const char *name, int fd,
+                                         esp_elf_snapshot_admit_fn admit, void *context);
 
 /**
  * @brief Remove a module from the global module list and free resources.

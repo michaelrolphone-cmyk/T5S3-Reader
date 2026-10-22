@@ -1,4 +1,5 @@
 #include "ManagedAppAdmission.h"
+#include "NativeAppSource.h"
 
 #include <HalStorage.h>
 
@@ -25,6 +26,7 @@ struct Admission {
   std::string path, sidecar;
   uint8_t manifestDigest[32]{}, executableDigest[32]{};
   StorageGenerationStamp sourceStamp{};
+  StorageSourceLease source{};
   uint32_t owner = 0;
   bool closeUncertain = false;
   bool legacy = false;
@@ -43,7 +45,7 @@ bool readMetadata(const std::string& path, size_t maximum, std::string& out, boo
   std::unique_ptr<char[]> bytes(size && size <= maximum ? new (std::nothrow) char[static_cast<size_t>(size)] : nullptr);
   const bool read = bytes && file.read(bytes.get(), static_cast<size_t>(size)) == static_cast<int>(size);
   const bool closed = file.close();
-  if (!closed) uncertain = true;
+  if (!closed) { uncertain = true; native_app_source_retain(); }
   if (!read || !closed) return false;
   out.assign(bytes.get(), static_cast<size_t>(size));
   return true;
@@ -51,7 +53,8 @@ bool readMetadata(const std::string& path, size_t maximum, std::string& out, boo
 std::shared_ptr<Admission> capture(const char* path) {
   const uint32_t owner = invocation();
   std::lock_guard<std::mutex> lock(admissionMutex);
-  return current && owner && current->owner == owner && path && current->path == path ? current : nullptr;
+  return current && owner && current->owner == owner && path && current->path == path &&
+      matchesNativeAppSource(path, current->source) ? current : nullptr;
 }
 }  // namespace
 bool beginManagedAppAdmission(const Identity& identity, const char* sdPath) {
@@ -76,6 +79,7 @@ bool beginManagedAppAdmission(const Identity& identity, const char* sdPath) {
   std::shared_ptr<Admission> candidate(new (std::nothrow) Admission());
   if (!candidate || !systemPackageUseGate().pin(paths.target)) return false;
   std::strcpy(candidate->root, paths.target);
+  if (!captureNativeAppSource(sdPath, candidate->source)) return false;
   candidate->identity = identity;
   candidate->path = sdPath;
   candidate->owner = owner;
@@ -110,7 +114,7 @@ bool beginManagedAppAdmission(const Identity& identity, const char* sdPath) {
   // Dependency and optional-capability code still applies its existing parser
   // and authorization, but consumes this exact verified sidecar snapshot.
   std::lock_guard<std::mutex> lock(admissionMutex);
-  if (current || invocation() != owner) return false;
+  if (current || invocation() != owner || !matchesNativeAppSource(sdPath, candidate->source)) return false;
   current = std::move(candidate);
   return true;
 }
@@ -127,6 +131,7 @@ bool beginLooseAppAdmission(const char* sdPath, LegacyAppSidecarValidator valida
   if (!Storage.ready()) return false;
   std::shared_ptr<Admission> candidate(new (std::nothrow) Admission());
   if (!candidate) return false;
+  if (!captureNativeAppSource(sdPath, candidate->source)) return false;
   candidate->legacy = true;
   candidate->identity.legacyVersion = true;
   candidate->path = path;
@@ -151,7 +156,7 @@ bool beginLooseAppAdmission(const char* sdPath, LegacyAppSidecarValidator valida
                                                             candidate->sidecar.size(), candidate->manifestDigest))
     return false;
   std::lock_guard<std::mutex> lock(admissionMutex);
-  if (current || invocation() != owner) return false;
+  if (current || invocation() != owner || !matchesNativeAppSource(sdPath, candidate->source)) return false;
   current = std::move(candidate);
   return true;
 }
@@ -190,10 +195,10 @@ extern "C" bool esp_elf_admit_managed_app(const char* path, const uint8_t* bytes
     if (active->legacyIntegrity.present &&
         (size != active->legacyIntegrity.sizeBytes ||
          !admitLooseExecutableSnapshot(path, active->manifestDigest, active->executableDigest, bytes, size,
-                                       active->sourceStamp)))
+                                       active->sourceStamp, !active->source.volume)))
       return false;
   } else if (!admitInstalledExecutableSnapshot(active->identity, active->manifestDigest, active->executableDigest,
-                                               bytes, size, active->sourceStamp))
+                                               bytes, size, active->sourceStamp, nullptr, !active->source.volume))
     return false;
   return capture(path) == active;  // Revoke/replacement during IO cannot admit late work.
 }

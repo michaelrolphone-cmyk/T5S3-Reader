@@ -7,6 +7,8 @@ flags=(-std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -Itest/hal/stora
 c++ "${flags[@]}" lib/hal/HalStorage.cpp test/hal/storage_generation_test.cpp -o "$TMP/generation"
 "$TMP/generation"
 "$TMP/generation" failed-destructor
+c++ "${flags[@]}" lib/hal/HalStorage.cpp test/hal/storage_source_test.cpp -o "$TMP/source"
+"$TMP/source"
 c++ "${flags[@]}" lib/hal/HalStorage.cpp src/runtime/packages/InstalledCapabilityResolver.cpp test/hal/storage_snapshot_test.cpp -o "$TMP/snapshot"
 "$TMP/snapshot"
 c++ "${flags[@]}" -DESP_PLATFORM -Itest/hal/storage_timing_stubs \

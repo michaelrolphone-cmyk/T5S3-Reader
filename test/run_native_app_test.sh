@@ -47,7 +47,7 @@ bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board x4 --san
 bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board t5 --sanitize
 bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board x4 --sanitize --negative-control
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
-  -I"$repo_dir/lib/NativeApps/include" \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/lib/elf_loader/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
   "$repo_dir/test/native_apps/programmer_api_stub.c" \
   "$repo_dir/test/native_apps/compat_registration_stub.c" \
@@ -369,9 +369,10 @@ python3 "$repo_dir/test/native_apps/confirmation_input_test.py"
 echo '== Canonical app owned-buffer and invocation metadata admission =='
 c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -fsanitize=address,undefined \
   -I"$repo_dir/test/hal/storage_stubs" -I"$repo_dir/lib/hal" -I"$repo_dir/src" \
-  -I"$repo_dir/test/resources/cdc_sd_stubs" \
+  -I"$repo_dir/test/resources/cdc_sd_stubs" -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/hal/HalStorage.cpp" "$repo_dir/src/runtime/packages/PackageExecutableAdmission.cpp" \
-  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/test/resources/managed_app_admission_test.cpp" \
+  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/src/native/NativeAppSource.cpp" \
+  "$repo_dir/test/resources/managed_app_admission_test.cpp" \
   -lcrypto -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/elf_owned_admission_test.py"

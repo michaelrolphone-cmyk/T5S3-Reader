@@ -10,6 +10,7 @@
 #include "runtime/resources/ExecutionContext.h"
 #include <optional>
 #include "ManagedAppAdmission.h"
+#include "NativeAppSource.h"
 #include "CrossPointSettings.h"
 #include "components/StartupScreen.h"
 #include "NativeNavigationInput.h"
@@ -1549,10 +1550,21 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
     lastLaunchError = "Invalid native application path.";
     return ESP_ERR_INVALID_ARG;
   }
+  // Acquire exact backend custody before preview, recovery or any authoritative
+  // package read. The platform already owns this provider; no selection occurs.
+  if (!native_app_source_begin(path)) {
+    lastLaunchError = "Native application source is unavailable or retained.";
+    return ESP_ERR_INVALID_STATE;
+  }
+  const auto finishSource = [&](esp_err_t result) {
+    if (!native_app_source_finish_io() || native_app_source_retained() || !native_app_source_end())
+      retainNativeAppSession();
+    return result;
+  };
   const std::string elf(path + 3);
   if (elf.size() < 4) {
     lastLaunchError = "Invalid native application filename.";
-    return ESP_ERR_INVALID_ARG;
+    return finishSource(ESP_ERR_INVALID_ARG);
   }
   const std::string filename = elf.substr(elf.find_last_of('/') + 1);
   std::string displayName = filename;
@@ -1591,7 +1603,7 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
     if (!verifiedManagedApp(id.c_str(), identity) ||
         std::strcmp(identity.artifact, filename.c_str())) {
       lastLaunchError = "Canonical application package or executable is invalid.";
-      return ESP_ERR_NOT_SUPPORTED;
+      return finishSource(ESP_ERR_NOT_SUPPORTED);
     }
     canonicalRoot = elf.substr(0, nestedSlash);
     canonicalIdentity = identity;
@@ -1601,30 +1613,30 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
       nestedSlash == std::string::npos && t5_safe_elf_name(filename.c_str()) &&
       !RuntimePackages::recoverAppPair(filename.c_str())) {
     lastLaunchError = "Application update cannot be safely recovered.";
-    return ESP_ERR_INVALID_STATE;
+    return finishSource(ESP_ERR_INVALID_STATE);
   }
   if (Storage.exists((elf + ".bak").c_str()) || Storage.exists((sidecar + ".bak").c_str())) {
     lastLaunchError = "Application update is incomplete; backup files remain.";
-    return ESP_ERR_INVALID_STATE;
+    return finishSource(ESP_ERR_INVALID_STATE);
   }
   if (Storage.exists(sidecar.c_str())) {
     t5_app_manifest_t manifest{};
     if (!readAppManifest(sidecar.c_str(), manifest)) {
       lastLaunchError = "Application manifest is invalid.";
-      return ESP_ERR_NOT_SUPPORTED;
+      return finishSource(ESP_ERR_NOT_SUPPORTED);
     }
     if (filename != manifest.file_name) {
       lastLaunchError = "Manifest file name does not match the ELF.";
-      return ESP_ERR_NOT_SUPPORTED;
+      return finishSource(ESP_ERR_NOT_SUPPORTED);
     }
     if (!RuntimePackages::inspectInstalledAppPair(elf.c_str(), sidecar.c_str(), filename.c_str())) {
       lastLaunchError = "Application metadata or executable is unavailable.";
-      return ESP_ERR_NOT_SUPPORTED;
+      return finishSource(ESP_ERR_NOT_SUPPORTED);
     }
     if (!manifest.compatible) {
       lastLaunchError = std::string("Requires firmware ") + manifest.min_firmware_version +
                         "; running " + CROSSPOINT_COMPAT_VERSION + ".";
-      return ESP_ERR_NOT_SUPPORTED;
+      return finishSource(ESP_ERR_NOT_SUPPORTED);
     }
   }
   // Refuse a concurrent managed-package replacement before mapping the ELF.
@@ -1632,7 +1644,7 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
   if (!canonicalRoot.empty() &&
       !RuntimePackages::systemPackageUseGate().pin(canonicalRoot.c_str())) {
     lastLaunchError = "Managed application is being replaced or is unavailable.";
-    return ESP_ERR_INVALID_STATE;
+    return finishSource(ESP_ERR_INVALID_STATE);
   }
   if (readerEntry) {
     // Admission uses a real invocation, but the existing GUI continues to own
@@ -1643,16 +1655,18 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
     t5_app_manifest_t manifest{};
     const bool allowed = filename == "default.elf" &&
         readAppManifest(sidecar.c_str(), manifest, nullptr, false, &requirements) &&
-        requirements.count == 0 && context.begin();
+        requirements.count == 0 && context.begin() && native_app_source_bind_owner();
     const bool admissionReady = allowed && (canonicalRoot.empty()
         ? RuntimePackages::beginLooseAppAdmission(path, validateLooseAdmissionSidecar)
         : RuntimePackages::beginManagedAppAdmission(canonicalIdentity, path));
     const esp_err_t result = admissionReady ? launch_elf_reader_entry(path) : ESP_ERR_INVALID_STATE;
+    if (native_app_loader_retained() || !native_app_source_finish_io() || native_app_source_retained())
+      retainNativeAppSession();
     if (admissionReady) RuntimePackages::endManagedAppAdmission();
     context.end();
     if (!canonicalRoot.empty() && (result == ESP_OK || !admissionReady))
       (void)RuntimePackages::systemPackageUseGate().unpin(canonicalRoot.c_str());
-    return result;
+    return finishSource(result);
   }
   const auto orientation = renderer.getOrientation();
   const auto mode = renderer.getRenderMode();
@@ -1674,14 +1688,15 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
   // the ELF has returned and dlclose has succeeded. Failed unloads retain the
   // pin; replacement and uninstall must not race executable memory.
   nativeStreamsBegin();
-  const bool resourcesReady = canonicalRoot.empty() ||
-      nativeStreamsBindPackageResources(canonicalIdentity);
+  const bool resourcesReady = native_app_source_bind_owner() && (canonicalRoot.empty() ||
+      nativeStreamsBindPackageResources(canonicalIdentity));
   const bool admissionReady = resourcesReady && (canonicalRoot.empty()
       ? RuntimePackages::beginLooseAppAdmission(path,validateLooseAdmissionSidecar)
       : RuntimePackages::beginManagedAppAdmission(canonicalIdentity,path));
   launchStage(admissionReady ? "admitted" : "admission-failed");
   const esp_err_t result = admissionReady ? launch_elf_app(path) : ESP_ERR_INVALID_STATE;
-  if (native_app_loader_retained()) retainNativeAppSession();
+  if (native_app_loader_retained() || !native_app_source_finish_io() || native_app_source_retained())
+    retainNativeAppSession();
   if (admissionReady) RuntimePackages::endManagedAppAdmission();
   nativeStreamsEnd();
   nativeNetworkEnd();
@@ -1723,10 +1738,13 @@ static esp_err_t runNativeAppImpl(const char* path, GfxRenderer& renderer, Mappe
   } while (millis() - quiet < 350);
   input.clearInjectedButtonTap();
   nativeTouchDiscardGestures();
+  // All invocation resources are gone. Release clean source custody before
+  // dispatching the existing deferred firmware/sleep workflow.
+  const esp_err_t finished = finishSource(result);
   firmwareActionPending = !idleSleepRequested() && nativeSettingsDispatchPendingAction(renderer, input, path);
   firmwareActionPending = firmwareActionPending || systemNavigation == NativeSystemUiNavigation::Keyboard;
   returned = true;
-  return result;
+  return finished;
 }
 
 esp_err_t runNativeApp(const char* path, GfxRenderer& renderer, MappedInputManager& input) {

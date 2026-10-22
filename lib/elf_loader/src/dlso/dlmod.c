@@ -7,6 +7,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <unistd.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -335,6 +337,102 @@ struct dlmod_slist_t *dlmod_insert(const char *path, const char *name)
     xSemaphoreGive(g_dlmod_mutex);
 
     return new_node;
+}
+
+/* This entry deliberately does not share the legacy basename-reuse branch.
+ * A selected snapshot must either become this module or fail, never resolve to
+ * another medium's already loaded code. Both list checks enforce that rule. */
+struct dlmod_slist_t *dlmod_insert_owned_fd(const char *name, int fd,
+                                         esp_elf_snapshot_admit_fn admit, void *context)
+{
+    int failure = EINVAL;
+    struct dlmod_slist_t *node = NULL;
+    elf_file_t file = {0};
+    bool initialized = false;
+
+    if (fd < 0) {
+        errno = EBADF;
+        return NULL;
+    }
+    if (!name || !name[0] || strlen(name) >= FILE_NAME_MAX || !admit) {
+        goto failed;
+    }
+    dlmod_mutex_init();
+    if (g_dlmod_mutex == NULL || xSemaphoreTake(g_dlmod_mutex, portMAX_DELAY) != pdTRUE) {
+        failure = EBUSY;
+        goto failed;
+    }
+    struct dlmod_slist_t *existing;
+    SLIST_FOREACH(existing, &g_dlmod_slist_head, next) {
+        if (strcmp(existing->name, name) == 0) {
+            xSemaphoreGive(g_dlmod_mutex);
+            failure = EEXIST;
+            goto failed;
+        }
+    }
+    xSemaphoreGive(g_dlmod_mutex);
+
+    const int consumed_fd = fd;
+    fd = -1;
+    if (esp_elf_open_owned_fd(&file, consumed_fd, admit, context) < 0) {
+        failure = errno;
+        goto failed;
+    }
+    node = esp_elf_malloc(sizeof(*node), false);
+    if (!node) {
+        failure = ENOMEM;
+        goto failed;
+    }
+    memset(node, 0, sizeof(*node));
+    node->elf = esp_elf_malloc(sizeof(*node->elf), false);
+    if (!node->elf) {
+        failure = ENOMEM;
+        goto failed;
+    }
+    int ret = esp_elf_init(node->elf);
+    if (ret < 0) {
+        failure = -ret;
+        goto failed;
+    }
+    initialized = true;
+    ret = esp_elf_relocate(node->elf, file.payload);
+    if (ret < 0) {
+        failure = -ret;
+        goto failed;
+    }
+    esp_elf_close(&file);
+
+    node->magic = DLMOD_HANDLE_MAGIC;
+    strcpy(node->name, name);  /* Length checked before any allocation. */
+    if (xSemaphoreTake(g_dlmod_mutex, portMAX_DELAY) != pdTRUE) {
+        failure = EBUSY;
+        goto failed;
+    }
+    SLIST_FOREACH(existing, &g_dlmod_slist_head, next) {
+        if (strcmp(existing->name, name) == 0) {
+            xSemaphoreGive(g_dlmod_mutex);
+            failure = EEXIST;
+            goto failed;
+        }
+    }
+    SLIST_INSERT_HEAD(&g_dlmod_slist_head, node, next);
+    xSemaphoreGive(g_dlmod_mutex);
+    return node;
+
+failed:
+    if (fd >= 0) {
+        close(fd);  /* One attempt only, including a reported close failure. */
+    }
+    if (node) {
+        if (initialized) {
+            esp_elf_deinit(node->elf);
+        }
+        esp_elf_free(node->elf);
+        esp_elf_free(node);
+    }
+    esp_elf_close(&file);
+    errno = failure;
+    return NULL;
 }
 
 /**

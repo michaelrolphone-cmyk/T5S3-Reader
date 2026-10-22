@@ -17,6 +17,7 @@ namespace {
 const risc_storage_volume_api_v1 *volume;
 const risc_storage_volume_api_v1_ext *extended;
 StorageGenerationTracker generations;
+StorageSourceTracker nativeSource;
 bool mediaReady() { return volume && volume->ready(volume->context); }
 bool writable(oflag_t flags) { return (flags & (O_WRONLY | O_RDWR)) != 0; }
 constexpr size_t kMaxOperationBytes = 16u * 1024u * 1024u;
@@ -38,20 +39,38 @@ class HalStorage::StorageLock {
 bool HalStorage::bindVolume(const risc_storage_volume_api_v1 *api) {
   StorageLock lock;
   const auto *ext = risc_storage_volume_extension(api);
-  if (!lock || !ext || !api->ready || !api->stat || !api->dir_open || !api->dir_next ||
+  if (!lock || !nativeSource.canChange() || !ext || !api->ready || !api->stat || !api->dir_open || !api->dir_next ||
       !api->file_read || !api->file_write || !api->file_close || !api->remove ||
       !ext->file_open || !ext->file_seek || !ext->file_info || !ext->file_sync ||
       !ext->dir_rewind || !ext->dir_close_checked || !ext->handle_error ||
       !ext->mkdir || !ext->rename || !generations.mountAttempt()) return false;
+  if (!nativeSource.changed()) return false;
   volume = api; extended = ext; initialized = mediaReady();
   generations.mounted(initialized);
   return initialized;
 }
 bool HalStorage::begin() {
   StorageLock lock;
-  if (!lock || !volume || !volume->refresh || !generations.mountAttempt()) return false;
+  if (!lock || !nativeSource.canChange() || !volume || !volume->refresh || !generations.mountAttempt()) return false;
+  if (!nativeSource.changed()) return false;
   initialized = volume->refresh(volume->context) && mediaReady();
   generations.mounted(initialized); return initialized;
+}
+bool HalStorage::captureNativeSource(StorageSourceLease& out) {
+  StorageLock lock;
+  return lock && initialized && mediaReady() && nativeSource.capture(volume, out);
+}
+bool HalStorage::bindNativeSourceOwner(StorageSourceLease& lease, uint32_t owner) {
+  StorageLock lock;
+  return lock && nativeSource.bindOwner(lease, owner, volume);
+}
+bool HalStorage::matchesNativeSource(const StorageSourceLease& lease) const {
+  StorageLock lock;
+  return lock && nativeSource.matches(lease, volume);
+}
+bool HalStorage::releaseNativeSource(StorageSourceLease& lease) {
+  StorageLock lock;
+  return lock && nativeSource.release(lease, volume);
 }
 bool HalStorage::ready() const { StorageLock lock; return lock && initialized && mediaReady(); }
 StorageGenerationStamp HalStorage::generation() const {
@@ -69,7 +88,7 @@ bool HalStorage::reconcileExternalStorage() {
 void HalStorage::markUnavailable() { StorageLock lock; if (lock) { initialized = false; generations.mutationAttempt(); } }
 bool HalStorage::prepareForSleep() {
   StorageLock lock;
-  if (!lock) return false;
+  if (!lock || nativeSource.held()) return false;
   if (!volume) return !initialized; // Early timer wake has never mounted storage.
   const auto* power = risc_storage_volume_power(volume);
   return power && power->prepare_power_down && power->prepare_power_down(volume->context);
@@ -83,7 +102,7 @@ bool HalStorage::cancelSleep() {
 }
 bool HalStorage::commitSleep() {
   StorageLock lock;
-  if (!lock) return false;
+  if (!lock || nativeSource.held()) return false;
   if (!volume) return !initialized; // Display-only timer boot: bootstrap is off.
   const auto* power = risc_storage_volume_power_commit(volume);
   return power && power->commit_power_down(volume->context);
@@ -108,7 +127,7 @@ class HalFile::Impl {
     if (writer) generations.mutationAttempt();
     const bool ok = directory ? extended->dir_close_checked(volume->context, handle)
                               : volume->file_close(volume->context, handle, true);
-    if (!ok) { error = 1; generations.externalUncertain(); return false; }
+    if (!ok) { error = 1; generations.externalUncertain(); nativeSource.retain(); return false; }
     handle = 0;
     if (tracked) { generations.closed(writer); tracked = false; }
     return true;
@@ -124,12 +143,17 @@ HalFile::~HalFile() {
   if (!impl) return;
   HalStorage::StorageLock lock;
   if (lock) (void)impl->closeLocked();
+  else if (impl->handle) nativeSource.retain();
   // A failed close retains its provider slot and poisons generation reuse.
   // The provider refuses remount/quiesce while that slot remains live.
 }
 HalFile& HalFile::operator=(HalFile&& other) {
   if (this != &other) {
-    if (impl) { HalStorage::StorageLock lock; if (!lock || !impl->closeLocked()) return *this; }
+    if (impl) {
+      HalStorage::StorageLock lock;
+      if (!lock) { if (impl->handle) nativeSource.retain(); return *this; }
+      if (!impl->closeLocked()) return *this;
+    }
     impl = std::move(other.impl);
   }
   return *this;
@@ -328,7 +352,11 @@ void HalFile::rewindDirectory() {
   if (!lock || !impl || !impl->directory || !impl->handle) return;
   if (!extended->dir_rewind(volume->context, impl->handle)) impl->error = 1;
 }
-bool HalFile::close() { HalStorage::StorageLock lock; return lock && (!impl || impl->closeLocked()); }
+bool HalFile::close() {
+  HalStorage::StorageLock lock;
+  if (!lock) { if (impl && impl->handle) nativeSource.retain(); return false; }
+  return !impl || impl->closeLocked();
+}
 bool HalFile::readDirectoryEntry(DirectoryEntry& result) {
   result = {};
   HalStorage::StorageLock lock;

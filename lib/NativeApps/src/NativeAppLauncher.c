@@ -1,4 +1,6 @@
 #include "NativeAppLauncher.h"
+#include "NativeAppSource.h"
+#include "private/esp_elf_owned_fd.h"
 #include "../../hal/RuntimeFaultRetention.h"
 
 #include <stdatomic.h>
@@ -107,7 +109,9 @@ static esp_err_t launch_elf_impl(const char *sd_path, bool reader_entry)
     bool memory_active = false;
     bool takeover_active = false;
     elf_app_module_fini_t module_fini = NULL;
-    esp_err_t result = native_app_register_sd_vfs();
+    const int source_kind = native_app_source_kind(sd_path);
+    esp_err_t result = source_kind < 0 ? ESP_ERR_INVALID_STATE :
+        source_kind ? ESP_OK : native_app_register_sd_vfs();
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "SD VFS unavailable: %s", esp_err_to_name(result));
         goto done;
@@ -188,8 +192,19 @@ static esp_err_t launch_elf_impl(const char *sd_path, bool reader_entry)
     memory_active = true;
     ESP_LOGI(TAG, "Loading %s", sd_path);
     native_app_memory_relocation(true);
-    void *handle = dlopen(sd_path, RTLD_NOW);
+    void *handle;
+    if (source_kind) {
+        const int fd = native_app_source_open(sd_path);
+        handle = fd < 0 ? NULL : esp_dlopen_owned_fd(sd_path, fd, native_app_source_admit, (void*)sd_path);
+    } else handle = dlopen(sd_path, RTLD_NOW);
     native_app_memory_relocation(false);
+    if (!native_app_source_finish_io()) {
+        // The source/provider and any mapped image remain owned. Host must not
+        // tear down either ordinary or reader-entry invocation on this return.
+        retain_module = true;
+        result = ESP_ERR_INVALID_STATE;
+        goto done;
+    }
     if (handle == NULL) {
         if (native_hardware_compat_last_error()) result = ESP_ERR_NOT_SUPPORTED;
         const char *error = dlerror();
@@ -310,6 +325,7 @@ close_module:
         result = ESP_FAIL;
     }
 done:
+    if (!native_app_source_finish_io()) { retain_module = true; result = ESP_ERR_INVALID_STATE; }
     if (memory_active && !retain_module) native_app_memory_end();
     native_app_provider_capabilities_release();
     if (compat_registered) {

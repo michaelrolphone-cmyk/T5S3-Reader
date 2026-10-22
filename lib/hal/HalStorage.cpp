@@ -183,6 +183,13 @@ bool HalStorage::begin() {
   return initialized;
 }
 
+// The legacy SdFat loader owns no selected-volume session. Keep these empty
+// lease operations harmless without changing its readiness or remount behavior.
+bool HalStorage::captureNativeSource(StorageSourceLease& out) { return out.empty(); }
+bool HalStorage::bindNativeSourceOwner(StorageSourceLease& lease, uint32_t) { return lease.empty(); }
+bool HalStorage::matchesNativeSource(const StorageSourceLease& lease) const { return lease.empty(); }
+bool HalStorage::releaseNativeSource(StorageSourceLease& lease) { return lease.empty(); }
+
 bool HalStorage::ready() const {
   if (storageBackendUnavailable()) return false;
   StorageLock lock;

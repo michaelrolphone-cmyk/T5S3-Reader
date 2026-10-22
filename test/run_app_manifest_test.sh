@@ -29,7 +29,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual \
   -I"$json_include" -I"$repo_dir/src" -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/hal/HalStorage.cpp" "$repo_dir/src/native/AppManifest.cpp" \
   "$repo_dir/src/runtime/packages/PackageExecutableAdmission.cpp" \
-  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/test/resources/managed_app_admission_test.cpp" \
+  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/src/native/NativeAppSource.cpp" \
+  "$repo_dir/test/resources/managed_app_admission_test.cpp" \
   -lcrypto -o "$binary"
 "$binary"
 

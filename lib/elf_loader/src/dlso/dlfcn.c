@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <errno.h>
+#include <unistd.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -144,6 +146,26 @@ void *dlopen(const char *file, int mode)
     }
 
     dlerror_set(NULL);  // Clear error on success
+    return handle;
+}
+
+void *esp_dlopen_owned_fd(const char *name, int fd, esp_elf_snapshot_admit_fn admit, void *context)
+{
+    char filename[FILE_NAME_MAX] = {0};
+    if (fd < 0 || !admit || !dlmod_getname(name, filename, sizeof(filename))) {
+        const int failure = fd < 0 ? EBADF : EINVAL;
+        if (fd >= 0) {
+            close(fd);  /* Consumed even if close reports an error. */
+        }
+        dlerror_set("Invalid selected module descriptor, name or admission callback");
+        errno = failure;
+        return NULL;
+    }
+
+    void *handle = dlmod_insert_owned_fd(filename, fd, admit, context);
+    const int failure = errno;
+    dlerror_set(handle ? NULL : "Failed to load selected module");
+    errno = failure;
     return handle;
 }
 
