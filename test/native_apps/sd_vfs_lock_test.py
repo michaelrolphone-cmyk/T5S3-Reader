@@ -33,8 +33,11 @@ inline void xSemaphoreGive(SemaphoreHandle_t) {assert(Probe::held);Probe::held=f
 constexpr int ESP_VFS_FLAG_DEFAULT=0, ESP_VFS_PATH_MAX=15;
 struct esp_vfs_t {int flags; int(*open)(const char*,int,int); ssize_t(*read)(int,void*,size_t);
  off_t(*lseek)(int,off_t,int); int(*close)(int); int(*fstat)(int,struct stat*);};
-inline esp_err_t esp_vfs_unregister(const char*) {return ESP_OK;}
+using esp_vfs_id_t=int;
+inline esp_err_t esp_vfs_unregister_with_id(esp_vfs_id_t) {return ESP_OK;}
+inline esp_err_t esp_vfs_register_fd_with_local_fd(esp_vfs_id_t,int local,bool,int* fd) {*fd=local;return ESP_OK;}
 inline esp_vfs_t captured{};
+inline esp_err_t esp_vfs_register_with_id(const esp_vfs_t* v,void*,esp_vfs_id_t* id) {captured=*v;*id=1;return ESP_OK;}
 inline esp_err_t esp_vfs_register(const char*,const esp_vfs_t* v,void*) {captured=*v;return ESP_OK;}
 ''',
     'HalStorage.h': '''#pragma once

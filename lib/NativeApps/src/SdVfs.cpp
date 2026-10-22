@@ -7,7 +7,6 @@
 #include <cerrno>
 #include <climits>
 #include <cstdint>
-#include <cstring>
 #include <algorithm>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -22,7 +21,7 @@ bool legacyAdmitted[kSlots]{};
 // One explicitly supplied binding. It is immutable while registered, including
 // when failed cleanup has retained a handle that was never returned to libc.
 const risc_storage_volume_api_v1_ext* selected = nullptr;
-char selectedMount[ESP_VFS_PATH_MAX + 1]{};
+esp_vfs_id_t selectedId = -1;
 risc_storage_file_t selectedFiles[kSlots]{};
 bool selectedAdmitted[kSlots]{};
 StaticSemaphore_t mutexStorage;
@@ -64,9 +63,7 @@ bool closeSelected(int fd) {
   selectedAdmitted[fd] = false;
   return true;
 }
-int openSelected(const char* path, int flags, int) {
-  Lock lock;
-  if (!lock) { errno = ETIMEDOUT; return -1; }
+int openSelectedLocked(const char* path, int flags) {
   if (!readOnly(flags)) { errno = EROFS; return -1; }
   if (!path || path[0] != '/' || !selected || !selected->base.ready(selected->base.context)) {
     errno = EIO; return -1;
@@ -208,14 +205,10 @@ esp_err_t native_app_register_sd_vfs() {
   return err;
 }
 
-// Caller owns selection, authority and provider lifetime. No default volume or
-// mount is chosen, and the existing /sd registration is never rebound.
-esp_err_t native_app_register_volume_vfs(const char* mount, const risc_storage_volume_api_v1* volume) {
-  if (!mount || mount[0] != '/' || !mount[1] || std::strlen(mount) > ESP_VFS_PATH_MAX ||
-      std::strcmp(mount, "/sd") == 0) return ESP_ERR_INVALID_ARG;
-  for (const char* p = mount + 1; *p; ++p)
-    if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
-          (*p >= '0' && *p <= '9') || *p == '_' || *p == '-')) return ESP_ERR_INVALID_ARG;
+// Caller owns selection, authority and provider lifetime. Pathless registration
+// gives an exact VFS identity: IDF permits duplicate path prefixes and name-based
+// unregister could otherwise remove a foreign VFS. /sd is never rebound.
+esp_err_t native_app_register_volume_vfs(const risc_storage_volume_api_v1* volume) {
   const auto* ext = risc_storage_volume_extension(volume);
   if (!ext || !volume->ready || !volume->file_read || !volume->file_close ||
       !ext->file_open || !ext->file_seek || !ext->file_info || !ext->handle_error) return ESP_ERR_INVALID_ARG;
@@ -224,32 +217,48 @@ esp_err_t native_app_register_volume_vfs(const char* mount, const risc_storage_v
   Lock lock;
   if (!lock) return ESP_ERR_TIMEOUT;
   if (selected) {
-    return selected == ext && std::strcmp(selectedMount, mount) == 0 && volume->ready(volume->context)
-        ? ESP_OK : ESP_ERR_INVALID_STATE;
+    return selected == ext && volume->ready(volume->context) ? ESP_OK : ESP_ERR_INVALID_STATE;
   }
   if (!volume->ready(volume->context)) return ESP_ERR_INVALID_STATE;
   esp_vfs_t vfs = {};
   vfs.flags = ESP_VFS_FLAG_DEFAULT;
-  vfs.open = openSelected;
   vfs.read = readFile;
   vfs.lseek = seekFile;
   vfs.close = closeFile;
   vfs.fstat = statFile;
-  const esp_err_t err = esp_vfs_register(mount, &vfs, nullptr);
-  if (err == ESP_OK) {
-    selected = ext;
-    std::strcpy(selectedMount, mount);
-  }
+  const esp_err_t err = esp_vfs_register_with_id(&vfs, nullptr, &selectedId);
+  if (err == ESP_OK) selected = ext;
   return err;
+}
+
+int native_app_open_volume_file(const risc_storage_volume_api_v1* volume, const char* path, int flags) {
+  Lock lock;
+  if (!lock) { errno = ETIMEDOUT; return -1; }
+  if (!selected || &selected->base != volume) { errno = EINVAL; return -1; }
+  const int local = openSelectedLocked(path, flags);
+  if (local < 0) return -1;
+  int fd = -1;
+  const esp_err_t err = esp_vfs_register_fd_with_local_fd(selectedId, local, false, &fd);
+  if (err == ESP_OK) return fd;
+  // No libc descriptor escaped. Failed cleanup still owns the local token and
+  // prevents unregistration, even though the caller has no descriptor to retry.
+  selectedAdmitted[local] = false;
+  const bool closed = closeSelected(local);
+  errno = closed ? EMFILE : EIO;
+  return -1;
 }
 
 esp_err_t native_app_unregister_volume_vfs(const risc_storage_volume_api_v1* volume) {
   Lock lock;
   if (!lock) return ESP_ERR_TIMEOUT;
   if (!selected || &selected->base != volume) return ESP_ERR_INVALID_STATE;
+  // Never close a descriptor that escaped to libc. Only rejected opens and
+  // failed global-fd allocation leave provably unreturned tokens to retry.
   for (int i = 0; i < kSlots; ++i)
-    if (selectedFiles[i]) return ESP_ERR_INVALID_STATE;
-  const esp_err_t err = esp_vfs_unregister(selectedMount);
-  if (err == ESP_OK) { selected = nullptr; selectedMount[0] = 0; }
+    if (selectedFiles[i] && selectedAdmitted[i]) return ESP_ERR_INVALID_STATE;
+  for (int i = 0; i < kSlots; ++i)
+    if (selectedFiles[i] && !closeSelected(i)) return ESP_ERR_INVALID_STATE;
+  const esp_err_t err = esp_vfs_unregister_with_id(selectedId);
+  if (err == ESP_OK) { selected = nullptr; selectedId = -1; }
   return err;
 }
