@@ -48,7 +48,8 @@ extern int test_capability_gate_allowed;
 extern int test_capability_bind_allowed;
 extern int test_capability_bind_calls;
 static int mode, opens, closes, calls, handle_storage;
-// Legacy fixture: selected path is exercised by the separate source pipeline test.
+// This fixture preserves legacy launcher behavior; the selected owned-fd
+// snapshot and module loader have separate production-code tests.
 int native_app_source_kind(const char* path) { (void)path; return 0; }
 int native_app_source_open(const char* path) { (void)path; assert(false); return -1; }
 bool native_app_source_admit(void* path, const uint8_t* bytes, size_t size) {

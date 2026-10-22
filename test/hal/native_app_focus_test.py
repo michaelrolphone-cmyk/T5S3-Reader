@@ -133,6 +133,15 @@ constexpr int UI_12_FONT_ID=12;
 static bool validManifest=true, storageReady=true, resolveOkay=true;
 static bool risc_runtime_retention_required(){return false;}
 static bool native_app_loader_retained(){return false;}
+// Filesystem/source endpoints remain fixtures; execute the unchanged Host
+// lifecycle while asserting that the input-focused test releases its source.
+static bool sourceLive=false;
+static bool native_app_source_begin(const char*){assert(!sourceLive);sourceLive=true;return true;}
+static bool native_app_source_bind_owner(){return sourceLive;}
+static bool native_app_source_finish_io(){return true;}
+static bool native_app_source_retained(){return false;}
+static bool native_app_source_end(){assert(sourceLive);sourceLive=false;return true;}
+
 namespace NativeReaderEntry{static bool mapped(){return false;}static bool pending(){return false;}}
 namespace RuntimeDevices{struct AppCapabilityRequirements{unsigned count=0;};}
 #ifdef READER_TEST_REAL_CONTEXT

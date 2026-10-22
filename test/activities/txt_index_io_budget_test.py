@@ -70,6 +70,10 @@ STUB = r'''
 #include <vector>
 #include <HalReadBudget.h>
 #include <HalWriteBudget.h>
+#include <StorageSource.h>
+// This I/O-parity fixture has no native app lease. Use the production tracker
+// so extracted checked-close retention stays an idle no-op.
+StorageSourceTracker nativeSource;
 #define LOG_DBG(...) ((void)0)
 #define LOG_ERR(...) ((void)0)
 struct Counts {
@@ -91,7 +95,7 @@ void waitOne(){maxYieldGap=std::max(maxYieldGap,clockMs-lastYield);++clockMs;las
 void delay(unsigned n){assert(n==1);++counts.delays;waitOne();}
 void vTaskDelay(unsigned n){assert(n==1);++counts.yields;waitOne();}
 bool mediaReady(){return ready;}
-constexpr size_t kMaxOperationBytes=16u*1024u*1024u,RISC_STORAGE_VOLUME_IO_MAX=4096;
+constexpr size_t kMaxOperationBytes=16u*1024u*1024u;
 constexpr uint32_t kOperationMs=20000;
 class HalFile;
 HalFile* currentFile=nullptr;
