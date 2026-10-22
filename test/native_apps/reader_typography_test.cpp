@@ -1,5 +1,6 @@
 /* Compile the production service; fake only the font/device dependencies. */
 #include "../../src/native/NativeReaderTypography.cpp"
+#include "../../src/native/NativeReaderTypographyBridge.cpp"
 #include <cassert>
 #include <cstdio>
 #include <vector>

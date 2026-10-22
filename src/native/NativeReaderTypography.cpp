@@ -1,7 +1,4 @@
 #include "NativeReaderTypography.h"
-#include "CrossPointSettings.h"
-#include "SdCardFontGlobals.h"
-#include "activities/ActivityManager.h"
 #include <GfxRenderer.h>
 #include <ReaderPageLayout.h>
 #include <Arduino.h>
@@ -10,9 +7,8 @@
 #include <algorithm>
 #include <cstring>
 
-bool nativeReaderPage(const risc_reader_page_request_v1 *q,risc_reader_page_result_v1 *out) {
-  if(out) *out={};
-  if(!q || !out || !q->pixels || !q->text || !q->title || !q->footer ||
+bool nativeReaderPageRequestValid(const risc_reader_page_request_v1 *q) {
+  if(!q || !q->pixels || !q->text || !q->title || !q->footer ||
      q->width<320 || q->width>2048 || q->height<240 || q->height>2048 || q->width%8 ||
      q->stride!=q->width/8 || q->capacity<static_cast<size_t>(q->stride)*q->height ||
      q->capacity>256u*1024u || q->length>RISC_READER_TEXT_MAX || q->offset>q->length ||
@@ -20,12 +16,16 @@ bool nativeReaderPage(const risc_reader_page_request_v1 *q,risc_reader_page_resu
      strnlen(q->text,q->length+1)!=q->length) return false;
   if(!readerUtf8Valid(q->text,q->length) || !readerUtf8Valid(q->title,strlen(q->title)) ||
      !readerUtf8Valid(q->footer,strlen(q->footer))) return false;
-  const uint32_t started=millis();
-  ensureSdFontLoaded();
-  vTaskDelay(1);
-  if(millis()-started>=5000u) return false;
-  auto &host=activityManager.nativeAppRenderer();
-  const int font=SETTINGS.getReaderFontId();
+  return true;
+}
+
+bool nativeReaderPage(const NativeReaderTypographyResources& resources,
+                      const risc_reader_page_request_v1 *q,risc_reader_page_result_v1 *out,
+                      uint32_t started) {
+  if(out) *out={};
+  if(!out || !nativeReaderPageRequestValid(q)) return false;
+  auto &host=resources.renderer;
+  const int font=resources.fontId;
   // Prepare the small, bounded body before copying SD font registrations.
   // Bounded UTF-8 chunks keep SD metric preparation cooperative too.
   for(size_t at=0;at<q->length;) {
@@ -40,7 +40,7 @@ bool nativeReaderPage(const risc_reader_page_request_v1 *q,risc_reader_page_resu
   host.ensureSdCardFontReady(font,q->footer,1);
   GfxRenderer page(host,q->pixels,q->width,q->height);
   const int natural=page.getLineHeight(font);
-  const int line=std::max(1,static_cast<int>(natural*SETTINGS.getReaderLineCompression()));
+  const int line=std::max(1,static_cast<int>(natural*resources.lineCompression));
   if(natural<=0 || line>(q->height-96)/4) return false;
   const int margin=32,top=margin+line*2,bottom=q->height-margin-line*2;
   if(bottom<=top) return false;

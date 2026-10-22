@@ -11,7 +11,7 @@ class GfxRenderer {
 public:
     GfxRenderer()=default;
     GfxRenderer(const GfxRenderer&,uint8_t* p,uint16_t,uint16_t):pixels(p){}
-    void ensureSdCardFontReady(int,const char*,uint8_t){}
+    void ensureSdCardFontReady(int,const char*,uint8_t) const {}
     int getLineHeight(int f)const {return f;}
     int getTextWidth(int,const char*s)const {return static_cast<int>(strlen(s))*10;}
     std::string truncatedText(int,const char*s,int)const {return s;}
