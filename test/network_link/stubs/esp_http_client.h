@@ -1,5 +1,8 @@
 #pragma once
 #include "NetworkTestSupport.h"
+#include <net/if.h>
+#include <cassert>
+#include <cstring>
 constexpr int HTTP_EVENT_ON_DATA = 1, HTTP_TRANSPORT_UNKNOWN = 0, HTTP_METHOD_POST = 1, HTTP_METHOD_GET = 0;
 struct esp_http_client_event_t { int event_id; void* user_data; int data_len; void* data; };
 struct esp_http_client_config_t {
@@ -10,10 +13,17 @@ struct esp_http_client_config_t {
   esp_err_t (*event_handler)(esp_http_client_event_t*) = nullptr;
   int buffer_size = 0, buffer_size_tx = 0;
   void* user_data = nullptr;
+  struct ifreq* if_name = nullptr;
+  bool disable_auto_redirect = false;
   bool skip_cert_common_name_check = false, keep_alive_enable = false;
 };
 using esp_http_client_handle_t = void*;
-inline void* esp_http_client_init(const esp_http_client_config_t*) {
+inline void* esp_http_client_init(const esp_http_client_config_t* config) {
+  if (Fixture::liveToken) assert(config->if_name); // Unbound transport would use B.
+  if (config->if_name) {
+    assert(std::strcmp(config->if_name->ifr_name, "ifA") == 0);
+    assert(config->disable_auto_redirect);
+  }
   Fixture::events.push_back("idf.init"); return Fixture::httpInit ? &Fixture::httpInit : nullptr;
 }
 inline void esp_http_client_set_method(void*, int) {}

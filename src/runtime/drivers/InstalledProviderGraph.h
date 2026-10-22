@@ -51,6 +51,13 @@ inline EnumerationResult nextProviderChecked(const char* capability,
 // Resolves the *named* installed provider, never an ambiguous first match.
 bool acquire(const char* providerId, const char* capability, uint32_t version,
              Lease* out);
+enum class AcquisitionResult : uint8_t { Acquired, Rejected, Retained };
+// Additive checked admission. Rejected means no caller cleanup obligation;
+// Retained means preserve the returned exact grant, or (without a grant) the
+// named failed activation closure. No automatic provider fallback is implied.
+AcquisitionResult acquireChecked(const char* providerId, const char* capability,
+                                 uint32_t version, Lease* out);
+bool recoverFailedAcquisition(const char* providerId, const char* capability, uint32_t version);
 // Trusted firmware consumers may select one unambiguous installed capability.
 // Metadata/dependencies use the same ordinary package admission as named apps.
 bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out);

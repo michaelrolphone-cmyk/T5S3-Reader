@@ -20,9 +20,11 @@ class InstalledLink final {
     while (n < sizeof(provider_) && providerId[n]) ++n;
     if (!n || n == sizeof(provider_)) return false;
     std::memcpy(provider_, providerId, n + 1);
-    closing_ = true; // Failed activation can retain a graph node without a grant.
-    if (!RuntimeInstalledProviders::acquire(provider_, RISC_NETWORK_LINK_CAPABILITY,
-                                            RISC_NETWORK_LINK_API_V1, &lease_)) return false;
+    closing_ = true; // Selected admission stays closed until explicit release.
+    const auto admission = RuntimeInstalledProviders::acquireChecked(
+        provider_, RISC_NETWORK_LINK_CAPABILITY, RISC_NETWORK_LINK_API_V1, &lease_);
+    recoveryRequired_ = admission == RuntimeInstalledProviders::AcquisitionResult::Retained;
+    if (admission != RuntimeInstalledProviders::AcquisitionResult::Acquired) return false;
     const auto* next = static_cast<const risc_network_link_v1*>(lease_.interface);
     if (!lease_.grant.slot || !next || next->api_version != RISC_NETWORK_LINK_API_V1 ||
         next->struct_size < RISC_NETWORK_LINK_V1_SIZE ||
@@ -52,7 +54,8 @@ class InstalledLink final {
     }
     if (out->struct_size < sizeof(*out) || out->connected > 1 || out->has_address > 1 ||
         out->reserved[0] || out->reserved[1] ||
-        !std::memchr(out->address, 0, sizeof(out->address))) {
+        !std::memchr(out->address, 0, sizeof(out->address)) ||
+        !std::memchr(out->interface_name, 0, sizeof(out->interface_name))) {
       *out = {};
       return false;
     }
@@ -80,11 +83,12 @@ class InstalledLink final {
     api_ = nullptr;
     if (lease_.grant.slot) {
       if (!RuntimeInstalledProviders::release(&lease_)) return false;
-    } else if (!RuntimeInstalledProviders::recoverFailedProvider(
+    } else if (recoveryRequired_ && !RuntimeInstalledProviders::recoverFailedAcquisition(
                    provider_, RISC_NETWORK_LINK_CAPABILITY, RISC_NETWORK_LINK_API_V1)) {
       return false;
     }
     provider_[0] = 0;
+    recoveryRequired_ = false;
     closing_ = false;
     return true;
   }
@@ -98,5 +102,6 @@ class InstalledLink final {
   uint64_t token_ = 0;
   char provider_[96]{};
   bool closing_ = false;
+  bool recoveryRequired_ = false;
 };
 }  // namespace RuntimeNetwork

@@ -107,7 +107,11 @@ all callbacks, and owns a nonzero per-consumer activity token. Partial begin,
 pending/failed end, malformed admission and graph-release failure remain in
 custody. Graph release is never attempted before successful activity end; no
 provider callback is made after graph release starts. Grantless activation
-failure uses the existing exact-provider recovery path, without fallback.
+failure uses additive checked admission: rejection without cleanup custody is
+distinguished from an exact retained grant or ungranted failed activation
+closure. Recovery never revokes another consumer's live/pending grant. Missing
+providers and grant-table exhaustion can be explicitly cleared without
+stranding the session or quiescing a different owner.
 
 The concrete consumer is the existing `NativeNetworkBridge.cpp` HTTP request.
 Trusted firmware composition may call `nativeNetworkBindInstalledLink(id)`
@@ -117,16 +121,33 @@ explicit selected provider that enforces conflicting physical ownership.
 No default boot/profile binding is added.
 
 When explicitly bound, each synchronous HTTP request acquires low-latency
-activity, observes copied usable-link state, runs the existing host HTTP client,
-and checks activity end. It does not call saved-Wi-Fi reconnect or ESP power-save
+activity, observes copied usable-link state and a pinned host interface name,
+binds the ESP HTTP client to that exact interface, and checks activity end. It does not call saved-Wi-Fi reconnect or ESP power-save
 APIs. The provider owns how to satisfy or reject the activity request. This is
 a link for the host IP stack, not a transport adapter or independent socket stack.
+The installed path is deliberately limited to numeric-address HTTP and HTTPS
+with a caller certificate. It sets `esp_http_client_config_t::if_name`, whose
+[ESP-IDF implementation][idf-http] copies the name and passes it to both TCP and
+TLS; [ESP-TLS][idf-tls] enforces `SO_BINDTODEVICE`. The copied `ifreq` remains in
+scope through cleanup. The provider must pin that name against removal/reuse
+for the activity lifetime. No whole-host routing promise is inferred.
+
+Hostnames are rejected because host DNS runs before interface binding. Automatic
+redirects are disabled because they could introduce unscoped resolution. The
+[Arduino no-certificate HTTPS client][arduino-tls] has no supported pre-connect
+interface binding, so that installed branch fails before opening a client. URI
+authority parsing rejects userinfo, numeric prefixes with hostname suffixes,
+encoded addresses, IPv6 zone suffixes, and malformed/out-of-range ports. These
+unsupported cases remain open, not silently routed through legacy Wi-Fi.
 The legacy no-binding path retains its previous reconnect and power behavior.
 The existing application API layout and version are unchanged.
 
 The bridge's firmware-lifetime session survives `nativeNetworkEnd()` failure.
 `nativeNetworkReleaseInstalledLink()` retries the exact retained activity/grant;
-later bind/request attempts refuse while closing. Application pointers are not
+later bind/request attempts refuse while closing. Successful explicit cleanup
+does not deselect installed mode during an active native session. Provider and
+graph callbacks run inside the same reentrancy guard as HTTP I/O, including
+begin/state/end and cleanup; they cannot recursively unload their own grant. Application pointers are not
 passed to the provider. This is checked link custody, not a rewrite or separate
 qualification of vendor HTTP-client cleanup internals.
 
@@ -155,8 +176,12 @@ Baseline checks on the pinned Reader production source:
 The added `bash test/run_network_link_custody_test.sh` compiles the actual native
 HTTP consumer with fake SDK/graph boundaries and UBSan. It covers ABI size/version,
 missing callbacks, partial begin, pending/failed end, grantless/retained activation,
-graph release failure, consumer exit/retry, reentrancy, both HTTP branches, and
-unchanged legacy power behavior. The runtime-network runner includes this suite.
+graph release failure, consumer exit/retry, callback reentrancy, interface-bound
+TCP/TLS, rejected unbindable requests, selected-mode latching, and unchanged
+legacy power behavior. A second fixture loads actual provider ELFs through the
+real GraphV2 and tests concurrent consumers, absent/invalid identities, live
+provider grant exhaustion, failed activation/dependency cleanup, quarantine and
+exact-generation retry without disrupting the surviving consumer. The runtime-network runner includes this suite.
 `network_cookie_session_source_test.py` also passed. These fixtures do not prove
 physical-provider behavior or vendor HTTP-client internals.
 
@@ -179,3 +204,7 @@ network-link ownership task.
 [radio-async]: https://github.com/michaelrolphone-cmyk/RiscRTE/blob/13eca114cb58469cf6004fafc3da84fbd9d29beb/sdk/driver/GardenRadioAsyncV1.h
 [native-radio]: https://github.com/michaelrolphone-cmyk/RiscRTE/blob/13eca114cb58469cf6004fafc3da84fbd9d29beb/src/ports/esp32s3/NativeRadio.h#L250-L265
 [boundary]: https://github.com/michaelrolphone-cmyk/T5S3-Reader/blob/9c8783d6f20659a514bfaeb3847a77c7213dc4f6/docs/HARDWARE_AGNOSTIC_DRIVER_BOUNDARY.md
+
+[idf-http]: https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp_http_client/esp_http_client.c#L526-L599
+[idf-tls]: https://github.com/espressif/esp-idf/blob/v4.4.7/components/esp-tls/esp_tls.c#L224-L230
+[arduino-tls]: https://github.com/espressif/arduino-esp32/blob/2.0.17/libraries/WiFiClientSecure/src/WiFiClientSecure.h#L40-L102

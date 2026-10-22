@@ -8,6 +8,7 @@ extern std::vector<std::string> events;
 extern bool appActive, httpBegin, httpInit, savedConnection;
 extern int httpResult, powerReads, powerWrites, reconnects;
 extern void (*duringRequest)();
+extern uint64_t liveToken;
 }
 using esp_err_t = int;
 constexpr int ESP_OK = 0, ESP_FAIL = -1, ESP_ERR_INVALID_STATE = 0x103, ESP_ERR_NO_MEM = 0x101;

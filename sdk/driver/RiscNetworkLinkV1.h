@@ -21,6 +21,10 @@ typedef struct {
     uint8_t connected, has_address;
     uint8_t reserved[2];
     char address[48];
+    /* Copied host socket interface name, never a driver/netif pointer. During
+     * a live use the provider pins this interface identity against removal or
+     * reuse by another link. Empty means no host-interface binding is available. */
+    char interface_name[16];
 } risc_network_link_state_v1;
 
 typedef struct {
@@ -32,7 +36,9 @@ typedef struct {
      * consumer retains it and calls end_use, never retries begin_use over it.
      * A zero token promises that no consumer activity remains. */
     int32_t (*begin_use)(void *, uint32_t flags, uint64_t *token);
-    /* Copied observation; token zero observes the link without creating use. */
+    /* Copied observation; token zero observes without creating use. A consumer
+     * must actually bind its sockets to interface_name, not assume the host
+     * default route uses this link. This API does not scope DNS or redirects. */
     bool (*state)(void *, uint64_t token, risc_network_link_state_v1 *out);
     /* READY means this exact use is drained, not that every link user is idle.
      * Every other result retains the same token for bounded explicit retry.

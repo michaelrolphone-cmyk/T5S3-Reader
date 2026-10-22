@@ -13,4 +13,5 @@ void nativeNetworkEnd();
 bool nativeNetworkBindInstalledLink(const char* providerId);
 // Retry checked cleanup after a failed bind/request/End. Exact grant and
 // activity remain in firmware custody until true; no app pointers are retained.
+// Cleanup does not deselect installed mode inside an active native session.
 bool nativeNetworkReleaseInstalledLink();
