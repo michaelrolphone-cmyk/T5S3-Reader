@@ -37,7 +37,8 @@ bool declaredPackageSnapshot(const OrdinaryPackagePlan& plan, const char* name, 
 // Loose inputs bind exact path/sidecar bytes without invented package identity.
 // Long paths remain cold-verified rather than being truncated into cache keys.
 bool admitLooseExecutableSnapshot(const char* path, const uint8_t* sidecarDigest, const uint8_t* executableDigest,
-                                  const uint8_t* snapshot, size_t length, const StorageGenerationStamp& sourceStamp);
+                                  const uint8_t* snapshot, size_t length, const StorageGenerationStamp& sourceStamp,
+                                  bool allowCoherentReuse = true);
 // Private loader boundary. Caller retains the installed package-use pin and
 // owns the immutable bytes that will be relocated. Manifest/import declarations
 // do not grant capability or hardware authority. Warm reuse is current-process
@@ -45,5 +46,5 @@ bool admitLooseExecutableSnapshot(const char* path, const uint8_t* sidecarDigest
 bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* expectedManifestDigest,
                                       const uint8_t* expectedExecutableDigest, const uint8_t* snapshot, size_t length,
                                       const StorageGenerationStamp& sourceStamp,
-                                      const VerifiedImageCopy* verifiedCopy = nullptr);
+                                      const VerifiedImageCopy* verifiedCopy = nullptr, bool allowCoherentReuse = true);
 }  // namespace RuntimePackages

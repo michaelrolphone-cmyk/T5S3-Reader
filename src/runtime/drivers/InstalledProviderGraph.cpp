@@ -738,6 +738,18 @@ bool recoverFailedProvider(const char* providerId, const char* capability,
     return graph && providerId && capability && version &&
            graph->recoverFailedFrom(providerId, capability, version);
 }
+AcquisitionResult acquireChecked(const char* providerId, const char* capability,
+                                 uint32_t version, Lease* out) {
+    if (acquire(providerId, capability, version, out)) return AcquisitionResult::Acquired;
+    if ((out && out->grant.slot) || (graph && providerId && capability && version &&
+            graph->failedAcquisitionNeedsRecovery(providerId, capability, version)))
+        return AcquisitionResult::Retained;
+    return AcquisitionResult::Rejected;
+}
+bool recoverFailedAcquisition(const char* providerId, const char* capability, uint32_t version) {
+    if (!providerId || !*providerId || !capability || !*capability || !version) return false;
+    return !graph || graph->recoverFailedAcquisition(providerId, capability, version);
+}
 bool acquireCapability(const char* capability, uint32_t minimumVersion, Lease* out) {
     if (out) *out = {};
     loadError[0] = 0;

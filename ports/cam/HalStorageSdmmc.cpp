@@ -14,6 +14,13 @@
 #include <atomic>
 #include <esp_system.h>
 
+// CAM retains its existing SDMMC path-based loader; it is not a selected
+// storage.volume backend. Match the legacy SdFat empty-lease compatibility API.
+bool HalStorage::captureNativeSource(StorageSourceLease& out) { return out.empty(); }
+bool HalStorage::bindNativeSourceOwner(StorageSourceLease& lease, uint32_t) { return lease.empty(); }
+bool HalStorage::matchesNativeSource(const StorageSourceLease& lease) const { return lease.empty(); }
+bool HalStorage::releaseNativeSource(StorageSourceLease& lease) { return lease.empty(); }
+
 namespace {
 constexpr size_t kPathMax = 255, kHandles = 16, kChunk = 4096;
 constexpr unsigned kDirectoryItems = 2048;

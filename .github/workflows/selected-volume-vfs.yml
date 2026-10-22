@@ -1,0 +1,25 @@
+name: Selected volume VFS contracts
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/selected-volume-vfs.yml'
+      - 'lib/NativeApps/include/NativeAppVolumeVfs.h'
+      - 'lib/NativeApps/src/SdVfs.cpp'
+      - 'sdk/driver/RiscStorageVolumeV1.h'
+      - 'test/native_apps/sd_vfs_lock_test.py'
+      - 'test/native_apps/selected_volume_vfs_test.py'
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify production legacy and selected-volume VFS contracts
+        run: |
+          python3 test/native_apps/sd_vfs_lock_test.py
+          python3 test/native_apps/selected_volume_vfs_test.py

@@ -5,6 +5,70 @@
 #include <cassert>
 #include <cstring>
 
+namespace {
+void resetInstall() {
+  ota_install_calls.clear();
+  ota_error_logs.clear();
+  ota_wifi_power_save = WIFI_PS_MIN_MODEM;
+  ota_wifi_restore_result = ESP_OK;
+  ota_https_ota_begin_result = ESP_OK;
+  ota_https_ota_perform_result = ESP_OK;
+  ota_https_ota_complete = true;
+  ota_https_ota_finish_result = ESP_OK;
+}
+
+void verifyInstallCleanup(OtaUpdater& updater) {
+  constexpr esp_err_t failure = 2;  // Not ESP_ERR_HTTPS_OTA_IN_PROGRESS.
+  resetInstall();
+  ota_https_ota_begin_result = failure;
+  assert(updater.installUpdate() == OtaUpdater::INTERNAL_UPDATE_ERROR);
+  assert((ota_install_calls == std::vector<std::string>{
+      "ps:none", "ota:begin", "ps:min-modem"}));
+  assert(ota_wifi_power_save == WIFI_PS_MIN_MODEM);
+  assert(ota_error_logs.empty());
+
+  // A failed restore cannot replace the original OTA result or claim recovery.
+  resetInstall();
+  ota_https_ota_begin_result = failure;
+  ota_wifi_restore_result = 3;
+  assert(updater.installUpdate() == OtaUpdater::INTERNAL_UPDATE_ERROR);
+  assert((ota_install_calls == std::vector<std::string>{
+      "ps:none", "ota:begin", "ps:min-modem"}));
+  assert(ota_wifi_power_save == WIFI_PS_NONE);
+  assert((ota_error_logs == std::vector<std::string>{
+      "Wi-Fi power-save restore after OTA begin failure failed: mock"}));
+
+  resetInstall();
+  ota_https_ota_perform_result = failure;
+  assert(updater.installUpdate() == OtaUpdater::HTTP_ERROR);
+  assert((ota_install_calls == std::vector<std::string>{
+      "ps:none", "ota:begin", "ota:perform", "ps:min-modem", "ota:finish"}));
+  assert(ota_wifi_power_save == WIFI_PS_MIN_MODEM);
+
+  resetInstall();
+  ota_https_ota_complete = false;
+  assert(updater.installUpdate() == OtaUpdater::INTERNAL_UPDATE_ERROR);
+  assert((ota_install_calls == std::vector<std::string>{
+      "ps:none", "ota:begin", "ota:perform", "ps:min-modem", "ota:complete", "ota:finish"}));
+  assert(ota_wifi_power_save == WIFI_PS_MIN_MODEM);
+
+  resetInstall();
+  ota_https_ota_finish_result = failure;
+  assert(updater.installUpdate() == OtaUpdater::INTERNAL_UPDATE_ERROR);
+  assert((ota_install_calls == std::vector<std::string>{
+      "ps:none", "ota:begin", "ota:perform", "ps:min-modem", "ota:complete", "ota:finish"}));
+  assert(ota_wifi_power_save == WIFI_PS_MIN_MODEM);
+
+  resetInstall();
+  assert(updater.installUpdate() == OtaUpdater::OK);
+  assert((ota_install_calls == std::vector<std::string>{
+      "ps:none", "ota:begin", "ota:perform", "ps:min-modem", "ota:complete", "ota:finish"}));
+  assert(ota_wifi_power_save == WIFI_PS_MIN_MODEM);
+  assert(ota_error_logs.empty());
+  resetInstall();
+}
+}  // namespace
+
 int main() {
   RuntimeNetwork::gReady = true;
   ReleaseJsonParser::hasTag = true;
@@ -22,6 +86,7 @@ int main() {
   ota_https_ota_read_bytes = 512;
   assert(updater.installUpdate() == OtaUpdater::OK);
   assert(updater.getProcessedSize() == 512);
+  verifyInstallCleanup(updater);
 
   // An HTTP transport error following a successful check cannot retain A.
   ota_http_perform_result = 1;

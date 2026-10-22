@@ -13,6 +13,7 @@
 #include <sys/param.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "esp_log.h"
 #include "esp_elf.h"
@@ -24,6 +25,7 @@
 
 #include "private/elf_platform.h"
 #include "private/esp_elf_data_layout.h"
+#include "private/esp_elf_owned_fd.h"
 #include "private/esp_privileged_os_cpu.h"
 
 #define stype(_s, _t)               ((_s)->type == (_t))
@@ -197,6 +199,102 @@ void esp_elf_close(elf_file_t *file)
     esp_elf_free(file->payload);
     file->payload = NULL;
     file->size = 0;
+}
+
+/* The selected descriptor is the only source of bytes. Keep this separate from
+ * the legacy pathname/weak-hook entry point so it cannot fall back to /sd. */
+int esp_elf_open_owned_fd(elf_file_t *file, int fd, esp_elf_snapshot_admit_fn admit, void *context)
+{
+    uint8_t *bytes = NULL;
+    int failure = EINVAL;
+    const TickType_t started = xTaskGetTickCount();
+    const TickType_t budget = pdMS_TO_TICKS(30000);
+
+    if (fd < 0) {
+        errno = EBADF;
+        return -1;
+    }
+    if (!file || !admit) {
+        goto failed;
+    }
+
+    const off_t size = lseek(fd, 0, SEEK_END);
+    if (size < 0 || lseek(fd, 0, SEEK_SET) < 0) {
+        failure = errno ? errno : EIO;
+        goto failed;
+    }
+    if (size < 52 || size > 8 * 1024 * 1024) {
+        failure = EFBIG;
+        goto failed;
+    }
+    bytes = esp_elf_malloc((size_t)size, false);
+    if (!bytes) {
+        failure = ENOMEM;
+        goto failed;
+    }
+
+    size_t offset = 0, reported_offset = 0;
+    TickType_t reported_at = started;
+    while (offset < (size_t)size) {
+        if ((TickType_t)(xTaskGetTickCount() - started) >= budget) {
+            failure = ETIMEDOUT;
+            goto failed;
+        }
+        const size_t remaining = (size_t)size - offset;
+        const size_t chunk = remaining < 4096 ? remaining : 4096;
+        const ssize_t got = read(fd, bytes + offset, chunk);
+        if (got != (ssize_t)chunk) {
+            failure = got < 0 && errno ? errno : EIO;
+            goto failed;
+        }
+        offset += chunk;
+        const TickType_t now = xTaskGetTickCount();
+        if (offset == (size_t)size || offset - reported_offset >= 256 * 1024 ||
+                (TickType_t)(now - reported_at) >= pdMS_TO_TICKS(500)) {
+            ESP_LOGD(TAG, "Selected ELF read %u/%u bytes", (unsigned)offset, (unsigned)size);
+            reported_offset = offset;
+            reported_at = now;
+        }
+        /* A single media operation still relies on its driver's I/O timeout. */
+        vTaskDelay(1);
+        if ((TickType_t)(xTaskGetTickCount() - started) >= budget) {
+            failure = ETIMEDOUT;
+            goto failed;
+        }
+    }
+
+    extern bool esp_elf_validate_file(const uint8_t *, size_t);
+    if (!esp_elf_validate_file(bytes, (size_t)size)) {
+        failure = ENOEXEC;
+        goto failed;
+    }
+    const int consumed_fd = fd;
+    fd = -1;
+    if (close(consumed_fd) != 0) {
+        failure = errno ? errno : EIO;
+        goto failed;
+    }
+    if ((TickType_t)(xTaskGetTickCount() - started) >= budget) {
+        failure = ETIMEDOUT;
+        goto failed;
+    }
+    errno = 0;
+    if (!admit(context, bytes, (size_t)size)) {
+        failure = errno ? errno : EACCES;
+        goto failed;
+    }
+    file->payload = bytes;
+    file->size = (size_t)size;
+    return 0;
+
+failed:
+    if (fd >= 0) {
+        /* Even a failed close consumes an IDF global fd. Never retry it. */
+        close(fd);
+    }
+    esp_elf_free(bytes);
+    errno = failure;
+    return -1;
 }
 
 /**

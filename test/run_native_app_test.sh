@@ -47,7 +47,7 @@ bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board x4 --san
 bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board t5 --sanitize
 bash "$repo_dir/test/run_epub_metadata_finalization_io_test.sh" --board x4 --sanitize --negative-control
 cc -std=c11 -Wall -Wextra -Werror -I"$repo_dir/test/native_apps/stubs" \
-  -I"$repo_dir/lib/NativeApps/include" \
+  -I"$repo_dir/lib/NativeApps/include" -I"$repo_dir/lib/elf_loader/include" \
   "$repo_dir/lib/NativeApps/src/NativeAppLauncher.c" \
   "$repo_dir/test/native_apps/programmer_api_stub.c" \
   "$repo_dir/test/native_apps/compat_registration_stub.c" \
@@ -63,10 +63,8 @@ python3 "$repo_dir/test/hal/epd_lifecycle_test.py"
 python3 "$repo_dir/test/hal/video_teardown_test.py"
 python3 "$repo_dir/test/native_apps/app_memory_bridge_test.py"
 python3 "$repo_dir/test/native_apps/detached_reader_glyph_test.py"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
-  -I"$repo_dir/test/native_apps/reader_stubs" -I"$repo_dir/sdk/driver" -I"$repo_dir/lib/GfxRenderer" \
-  "$repo_dir/test/native_apps/reader_typography_test.cpp" -o "$binary"
-"$binary"
+bash "$repo_dir/test/run_reader_typography_test.sh"
+READER_TYPOGRAPHY_SANITIZE=1 bash "$repo_dir/test/run_reader_typography_test.sh"
 c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/reader_page_layout_test.cpp" -o "$binary"
 "$binary"
@@ -369,13 +367,16 @@ python3 "$repo_dir/test/native_apps/confirmation_input_test.py"
 echo '== Canonical app owned-buffer and invocation metadata admission =='
 c++ -std=c++17 -Wall -Wextra -Werror -Wno-overloaded-virtual -fsanitize=address,undefined \
   -I"$repo_dir/test/hal/storage_stubs" -I"$repo_dir/lib/hal" -I"$repo_dir/src" \
-  -I"$repo_dir/test/resources/cdc_sd_stubs" \
+  -I"$repo_dir/test/resources/cdc_sd_stubs" -I"$repo_dir/lib/NativeApps/include" \
   "$repo_dir/lib/hal/HalStorage.cpp" "$repo_dir/src/runtime/packages/PackageExecutableAdmission.cpp" \
-  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/test/resources/managed_app_admission_test.cpp" \
+  "$repo_dir/src/native/ManagedAppAdmission.cpp" "$repo_dir/src/native/NativeAppSource.cpp" \
+  "$repo_dir/test/resources/managed_app_admission_test.cpp" \
   -lcrypto -o "$binary"
 "$binary"
 python3 "$repo_dir/test/native_apps/elf_owned_admission_test.py"
+python3 "$repo_dir/test/native_apps/elf_selected_fd_test.py"
 python3 "$repo_dir/test/native_apps/sd_vfs_lock_test.py"
+python3 "$repo_dir/test/native_apps/selected_volume_vfs_test.py"
 c++ -std=c++17 -Wall -Wextra -Werror \
   -I"$repo_dir/test/native_storage_stubs" -I"$repo_dir/lib/NativeApps/include" \
   -I"$repo_dir/src/native" -I"$repo_dir/src" \

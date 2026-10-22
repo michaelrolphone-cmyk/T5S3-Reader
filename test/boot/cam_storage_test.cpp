@@ -20,6 +20,15 @@ bool retained() { return mounted; }
 int main(int argc,char** argv) {
  Fake::identity=false; assert(!Storage.begin()); Fake::identity=true;
  assert(Storage.begin()); auto initial=Storage.generation(); assert(initial.quiescent);
+ StorageSourceLease source{};
+ assert(Storage.captureNativeSource(source) && source.empty());
+ assert(Storage.bindNativeSourceOwner(source, 17) && Storage.matchesNativeSource(source));
+ assert(Storage.releaseNativeSource(source) && source.empty());
+ source.owner=17;
+ assert(!Storage.captureNativeSource(source) && !Storage.bindNativeSourceOwner(source, 18));
+ assert(!Storage.matchesNativeSource(source) && !Storage.releaseNativeSource(source));
+ source={};
+
  if(argc>1 && !strcmp(argv[1],"metadata")) {
    auto dir=Storage.open("/"); assert(dir && dir.isDirectory());
    HalFile::DirectoryEntry entry;

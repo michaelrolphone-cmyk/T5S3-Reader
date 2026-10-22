@@ -1,0 +1,43 @@
+name: OTA power cleanup regression
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/ota-power-cleanup.yml"
+      - "src/network/OtaUpdater.*"
+      - "test/network/**"
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/ota-power-cleanup.yml"
+      - "src/network/OtaUpdater.*"
+      - "test/network/**"
+
+permissions:
+  contents: read
+
+jobs:
+  ota-power-cleanup:
+    name: OTA power cleanup and network regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Run production OTA discovery and install cleanup fixture
+        run: |
+          binary="$(mktemp)"
+          trap 'rm -f "$binary"' EXIT
+          c++ -std=c++20 -Wall -Wextra -Werror -Wno-missing-field-initializers \
+            -Itest/network/ota_updater_stubs -Isrc \
+            test/network/ota_updater_state_test.cpp -o "$binary"
+          "$binary"
+      - name: Run runtime network regression
+        run: bash test/run_runtime_network_test.sh
+      - name: Run saved-network fallback regression
+        run: bash test/run_saved_network_fallback_test.sh
+      - name: Verify OTA network fallback integration contract
+        run: python3 test/saved_network/ota_network_bridge_contract_test.py

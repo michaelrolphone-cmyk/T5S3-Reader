@@ -1,0 +1,1611 @@
+{
+  "schema": 1,
+  "repository": "michaelrolphone-cmyk/T5S3-Reader",
+  "master": "9c8783d6f20659a514bfaeb3847a77c7213dc4f6",
+  "verified_on": "2026-10-22",
+  "originals": [
+    {
+      "pr": 475,
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/475",
+      "base": "9c8783d6f20659a514bfaeb3847a77c7213dc4f6",
+      "head": "9a25298c43a07ffb763c93a6ef3e9d475a3597d2",
+      "tree": "0dd1e91ad4febd7bd8acd6efead9455c418e1ef3",
+      "files": [
+        {
+          "path": ".github/workflows/selected-volume-vfs.yml",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "84706f19684f1dd895b31d703b5c861d1b27fe71"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "84706f19684f1dd895b31d703b5c861d1b27fe71"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/NativeApps/include/NativeAppVolumeVfs.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "4e7eb7431d0989da49019ba6dc427d61d9c7e778"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "4e7eb7431d0989da49019ba6dc427d61d9c7e778"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/NativeApps/src/SdVfs.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "432b80d4c24ab0e2c613d753200f7ad4de74364c"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c7f3a05da5859e0971cb32cec0907ecf44ecaa6c"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c7f3a05da5859e0971cb32cec0907ecf44ecaa6c"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/sd_vfs_lock_test.py",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "379571ac873fa65ed75cb8d627eb76d43091cc9e"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9f51279bd180634b2c06dc953d31d89711e3e848"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9f51279bd180634b2c06dc953d31d89711e3e848"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/selected_volume_vfs_test.py",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "7b6b993caa25f33b50da1a76bfed9bf6d4b85117"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "7b6b993caa25f33b50da1a76bfed9bf6d4b85117"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/run_native_app_test.sh",
+          "source_base": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "b42f32cf150fc9623309aee8522ce40f2f1b494c"
+          },
+          "source_head": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "c0f9f9449510e6ec2955dbecfac27c9d8125e355"
+          },
+          "consolidated": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "2505be06798215a8e7cf829416d71dd8742345c3"
+          },
+          "resolution": "combined PR480 selected-volume and PR479 typography runner changes; no commands removed from either delta"
+        }
+      ]
+    },
+    {
+      "pr": 476,
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/476",
+      "base": "9c8783d6f20659a514bfaeb3847a77c7213dc4f6",
+      "head": "45b3b9638ff2d8f00edcf016ab232d81b8825dfc",
+      "tree": "92b8557c348f7915f65d7e20ae61487895efb3bb",
+      "files": [
+        {
+          "path": ".github/workflows/ota-power-cleanup.yml",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ac5912dacbf920e6f567cbaea4c990881f9a56fc"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ac5912dacbf920e6f567cbaea4c990881f9a56fc"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/network/OtaUpdater.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c960fe91d8eff41cc52c2f3122be1da59a4d16e9"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "acc73ea00482651de53f60538f71265a773ac332"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "acc73ea00482651de53f60538f71265a773ac332"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network/ota_updater_state_test.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9be7e8ac78276cd7be091a3523ad82e1ca583513"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d3b23491fcf821319ee2de437e474df5a0dc68ee"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d3b23491fcf821319ee2de437e474df5a0dc68ee"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network/ota_updater_stubs/Logging.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8911b77bb933a65898539d0d70c36b993062f984"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "3142f4fd1462130d352734357eddebd99f480f3f"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "3142f4fd1462130d352734357eddebd99f480f3f"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network/ota_updater_stubs/esp_https_ota.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "462161681e9158db0d1be55ed5d711876534c583"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5952475c6462b97158c84ab8aee341acb27c626d"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5952475c6462b97158c84ab8aee341acb27c626d"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network/ota_updater_stubs/esp_wifi.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8546f08407f080b09ca43597376ddd838a359e84"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "413dd36873bb40e2058ca5b6a0f0d6cb40f20da8"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "413dd36873bb40e2058ca5b6a0f0d6cb40f20da8"
+          },
+          "resolution": "preserved exact source blob and mode"
+        }
+      ]
+    },
+    {
+      "pr": 477,
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/477",
+      "base": "9c8783d6f20659a514bfaeb3847a77c7213dc4f6",
+      "head": "5f8e026eed154b2a881cadf870b31c807f9f3506",
+      "tree": "ba4ff4464763416d36f1256f90ab430c532b1d96",
+      "files": [
+        {
+          "path": "docs/NETWORK_LINK_OWNERSHIP_HANDOFF.md",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "eb73b8d6d3aca6cc43820a320f024044a3283b8f"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "eb73b8d6d3aca6cc43820a320f024044a3283b8f"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "sdk/driver/RiscNetworkLinkV1.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "db4a59faf2c54b0e22d2e9bd080427e136898ac0"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "db4a59faf2c54b0e22d2e9bd080427e136898ac0"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeNetworkBridge.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "71f236489dbffc27faa948aef9de8599de664877"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "4b848972635c375e3a0b09ea8b183d9d5b318b9c"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "4b848972635c375e3a0b09ea8b183d9d5b318b9c"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeNetworkBridge.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "74b9cf185c29694eec81719549baa70ab983c594"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "85307265249bad1ae9b17e5d0f91d28ac5121a09"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "85307265249bad1ae9b17e5d0f91d28ac5121a09"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/drivers/InstalledProviderGraph.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "db812d140b8790f68e9a40a56eb0af82cb862b1d"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "223a45e7995f31bee6f367a27cb12a5fdcea28e1"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "223a45e7995f31bee6f367a27cb12a5fdcea28e1"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/drivers/InstalledProviderGraph.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "27b542360497634b231bcabdb98394e5cf205a94"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "01b36b84b2c22c19346469a203cc0a8dfce9e297"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "01b36b84b2c22c19346469a203cc0a8dfce9e297"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/drivers/ProviderGraphV2.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "460f8aacd3d3a86c31ea61df5632b0cacd0cac57"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "192fd8a7b172e5a61be6efbcec669430664b70dd"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "192fd8a7b172e5a61be6efbcec669430664b70dd"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/drivers/ProviderGraphV2.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "f6df926daa612f01b7abdabc436afdb2547bfb73"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "48da223295df156055ec337707dbd301b79ee4ac"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "48da223295df156055ec337707dbd301b79ee4ac"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/network/InstalledNetworkLink.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e5cf7b8684f25185d1c7de2879d504e388616022"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e5cf7b8684f25185d1c7de2879d504e388616022"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/network_link_custody_test.cpp",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "42f59ac449563619d198a73f03d420d6d2169163"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "42f59ac449563619d198a73f03d420d6d2169163"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/network_link_graph_test.cpp",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d8df8116e48056d3ca6707b09d642238bd8b5839"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d8df8116e48056d3ca6707b09d642238bd8b5839"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/network_link_provider_fixture.c",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e486b89585c0449ee95a460637fbb5f635701872"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e486b89585c0449ee95a460637fbb5f635701872"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/stubs/HTTPClient.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6b627bef924f68658fa4f6bcd9409f40e1413dbc"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6b627bef924f68658fa4f6bcd9409f40e1413dbc"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/stubs/NetworkClientSecure.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "01c1af456e1b6ea9f59ac9334599aa6facf66d73"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "01c1af456e1b6ea9f59ac9334599aa6facf66d73"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/stubs/NetworkTestSupport.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "43078ba5353d512dba5210882ef6c95effadb912"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "43078ba5353d512dba5210882ef6c95effadb912"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/stubs/T5AppApi.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "b683797cab85b5e1d78383dd5fb84f3b2ec43c4e"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "b683797cab85b5e1d78383dd5fb84f3b2ec43c4e"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/stubs/esp_http_client.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9f84689e9a727f7efae95e56d41b52ddb1279025"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9f84689e9a727f7efae95e56d41b52ddb1279025"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/stubs/esp_task_wdt.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "1bd7dcd236235d6c100cc935683a80aec05ca2bd"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "1bd7dcd236235d6c100cc935683a80aec05ca2bd"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/network_link/stubs/esp_wifi.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d7efcbddf10a5bec006cf45c8e1f0a3f66b76bd6"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d7efcbddf10a5bec006cf45c8e1f0a3f66b76bd6"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/run_network_link_custody_test.sh",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "4ce075eb20254c45a81843992a9b73535a0c2883"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "4ce075eb20254c45a81843992a9b73535a0c2883"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/run_runtime_network_test.sh",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "70a1a21d6d13d124dcfc8ac06ddc75d62d290b74"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9c8403800cbafd748acaaf78317595c7928ca27d"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9c8403800cbafd748acaaf78317595c7928ca27d"
+          },
+          "resolution": "preserved exact source blob and mode"
+        }
+      ]
+    },
+    {
+      "pr": 478,
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/478",
+      "base": "9c8783d6f20659a514bfaeb3847a77c7213dc4f6",
+      "head": "377248056b7af94307f330bd1fee9c3e232bb3ff",
+      "tree": "1c018a10a874e2e648ec32611b874a6bd1dff67a",
+      "files": [
+        {
+          "path": ".github/workflows/sleep-orchestration.yml",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "0b62431726e963c6231188fb406fcac7dabc6288"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "0b62431726e963c6231188fb406fcac7dabc6288"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "docs/SHARED_SLEEP_ORCHESTRATION.md",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5f510b560dad89328b458f0afdfc9fe85987d174"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5f510b560dad89328b458f0afdfc9fe85987d174"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/main.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "72cee04d39531ca7f8bccec7796dd084bf25961c"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "cd91d81c232cc60ec0a1911ea9c01bde8d9983ba"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "cd91d81c232cc60ec0a1911ea9c01bde8d9983ba"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/power/SleepOrchestration.cpp",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "39b62c2ac5f1df2d46fc481ae5566f01039d10bd"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "39b62c2ac5f1df2d46fc481ae5566f01039d10bd"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/power/SleepOrchestration.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "162f5d48c5e78125e42ed2c19da18194d3675309"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "162f5d48c5e78125e42ed2c19da18194d3675309"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/resources/board_power_cutover_source_test.py",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "f477d13e60ac73167d1e033f592a35092e7db908"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "f9a2054d379c0a0ca72996bc1479d82da44da68b"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "f9a2054d379c0a0ca72996bc1479d82da44da68b"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/run_sleep_orchestration_test.sh",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "854e456e47ede5eb648b5e7fb3396b1723ed6030"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "854e456e47ede5eb648b5e7fb3396b1723ed6030"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/sleep_orchestration/orchestration_test.cpp",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c428efc17eb51e84067ed67306e6a264e3745806"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c428efc17eb51e84067ed67306e6a264e3745806"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/sleep_orchestration/reader_fixture.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e15fd1e76f8b18fe5d8a494a1d534b5809328e2d"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e15fd1e76f8b18fe5d8a494a1d534b5809328e2d"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/sleep_orchestration/reader_parity_test.py",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e543030e1f74cbebd643a4d6dc6fa9c261e92a44"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e543030e1f74cbebd643a4d6dc6fa9c261e92a44"
+          },
+          "resolution": "preserved exact source blob and mode"
+        }
+      ]
+    },
+    {
+      "pr": 479,
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/479",
+      "base": "9c8783d6f20659a514bfaeb3847a77c7213dc4f6",
+      "head": "34ed7505b506737f9d20839620f2dc37c4f94655",
+      "tree": "ff855d3a434a4dc4cc102cdc99adf0d8887e7165",
+      "files": [
+        {
+          "path": "docs/NATIVE_APPS.md",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e3bbc31c67143fc4f269c4648e323de81caaa686"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9a362dfafc587e48d6885816526678ea114c6629"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "9a362dfafc587e48d6885816526678ea114c6629"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeReaderTypography.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "f2edc1b5427f2bde8a3f648f927a13479d7a19d6"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "69af15bd8aa0269752ad34af5395f0694788ed4d"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "69af15bd8aa0269752ad34af5395f0694788ed4d"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeReaderTypography.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c3f4090d853790067fbec45d05a8f5b08c34dfbb"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "83df8cc0186709181b6d84385aeb9eb2998c9d0d"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "83df8cc0186709181b6d84385aeb9eb2998c9d0d"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeReaderTypographyBridge.cpp",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "167b77cd5e090ec3773029a66c8914e5d17c34e0"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "167b77cd5e090ec3773029a66c8914e5d17c34e0"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/reader_stubs/GfxRenderer.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "063dcb2d72d348e980974dbc7e9d77f0dab47185"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8f9d1bfcdc13fb58ac56da29d805842f358d38f4"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8f9d1bfcdc13fb58ac56da29d805842f358d38f4"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/reader_stubs/SdCardFontGlobals.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "432a70b6147d4922e5eeee43f409a54cbf4f5476"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "742dc5fbca022cc709378f6a2b8b3c8a667847b0"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "742dc5fbca022cc709378f6a2b8b3c8a667847b0"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/reader_typography_test.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "832deda02d7af5b2cfd915068e466075307572d2"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "acdf86754519ae498f8aa448bb110448d3c8a3d3"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "acdf86754519ae498f8aa448bb110448d3c8a3d3"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/run_native_app_test.sh",
+          "source_base": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "b42f32cf150fc9623309aee8522ce40f2f1b494c"
+          },
+          "source_head": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "97dcf8c10b17ddcbfc8089fc4d64c158e106c5e7"
+          },
+          "consolidated": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "2505be06798215a8e7cf829416d71dd8742345c3"
+          },
+          "resolution": "combined PR480 selected-volume and PR479 typography runner changes; no commands removed from either delta"
+        },
+        {
+          "path": "test/run_reader_typography_test.sh",
+          "source_base": null,
+          "source_head": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "913493cee6276e5677646447fbaa5c1469896f10"
+          },
+          "consolidated": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "913493cee6276e5677646447fbaa5c1469896f10"
+          },
+          "resolution": "preserved exact source blob and mode"
+        }
+      ]
+    },
+    {
+      "pr": 480,
+      "url": "https://github.com/michaelrolphone-cmyk/T5S3-Reader/pull/480",
+      "base": "9a25298c43a07ffb763c93a6ef3e9d475a3597d2",
+      "head": "1e1c618076a008c3c2ece3ea760cc96a45375a74",
+      "tree": "e6064b84b612d128c70bb7d158d971ffa61f0d18",
+      "files": [
+        {
+          "path": "lib/NativeApps/include/NativeAppSource.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c7c4c2d9a548d20fc452d9d9dd4e1bb6f62aa3ee"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c7c4c2d9a548d20fc452d9d9dd4e1bb6f62aa3ee"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/NativeApps/src/NativeAppLauncher.c",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "fafd3431cd98f53e57eb0d33144ab54ac34bae5d"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ade100d92d9507d5af862c3a4e1eed58dd268210"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ade100d92d9507d5af862c3a4e1eed58dd268210"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/elf_loader/include/private/esp_dlmod.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "1ee071d978e9cbd06a33d3ed1597849905416555"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "49998c02b20d2359aca79e0cb6ca51e1a6f63bd0"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "49998c02b20d2359aca79e0cb6ca51e1a6f63bd0"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/elf_loader/include/private/esp_elf_owned_fd.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ee52acf3503cc6c79aebd15215de9f188a664cbd"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ee52acf3503cc6c79aebd15215de9f188a664cbd"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/elf_loader/src/dlso/dlfcn.c",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "2daad6e593f532f2a316f5782fc269735810471f"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "1cfd30726901b5369a4a996bf6f1d23f0faa29c7"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "1cfd30726901b5369a4a996bf6f1d23f0faa29c7"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/elf_loader/src/dlso/dlmod.c",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "412c0d22fb162e4e5a184fd3286106e37b517d7d"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "509d649e5c9c04c8513f7875f8462fd05dfe0e6b"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "509d649e5c9c04c8513f7875f8462fd05dfe0e6b"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/elf_loader/src/esp_elf.c",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6a3e02b6cdf9c749d0f0a5fb738491881aa8e4dd"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5107ac2b46a1c417e033dc6710d8022a51c96fdd"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5107ac2b46a1c417e033dc6710d8022a51c96fdd"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/hal/HalStorage.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "57b9b54523dc0ee5a066d8ee7a41fe0796e38d59"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8dff5c4bd275dc44f2dc7406fed80c24b7912701"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8dff5c4bd275dc44f2dc7406fed80c24b7912701"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/hal/HalStorage.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "942ee713107dddc0f1df8920efa93a2ff0150b34"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c14926bf1cd08b16ac761dd54f1333fb81f37055"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c14926bf1cd08b16ac761dd54f1333fb81f37055"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/hal/HalStorageVolume.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6080e6d872844ed3a38bc85b051a522468fe414f"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "aef9ccfd4b3783b3b3036ee6bfe3bd87e37e12cb"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "aef9ccfd4b3783b3b3036ee6bfe3bd87e37e12cb"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "lib/hal/StorageSource.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "74ce8f8b60044b3d0d0fccbf844a29b30baab2c2"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "74ce8f8b60044b3d0d0fccbf844a29b30baab2c2"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "ports/cam/HalStorageSdmmc.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c3c5c1adaefdc6a1caf693efdd0a46a535d1310a"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c83c99230c69789f0737fab29a9c9e81423d3447"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c83c99230c69789f0737fab29a9c9e81423d3447"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "ports/cam/build.py",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ecfbb16067989fbb5c52a698f6a432575ef03b3c"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "503737f7618c2ffa988d3d10c613db471b6ab2ef"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "503737f7618c2ffa988d3d10c613db471b6ab2ef"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/ManagedAppAdmission.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6c91fd8a37a826e949a39a86da26fe9ffaa60a46"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "fd298c97d762396467039cd5575f432f81b9f106"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "fd298c97d762396467039cd5575f432f81b9f106"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeAppHost.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6d074e4b307020c8b2a03bd0ba6f6eef5f44c9e4"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "f45d45fb008a714a3b8103e47b4aa3987c90027b"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "f45d45fb008a714a3b8103e47b4aa3987c90027b"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeAppSource.cpp",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "843fad7f9a394523724f51989168a7581064c401"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "843fad7f9a394523724f51989168a7581064c401"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeAppSource.h",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8025fdafe573135e9bb30cbab017a67080f3a00b"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8025fdafe573135e9bb30cbab017a67080f3a00b"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeCapabilityGate.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c2f58ca885a2eac96713e98fb9a746a2b744846c"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "2ed3964d66008b8a8fe42d66eb351d5efc969594"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "2ed3964d66008b8a8fe42d66eb351d5efc969594"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/native/NativeProviderCapabilityBridge.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "1de52b4d3a4d648892a061a964970aa91eca85ea"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "52b46246465558655a578f361e9a8672c71c78e5"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "52b46246465558655a578f361e9a8672c71c78e5"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/packages/PackageExecutableAdmission.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c090a1c68f18445df878c1138bb66861d130caf0"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e96ffc8980facb12e097139ae3298772d01942ef"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e96ffc8980facb12e097139ae3298772d01942ef"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "src/runtime/packages/PackageExecutableAdmission.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ae9e33a2ee8a6cbdf1ba6e3cdcd546ea8140243b"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d86c90dae217fac373841922712aee490567e553"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d86c90dae217fac373841922712aee490567e553"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/activities/txt_index_io_budget_test.py",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "cb147c16b85bb3e6114b57a94431aff6c4a8d71e"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "76b008b886d685c7fba82d236efa33f8121be102"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "76b008b886d685c7fba82d236efa33f8121be102"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/boot/cam_storage_test.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5834cb1492df91bb1740df5562ae02bf2e79064e"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "92aac10867e0cbae316cefa5b52907a632b0d155"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "92aac10867e0cbae316cefa5b52907a632b0d155"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/epub_metadata_finalization_io/run_test.py",
+          "source_base": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "b47383f9c66a295068eba9fdddc1d649b1c2872d"
+          },
+          "source_head": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "2083064656f9f713f0d4e6786c4c5ba64ca0e616"
+          },
+          "consolidated": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "2083064656f9f713f0d4e6786c4c5ba64ca0e616"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/hal/native_app_focus_test.py",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "35294e6769e48c0117a71ffab623d60b90255b45"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "19c6215b20d490cc619b4f80c1b037320c534005"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "19c6215b20d490cc619b4f80c1b037320c534005"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/hal/storage_source_test.cpp",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "84767bf5eacd505a61914164f0411df9a81424a0"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "84767bf5eacd505a61914164f0411df9a81424a0"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/elf_selected_fd_test.c",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "601a75f3c3416b77f3a14f6227bbe5d590ab1f57"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "601a75f3c3416b77f3a14f6227bbe5d590ab1f57"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/elf_selected_fd_test.py",
+          "source_base": null,
+          "source_head": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "de29ed64f9df6df0385a08de7747e9083c55c3d0"
+          },
+          "consolidated": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "de29ed64f9df6df0385a08de7747e9083c55c3d0"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/launcher_test.c",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "5c740b921c716adda2636c9b46afe0cbd78d1add"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e331179ad79ef6ac4bb183a337557a809766af04"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "e331179ad79ef6ac4bb183a337557a809766af04"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/native_apps/stubs/esp_elf.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "57d47e19a2500e1bc7c370c75e11061ed3189187"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d94ecb81e60e2067236a0050afd4908530844c76"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "d94ecb81e60e2067236a0050afd4908530844c76"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/run_app_manifest_test.sh",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "993195ada25eb96f96f97b0c368d98c6d9d99ce5"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c007f745a36bbb128ce4443052a704e8149ae049"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "c007f745a36bbb128ce4443052a704e8149ae049"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/run_native_app_test.sh",
+          "source_base": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "c0f9f9449510e6ec2955dbecfac27c9d8125e355"
+          },
+          "source_head": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "348c4139997ed1a65ebd43da5bf54fb72d250818"
+          },
+          "consolidated": {
+            "mode": "100755",
+            "type": "blob",
+            "sha": "2505be06798215a8e7cf829416d71dd8742345c3"
+          },
+          "resolution": "combined PR480 selected-volume and PR479 typography runner changes; no commands removed from either delta"
+        },
+        {
+          "path": "test/run_storage_generation_test.sh",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "fd0ad7ae529f0c2f194364b74d6d5613ef0504ef"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "bc47e1fc448d5313d5f0d39c496b982274d9e068"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "bc47e1fc448d5313d5f0d39c496b982274d9e068"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/storage_volume/run_test.py",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "cbbee9d0cdd5bd499befb1fc2997a94c8879234f"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "2c779117c56e76dcba1cb0c8ddbc882c899b4c1a"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "2c779117c56e76dcba1cb0c8ddbc882c899b4c1a"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/storage_volume/runtime_test.cpp",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "ba6f976f3f8873726df699baa157c82df77510cc"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6d6bafbcf63c70d7043b4032009e8887186d2ab1"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "6d6bafbcf63c70d7043b4032009e8887186d2ab1"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/storage_volume/source_custody_test.inc",
+          "source_base": null,
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "330f370b0d6f056bfa60684a5bf90af27b20d727"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "330f370b0d6f056bfa60684a5bf90af27b20d727"
+          },
+          "resolution": "preserved exact source blob and mode"
+        },
+        {
+          "path": "test/storage_volume/stubs/freertos/semphr.h",
+          "source_base": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "b179b4044de4c8af474a2784a0f3c956a1c3602a"
+          },
+          "source_head": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8491742d99d905ecd6673faae40ddb80bf51cd86"
+          },
+          "consolidated": {
+            "mode": "100644",
+            "type": "blob",
+            "sha": "8491742d99d905ecd6673faae40ddb80bf51cd86"
+          },
+          "resolution": "preserved exact source blob and mode"
+        }
+      ]
+    }
+  ],
+  "composition": "One direct-master replacement for PR475 through PR480. No conflict markers or dropped source deltas.",
+  "additional_changes": [
+    "Unify the existing source-only device-MSC independent-packaging boundary across installer and release builder.",
+    "Regression tests preserve missing-dependency, duplicate/invalid-manifest, exact-source-boundary and explicit-selection rejection gates."
+  ],
+  "qualification": "Pending exact replacement-head CI. Two previously excluded Host fixtures remain excluded. No hardware acceptance, frozen-pin change or release."
+}

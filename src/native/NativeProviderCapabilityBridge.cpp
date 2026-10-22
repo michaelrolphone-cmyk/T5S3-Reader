@@ -1,5 +1,6 @@
 #include "runtime/packages/ProviderAbiProfile.h"
 #include "ManagedAppAdmission.h"
+#include "NativeAppSource.h"
 #include <T5ProviderCapabilityApi.h>
 #include <T5AppApi.h>
 #include <NativeAppLauncher.h>
@@ -61,6 +62,7 @@ bool readerPage(void *context,const risc_reader_page_request_v1 *q,risc_reader_p
 // to a different provider API.
 bool declaredCapability(const char* capability, uint32_t version) {
     const char* path = native_app_current_path();
+    if (native_app_source_kind(path) < 0) return false;
     if (!path || std::strncmp(path, "/sd/", 4) != 0 || !capability || !version ||
         !RuntimeDevices::validCapabilityName(capability)) return false;
     std::string filename(path + 3);

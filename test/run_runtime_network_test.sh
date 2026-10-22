@@ -9,6 +9,9 @@ c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo_dir/src/providers/network/Esp32NetworkProvider.cpp" \
   "$repo_dir/test/runtime_network/network_test.cpp" -o "$binary"
 "$binary"
+# The opt-in installed-link path compiles and exercises the real native HTTP
+# consumer separately from the legacy Arduino provider fixture above.
+bash "$repo_dir/test/run_network_link_custody_test.sh"
 c++ -std=c++17 -Wall -Wextra -Werror -I"$repo_dir/src" \
   "$repo_dir/test/runtime_network/http_client_budget_test.cpp" -o "$binary"
 "$binary"

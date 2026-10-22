@@ -290,6 +290,64 @@ GrantV2 GraphV2::acquireFrom(const char* providerId, const char* capability,
   return target < 0 ? GrantV2{} : acquireIndex(static_cast<size_t>(target));
 }
 
+bool GraphV2::hasGrantFor(size_t index) const {
+  for (const GrantSlot& grant : grants_)
+    if (grant.occupied && grant.node == index) return true;
+  return false;
+}
+
+bool GraphV2::failedAcquisitionNeedsRecoveryAt(size_t index, uint32_t& visited) const {
+  static_assert(kMaxModules <= 32, "Failed acquisition traversal bitset size");
+  const uint32_t bit = uint32_t(1) << index;
+  if (visited & bit) return false;
+  visited |= bit;
+  const Node& node = nodes_[index];
+  if (node.module.consumers() || hasGrantFor(index)) return false;
+  if (node.visit == Visit::Visiting || node.module.state() == ModuleV2::State::Failed) return true;
+  for (size_t i = 0; i < node.spec.requirementCount; ++i) {
+    const auto& requirement = node.spec.requirements[i];
+    const int dependency = find(requirement.capability, requirement.api);
+    if (dependency >= 0 && failedAcquisitionNeedsRecoveryAt(static_cast<size_t>(dependency), visited))
+      return true;
+  }
+  return false;
+}
+
+bool GraphV2::failedAcquisitionNeedsRecovery(const char* id, const char* capability, uint32_t api) const {
+  const int target = findProvider(id, capability, api);
+  uint32_t visited = 0;
+  return target >= 0 && failedAcquisitionNeedsRecoveryAt(static_cast<size_t>(target), visited);
+}
+
+bool GraphV2::recoverFailedAcquisitionAt(size_t index, uint32_t& visited) {
+  const uint32_t bit = uint32_t(1) << index;
+  if (visited & bit) return true;
+  visited |= bit;
+  Node& node = nodes_[index];
+  // Cleanup belongs to the exact grant holder, not this rejected acquirer.
+  if (node.module.consumers() || hasGrantFor(index)) return true;
+  if (node.visit == Visit::Visiting) return false;
+  if (node.module.state() == ModuleV2::State::Failed) {
+    if (!node.module.unload()) return false;
+    node.visit = Visit::Idle;
+    releaseDependencies(index);
+  }
+  // A dependency can fail before the target maps, or while its last pin is
+  // released. Recover that ungranted closure without touching live siblings.
+  for (size_t i = 0; i < node.spec.requirementCount; ++i) {
+    const auto& requirement = node.spec.requirements[i];
+    const int dependency = find(requirement.capability, requirement.api);
+    if (dependency >= 0 && !recoverFailedAcquisitionAt(static_cast<size_t>(dependency), visited)) return false;
+  }
+  return true;
+}
+
+bool GraphV2::recoverFailedAcquisition(const char* id, const char* capability, uint32_t api) {
+  const int target = findProvider(id, capability, api);
+  uint32_t visited = 0;
+  return target < 0 || recoverFailedAcquisitionAt(static_cast<size_t>(target), visited);
+}
+
 const void* GraphV2::interfaceFor(GrantV2 grant) const {
   if (!grant.slot || grant.slot > kMaxGrants || !grant.generation) return nullptr;
   const GrantSlot& slot = grants_[grant.slot - 1];

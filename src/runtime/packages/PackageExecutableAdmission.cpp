@@ -78,13 +78,14 @@ bool declaredPackageSnapshot(const OrdinaryPackagePlan& plan, const char* name, 
   return false;
 }
 bool admitLooseExecutableSnapshot(const char* path, const uint8_t* sidecarDigest, const uint8_t* executableDigest,
-                                  const uint8_t* snapshot, size_t length, const StorageGenerationStamp& sourceStamp) {
+                                  const uint8_t* snapshot, size_t length, const StorageGenerationStamp& sourceStamp,
+                                  bool allowCoherentReuse) {
   if (!path || std::strncmp(path, "/sd/", 4) || !sidecarDigest || !executableDigest || !snapshot || length < 52 ||
       length > 8u * 1024u * 1024u || !Storage.ready())
     return false;
   AdmittedImage candidate{};
   const size_t pathBytes = std::strlen(path);
-  const bool reusable = pathBytes < sizeof(candidate.root) && Storage.unchanged(sourceStamp);
+  const bool reusable = allowCoherentReuse && pathBytes < sizeof(candidate.root) && Storage.unchanged(sourceStamp);
   if (reusable) {
     // Canonical keys start /Apps, /Drivers, /Services or /Providers, never /sd/.
     std::memcpy(candidate.root, path, pathBytes + 1);
@@ -115,7 +116,7 @@ bool admitLooseExecutableSnapshot(const char* path, const uint8_t* sidecarDigest
 bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* expectedManifestDigest,
                                       const uint8_t* expectedExecutableDigest, const uint8_t* snapshot, size_t length,
                                       const StorageGenerationStamp& sourceStamp,
-                                      const VerifiedImageCopy* verifiedCopy) {
+                                      const VerifiedImageCopy* verifiedCopy, bool allowCoherentReuse) {
   Identity canonical{};
   OrdinaryTransactionPaths paths{};
   if (!canonicalIdentity(identity, &canonical) || resourceOnly(identity) || !expectedManifestDigest ||
@@ -164,13 +165,13 @@ bool admitInstalledExecutableSnapshot(const Identity& identity, const uint8_t* e
   if (receiptStatus == ReceiptReadResult::Matched) std::memcpy(candidate.generation, receipt.generation, 16);
   // Missing receipts preserve older canonical packages. Invalid receipts never
   // qualify for reuse, but cannot replace actual snapshot integrity verification.
-  const bool reusable = (receiptStatus == ReceiptReadResult::Matched || receiptStatus == ReceiptReadResult::Missing) &&
+  const bool reusable = allowCoherentReuse && (receiptStatus == ReceiptReadResult::Matched || receiptStatus == ReceiptReadResult::Missing) &&
                         sourceStamp.matches(before) && Storage.unchanged(before);
   // This is memory-lifetime evidence, not a new filesystem-generation proof.
   // The loader just copied an immutable graph-owned image that was verified
   // earlier. Keep metadata/policy/receipt-close checks above, and do not insert
   // this older-source image into the current storage memo below.
-  if (verifiedCopy && verifiedCopy->matches(snapshot, length, candidate.executable)) return true;
+  if (allowCoherentReuse && verifiedCopy && verifiedCopy->matches(snapshot, length, candidate.executable)) return true;
   bool warm = false;
   if (reusable) {
     std::lock_guard<std::mutex> lock(admissionMutex);
