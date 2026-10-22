@@ -2,6 +2,7 @@
 #include <cassert>
 namespace FakeLock {
 inline bool held = false;
+inline bool failNextTake = false;
 inline unsigned acquisitions = 0;
 }  // namespace FakeLock
 using SemaphoreHandle_t = int*;
@@ -11,6 +12,7 @@ inline SemaphoreHandle_t xSemaphoreCreateMutex() {
   return &semaphore;
 }
 inline int xSemaphoreTake(SemaphoreHandle_t, unsigned) {
+  if (FakeLock::failNextTake) { FakeLock::failNextTake = false; return 0; }
   assert(!FakeLock::held);
   FakeLock::held = true;
   ++FakeLock::acquisitions;

@@ -54,6 +54,7 @@ static void format(bool partitioned) {
     for(unsigned fat=0;fat<2;++fat) { uint8_t *p=card_image+(size_t)(base+32+fat*1024)*512;put32(p,0xffffff8);put32(p+4,0xffffffff);put32(p+8,0xfffffff); }
 }
 #include "directory_iteration_test.inc"
+#include "source_custody_test.inc"
 #ifndef TEST_SPI_TRANSPORT
 #include "bootstrap_handoff.inc"
 #endif
@@ -107,6 +108,9 @@ int main(int argc, char **argv) {
     assert(driver->start(deps,sizeof(deps)/sizeof(deps[0])));
     char error[80];api->last_error(nullptr,error,sizeof(error));if(!api->ready(nullptr))std::fprintf(stderr,"mount: %s\n",error);
     assert(api->ready(nullptr));assert(Storage.bindVolume(api));
+    if (argc > 1 && std::strncmp(argv[1], "source-", 7) == 0) {
+        sourceCustodyTests(argv[1], driver, api); return 0;
+    }
     if (argc>1 && std::strncmp(argv[1],"directory-",10)==0) {
         directoryIterationTests(argv[1],driver,api); return 0;
     }

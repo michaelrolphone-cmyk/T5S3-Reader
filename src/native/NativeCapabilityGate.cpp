@@ -1,5 +1,6 @@
 #include "AppManifest.h"
 #include "ManagedAppAdmission.h"
+#include "NativeAppSource.h"
 #include "NativeSerialPortBridge.h"
 #include "runtime/capabilities/AppDependencyBindings.h"
 #include "runtime/drivers/GpsDriverRuntime.h"
@@ -39,6 +40,7 @@ const char* reason(RuntimeDevices::RequirementResult result) {
 bool loadRequirements(const char* sdPath, RuntimeDevices::AppCapabilityRequirements& requirements,
                       bool& hasManifest) {
   hasManifest = false;
+  if (native_app_source_kind(sdPath) < 0) return false;
   if (!sdPath || std::strncmp(sdPath, "/sd/", 4) != 0) return false;
   const std::string elf(sdPath + 3);
   if (elf.size() < 5 || elf.compare(elf.size() - 4, 4, ".elf") != 0) return false;

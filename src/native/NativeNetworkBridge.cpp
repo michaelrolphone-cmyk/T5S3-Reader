@@ -1,5 +1,6 @@
 #include <T5AppApi.h>
 #include <T5NetworkApi.h>
+#include "NativeNetworkBridge.h"
 
 #include <HTTPClient.h>
 #if __has_include(<NetworkClientSecure.h>)
@@ -12,6 +13,8 @@ using RiscRteSecureClient = WiFiClientSecure;
 #include <esp_http_client.h>
 #include <esp_task_wdt.h>
 #include <esp_wifi.h>
+#include <arpa/inet.h>
+#include <net/if.h>
 
 #include <algorithm>
 #include <climits>
@@ -19,6 +22,7 @@ using RiscRteSecureClient = WiFiClientSecure;
 
 #include "runtime/network/NetworkService.h"
 #include "runtime/network/SavedNetworkConnection.h"
+#include "runtime/network/InstalledNetworkLink.h"
 
 namespace {
 constexpr uint32_t kMaxHeaders = 16;
@@ -31,6 +35,48 @@ constexpr size_t kMaxCookiePathBytes = 128;
 
 CookieJar nativeCookieJar;
 bool nativeCookieSessionActive = false;
+// Survives application return and failed cleanup. Never an app-stack RAII
+// object whose destructor could discard a pending activity/provider grant.
+RuntimeNetwork::InstalledLink installedLink;
+bool requestActive = false;
+bool installedSession = false;
+struct RequestGuard {
+  RequestGuard() { requestActive = true; }
+  ~RequestGuard() { requestActive = false; }
+};
+
+// Binding TCP/TLS sockets does not bind the host DNS resolver. Limit the new
+// installed path to numeric destinations until a provider-scoped resolver is
+// available, and disable redirects so a response cannot introduce a hostname.
+bool numericDestination(const char* url) {
+  if (!url) return false;
+  const char* host = nullptr;
+  if (std::strncmp(url, "http://", 7) == 0) host = url + 7;
+  else if (std::strncmp(url, "https://", 8) == 0) host = url + 8;
+  else return false;
+  char address[INET6_ADDRSTRLEN]{};
+  const bool ipv6 = *host == '[';
+  if (ipv6) ++host;
+  const char* end = host;
+  while (*end && (ipv6 ? *end != ']' : *end != ':' && *end != '/' && *end != '?' && *end != '#')) ++end;
+  const size_t length = static_cast<size_t>(end - host);
+  if (!length || length >= sizeof(address) || (ipv6 && *end != ']')) return false;
+  std::memcpy(address, host, length);
+  unsigned char parsed[sizeof(in6_addr)]{};
+  if (inet_pton(ipv6 ? AF_INET6 : AF_INET, address, parsed) != 1) return false;
+  if (ipv6) ++end;
+  if (*end == ':') {
+    ++end;
+    if (*end < '0' || *end > '9') return false;
+    unsigned port = 0;
+    while (*end >= '0' && *end <= '9') {
+      port = port * 10 + static_cast<unsigned>(*end++ - '0');
+      if (port > 65535) return false;
+    }
+    if (!port) return false;
+  }
+  return !*end || *end == '/' || *end == '?' || *end == '#';
+}
 
 void clearNativeCookieJar() {
   CookieJar empty;
@@ -108,7 +154,7 @@ esp_err_t onHttpEvent(esp_http_client_event_t* event) {
 bool performInsecureHttps(const char* url, uint8_t method,
                           const t5_http_header_t* headers, uint32_t headerCount,
                           const void* body, size_t bodySize, uint32_t timeoutMs,
-                          ResponseSink& sink, t5_http_result_t* result) {
+                          ResponseSink& sink, t5_http_result_t* result, bool providerOwned) {
   RiscRteSecureClient secureClient;
   secureClient.setInsecure();
   HTTPClient http;
@@ -133,7 +179,7 @@ bool performInsecureHttps(const char* url, uint8_t method,
   }
 
   wifi_ps_type_t previousPs = WIFI_PS_MIN_MODEM;
-  const bool havePs = esp_wifi_get_ps(&previousPs) == ESP_OK;
+  const bool havePs = !providerOwned && esp_wifi_get_ps(&previousPs) == ESP_OK;
   if (havePs) esp_wifi_set_ps(WIFI_PS_NONE);
   esp_task_wdt_reset();
   int status = 0;
@@ -166,11 +212,18 @@ bool performInsecureHttps(const char* url, uint8_t method,
   return true;
 }
 
-bool wifiConnected() { return RuntimeNetwork::connected(); }
+bool wifiConnected() {
+  if (requestActive) return false;
+  if (!installedSession && !installedLink.hasCustody()) return RuntimeNetwork::connected();
+  RequestGuard guard;
+  risc_network_link_state_v1 state{};
+  return installedLink.state(&state) && state.connected && state.has_address;
+}
 
-bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* headers, uint32_t headerCount,
+bool httpRequestBody(const char* url, uint8_t method, const t5_http_header_t* headers, uint32_t headerCount,
                  const void* body, size_t bodySize, const char* certPem, uint32_t timeoutMs, char* response,
-                 size_t responseCapacity, t5_http_result_t* result) {
+                 size_t responseCapacity, t5_http_result_t* result, const char* interfaceName) {
+  const bool providerOwned = interfaceName != nullptr;
   if (!result) return false;
   *result = {};
   if (!url || !url[0] || headerCount > kMaxHeaders || (headerCount && !headers) ||
@@ -182,7 +235,7 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   if (response && responseCapacity) response[0] = '\0';
 
   const uint32_t connectBudget = std::min(timeoutMs ? timeoutMs : kDefaultTimeoutMs, 15000u);
-  if (!RuntimeNetwork::ensureSavedConnection(connectBudget)) {
+  if (!providerOwned && !RuntimeNetwork::ensureSavedConnection(connectBudget)) {
     result->transport_error = ESP_ERR_INVALID_STATE;
     return false;
   }
@@ -195,7 +248,7 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   // (and its handshake memory cost) onto callers that intentionally omit a CA.
   if (!hasCallerCertificate && std::strncmp(url, "https://", 8) == 0) {
     return performInsecureHttps(url, method, headers, headerCount, body, bodySize,
-                                timeoutMs, sink, result);
+                                timeoutMs, sink, result, providerOwned);
   }
 
   esp_http_client_config_t config = {};
@@ -209,6 +262,17 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   config.user_data = &sink;
   config.skip_cert_common_name_check = false;
   config.keep_alive_enable = false;
+  struct ifreq interface{};
+  if (providerOwned) {
+    const size_t length = std::strlen(interfaceName);
+    if (!length || length >= sizeof(interface.ifr_name)) {
+      result->transport_error = ESP_ERR_INVALID_STATE;
+      return false;
+    }
+    std::memcpy(interface.ifr_name, interfaceName, length + 1);
+    config.if_name = &interface;
+    config.disable_auto_redirect = true;
+  }
 
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (!client) {
@@ -229,7 +293,7 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   }
 
   wifi_ps_type_t previousPs = WIFI_PS_MIN_MODEM;
-  const bool havePs = esp_wifi_get_ps(&previousPs) == ESP_OK;
+  const bool havePs = !providerOwned && esp_wifi_get_ps(&previousPs) == ESP_OK;
   if (havePs) esp_wifi_set_ps(WIFI_PS_NONE);
   esp_task_wdt_reset();
   const esp_err_t err = esp_http_client_perform(client);
@@ -245,6 +309,43 @@ bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* header
   return err == ESP_OK;
 }
 
+bool httpRequest(const char* url, uint8_t method, const t5_http_header_t* headers, uint32_t headerCount,
+                 const void* body, size_t bodySize, const char* certPem, uint32_t timeoutMs, char* response,
+                 size_t responseCapacity, t5_http_result_t* result) {
+  if (!result) return false;
+  *result = {};
+  if (requestActive || t5_app_get_api(T5_APP_ABI_VERSION) == nullptr) return false;
+  RequestGuard guard; // Includes provider begin/state/end, not only HTTP I/O.
+  const bool providerOwned = installedSession || installedLink.hasCustody();
+  risc_network_link_state_v1 state{};
+  if (providerOwned) {
+    // The Arduino insecure-HTTPS client has no supported pre-connect interface
+    // binding. Do not silently route it through the default host interface.
+    if (!numericDestination(url) ||
+        ((!certPem || !certPem[0]) && std::strncmp(url, "https://", 8) == 0) ||
+        !installedLink.beginUse(RISC_NETWORK_LINK_LOW_LATENCY)) {
+      result->transport_error = ESP_ERR_INVALID_STATE;
+      return false;
+    }
+    if (!installedLink.state(&state) || !state.connected || !state.has_address ||
+        !state.interface_name[0]) {
+      (void)installedLink.endUseChecked();
+      result->transport_error = ESP_ERR_INVALID_STATE;
+      return false;
+    }
+  }
+  const bool completed = httpRequestBody(url, method, headers, headerCount, body, bodySize,
+                                        certPem, timeoutMs, response, responseCapacity, result,
+                                        providerOwned ? state.interface_name : nullptr);
+  // The synchronous HTTP body has ended its client before relinquishing use.
+  // Failed link cleanup remains reachable through the explicit release hook.
+  if (providerOwned && !installedLink.endUseChecked()) {
+    result->transport_error = ESP_ERR_INVALID_STATE;
+    return false;
+  }
+  return completed;
+}
+
 const t5_network_api_v1 kNetworkApi = {
     T5_NETWORK_API_VERSION,
     sizeof(t5_network_api_v1),
@@ -254,13 +355,30 @@ const t5_network_api_v1 kNetworkApi = {
 }  // namespace
 
 void nativeNetworkBegin() {
+  if (requestActive) return;
   clearNativeCookieJar();
+  if (!nativeCookieSessionActive) installedSession = installedLink.hasCustody();
   nativeCookieSessionActive = true;
 }
 
 void nativeNetworkEnd() {
+  if (requestActive) return;
   nativeCookieSessionActive = false;
+  installedSession = false;
   clearNativeCookieJar();
+  (void)nativeNetworkReleaseInstalledLink();
+}
+
+bool nativeNetworkBindInstalledLink(const char* providerId) {
+  if (nativeCookieSessionActive || requestActive) return false;
+  RequestGuard guard;
+  return installedLink.bind(providerId);
+}
+
+bool nativeNetworkReleaseInstalledLink() {
+  if (requestActive) return false;
+  RequestGuard guard;
+  return installedLink.releaseChecked();
 }
 
 extern "C" const t5_network_api_v1* t5_network_get_api(uint32_t apiVersion) {

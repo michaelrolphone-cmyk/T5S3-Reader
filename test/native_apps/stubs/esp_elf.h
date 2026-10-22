@@ -1,5 +1,7 @@
 #pragma once
 #include <stddef.h>
+#include <stdint.h>
+typedef struct { uint8_t* payload; size_t size; } elf_file_t;
 struct esp_elfsym { const char *name; const void *sym; };
 #define ESP_ELFSYM_EXPORT(s) {#s, (void*)&s}
 #define ESP_ELFSYM_END {NULL, NULL}

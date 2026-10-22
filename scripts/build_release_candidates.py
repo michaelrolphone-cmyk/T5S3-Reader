@@ -15,10 +15,10 @@ from typing import Any
 
 if __package__:
     from .update_release_index import PRODUCTS
-    from .build_installed_usb_stack import source_candidates
+    from .build_installed_usb_stack import source_candidates, independently_packaged_sources
 else:
     from update_release_index import PRODUCTS
-    from build_installed_usb_stack import source_candidates
+    from build_installed_usb_stack import source_candidates, independently_packaged_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 FIRMWARE_OUTPUTS = ("firmware.bin", "firmware-merged.bin", "firmware.elf")
@@ -74,18 +74,7 @@ def discover_release_module_sources(root: Path) -> list[dict]:
     authority. Keep this one reviewed ownership boundary out of automatic
     release discovery without weakening source/manifest validation.
     """
-    sources = discover_module_sources(root)
-    releasable = []
-    for item in sources:
-        if item['id'] == 'usb-device-msc-esp32s3':
-            if (item['metadata']['type'] != 'driver'
-                    or item['source'].relative_to(root).as_posix()
-                    != 'Drivers/usb_device_msc_esp32s3/manifest.json'
-                    or (item['capability'], item['api']) != ('usb.device.msc', 1)):
-                raise ValueError('source-only device MSC identity/source boundary changed')
-            continue
-        releasable.append(item)
-    return releasable
+    return independently_packaged_sources(discover_module_sources(root), root)
 
 
 def discover_module_builders(root: Path, kind: str) -> dict[str, list[tuple[str, ...]]]:

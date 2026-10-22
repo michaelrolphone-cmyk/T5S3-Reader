@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and bundle every ABI-v2 provider discovered from source manifests.
+"""Build and bundle independently packageable ABI-v2 source providers.
 
 A source manifest plus its ordinary build_<source-directory>.py script is the
 extension point for a new class. Existing linked outputs are reused, including
@@ -136,6 +136,28 @@ def source_candidates(root: Path | None = None, allow_empty: bool = False) -> li
     return candidates
 
 
+def independently_packaged_sources(candidates: list[dict], root: Path | None = None) -> list[dict]:
+    """Retain independently packageable modules after validating every source.
+
+    Device MSC is a source-only product composition with a native platform PHY
+    dependency, not an independently linked provider. Its explicit pinned-
+    TinyUSB qualification builder does not grant automatic package authority.
+    This is the same reviewed boundary used by release-plan discovery.
+    """
+    source_root = root if root is not None else DRIVER_SOURCES.parent
+    result = []
+    for item in candidates:
+        if item['id'] == 'usb-device-msc-esp32s3':
+            if (item['metadata']['type'] != 'driver'
+                    or item['source'].relative_to(source_root).as_posix()
+                    != 'Drivers/usb_device_msc_esp32s3/manifest.json'
+                    or (item['capability'], item['api']) != ('usb.device.msc', 1)):
+                raise ValueError('source-only device MSC identity/source boundary changed')
+            continue
+        result.append(item)
+    return result
+
+
 def dependency_order(candidates: list[dict]) -> list[dict]:
     """Topologically stage dependencies with minimum API versions.
 
@@ -177,9 +199,9 @@ def discovered(identities: set[str] | None = None) -> list[dict]:
 
     Dependencies may already be installed from independent package releases.
     Selecting one package must not rebuild or republish those dependencies.
-    The default still links and bundles the complete source graph.
+    The default links and bundles the independently packageable source graph.
     """
-    candidates = dependency_order(source_candidates())
+    candidates = dependency_order(independently_packaged_sources(source_candidates()))
     valid_ids = {candidate['id'] for candidate in candidates}
     if identities is not None and (not identities or not identities <= valid_ids):
         raise ValueError(f"invalid requested driver IDs: {sorted(identities - valid_ids)}")

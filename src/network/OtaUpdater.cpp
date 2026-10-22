@@ -246,6 +246,10 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   esp_err = esp_https_ota_begin(&ota_config, &ota_handle);
   if (esp_err != ESP_OK) {
     LOG_DBG("OTA", "HTTP OTA Begin Failed: %s", esp_err_to_name(esp_err));
+    const esp_err_t restore_err = esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    if (restore_err != ESP_OK) {
+      LOG_ERR("OTA", "Wi-Fi power-save restore after OTA begin failure failed: %s", esp_err_to_name(restore_err));
+    }
     return INTERNAL_UPDATE_ERROR;
   }
 

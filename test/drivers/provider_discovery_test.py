@@ -66,6 +66,63 @@ class ProviderDiscoveryTest(unittest.TestCase):
         self.assertEqual([item['id'] for item in builder.dependency_order(discovered)],
                          ['usb-controller', 'usb-host', 'test-serial-class'])
 
+    def source_only_msc(self, folder='usb_device_msc_esp32s3', capability='usb.device.msc'):
+        self.provider(folder, 'usb-device-msc-esp32s3', capability,
+                      ['platform.usb.phy.resource'], artifact=False)
+        return self.drivers / folder / 'manifest.json'
+
+    def test_source_only_msc_is_validated_but_not_linked_or_packaged(self):
+        self.provider('clock', 'clock', 'platform.clock')
+        self.source_only_msc()
+        self.assertIn('usb-device-msc-esp32s3',
+                      {item['id'] for item in builder.source_candidates()})
+        with self.assertRaisesRegex(ValueError, 'platform.usb.phy.resource'):
+            builder.dependency_order(builder.source_candidates())
+        with patch.object(builder, 'linked_or_build', wraps=builder.linked_or_build) as link:
+            catalog = self.build_fixture_packages()
+        self.assertEqual([call.args[0] for call in link.call_args_list], ['clock'])
+        self.assertEqual([row['id'] for row in catalog], ['clock'])
+        self.assertFalse((self.packages / 'usb-device-msc-esp32s3').exists())
+
+    def test_source_only_msc_cannot_be_explicitly_selected_for_packaging(self):
+        self.source_only_msc()
+        with patch.object(builder, 'linked_or_build') as link:
+            with self.assertRaisesRegex(ValueError, 'invalid requested driver IDs'):
+                builder.build({'usb-device-msc-esp32s3'})
+            link.assert_not_called()
+
+    def test_source_only_msc_boundary_does_not_hide_other_missing_dependencies(self):
+        self.source_only_msc()
+        self.provider('consumer', 'consumer', 'test.consumer', ['usb.device.msc'], artifact=False)
+        with patch.object(builder, 'linked_or_build') as link:
+            with self.assertRaisesRegex(ValueError, 'usb.device.msc'):
+                builder.discovered()
+            link.assert_not_called()
+
+    def test_source_only_msc_still_rejects_invalid_and_duplicate_manifests(self):
+        path = self.source_only_msc()
+        metadata = json.loads(path.read_text())
+        metadata['version'] = 'invalid'
+        path.write_text(json.dumps(metadata))
+        with self.assertRaises(ValueError):
+            builder.discovered()
+        metadata['version'] = '1.0.0'
+        path.write_text(json.dumps(metadata))
+        self.provider('duplicate', 'usb-device-msc-esp32s3', 'usb.device.msc', artifact=False)
+        with self.assertRaisesRegex(ValueError, 'duplicate'):
+            builder.discovered()
+
+    def test_source_only_msc_exclusion_requires_exact_source_and_capability(self):
+        path = self.source_only_msc(capability='unexpected')
+        with self.assertRaisesRegex(ValueError, 'source-only device MSC'):
+            builder.discovered()
+        metadata = json.loads(path.read_text())
+        metadata['provides'][0]['capability'] = 'usb.device.msc'
+        path.write_text(json.dumps(metadata))
+        path.parent.rename(self.drivers / 'unexpected_source')
+        with self.assertRaisesRegex(ValueError, 'source-only device MSC'):
+            builder.discovered()
+
     def test_alternative_class_capability_is_not_identity_collision(self):
         self.provider('class_a', 'class-a', 'serial.port')
         self.provider('class_b', 'class-b', 'serial.port')

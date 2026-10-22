@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_privileged_imports_v1 import extract_imports, encode_imports
 from verify_provider_relocation_map import audit_loader_map
 from provider_discovery_test import ProviderDiscoveryTest
-from build_installed_usb_stack import dependency_order, source_candidates
+from build_installed_usb_stack import dependency_order, source_candidates, independently_packaged_sources
 from package_resource_source import resource_manifest
 from pack_rte_zip import pack_directory, catalog_row
 PACKAGES = ROOT / 'dist/packages'
@@ -75,7 +75,7 @@ def mutation_rejected(elf: bytes, site: int, replacement: int) -> bool:
 
 def source_manifests():
     manifests = {}
-    for candidate in source_candidates():
+    for candidate in independently_packaged_sources(source_candidates()):
         metadata = candidate['metadata']
         identity = metadata['id']
         assert identity not in manifests, identity
@@ -93,10 +93,10 @@ def run(identities=None):
     catalog = json.loads(CATALOG.read_text(encoding='utf-8'))
     assert catalog['schema'] == 1 and catalog['release']
     assert len(catalog['packages']) == len(selected) <= 64
-    # Validate the full source dependency graph even for a selective release.
+    # Validate all manifests, then the packageable dependency graph, even for a selective release.
     # Unselected dependency payloads may be in earlier independent releases;
     # they are neither built here nor claimed to be artifact-verified here.
-    dependency_order(source_candidates())
+    dependency_order(independently_packaged_sources(source_candidates()))
     available = {}
     if identities is not None:
         for identity, source in sources.items():

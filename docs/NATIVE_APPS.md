@@ -668,3 +668,13 @@ capacity covers stride*height, at most 256 KiB. The target is overwritten, with
 discarded. No buffer pointers are retained, and no display refresh occurs.
 Firmware 1.3.35 introduces the capability. Hollow Trail demonstrates full-size
 reading pages beside a lower-resolution game renderer.
+
+The firmware adapter prepares the existing selected font (including the existing
+SD-to-built-in fallback) before passing a `NativeReaderTypographyResources`
+borrow to the private renderer. That borrow contains the renderer, resolved font
+ID and line compression; the rendering service does not read settings, access
+`ActivityManager`, or load a font family. Font preparation and rendering retain
+one five-second cooperative deadline. The normal native-app render lock keeps
+the renderer and registered fonts alive for the synchronous call; neither the
+resources nor the caller's bitmap are retained. This is an internal composition
+boundary, not a new app ABI or a change to font-selection/storage policy.

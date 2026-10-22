@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 HEADERS = {
-    'esp_err.h': '#pragma once\nusing esp_err_t=int; constexpr int ESP_OK=0, ESP_ERR_INVALID_STATE=1, ESP_ERR_NO_MEM=2;\n',
+    'esp_err.h': '#pragma once\nusing esp_err_t=int; constexpr int ESP_OK=0, ESP_ERR_INVALID_STATE=1, ESP_ERR_NO_MEM=2, ESP_ERR_INVALID_ARG=3, ESP_ERR_TIMEOUT=4;\n',
     'freertos/FreeRTOS.h': '''#pragma once
 #include <cstdint>
 using TickType_t=unsigned; struct StaticSemaphore_t {};
@@ -30,10 +30,14 @@ inline void xSemaphoreGive(SemaphoreHandle_t) {assert(Probe::held);Probe::held=f
 #include "esp_err.h"
 #include <sys/types.h>
 #include <sys/stat.h>
-constexpr int ESP_VFS_FLAG_DEFAULT=0;
+constexpr int ESP_VFS_FLAG_DEFAULT=0, ESP_VFS_PATH_MAX=15;
 struct esp_vfs_t {int flags; int(*open)(const char*,int,int); ssize_t(*read)(int,void*,size_t);
  off_t(*lseek)(int,off_t,int); int(*close)(int); int(*fstat)(int,struct stat*);};
+using esp_vfs_id_t=int;
+inline esp_err_t esp_vfs_unregister_with_id(esp_vfs_id_t) {return ESP_OK;}
+inline esp_err_t esp_vfs_register_fd_with_local_fd(esp_vfs_id_t,int local,bool,int* fd) {*fd=local;return ESP_OK;}
 inline esp_vfs_t captured{};
+inline esp_err_t esp_vfs_register_with_id(const esp_vfs_t* v,void*,esp_vfs_id_t* id) {captured=*v;*id=1;return ESP_OK;}
 inline esp_err_t esp_vfs_register(const char*,const esp_vfs_t* v,void*) {captured=*v;return ESP_OK;}
 ''',
     'HalStorage.h': '''#pragma once
@@ -42,12 +46,12 @@ inline esp_err_t esp_vfs_register(const char*,const esp_vfs_t* v,void*) {capture
 #include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
-namespace Probe {inline unsigned fileCalls=0,closed=0;inline bool closeFail=false;}
+namespace Probe {inline unsigned fileCalls=0,closed=0;inline bool closeFail=false,legacyUnavailable=false,legacyLockDenied=false;}
 class HalFile {
  bool open_=false; size_t position_=0;
  public:
  HalFile()=default; explicit HalFile(bool opened):open_(opened){}
- bool isOpen() const {++Probe::fileCalls;return open_;}
+ bool isOpen() const {++Probe::fileCalls;return open_&&!Probe::legacyUnavailable&&!Probe::legacyLockDenied;}
  explicit operator bool() const {return isOpen();}
  bool isDirectory() const {++Probe::fileCalls;return false;}
  uint64_t fileSize64() const {++Probe::fileCalls;return 64;}
@@ -99,12 +103,21 @@ int main() {
  puts("Production SD VFS: bounded lock refusal, no file access/unlock on timeout, retained close slots and normal reads PASS");
 }
 '''
-with tempfile.TemporaryDirectory(prefix='u1-vfs-lock-') as directory:
-    path=Path(directory)
-    for name, text in HEADERS.items():
-        target=path/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_text(text)
-    (path/'test.cpp').write_text(TEST)
-    subprocess.run(['c++','-std=c++17','-Wall','-Wextra','-Werror',
-                    '-fsanitize=address,undefined','-I'+str(path),'-I'+str(ROOT/'lib/NativeApps/include'),
-                    str(ROOT/'lib/NativeApps/src/SdVfs.cpp'),str(path/'test.cpp'),'-o',str(path/'test')],check=True)
-    subprocess.run([str(path/'test')],check=True,env=os.environ.copy())
+def run_test(test=TEST, headers=HEADERS, arguments=()):
+    with tempfile.TemporaryDirectory(prefix='loader-vfs-') as directory:
+        path = Path(directory)
+        for name, text in headers.items():
+            target = path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+        (path / 'test.cpp').write_text(test)
+        subprocess.run(['c++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-I' + str(ROOT / 'sdk/driver'),
+                        '-I' + str(path), '-I' + str(ROOT / 'lib/NativeApps/include'),
+                        str(ROOT / 'lib/NativeApps/src/SdVfs.cpp'), str(path / 'test.cpp'),
+                        '-o', str(path / 'test')], check=True)
+        subprocess.run([str(path / 'test'), *arguments], check=True, env=os.environ.copy())
+
+
+if __name__ == '__main__':
+    run_test()

@@ -2,6 +2,7 @@
 
 #include <Print.h>
 #include "StorageGeneration.h"
+#include "StorageSource.h"
 #include <common/FsApiConstants.h>  // for oflag_t
 #include <freertos/semphr.h>
 
@@ -25,6 +26,13 @@ class HalStorage {
   // whole Reader session. No SPI transport or filesystem implementation here.
   bool bindVolume(const risc_storage_volume_api_v1* volume);
 #endif
+  // Capture only the admitted, already-bound provider. Owner 0 covers preflight;
+  // bind exactly once when the application context starts. Release remains valid
+  // after that context ends and only after all selected-source cleanup succeeds.
+  bool captureNativeSource(StorageSourceLease& out);
+  bool bindNativeSourceOwner(StorageSourceLease& lease, uint32_t owner);
+  bool matchesNativeSource(const StorageSourceLease& lease) const;
+  bool releaseNativeSource(StorageSourceLease& lease);
   bool ready() const;
   StorageGenerationStamp generation() const;
   bool unchanged(const StorageGenerationStamp& stamp) const;

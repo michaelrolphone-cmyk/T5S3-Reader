@@ -52,6 +52,13 @@ class GraphV2 final {
   bool addVerified(const SpecV2& spec);
   GrantV2 acquire(const char* capability, uint32_t api);
   GrantV2 acquireFrom(const char* providerId, const char* capability, uint32_t api);
+  // Classification/cleanup for a grantless failed acquisition. A missing node,
+  // full grant table, or another consumer's live/pending grant gives this caller
+  // no cleanup custody. Only ungranted failed nodes in this exact dependency
+  // closure require recovery. These operations never revoke another grant.
+  bool failedAcquisitionNeedsRecovery(const char* providerId, const char* capability,
+                                     uint32_t api) const;
+  bool recoverFailedAcquisition(const char* providerId, const char* capability, uint32_t api);
   bool release(GrantV2 grant);
   // Trusted capability broker only; consumer is an authenticated context ID.
   bool grantStream(GrantV2, uint32_t consumer, uint32_t endpoint, uint32_t rights);
@@ -154,5 +161,8 @@ class GraphV2 final {
   bool activate(size_t index);
   void releaseDependencies(size_t index);
   bool deactivateIfUnused(size_t index);
+  bool failedAcquisitionNeedsRecoveryAt(size_t index, uint32_t& visited) const;
+  bool recoverFailedAcquisitionAt(size_t index, uint32_t& visited);
+  bool hasGrantFor(size_t index) const;
 };
 }  // namespace RuntimeProviders

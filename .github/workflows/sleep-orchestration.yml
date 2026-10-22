@@ -1,0 +1,38 @@
+name: Shared sleep orchestration
+on:
+  pull_request:
+    paths:
+      - 'src/main.cpp'
+      - 'src/runtime/power/SleepOrchestration.*'
+      - 'test/sleep_orchestration/**'
+      - 'test/run_sleep_orchestration_test.sh'
+      - 'test/resources/board_power_cutover_source_test.py'
+      - '.github/workflows/sleep-orchestration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  production-ordering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitize: ['0', '1']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Fetch exact durable entrypoint comparison source
+        run: git fetch --no-tags --depth=1 origin 9c8783d6f20659a514bfaeb3847a77c7213dc4f6
+      - name: Execute shared production helper and compare Reader ordering
+        env:
+          SANITIZE: ${{ matrix.sanitize }}
+        run: bash test/run_sleep_orchestration_test.sh
+      - name: Preserve actual PMU and display/storage refusal contracts
+        run: |
+          python3 test/resources/board_power_cutover_source_test.py
+          bash test/run_board_power_port_test.sh
+          python3 test/hal/display_power_boundary_test.py
+          python3 test/desk_clock/SleepBoundaryTest.py
+          python3 test/desk_clock/DeepSleepWiringTest.py
