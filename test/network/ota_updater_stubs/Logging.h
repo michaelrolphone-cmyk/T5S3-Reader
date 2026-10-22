@@ -4,6 +4,9 @@
 #include <vector>
 
 inline std::vector<std::string> ota_error_logs;
+inline void ota_log_error(const char* message) {
+  ota_error_logs.emplace_back(message);
+}
 template <typename... Args>
 inline void ota_log_error(const char* format, Args... args) {
   char message[256];
