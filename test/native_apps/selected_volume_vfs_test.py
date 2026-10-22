@@ -85,7 +85,7 @@ test = r'''
 #include "NativeAppVolumeVfs.h"
 struct Volume {
  risc_storage_volume_api_v1_ext api{};
- uint64_t size=64,position=0;
+ uint64_t size=64,positions[64]{};bool live[64]{};
  unsigned calls=0,opens=0,closes=0;size_t capacity=0;
  bool ready=true,closeFail=false,infoFail=false,seekFail=false,readFail=false,directory=false,oversizedRead=false;
  uint32_t next=1,error=0;unsigned char byte;
@@ -95,20 +95,20 @@ struct Volume {
   api.file_open=[](void*c,const char*p,uint32_t flags){auto&v=*static_cast<Volume*>(c);++v.calls;
    assert(!std::strcmp(p,"/Apps/demo.elf"));assert(flags==RISC_STORAGE_OPEN_READ);
    if(v.directory)return 0u;
-   ++v.opens;v.position=0;return v.next++;};
-  api.file_info=[](void*c,uint32_t h,uint64_t*s,uint64_t*p){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h);
+   const uint32_t h=v.next++;assert(h<64&&!v.live[h]);++v.opens;v.positions[h]=0;v.live[h]=true;return h;};
+  api.file_info=[](void*c,uint32_t h,uint64_t*s,uint64_t*p){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h<64&&v.live[h]);
    if(v.infoFail)return false;
-   *s=v.size;*p=v.position;return true;};
-  api.file_seek=[](void*c,uint32_t h,uint64_t p){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h);
+   *s=v.size;*p=v.positions[h];return true;};
+  api.file_seek=[](void*c,uint32_t h,uint64_t p){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h<64&&v.live[h]);
    if(v.seekFail||p>v.size)return false;
-   v.position=p;return true;};
-  api.base.file_read=[](void*c,uint32_t h,void*b,size_t n){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h);
+   v.positions[h]=p;return true;};
+  api.base.file_read=[](void*c,uint32_t h,void*b,size_t n){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h<64&&v.live[h]);
    v.capacity=n;if(v.readFail)return size_t(0);if(v.oversizedRead)return n+1;
-   std::memset(b,v.byte,n);v.position+=n;return n;};
-  api.handle_error=[](void*c,uint32_t h,bool directory){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h&&!directory);return v.error;};
-  api.base.file_close=[](void*c,uint32_t h,bool commit){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h&&commit);
+   std::memset(b,v.byte,n);v.positions[h]+=n;return n;};
+  api.handle_error=[](void*c,uint32_t h,bool directory){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h<64&&v.live[h]&&!directory);return v.error;};
+  api.base.file_close=[](void*c,uint32_t h,bool commit){auto&v=*static_cast<Volume*>(c);++v.calls;assert(h<64&&v.live[h]&&commit);
    if(v.closeFail)return false;
-   ++v.closes;return true;};
+   v.live[h]=false;++v.closes;return true;};
  }
 };
 struct Client {
@@ -227,7 +227,13 @@ int main(int argc,char** argv) {
  a.oversizedRead=true;assert(chosen.read(fd,bytes,1)==-1&&errno==EIO);a.oversizedRead=false;
  a.ready=false;assert(chosen.read(fd,bytes,1)==-1&&errno==EIO);a.ready=true;
  assert(sd.open("/Apps/legacy.elf",O_RDONLY,0)==1);
+ assert(chosen.lseek(fd,100,SEEK_SET)==100);
  assert(chosen.open("/Apps/demo.elf",O_RDONLY,0)==2);
+ // Independent tokens retain their own offsets when calls are interleaved.
+ assert(chosen.lseek(fd,0,SEEK_CUR)==100&&chosen.lseek(2,0,SEEK_CUR)==0);
+ assert(chosen.lseek(2,5,SEEK_SET)==5);
+ assert(chosen.read(fd,bytes,1)==1&&chosen.read(2,bytes,1)==1);
+ assert(chosen.lseek(fd,0,SEEK_CUR)==101&&chosen.lseek(2,0,SEEK_CUR)==6);
  assert(sd.open("/Apps/legacy2.elf",O_RDONLY,0)==3);
  assert(chosen.open("/Apps/demo.elf",O_RDONLY,0)==-1&&errno==EMFILE);
  assert(sd.open("/Apps/legacy3.elf",O_RDONLY,0)==-1&&errno==EMFILE);
