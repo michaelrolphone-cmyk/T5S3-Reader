@@ -1,6 +1,7 @@
 # Reader network-link ownership: handoff assessment
 
-Status: source-pinned assessment, not an implemented cutover or acceptance.
+Status: opt-in provider-neutral SDK and HTTP consumer custody increment.
+No installed hardware provider, automatic cutover or acceptance is claimed.
 The existing hardware ownership specification remains authoritative; this
 assessment introduces no new runtime, hardware exception, or provider policy.
 
@@ -85,7 +86,7 @@ Reader provider, imports a new per-radio firmware bridge, or treats a software
 lease as physical ownership. The [hardware-agnostic boundary][boundary] already
 rules out those substitutes.
 
-## Minimal integration seam and missing contract
+## Implemented bounded integration seam
 
 The coherent Reader integration seam is the existing generic installed-provider
 graph, not a new singleton radio/power manager:
@@ -100,28 +101,44 @@ graph, not a new singleton radio/power manager:
 4. Old Arduino admissions stop before ownership transfer; replacement admission
    follows verified legacy quiescence, never a delay or inferred success.
 
-This is an implementation boundary derived from the existing specification,
-not an implemented ABI. The exact unresolved input is **which installed
-provider package and versioned link contract Reader will consume**. That
-contract must make the following existing requirements implementable:
+The additive SDK is `sdk/driver/RiscNetworkLinkV1.h`. `InstalledNetworkLink.h`
+retains a named provider's exact graph grant, validates the v1 size/version and
+all callbacks, and owns a nonzero per-consumer activity token. Partial begin,
+pending/failed end, malformed admission and graph-release failure remain in
+custody. Graph release is never attempted before successful activity end; no
+provider callback is made after graph release starts. Grantless activation
+failure uses the existing exact-provider recovery path, without fallback.
 
-- Per-consumer lifetime and revocation, including request/server cancellation
-  and shutdown retry without losing the retained grant.
-- Provider-owned activity/power arbitration and checked cleanup outcomes.
-- The relationship between generic link custody and optional Wi-Fi admin
-  operations, so scan/connect/AP changes cannot invalidate another owner.
-- A concrete, checked transition from the currently initialized Arduino stack
-  to the selected provider, including SDK/event-loop/callback ownership.
+The concrete consumer is the existing `NativeNetworkBridge.cpp` HTTP request.
+Trusted firmware composition may call `nativeNetworkBindInstalledLink(id)`
+before `nativeNetworkBegin()`. This hook is not an ELF import, does not choose a
+provider, and does not stop or transfer the Arduino stack. It requires an
+explicit selected provider that enforces conflicting physical ownership.
+No default boot/profile binding is added.
 
-The reviewed source does not answer these points. A new table of function
-pointers, host-only fake provider, or bool wrapper around the existing global
-shutdown would not fill the missing physical-provider contract. Production
-handoff edits are therefore blocked on that contract/owner decision; generic
-lease mechanics themselves are available and tested.
+When explicitly bound, each synchronous HTTP request acquires low-latency
+activity, observes copied usable-link state, runs the existing host HTTP client,
+and checks activity end. It does not call saved-Wi-Fi reconnect or ESP power-save
+APIs. The provider owns how to satisfy or reject the activity request. This is
+a link for the host IP stack, not a transport adapter or independent socket stack.
+The legacy no-binding path retains its previous reconnect and power behavior.
+The existing application API layout and version are unchanged.
+
+The bridge's firmware-lifetime session survives `nativeNetworkEnd()` failure.
+`nativeNetworkReleaseInstalledLink()` retries the exact retained activity/grant;
+later bind/request attempts refuse while closing. Application pointers are not
+passed to the provider. This is checked link custody, not a rewrite or separate
+qualification of vendor HTTP-client cleanup internals.
+
+Still not implemented: a concrete installed link/radio provider, its Wi-Fi admin
+capability, provider/profile selection, Arduino SDK/event-loop teardown and
+handoff, migration of other network consumers, or physical radio/power proof.
+Thus this increment is functional opt-in consumer plumbing, not completion of
+the broad network ownership acceptance criteria.
 
 ## Executed validation
 
-On the unmodified pinned Reader production source:
+Baseline checks on the pinned Reader production source:
 
 - `bash test/run_runtime_network_test.sh`: passed. This covers the current
   legacy extraction and HTTP body budget, not installed network ownership.
@@ -134,6 +151,14 @@ On the unmodified pinned Reader production source:
   failed-start recovery, failed-teardown quarantine and retained grant retry.
   ASan/UBSan remained enabled where the script enables them; leak detection was
   not performed.
+
+The added `bash test/run_network_link_custody_test.sh` compiles the actual native
+HTTP consumer with fake SDK/graph boundaries and UBSan. It covers ABI size/version,
+missing callbacks, partial begin, pending/failed end, grantless/retained activation,
+graph release failure, consumer exit/retry, reentrancy, both HTTP branches, and
+unchanged legacy power behavior. The runtime-network runner includes this suite.
+`network_cookie_session_source_test.py` also passed. These fixtures do not prove
+physical-provider behavior or vendor HTTP-client internals.
 
 No radio was initialized, no real credentials were used, no firmware target
 build was run, and no physical or power-current qualification is claimed.
