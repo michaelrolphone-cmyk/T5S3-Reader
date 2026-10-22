@@ -8,6 +8,7 @@
 #include <climits>
 #include <cstdint>
 #include <algorithm>
+#include <atomic>
 #include <fcntl.h>
 #include <sys/stat.h>
 
@@ -24,6 +25,9 @@ const risc_storage_volume_api_v1_ext* selected = nullptr;
 esp_vfs_id_t selectedId = -1;
 risc_storage_file_t selectedFiles[kSlots]{};
 bool selectedAdmitted[kSlots]{};
+// Nonpermanent IDF descriptors lose their global mapping after every close
+// callback, including mutex timeout. Mark only selected callbacks lock-free.
+std::atomic<bool> selectedClosePending[kSlots]{};
 StaticSemaphore_t mutexStorage;
 SemaphoreHandle_t mutex = nullptr;
 
@@ -40,7 +44,8 @@ struct Lock {
 bool occupied(int fd) { return selectedFiles[fd] || legacyOwned[fd]; }
 bool validFd(int fd) {
   return fd >= 0 && fd < kSlots &&
-         (selectedFiles[fd] ? selectedAdmitted[fd] : legacyAdmitted[fd] && files[fd].isOpen());
+         (selectedFiles[fd] ? selectedAdmitted[fd] && !selectedClosePending[fd].load()
+                            : legacyAdmitted[fd] && files[fd].isOpen());
 }
 bool readOnly(int flags) {
   return (flags & O_ACCMODE) == O_RDONLY && !(flags & (O_CREAT | O_TRUNC | O_APPEND));
@@ -61,6 +66,7 @@ bool closeSelected(int fd) {
   if (!selected->base.file_close(selected->base.context, selectedFiles[fd], true)) return false;
   selectedFiles[fd] = 0;
   selectedAdmitted[fd] = false;
+  selectedClosePending[fd].store(false);
   return true;
 }
 int openSelectedLocked(const char* path, int flags) {
@@ -70,6 +76,7 @@ int openSelectedLocked(const char* path, int flags) {
   }
   for (int i = 0; i < kSlots; ++i) {
     if (occupied(i)) continue;
+    selectedClosePending[i].store(false);
     // The existing extension admits ordinary files only, never directories.
     selectedFiles[i] = selected->file_open(selected->base.context, path, RISC_STORAGE_OPEN_READ);
     if (!selectedFiles[i]) { errno = ENOENT; return -1; }
@@ -171,6 +178,17 @@ int closeFile(int fd) {
   if (!ok) errno = EIO;
   return ok ? 0 : -1;
 }
+int closeSelectedFile(int fd) {
+  if (fd < 0 || fd >= kSlots) { errno = EBADF; return -1; }
+  // IDF removes this nonpermanent global mapping after we return, even on
+  // failure. The exclusive owner must wait for close to return before cleanup.
+  selectedClosePending[fd].store(true);
+  Lock lock;
+  if (!lock) { errno = ETIMEDOUT; return -1; }
+  if (!selectedFiles[fd] || !selectedAdmitted[fd]) { errno = EBADF; return -1; }
+  if (!closeSelected(fd)) { errno = EIO; return -1; }
+  return 0;
+}
 int statFile(int fd, struct stat* st) {
   Lock lock;
   if (!lock) { errno = ETIMEDOUT; return -1; }
@@ -224,7 +242,7 @@ esp_err_t native_app_register_volume_vfs(const risc_storage_volume_api_v1* volum
   vfs.flags = ESP_VFS_FLAG_DEFAULT;
   vfs.read = readFile;
   vfs.lseek = seekFile;
-  vfs.close = closeFile;
+  vfs.close = closeSelectedFile;
   vfs.fstat = statFile;
   const esp_err_t err = esp_vfs_register_with_id(&vfs, nullptr, &selectedId);
   if (err == ESP_OK) selected = ext;
@@ -252,10 +270,11 @@ esp_err_t native_app_unregister_volume_vfs(const risc_storage_volume_api_v1* vol
   Lock lock;
   if (!lock) return ESP_ERR_TIMEOUT;
   if (!selected || &selected->base != volume) return ESP_ERR_INVALID_STATE;
-  // Never close a descriptor that escaped to libc. Only rejected opens and
-  // failed global-fd allocation leave provably unreturned tokens to retry.
+  // The owner has quiesced sessions and waited for every libc close to return.
+  // Never close live admitted descriptors. Retry only unreturned tokens or
+  // selected close attempts whose nonpermanent global mapping IDF discarded.
   for (int i = 0; i < kSlots; ++i)
-    if (selectedFiles[i] && selectedAdmitted[i]) return ESP_ERR_INVALID_STATE;
+    if (selectedFiles[i] && selectedAdmitted[i] && !selectedClosePending[i].load()) return ESP_ERR_INVALID_STATE;
   for (int i = 0; i < kSlots; ++i)
     if (selectedFiles[i] && !closeSelected(i)) return ESP_ERR_INVALID_STATE;
   const esp_err_t err = esp_vfs_unregister_with_id(selectedId);

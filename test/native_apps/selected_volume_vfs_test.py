@@ -152,8 +152,16 @@ int main(int argc,char** argv) {
    // IDF lost the global mapping, but no local slot/provider may be reused.
    const int next=chosen.open("/Apps/demo.elf",O_RDONLY,0);assert(next==0);
    assert(Registration::fds[next].local==1);assert(chosen.close(next)==0);
-   assert(native_app_unregister_volume_vfs(api)==ESP_ERR_INVALID_STATE);
-   puts("Selected volume libc close failure: mapping lost, local slot and binding retained PASS");return 0;
+   a.closeFail=true;assert(native_app_unregister_volume_vfs(api)==ESP_ERR_INVALID_STATE);
+   a.closeFail=false;assert(native_app_unregister_volume_vfs(api)==ESP_OK&&a.opens==a.closes);
+   assert(native_app_register_volume_vfs(&b.api.base)==ESP_OK);
+   const Client rebound{&b.api.base};const int fresh=rebound.open("/Apps/demo.elf",O_RDONLY,0);
+   assert(fresh==0&&Registration::fds[fresh].local==0);
+   assert(rebound.read(fresh,&c,1)==1&&c==0x42);
+   const unsigned closes=b.closes;
+   assert(native_app_unregister_volume_vfs(&b.api.base)==ESP_ERR_INVALID_STATE&&b.closes==closes);
+   assert(rebound.close(fresh)==0&&native_app_unregister_volume_vfs(&b.api.base)==ESP_OK);
+   puts("Selected volume libc close failure: mapping lost, token retained, explicit cleanup and clean rebind PASS");return 0;
   }
   a.size=allocation?64:51;a.closeFail=true;
   if(allocation)Registration::fdResult=ESP_ERR_NO_MEM;
@@ -202,7 +210,6 @@ int main(int argc,char** argv) {
  assert(chosen.read(fd,bytes,1)==-1&&errno==ETIMEDOUT);
  assert(chosen.lseek(fd,0,SEEK_SET)==-1&&errno==ETIMEDOUT);
  assert(chosen.fstat(fd,&st)==-1&&errno==ETIMEDOUT);
- assert(chosen.callbackClose(fd)==-1&&errno==ETIMEDOUT);
  assert(native_app_unregister_volume_vfs(api)==ESP_ERR_TIMEOUT);
  assert(a.calls==calls&&Probe::fileCalls==legacyCalls);Probe::deny=false;
  assert(chosen.read(fd,bytes,sizeof(bytes))==4096&&a.capacity==4096&&bytes[0]==0x41);
@@ -224,10 +231,10 @@ int main(int argc,char** argv) {
  assert(sd.open("/Apps/legacy2.elf",O_RDONLY,0)==3);
  assert(chosen.open("/Apps/demo.elf",O_RDONLY,0)==-1&&errno==EMFILE);
  assert(sd.open("/Apps/legacy3.elf",O_RDONLY,0)==-1&&errno==EMFILE);
- a.closeFail=true;assert(chosen.callbackClose(fd)==-1&&errno==EIO);
- assert(native_app_unregister_volume_vfs(api)==ESP_ERR_INVALID_STATE);
+ const unsigned closes=a.closes;
+ assert(native_app_unregister_volume_vfs(api)==ESP_ERR_INVALID_STATE&&a.closes==closes);
  assert(chosen.open("/Apps/demo.elf",O_RDONLY,0)==-1&&errno==EMFILE);
- a.closeFail=false;assert(chosen.close(fd)==0);assert(chosen.close(2)==0);
+ assert(chosen.close(fd)==0);assert(chosen.close(2)==0);
  assert(native_app_unregister_volume_vfs(&b.api.base)==ESP_ERR_INVALID_STATE);
  Registration::result=ESP_ERR_NO_MEM;assert(native_app_unregister_volume_vfs(api)==ESP_ERR_NO_MEM);
  assert(native_app_register_volume_vfs(&b.api.base)==ESP_ERR_INVALID_STATE);
