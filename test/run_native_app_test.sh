@@ -63,10 +63,8 @@ python3 "$repo_dir/test/hal/epd_lifecycle_test.py"
 python3 "$repo_dir/test/hal/video_teardown_test.py"
 python3 "$repo_dir/test/native_apps/app_memory_bridge_test.py"
 python3 "$repo_dir/test/native_apps/detached_reader_glyph_test.py"
-c++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
-  -I"$repo_dir/test/native_apps/reader_stubs" -I"$repo_dir/sdk/driver" -I"$repo_dir/lib/GfxRenderer" \
-  "$repo_dir/test/native_apps/reader_typography_test.cpp" -o "$binary"
-"$binary"
+bash "$repo_dir/test/run_reader_typography_test.sh"
+READER_TYPOGRAPHY_SANITIZE=1 bash "$repo_dir/test/run_reader_typography_test.sh"
 c++ -std=c++17 -Wall -Wextra -Werror \
   "$repo_dir/test/native_apps/reader_page_layout_test.cpp" -o "$binary"
 "$binary"

@@ -6,12 +6,26 @@
 #include <cassert>
 inline int drawnFont=0;
 inline std::vector<std::string> drawn;
+class GfxRenderer;
+struct PreparedText {
+    const GfxRenderer* renderer;
+    int font;
+    std::string text;
+    uint8_t styles;
+};
+inline std::vector<PreparedText> prepared;
+inline const GfxRenderer* detachedSource=nullptr;
+inline unsigned detachedCount=0;
 class GfxRenderer {
     uint8_t *pixels=nullptr;
 public:
     GfxRenderer()=default;
-    GfxRenderer(const GfxRenderer&,uint8_t* p,uint16_t,uint16_t):pixels(p){}
-    void ensureSdCardFontReady(int,const char*,uint8_t) const {}
+    GfxRenderer(const GfxRenderer& source,uint8_t* p,uint16_t,uint16_t):pixels(p){
+        detachedSource=&source; ++detachedCount;
+    }
+    void ensureSdCardFontReady(int font,const char* text,uint8_t styles) const {
+        prepared.push_back({this,font,text,styles});
+    }
     int getLineHeight(int f)const {return f;}
     int getTextWidth(int,const char*s)const {return static_cast<int>(strlen(s))*10;}
     std::string truncatedText(int,const char*s,int)const {return s;}

@@ -23,7 +23,7 @@ bool nativeReaderPage(const NativeReaderTypographyResources& resources,
                       const risc_reader_page_request_v1 *q,risc_reader_page_result_v1 *out,
                       uint32_t started) {
   if(out) *out={};
-  if(!out || !nativeReaderPageRequestValid(q)) return false;
+  if(!out || !nativeReaderPageRequestValid(q) || millis()-started>=5000u) return false;
   auto &host=resources.renderer;
   const int font=resources.fontId;
   // Prepare the small, bounded body before copying SD font registrations.

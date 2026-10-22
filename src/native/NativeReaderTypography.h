@@ -6,6 +6,8 @@ class GfxRenderer;
 // A synchronous borrow: the source renderer and its registered fonts must remain
 // alive and unchanged until nativeReaderPage returns. No resources are retained.
 // Font selection/fallback and loading belong to the caller, not the renderer.
+// This private host input uses an existing registered font ID and a finite line
+// compression from the caller's established typography policy.
 struct NativeReaderTypographyResources {
   const GfxRenderer& renderer;
   int fontId;
