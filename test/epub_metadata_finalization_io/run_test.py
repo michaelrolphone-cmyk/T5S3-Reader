@@ -108,7 +108,9 @@ def main():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(original[path] if originals else (ROOT / path).read_bytes())
             if not originals:
-                (tree / 'lib/hal/HalWriteBudget.h').write_bytes((ROOT / 'lib/hal/HalWriteBudget.h').read_bytes())
+                for current_header in ('HalWriteBudget.h', 'StorageSource.h'):
+                    path = 'lib/hal/' + current_header
+                    (tree / path).write_bytes((ROOT / path).read_bytes())
             (tree / BMC).write_text(source)
             # Link the exact production path helper body. The rest of FsHelpers
             # requires unrelated device/UI code not reached by this operation.
