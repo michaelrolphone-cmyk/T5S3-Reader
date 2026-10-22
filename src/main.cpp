@@ -44,6 +44,7 @@ void loop() { RuntimeBoot::loop(); }
 #include "KOReaderCredentialStore.h"
 #include "PowerControl.h"
 #include "runtime/power/IdleSleepDeadline.h"
+#include "runtime/power/SleepOrchestration.h"
 #include "native/NativeBatteryGauge.h"
 #include "native/NativeRtcClock.h"
 #include "MappedInputManager.h"
@@ -273,6 +274,48 @@ static void resumeAfterSleepRefused() {
   activityManager.goHome();
 }
 
+namespace {
+constexpr SleepOrchestration::Operations sleepOperations{
+    nullptr,
+    [](void*) { return display.deepSleep(); },
+    [](void*) { resumeAfterSleepRefused(); }};
+
+constexpr SleepOrchestration::ShutdownOperations shutdownOperations{
+    [](void*) {
+#if defined(BOARD_T5S3_PRO)
+      // Pin the existing PMU owner before display teardown makes SD unavailable.
+      return BoardPowerPort::prepareShutdown();
+#else
+      return true;
+#endif
+    },
+    [](void*) {
+#if defined(BOARD_T5S3_PRO)
+      return BoardPowerPort::cancelShutdown();
+#else
+      return true;
+#endif
+    },
+    [](void*) {
+#if defined(BOARD_T5S3_PRO)
+      return drainPlatformProvidersForSleep();
+#else
+      return true;
+#endif
+    },
+    [](void*) { return Board::capabilities().hasHardPowerOff; },
+    [](void*) { return Board::shutdownBatteryPower(); },
+    [](void*, bool accepted) {
+      if (accepted) {
+        delay(1500);
+        LOG_DBG("MAIN", "Battery power shutdown returned; falling back to deep sleep");
+      } else {
+        LOG_ERR("MAIN", "Battery power shutdown failed or was rejected; falling back to deep sleep");
+      }
+    },
+    [](void*) { LOG_DBG("MAIN", "Hard power-off is unavailable; using deep sleep as power-off"); }};
+}  // namespace
+
 // Enter deep sleep mode
 void enterDeepSleep() {
   if (NativeReaderEntry::deferSleep(NativeReaderEntry::Action::Sleep)) return;
@@ -307,7 +350,7 @@ void enterDeepSleep() {
   }
 
   halTiltSensor.deepSleep();
-  if (!display.deepSleep()) { resumeAfterSleepRefused(); return; }
+  if (!SleepOrchestration::prepare(sleepOperations)) return;
   LOG_DBG("MAIN", "Entering deep sleep");
 
   powerManager.startDeepSleep(gpio);
@@ -322,7 +365,7 @@ void enterDeepSleepKeepingScreen(bool wakeOnTouch = true) {
 
   Board::setBacklightLevel(0);
   halTiltSensor.deepSleep();
-  if (!display.deepSleep()) { resumeAfterSleepRefused(); return; }
+  if (!SleepOrchestration::prepare(sleepOperations)) return;
   LOG_DBG("MAIN", "Entering deep sleep with current screen preserved, wakeOnTouch=%d", wakeOnTouch ? 1 : 0);
 
   powerManager.startDeepSleep(gpio, wakeOnTouch);
@@ -342,32 +385,9 @@ void enterPowerOffKeepingScreen(const char* status) {
     // to read (e.g. custom/cover images).
     activityManager.goToSleep(/*poweringOff=*/true);
     Board::setBacklightLevel(0);
-#if defined(BOARD_T5S3_PRO)
-    // Only hard power-off needs this reservation. Ordinary sleep must not
-    // introduce another SD-backed grant after its checked graph barrier.
-    const bool powerReserved = BoardPowerPort::prepareShutdown();
-    if (!powerReserved && (!BoardPowerPort::cancelShutdown() || !drainPlatformProvidersForSleep())) {
-      resumeAfterSleepRefused(); return;
-    }
-#else
-    const bool powerReserved = true;
-#endif
-    if (!display.deepSleep()) {
-#if defined(BOARD_T5S3_PRO)
-      (void)BoardPowerPort::cancelShutdown();
-#endif
-      resumeAfterSleepRefused(); return;
-    }
-    if (powerReserved && Board::capabilities().hasHardPowerOff) {
-      if (Board::shutdownBatteryPower()) {
-        delay(1500);
-        LOG_DBG("MAIN", "Battery power shutdown returned; falling back to deep sleep");
-      } else {
-        LOG_ERR("MAIN", "Battery power shutdown failed or was rejected; falling back to deep sleep");
-      }
-    } else {
-      LOG_DBG("MAIN", "Hard power-off is unavailable; using deep sleep as power-off");
-    }
+    // Ordinary sleep deliberately supplies no shutdown operations: it cannot
+    // acquire another SD-backed grant after its checked graph barrier.
+    if (!SleepOrchestration::prepare(sleepOperations, &shutdownOperations)) return;
   }
 
   // Display/storage already crossed the one-way barrier. Do not remount,

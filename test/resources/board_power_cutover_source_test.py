@@ -49,8 +49,17 @@ sleep = board.split('void deinitForSleep()', 1)[1].split('\n}', 1)[0]
 assert 'BoardPowerPort::prepareShutdown()' not in sleep
 main = (root / 'src/main.cpp').read_text(encoding='utf-8')
 off = main.split('void enterPowerOffKeepingScreen(', 1)[1].split('// Set by activities', 1)[0]
-assert off.index('BoardPowerPort::prepareShutdown()') < off.index('if (!display.deepSleep())')
-assert 'BoardPowerPort::cancelShutdown()' in off
+adapter = main.split('constexpr SleepOrchestration::Operations sleepOperations', 1)[1].split('// Enter deep sleep mode', 1)[0]
+orchestration = (root / 'src/runtime/power/SleepOrchestration.cpp').read_text(encoding='utf-8')
+assert 'BoardPowerPort::prepareShutdown()' in adapter
+assert 'BoardPowerPort::cancelShutdown()' in adapter
+assert 'drainPlatformProvidersForSleep()' in adapter
+assert 'return display.deepSleep();' in adapter
+assert 'SleepOrchestration::prepare(sleepOperations, &shutdownOperations)' in off
+assert orchestration.index('shutdown->reserve(context)') < orchestration.index('operations.powerDownDisplay(context)')
+assert orchestration.index('operations.powerDownDisplay(context)') < orchestration.index('shutdown->powerOff(context)')
+assert '!shutdown->cancel(context) || !shutdown->drain(context)' in orchestration
+assert 'if (shutdown) (void)shutdown->cancel(context);' in orchestration
 assert 'enterDeepSleepKeepingScreen(false)' not in off
 assert 'if (!Board::prepareForSleep()) return false;' in display
 assert 'Board::deinitForSleep();' in display.split('bool HalDisplay::deepSleep()', 1)[1].split('\n}', 1)[0]
